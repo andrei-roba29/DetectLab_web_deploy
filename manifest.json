@@ -1,0 +1,59 @@
+{
+  "name": "DetectLab — Saving History Together",
+  "short_name": "DetectLab",
+  "description": "An Archaeological Prediction Model that automatically identifies high-potential zones for ancient settlements using topographic, geological, and hydrographic data.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#060E1E",
+  "theme_color": "#0D2B5E",
+  "orientation": "any",
+  "lang": "ro",
+  "categories": ["education", "science", "maps"],
+  "icons": [
+    {
+      "src": "images/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "images/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "images/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Explore Map",
+      "short_name": "Map",
+      "description": "Open the interactive APM map",
+      "url": "./#map-section",
+      "icons": [
+        {
+          "src": "images/pwa-icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "View Pricing",
+      "short_name": "Pricing",
+      "description": "View membership plans",
+      "url": "./#pricing",
+      "icons": [
+        {
+          "src": "images/pwa-icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}
