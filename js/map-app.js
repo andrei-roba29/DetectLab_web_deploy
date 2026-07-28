@@ -557,11 +557,14 @@
                 worldCopyJump: false
             }).fitBounds(APM_BOUNDS);
 
-            // Keep the entire viewport inside the valid APM canvas. The minimum
-            // zoom must be recalculated when the map changes size (for example,
-            // when entering fullscreen or rotating a mobile device).
+            // Keep the map snapped to the valid APM canvas while letting the
+            // user zoom out far enough to see it in its entirety: the minimum
+            // zoom is the level at which the whole canvas fits inside the
+            // viewport (never below 5). It must be recalculated when the map
+            // changes size (for example, when entering fullscreen or rotating
+            // a mobile device).
             function enforceMapCanvasBounds() {
-                var canvasMinZoom = map.getBoundsZoom(MAP_PAN_BOUNDS, true);
+                var canvasMinZoom = Math.max(5, map.getBoundsZoom(MAP_PAN_BOUNDS, false));
                 map.setMinZoom(canvasMinZoom);
                 if (map.getZoom() < canvasMinZoom) {
                     map.setZoom(canvasMinZoom, { animate: false });
