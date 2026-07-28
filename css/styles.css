@@ -881,6 +881,69 @@
                 background: #d4621a;
             }
 
+        /* ── COMPACT MOBILE HEADER ──
+           On narrow PWA screens the fixed header must stay on one row so the
+           language switcher and the profile / account controls remain
+           visible. Shrink the logo and tighten paddings and gaps. */
+        @media (max-width: 600px) {
+            nav {
+                padding: 8px 12px;
+                padding-top: calc(8px + env(safe-area-inset-top, 0px));
+                gap: 8px;
+            }
+
+            .nav-logo {
+                gap: 6px;
+                flex-shrink: 1;
+                min-width: 0;
+            }
+
+                .nav-logo svg {
+                    width: 22px;
+                    height: 22px;
+                    flex-shrink: 0;
+                }
+
+                .nav-logo img {
+                    height: 1.1rem !important;
+                }
+
+            .nav-right {
+                gap: 8px;
+                margin-left: auto;
+                flex-shrink: 0;
+            }
+
+            .lang-dropdown {
+                font-size: 0.75rem;
+            }
+
+            .lang-trigger {
+                padding: 4px 8px;
+                gap: 5px;
+            }
+
+            .nav-user {
+                padding: 3px 10px 3px 5px;
+                gap: 6px;
+            }
+
+            .nav-avatar {
+                width: 22px;
+                height: 22px;
+                font-size: 0.62rem;
+            }
+
+            .user-trigger {
+                gap: 6px;
+            }
+
+            .btn-nav {
+                padding: 6px 12px;
+                font-size: 0.78rem;
+            }
+        }
+
         /* HERO */
         #hero {
             position: relative;
