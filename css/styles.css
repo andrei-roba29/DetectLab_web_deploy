@@ -15,6 +15,8 @@
 
         html {
             scroll-behavior: smooth;
+            /* PWA safe area (iPhone notch) — fills the status bar / notch area */
+            background-color: #091123;
         }
 
         body {
@@ -22,6 +24,21 @@
             background-color: #060E1E;
             color: var(--white);
             overflow-x: hidden;
+        }
+
+        /* PWA: solid #091123 bar behind the iPhone notch so it blends with the nav theme */
+        @supports (padding-top: env(safe-area-inset-top)) {
+            body::before {
+                content: '';
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: env(safe-area-inset-top, 0px);
+                background: #091123;
+                z-index: 1001;
+                pointer-events: none;
+            }
         }
 
         /* ── APM 2.0 Search Help — overlay flotant centrat pe hartă ── */
@@ -702,7 +719,8 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: calc(18px + env(safe-area-inset-top)) 48px 18px;
+            padding: 18px 48px;
+            padding-top: calc(18px + env(safe-area-inset-top, 0px));
             background: rgba(6,14,30,0.88);
             backdrop-filter: blur(20px);
             border-bottom: 1px solid rgba(184,216,240,0.1);
@@ -858,7 +876,8 @@
             align-items: center;
             justify-content: center;
             text-align: center;
-            padding: calc(120px + env(safe-area-inset-top)) 24px 80px;
+            padding: 120px 24px 80px;
+            padding-top: calc(120px + env(safe-area-inset-top, 0px));
             overflow: hidden;
         }
 
@@ -1905,7 +1924,8 @@
         /* MAP SEARCH */
         .map-search-wrap {
             position: absolute;
-            top: calc(14px + env(safe-area-inset-top));
+            top: 14px;
+            top: calc(14px + env(safe-area-inset-top, 0px));
             left: 50%;
             transform: translateX(-50%);
             z-index: 1000;
@@ -3772,6 +3792,7 @@
             display: none;
             position: fixed;
             top: 16px;
+            top: calc(16px + env(safe-area-inset-top, 0px));
             right: 16px;
             z-index: 10001; /* above the fixed map-frame in fullscreen */
             align-items: center;
