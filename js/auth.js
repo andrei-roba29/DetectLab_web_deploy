@@ -6,19 +6,39 @@
         (function () {
             var _user = null;
 
+/* Sync the in-memory user (and the header / map-gate UI) with a
+   Supabase session object — or clear it when signed out. */
+function _syncFromSession(session) {
+    if (session && session.user) {
+        _save({
+            name: session.user.user_metadata.full_name || session.user.email.split("@")[0],
+            email: session.user.email
+        });
+    } else {
+        _clear();
+    }
+    _updateNav();
+    _updateMapGate();
+}
+
 try {
     if (window.supabaseClient && window.supabaseClient.auth) {
-        window.supabaseClient.auth.getUser().then(function (result) {
-            const user = result.data.user;
-            if (!user) return;
-            _save({
-                name: user.user_metadata.full_name || user.email.split("@")[0],
-                email: user.email
-            });
-            _updateNav();
-            _updateMapGate();
+        // Restore the persisted session from local storage so the account
+        // controls reappear immediately on PWA relaunch — getSession()
+        // resolves locally and does not depend on a network round trip.
+        window.supabaseClient.auth.getSession().then(function (result) {
+            var session = result && result.data ? result.data.session : null;
+            if (!session || !session.user) return;
+            _syncFromSession(session);
         }).catch(function (err) {
-            console.warn("Supabase getUser failed:", err);
+            console.warn("Supabase getSession failed:", err);
+        });
+
+        // Keep the UI synchronized with Supabase auth-state changes:
+        // OAuth redirect return, token refresh, sign-in/out in other tabs.
+        window.supabaseClient.auth.onAuthStateChange(function (event, session) {
+            if (event === 'INITIAL_SESSION') return; // handled by getSession() above
+            _syncFromSession(session);
         });
     }
 } catch (err) {
