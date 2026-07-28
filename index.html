@@ -1540,6 +1540,104 @@
         </div>
     </section>
 
+    <!-- GET MOBILE APP -->
+    <section id="get-mobile">
+        <div class="container text-center">
+            <p class="section-label t" data-key="get_app_label">Mobile App</p>
+            <h2 class="section-title t" data-key="get_app_title">Get the <span class="hl">DetectLab</span> App</h2>
+            <p class="section-desc t" data-key="get_app_desc" style="max-width: 600px; margin: 0 auto; color: rgba(245, 240, 235, 0.75); line-height: 1.6; font-size: 1rem;">Install the application on your mobile device for quick access to the prediction model.</p>
+
+            <div class="app-buttons-wrap">
+                <!-- Android Button -->
+                <button class="btn-app android-btn" onclick="installAndroidPWA()">
+                    <svg class="btn-app-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="width: 22px; height: 24px; vertical-align: middle; margin-right: 8px;">
+                        <path d="M17.6 9.48l1.65-2.85c.12-.2.05-.47-.15-.58a.42.42 0 0 0-.58.15l-1.68 2.9C15.4 8.41 13.78 8 12 8s-3.4.41-4.84 1.1L5.48 6.2c-.11-.2-.38-.27-.58-.15a.42.42 0 0 0-.15.58l1.65 2.85C3.78 11.23 2.15 13.78 2 16.7h20c-.15-2.92-1.78-5.47-4.4-7.22zM7 13.5c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm10 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/>
+                    </svg>
+                    <span class="t" data-key="btn_android">Android App</span>
+                </button>
+
+                <!-- iOS Button -->
+                <button class="btn-app ios-btn" onclick="showIOSInstructions()">
+                    <svg class="btn-app-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="width: 20px; height: 24px; vertical-align: middle; margin-right: 8px;">
+                        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.07 2.47.3 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 3.83M15.97 4.17c.66-.81 1.11-1.93.99-3.06-1 .04-2.18.66-2.9 1.54-.62.75-1.17 1.89-1.02 3 .12.98.66 1.83.99 1.83.08 0 1.28-.5 1.94-2.31z"/>
+                    </svg>
+                    <span class="t" data-key="btn_ios">iOS App</span>
+                </button>
+            </div>
+
+            <!-- Toast notification for PWA status messages -->
+            <div id="pwa-install-toast" class="pwa-toast"></div>
+        </div>
+    </section>
+
+    <script>
+        let deferredPrompt = null;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent Chrome 67 and earlier from automatically showing the prompt
+            e.preventDefault();
+            // Stash the event so it can be triggered later.
+            deferredPrompt = e;
+        });
+
+        function showPWAToast(message) {
+            const toast = document.getElementById('pwa-install-toast');
+            if (!toast) return;
+            toast.innerHTML = message;
+            toast.classList.add('visible');
+
+            // Auto hide after 6 seconds
+            clearTimeout(window.pwaToastTimer);
+            window.pwaToastTimer = setTimeout(() => {
+                toast.classList.remove('visible');
+            }, 6000);
+        }
+
+        function installAndroidPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted the install prompt');
+                    } else {
+                        console.log('User dismissed the install prompt');
+                    }
+                    deferredPrompt = null;
+                });
+            } else {
+                // Fallback message for Android when prompt is not available
+                const isRo = (typeof currentLang !== 'undefined' ? currentLang : 'ro') === 'ro';
+                const msg = isRo
+                    ? '<strong>Instalare:</strong> Deschide meniul browserului tău (cele 3 puncte verticale din dreapta sus) și apasă pe <strong>"Adaugă pe ecranul principal"</strong> sau <strong>"Instalează aplicația"</strong>.'
+                    : '<strong>Installation:</strong> Open your browser menu (the 3 vertical dots in the top right) and tap <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong>.';
+                showPWAToast(msg);
+            }
+        }
+
+        function showIOSInstructions() {
+            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            const isIOS = /iPad|iPhone|iPod/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            // Check if it's Safari. Safari userAgent contains "Safari" and does NOT contain other browsers like CriOS, FxiOS, etc.
+            const isSafari = /Safari/.test(userAgent) && !/CriOS|FxiOS|OPiOS|mercury|gsa|ucbrowser/i.test(userAgent);
+
+            const isRo = (typeof currentLang !== 'undefined' ? currentLang : 'ro') === 'ro';
+
+            let msg = '';
+            if (isIOS && isSafari) {
+                msg = isRo
+                    ? 'Apasă pe Distribuire &rarr; Adaugă pe ecranul principal'
+                    : 'Tap Share &rarr; Add to Home Screen';
+            } else {
+                msg = isRo
+                    ? 'Pentru aplicația mobilă, deschide această pagină în Safari'
+                    : 'For mobile app, open this page in Safari';
+            }
+
+            showPWAToast(msg);
+        }
+    </script>
+
     <!-- HOW IT WORKS -->
     <section id="how">
         <div class="container">
