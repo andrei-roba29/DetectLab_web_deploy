@@ -545,13 +545,33 @@
                 [42.8657855276803872, 19.9018464511967004],
                 [49.0024961993941517, 30.6713880698685237]
             ];
+            var MAP_PAN_BOUNDS = L.latLngBounds(APM_BOUNDS);
 
             // Initialise Leaflet map inside DetectLab's existing container
             var map = L.map('detectlab-map', {
                 zoomControl: false,
                 minZoom: 5,
-                maxZoom: 20
+                maxZoom: 20,
+                maxBounds: MAP_PAN_BOUNDS,
+                maxBoundsViscosity: 1.0,
+                worldCopyJump: false
             }).fitBounds(APM_BOUNDS);
+
+            // Keep the entire viewport inside the valid APM canvas. The minimum
+            // zoom must be recalculated when the map changes size (for example,
+            // when entering fullscreen or rotating a mobile device).
+            function enforceMapCanvasBounds() {
+                var canvasMinZoom = map.getBoundsZoom(MAP_PAN_BOUNDS, true);
+                map.setMinZoom(canvasMinZoom);
+                if (map.getZoom() < canvasMinZoom) {
+                    map.setZoom(canvasMinZoom, { animate: false });
+                }
+                map.panInsideBounds(MAP_PAN_BOUNDS, { animate: false });
+            }
+
+            map.whenReady(enforceMapCanvasBounds);
+            map.on('resize', enforceMapCanvasBounds);
+            map.on('dragend zoomend', enforceMapCanvasBounds);
 
             var hash = new L.Hash(map);
 

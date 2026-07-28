@@ -14,16 +14,30 @@
         }
 
         html {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden;
+            overscroll-behavior-x: none;
             scroll-behavior: smooth;
             /* PWA safe area (iPhone notch) — fills the status bar / notch area */
             background-color: #091123;
         }
 
         body {
+            width: 100%;
+            max-width: 100%;
             font-family: 'Outfit', sans-serif;
             background-color: #060E1E;
             color: var(--white);
             overflow-x: hidden;
+            overscroll-behavior-x: none;
+        }
+
+        @supports (overflow-x: clip) {
+            html,
+            body {
+                overflow-x: clip;
+            }
         }
 
         /* PWA: solid #091123 bar behind the iPhone notch so it blends with the nav theme */
@@ -3340,8 +3354,9 @@
             border-right: none;
             border-radius: 16px 0 0 16px;
             box-shadow: -10px 0 40px rgba(0,0,0,0.55), inset 1px 0 0 rgba(255,255,255,0.03);
-            transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s;
+            transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s, visibility 0s linear 0.35s;
             pointer-events: none;
+            visibility: hidden;
             z-index: 1001;
             transform: translateX(100%);
             opacity: 0;
@@ -3369,7 +3384,9 @@
             .transp-panel.open {
                 transform: translateX(0%);
                 pointer-events: all;
+                visibility: visible;
                 opacity: 1;
+                transition-delay: 0s;
             }
 
         .transp-panel-title {
@@ -4398,6 +4415,12 @@
 
         /* ── MOBILE FULLSCREEN & SEARCH FIXES ── */
         @media (max-width: 600px) {
+            /* Keep Leaflet controls below the search bar on narrow screens. */
+            #detectlab-map .leaflet-top.leaflet-left,
+            #detectlab-map .leaflet-top.leaflet-right {
+                top: calc(64px + env(safe-area-inset-top, 0px));
+            }
+
             /* Move X button to bottom-right so it doesn't crowd the search bar */
             .map-frame.is-fullscreen .btn-close-fullscreen {
                 top: auto;
@@ -4430,6 +4453,12 @@
             .map-frame.is-fullscreen #iosBldSettingsBtn,
             .map-frame.is-fullscreen #iosBldSuggestBtn {
                 bottom: 27px;
+            }
+        }
+
+        @media (min-width: 601px) {
+            .map-frame.is-fullscreen .btn-close-fullscreen {
+                top: calc(72px + env(safe-area-inset-top, 0px));
             }
         }
 
