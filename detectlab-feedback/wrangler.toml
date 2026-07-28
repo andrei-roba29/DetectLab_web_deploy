@@ -1,0 +1,8 @@
+name = "detectlab-feedback"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "detectlab_feedback"
+database_id = "78f3a84d-97bd-43fe-ad48-fb4de41ae197"
