@@ -20,6 +20,97 @@
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
     <link rel="stylesheet" href="css/styles.css">
+    <style>
+        /* PWA Specific Styles */
+        body.is-pwa .nav-links {
+            display: none !important;
+        }
+        body.is-pwa #hero,
+        body.is-pwa #what,
+        body.is-pwa #how,
+        body.is-pwa #pricing,
+        body.is-pwa footer,
+        body.is-pwa #get-mobile {
+            display: none !important;
+        }
+
+        body.is-pwa nav {
+            background: rgba(4, 10, 22, 0.7);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid rgba(184, 216, 240, 0.1);
+        }
+
+        body.is-pwa #map-section {
+            padding: 0 !important;
+            margin: 0 !important;
+            height: 100vh !important;
+            width: 100vw !important;
+            max-width: 100% !important;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 10;
+        }
+
+        body.is-pwa .map-header > div:first-child {
+            display: none !important;
+        }
+
+        body.is-pwa .map-header {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(4, 10, 22, 0.85);
+            padding: 8px;
+            border-radius: 30px;
+            backdrop-filter: blur(10px);
+            margin: 0;
+            border: 1px solid rgba(184, 216, 240, 0.15);
+        }
+
+        body.is-pwa .map-tabs {
+            margin: 0 !important;
+        }
+
+        body.is-pwa .map-frame,
+        body.is-pwa .map-wrapper,
+        body.is-pwa #detectlab-map {
+            height: 100% !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+        }
+
+        body.is-pwa #weatherPanel {
+            height: 100% !important;
+            overflow-y: auto;
+        }
+        body.is-pwa .container {
+            padding: 0 !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+        }
+
+        /* Push map controls down to not be covered by nav */
+        body.is-pwa .leaflet-top {
+            top: 70px !important;
+        }
+
+        /* Prevent closing auth modal when not logged in */
+        body.is-pwa:not(.is-logged-in) .auth-close {
+            display: none !important;
+        }
+
+        /* Hide fullscreen button since PWA is already fullscreen */
+        body.is-pwa .btn-fullscreen,
+        body.is-pwa .btn-close-fullscreen {
+            display: none !important;
+        }
+    </style>
 </head>
 <body>
 
@@ -2144,8 +2235,57 @@
         });
     </script>
 
-    <script src="js/auth-forms.js"></script>
+<script src="js/auth-forms.js"></script>
 
+    <script>
+        (function() {
+            const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            if (isPWA) {
+                document.body.classList.add('is-pwa');
+                
+                // If map is already initialized, tell it to resize to the new fullscreen container
+                setTimeout(function() {
+                    if (window.map && typeof window.map.invalidateSize === 'function') {
+                        window.map.invalidateSize();
+                    }
+                }, 300);
+
+                let authCheckAttempts = 0;
+                // Set up observer to track auth state
+                function updatePwaAuth() {
+                    const modal = document.getElementById('authModal');
+                    const isShowing = modal && modal.classList.contains('show');
+                    
+                    if (window._authUser && window._authUser()) {
+                        document.body.classList.add('is-logged-in');
+                        if (isShowing && typeof window.closeAuth === 'function') {
+                            window.closeAuth();
+                        }
+                    } else {
+                        document.body.classList.remove('is-logged-in');
+                        authCheckAttempts++;
+                        // Delay opening the auth modal for 1s to allow Supabase getSession to resolve
+                        if (!isShowing && typeof window.openAuth === 'function' && authCheckAttempts > 2) {
+                            window.openAuth('register');
+                        }
+                    }
+                }
+
+                // Run initially and then every 500ms to keep it enforced
+                setTimeout(updatePwaAuth, 100);
+                setInterval(updatePwaAuth, 500);
+
+                // Override closeAuth in PWA if not logged in
+                const originalClose = window.closeAuth;
+                window.closeAuth = function() {
+                    if (!window._authUser || !window._authUser()) {
+                        return; // Block closing if not logged in
+                    }
+                    if (originalClose) originalClose();
+                };
+            }
+        })();
+    </script>
 </body>
 
 <script src="js/account-legacy.js"></script>
