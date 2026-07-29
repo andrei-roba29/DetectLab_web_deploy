@@ -49,7 +49,7 @@
         /* Nav is hidden entirely in PWA mode — see rule below with display:none */
 
         /* Fullscreen map.
-           Reserve exactly the height of the fixed bottom bar. The 58px
+           Reserve exactly the height of the fixed bottom bar. The 44px
            fallback prevents a first-paint overlap; PWA JS replaces it with
            the measured bar height (including a device's home-indicator inset).
            - 100dvh (dynamic viewport height) properly accounts for the iOS
@@ -62,10 +62,10 @@
         body.is-pwa #map-section {
             padding: 0 !important;
             margin: 0 !important;
-            height: calc(100vh - var(--pwa-bottom-bar-height, 58px)) !important;
-            height: calc(var(--vh, 1vh) * 100 - var(--pwa-bottom-bar-height, 58px)) !important;
-            height: calc(100svh - var(--pwa-bottom-bar-height, 58px)) !important;
-            height: calc(100dvh - var(--pwa-bottom-bar-height, 58px)) !important;
+            height: calc(100vh - var(--pwa-bottom-bar-height, 44px)) !important;
+            height: calc(var(--vh, 1vh) * 100 - var(--pwa-bottom-bar-height, 44px)) !important;
+            height: calc(100svh - var(--pwa-bottom-bar-height, 44px)) !important;
+            height: calc(100dvh - var(--pwa-bottom-bar-height, 44px)) !important;
             width: 100% !important;
             max-width: 100% !important;
             position: fixed;
@@ -170,14 +170,14 @@
             left: 0;
             right: 0;
             z-index: 2000;
-            padding: 8px 12px;
-            padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+            padding: 5px 8px;
+            padding-bottom: calc(5px + env(safe-area-inset-bottom, 0px));
             background: rgba(6, 14, 30, 0.94);
             backdrop-filter: blur(20px);
             border-top: 1px solid rgba(184, 216, 240, 0.12);
             align-items: center;
             justify-content: space-between;
-            gap: 8px;
+            gap: 6px;
         }
         body.is-pwa .pwa-bottom-bar {
             display: flex;
@@ -192,27 +192,33 @@
         .pwa-bar-detect {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             background: rgba(184, 216, 240, 0.06);
             border: 1px solid rgba(184, 216, 240, 0.14);
             border-radius: 8px;
-            padding: 6px 12px;
+            padding: 4px 8px;
         }
         .pwa-bar-detect .detect-toggle-label {
-            font-size: 0.72rem;
+            font-size: 0.68rem;
             color: rgba(184, 216, 240, 0.7);
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 4px;
             white-space: nowrap;
         }
         .pwa-bar-detect .detect-switch {
-            width: 38px;
-            height: 20px;
+            width: 34px;
+            height: 18px;
         }
         .pwa-bar-detect .detect-track::after {
-            width: 14px;
-            height: 14px;
+            width: 12px;
+            height: 12px;
+        }
+        /* The base checked toggle translates the knob 20px (sized for the
+           44px desktop switch). The smaller PWA switch needs a shorter
+           travel so the knob stays inside the track. */
+        .pwa-bar-detect .detect-switch input:checked + .detect-track::after {
+            transform: translateX(15px);
         }
         .pwa-bar-detect.detect-active {
             background: rgba(196, 43, 43, 0.12);
@@ -226,14 +232,14 @@
         .pwa-bar-trigger {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
             background: rgba(184, 216, 240, 0.08);
             border: 1px solid rgba(184, 216, 240, 0.2);
             border-radius: 8px;
-            padding: 7px 14px;
+            padding: 5px 10px;
             color: rgba(245, 240, 235, 0.85);
             font-family: 'Outfit', sans-serif;
-            font-size: 0.78rem;
+            font-size: 0.72rem;
             font-weight: 600;
             cursor: pointer;
             transition: background 0.2s, border-color 0.2s;
@@ -355,11 +361,24 @@
         .pwa-account-overlay.visible {
             display: flex;
         }
+        /* The PWA overlay's own back button is the single visible route
+           back to the map — hide the desktop back button that ships inside
+           the account panel so there is exactly one "Back to map" control. */
+        .pwa-account-overlay .account-back {
+            display: none !important;
+        }
+        /* Sticky so it stays reachable even when the account form is
+           scrolled inside the overlay. */
         .pwa-account-back {
-            display: inline-flex;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
             align-items: center;
             gap: 6px;
-            background: none;
+            width: 100%;
+            background: rgba(4, 10, 22, 0.97);
+            backdrop-filter: blur(8px);
             border: none;
             color: var(--sky);
             font-family: 'Outfit', sans-serif;
@@ -2779,36 +2798,71 @@
                 // ── PWA BOTTOM BAR: Account overlay ──
                 window.pwaOpenAccount = function() {
                     closePwaDropdowns();
+
+                    var user = (typeof window._authUser === 'function') ? window._authUser() : null;
+                    if (!user) {
+                        if (typeof window.openAuth === 'function') window.openAuth('login');
+                        return;
+                    }
+
                     var overlay = document.getElementById('pwaAccountOverlay');
                     var content = document.getElementById('pwaAccountContent');
-                    // Show the existing account panel inside the overlay
                     var accountPanel = document.getElementById('accountPanel');
+
                     if (accountPanel && content) {
-                        // Move the account panel into the overlay
+                        // Render the existing account card directly inside the
+                        // overlay. Deliberately NOT calling the desktop
+                        // openAccount flow here: it hides the map and calls
+                        // accountPanel.scrollIntoView(), which can scroll the
+                        // PWA overlay past its back control and leave the
+                        // user stuck.
                         content.appendChild(accountPanel);
                         accountPanel.style.display = 'block';
-                        accountPanel.classList.add('active');
                         accountPanel.style.maxWidth = '100%';
                         accountPanel.style.padding = '0';
+                        accountPanel.style.margin = '0';
+                        accountPanel.classList.add('active');
                     }
-                    if (overlay) overlay.classList.add('visible');
-                    // Also call openAccount to refresh data
-                    if (typeof window.openAccount === 'function') {
-                        window.openAccount();
+
+                    // Refresh the account card with the current user data.
+                    if (typeof window.renderAccountPanel === 'function') {
+                        window.renderAccountPanel(user);
+                    }
+
+                    if (overlay) {
+                        overlay.classList.add('visible');
+                        // Always open scrolled to the top so the sticky back
+                        // button and the account header are visible at once.
+                        overlay.scrollTop = 0;
                     }
                 };
 
                 window.pwaCloseAccount = function() {
+                    // Close Terms & Conditions first if it is open, so it does
+                    // not stay on screen after the overlay disappears.
+                    var termsModal = document.getElementById('termsModal');
+                    if (termsModal && termsModal.classList.contains('show') &&
+                        typeof window.closeTerms === 'function') {
+                        window.closeTerms();
+                    }
+
                     var overlay = document.getElementById('pwaAccountOverlay');
-                    if (overlay) overlay.classList.remove('visible');
-                    // Move account panel back to its original location
+                    if (overlay) {
+                        overlay.classList.remove('visible');
+                        overlay.scrollTop = 0;
+                    }
+
+                    // Move the account panel back to its original parent and
+                    // clear the PWA-only inline styles applied on open.
                     var accountPanel = document.getElementById('accountPanel');
                     var originalParent = document.querySelector('#map-section .container');
-                    if (accountPanel && originalParent) {
-                        originalParent.appendChild(accountPanel);
+                    if (accountPanel) {
+                        accountPanel.classList.remove('active');
+                        if (originalParent) originalParent.appendChild(accountPanel);
                         accountPanel.style.display = '';
                         accountPanel.style.maxWidth = '';
                         accountPanel.style.padding = '';
+                        accountPanel.style.margin = '';
                     }
                 };
 
