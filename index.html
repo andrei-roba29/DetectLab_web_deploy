@@ -49,6 +49,9 @@
         /* Nav is hidden entirely in PWA mode — see rule below with display:none */
 
         /* Fullscreen map.
+           Reserve exactly the height of the fixed bottom bar. The 58px
+           fallback prevents a first-paint overlap; PWA JS replaces it with
+           the measured bar height (including a device's home-indicator inset).
            - 100dvh (dynamic viewport height) properly accounts for the iOS
              status bar and home indicator, eliminating the white gap that
              100vh leaves on notched devices.
@@ -59,10 +62,10 @@
         body.is-pwa #map-section {
             padding: 0 !important;
             margin: 0 !important;
-            height: 100vh !important;
-            height: calc(var(--vh, 1vh) * 100) !important;
-            height: 100svh !important;
-            height: 100dvh !important;
+            height: calc(100vh - var(--pwa-bottom-bar-height, 58px)) !important;
+            height: calc(var(--vh, 1vh) * 100 - var(--pwa-bottom-bar-height, 58px)) !important;
+            height: calc(100svh - var(--pwa-bottom-bar-height, 58px)) !important;
+            height: calc(100dvh - var(--pwa-bottom-bar-height, 58px)) !important;
             width: 100% !important;
             max-width: 100% !important;
             position: fixed;
@@ -2603,36 +2606,55 @@
                 document.body.classList.add('is-pwa');
                 document.documentElement.classList.add('is-pwa');
 
-                // ── Fix 100vh on mobile PWA ──
-                // CSS 100dvh handles this on modern browsers, but we also set
-                // a CSS custom property --vh as a JS-based fallback for older
-                // WebViews that don't support dvh/svh. The #map-section rule
-                // above uses 100vh → 100svh → 100dvh; this JS fallback covers
-                // the remaining edge cases.
+                // ── Keep the standalone viewport and fixed bottom bar in sync ──
+                // Older WebViews use --vh instead of dvh/svh. The bar's actual
+                // height is measured rather than assumed: its safe-area padding
+                // differs between iPhones, iPads, and Android devices.
                 function setVH() {
                     var vh = window.innerHeight * 0.01;
                     document.documentElement.style.setProperty('--vh', vh + 'px');
                 }
-                setVH();
-                window.addEventListener('resize', setVH);
-                window.addEventListener('orientationchange', function() {
-                    setTimeout(setVH, 150);
-                });
 
-                // If map is already initialized, tell it to resize to the new fullscreen container
                 function resizeMap() {
-                    if (window.map && typeof window.map.invalidateSize === 'function') {
-                        window.map.invalidateSize();
+                    // map-app.js exposes the Leaflet instance as _dlMap. Keep
+                    // window.map as a fallback for deployments using an older
+                    // map bundle.
+                    var leafletMap = window._dlMap || window.map;
+                    if (leafletMap && typeof leafletMap.invalidateSize === 'function') {
+                        leafletMap.invalidateSize({ debounceMoveend: true });
                     }
                 }
-                setTimeout(resizeMap, 300);
-                // Also resize after orientation change or window resize
-                window.addEventListener('resize', function() {
-                    setTimeout(resizeMap, 100);
-                });
+
+                function updatePwaMapLayout() {
+                    setVH();
+                    var bottomBar = document.getElementById('pwaBottomBar');
+                    if (bottomBar) {
+                        var bottomBarHeight = Math.ceil(bottomBar.getBoundingClientRect().height);
+                        document.documentElement.style.setProperty('--pwa-bottom-bar-height', bottomBarHeight + 'px');
+                    }
+                    // Wait for the CSS variable to affect #map-section before
+                    // Leaflet recalculates its viewport. This keeps circles and
+                    // other vector layers visible at the lower map edge.
+                    window.requestAnimationFrame(resizeMap);
+                }
+
+                updatePwaMapLayout();
+                setTimeout(updatePwaMapLayout, 300);
+                window.addEventListener('resize', updatePwaMapLayout);
                 window.addEventListener('orientationchange', function() {
-                    setTimeout(resizeMap, 300);
+                    // iOS can report the old visual viewport for one turn after
+                    // rotation, so measure once immediately and once afterwards.
+                    updatePwaMapLayout();
+                    setTimeout(updatePwaMapLayout, 300);
                 });
+                if (window.visualViewport) {
+                    window.visualViewport.addEventListener('resize', updatePwaMapLayout);
+                }
+
+                var pwaBottomBar = document.getElementById('pwaBottomBar');
+                if (pwaBottomBar && window.ResizeObserver) {
+                    new ResizeObserver(updatePwaMapLayout).observe(pwaBottomBar);
+                }
 
                 let authCheckAttempts = 0;
                 // Set up observer to track auth state
