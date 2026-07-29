@@ -166,14 +166,13 @@
         }
 
         /* ── PWA BOTTOM BAR ──
-           Keep the controls above the device's real safe area, but do not turn
-           that safe area into extra bar padding. On an iPhone this leaves the
-           map visible behind the home indicator; on Android the inset is
-           normally zero and the bar remains flush with the visible viewport. */
+           The PWA bottom bar must be flush with the bottom of the visible
+           viewport (bottom: 0) on all devices including iPhones, matching Android.
+           Do not add env(safe-area-inset-bottom) as padding or as a bottom offset. */
         .pwa-bottom-bar {
             display: none;
             position: fixed;
-            bottom: var(--pwa-bottom-safe-offset, env(safe-area-inset-bottom, 0px));
+            bottom: 0;
             left: 0;
             right: 0;
             z-index: 2000;
@@ -190,11 +189,10 @@
             gap: 6px;
         }
         body.is-pwa {
-            --pwa-bottom-safe-offset: env(safe-area-inset-bottom, 0px);
-            --pwa-bottom-controls-clearance: calc(
-                var(--pwa-bottom-bar-height, 44px) +
-                var(--pwa-bottom-safe-offset, 0px)
-            );
+            --pwa-bottom-controls-clearance: var(--pwa-bottom-bar-height, 44px);
+        }
+        body.is-pwa #mapAuthGate {
+            display: none !important;
         }
         body.is-pwa .pwa-bottom-bar {
             display: flex;
@@ -462,12 +460,104 @@
         body.is-pwa .leaflet-bottom {
             bottom: calc(
                 var(--pwa-bottom-controls-clearance, 44px) +
-                56px + env(safe-area-inset-bottom, 0px)
+                56px
             ) !important;
         }
+
+        /* ── PWA LAUNCH SCREEN OVERLAY ── */
+        #pwaLaunchScreen {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            background: #060E1E;
+            color: #ffffff;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 1;
+            transition: opacity 0.6s ease-out;
+            pointer-events: auto;
+        }
+        html.is-pwa #pwaLaunchScreen:not(.hidden) {
+            display: flex;
+        }
+        #pwaLaunchScreen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .launch-sonar-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 1;
+            transition: opacity 0.4s ease-in-out, transform 0.4s ease-in-out;
+        }
+        .launch-sonar-img {
+            width: 140px;
+            height: 140px;
+            object-fit: contain;
+        }
+        .launch-title-wrap {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+            text-align: center;
+        }
+        .launch-title {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            color: #ffffff;
+            margin: 0 0 8px 0;
+            font-family: inherit;
+        }
+        .launch-subtitle {
+            font-size: 0.95rem;
+            color: rgba(184, 216, 240, 0.75);
+            margin: 0;
+            font-weight: 400;
+        }
+        #pwaLaunchScreen.show-title .launch-sonar-wrap {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+        #pwaLaunchScreen.show-title .launch-title-wrap {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #pwaLaunchScreen,
+            .launch-sonar-wrap,
+            .launch-title-wrap {
+                transition: none !important;
+                transform: none !important;
+            }
+        }
     </style>
+    <script>
+        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+            document.documentElement.classList.add('is-pwa');
+        }
+    </script>
 </head>
 <body>
+    <!-- PWA STANDALONE-ONLY LAUNCH SCREEN -->
+    <div id="pwaLaunchScreen">
+        <div class="launch-sonar-wrap">
+            <img src="images/sonar_loading_animation.webp" alt="Loading" class="launch-sonar-img" />
+        </div>
+        <div class="launch-title-wrap">
+            <h1 class="launch-title">DetectLab</h1>
+            <p class="launch-subtitle">Saving History Together</p>
+        </div>
+    </div>
 
     <!-- NAV -->
     <nav>
@@ -2296,7 +2386,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js"></script>
+    <script src="js/translations.js?v=20260729"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -2624,7 +2714,7 @@
           </div>
     </div>
 
-    <script src="js/auth.js"></script>
+    <script src="js/auth.js?v=20260729"></script>
 
 
     <div id="siteAlert">
@@ -2710,11 +2800,9 @@
                     var bottomBar = document.getElementById('pwaBottomBar');
                     if (bottomBar) {
                         var bottomBarHeight = Math.ceil(bottomBar.getBoundingClientRect().height);
-                        var safeOffset = parseFloat(window.getComputedStyle(bottomBar).bottom) || 0;
-                        var controlsClearance = bottomBarHeight + Math.max(0, safeOffset);
                         document.documentElement.style.setProperty('--pwa-bottom-bar-height', bottomBarHeight + 'px');
-                        document.body.style.setProperty('--pwa-bottom-controls-clearance', controlsClearance + 'px');
-                        document.body.style.setProperty('--pwa-bottom-controls-half-clearance', (controlsClearance / 2) + 'px');
+                        document.body.style.setProperty('--pwa-bottom-controls-clearance', bottomBarHeight + 'px');
+                        document.body.style.setProperty('--pwa-bottom-controls-half-clearance', (bottomBarHeight / 2) + 'px');
                     }
                     // Wait for the CSS variables to reposition overlays before
                     // Leaflet recalculates its edge-to-edge viewport. This keeps
@@ -2740,30 +2828,89 @@
                     new ResizeObserver(updatePwaMapLayout).observe(pwaBottomBar);
                 }
 
-                let authCheckAttempts = 0;
-                // Set up observer to track auth state
-                function updatePwaAuth() {
-                    const modal = document.getElementById('authModal');
-                    const isShowing = modal && modal.classList.contains('show');
-                    
-                    if (window._authUser && window._authUser()) {
+                // PWA Launch screen coordinator & deterministic auth startup
+                var launchScreen = document.getElementById('pwaLaunchScreen');
+                if (launchScreen) {
+                    var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    var minDuration = reducedMotion ? 200 : 1400;
+                    var titleDelay = reducedMotion ? 50 : 700;
+
+                    // Transition to DetectLab title after titleDelay
+                    setTimeout(function() {
+                        if (launchScreen) launchScreen.classList.add('show-title');
+                    }, titleDelay);
+
+                    var minIntroPromise = new Promise(function(resolve) {
+                        setTimeout(resolve, minDuration);
+                    });
+
+                    var authReadyPromise = window._authReadyPromise || Promise.resolve(null);
+
+                    Promise.all([minIntroPromise, authReadyPromise]).then(function(results) {
+                        var user = results[1];
+                        if (user) {
+                            document.body.classList.add('is-logged-in');
+                            if (typeof window.closeAuth === 'function') {
+                                window.closeAuth();
+                            }
+                        } else {
+                            document.body.classList.remove('is-logged-in');
+                            if (typeof window.openAuth === 'function') {
+                                window.openAuth('login');
+                            }
+                        }
+
+                        // Sync language & layout before revealing
+                        if (typeof updatePwaBottomBar === 'function') {
+                            updatePwaBottomBar();
+                        }
+
+                        // Two animation frames to settle layout before fading out intro
+                        window.requestAnimationFrame(function() {
+                            window.requestAnimationFrame(function() {
+                                launchScreen.classList.add('hidden');
+                                setTimeout(function() {
+                                    if (launchScreen) launchScreen.style.display = 'none';
+                                }, 600);
+                            });
+                        });
+                    });
+
+                    // 6-second failsafe so the overlay can never permanently trap the user
+                    setTimeout(function() {
+                        if (launchScreen && !launchScreen.classList.contains('hidden')) {
+                            console.warn('[PWA Intro] Failsafe timeout reached');
+                            launchScreen.classList.add('hidden');
+                            setTimeout(function() {
+                                if (launchScreen) launchScreen.style.display = 'none';
+                            }, 600);
+                        }
+                    }, 6000);
+                }
+
+                // Listen for later login/logout/token changes
+                window.addEventListener('detectlab:authchange', function(e) {
+                    var user = (e.detail && e.detail.user) || (window._authUser && window._authUser());
+                    if (user) {
                         document.body.classList.add('is-logged-in');
-                        if (isShowing && typeof window.closeAuth === 'function') {
+                        if (typeof window.closeAuth === 'function') {
                             window.closeAuth();
                         }
                     } else {
                         document.body.classList.remove('is-logged-in');
-                        authCheckAttempts++;
-                        // Delay opening the auth modal for 1s to allow Supabase getSession to resolve
-                        if (!isShowing && typeof window.openAuth === 'function' && authCheckAttempts > 2) {
-                            window.openAuth('register');
+                        var isIntroVisible = launchScreen && !launchScreen.classList.contains('hidden');
+                        if (!isIntroVisible) {
+                            var modal = document.getElementById('authModal');
+                            var isShowing = modal && modal.classList.contains('show');
+                            if (!isShowing && typeof window.openAuth === 'function') {
+                                window.openAuth('login');
+                            }
                         }
                     }
-                }
-
-                // Run initially and then every 500ms to keep it enforced
-                setTimeout(updatePwaAuth, 100);
-                setInterval(updatePwaAuth, 500);
+                    if (typeof updatePwaBottomBar === 'function') {
+                        updatePwaBottomBar();
+                    }
+                });
 
                 // Override closeAuth in PWA if not logged in
                 const originalClose = window.closeAuth;
@@ -2788,9 +2935,11 @@
                 };
 
                 window.pwaPickLang = function(lang) {
-                    // Call the existing pickLang function from translations.js
-                    if (typeof window.pickLang === 'function') {
-                        window.pickLang(lang);
+                    try {
+                        localStorage.setItem('detectlab_lang', lang);
+                    } catch (e) {}
+                    if (typeof window.setLang === 'function') {
+                        window.setLang(lang);
                     }
                     // Sync the PWA bottom bar language display
                     var codeEl = document.getElementById('pwaLangCode');
@@ -2798,8 +2947,10 @@
                     if (codeEl) codeEl.textContent = lang.toUpperCase();
                     if (flagEl) flagEl.style.display = 'none';
                     // Update selected state
-                    document.getElementById('pwaLangOptEn').classList.toggle('selected', lang === 'en');
-                    document.getElementById('pwaLangOptRo').classList.toggle('selected', lang === 'ro');
+                    var optEn = document.getElementById('pwaLangOptEn');
+                    var optRo = document.getElementById('pwaLangOptRo');
+                    if (optEn) optEn.classList.toggle('selected', lang === 'en');
+                    if (optRo) optRo.classList.toggle('selected', lang === 'ro');
                     // Close dropdown
                     closePwaDropdowns();
                 };
@@ -2950,12 +3101,21 @@
                         if (userTrigger) userTrigger.style.display = 'none';
                         if (loginTrigger) loginTrigger.style.display = 'flex';
                     }
-                    // Sync language display
-                    var currentLang = (typeof window._currentLang === 'function') ? window._currentLang() : (localStorage.getItem('detectlab_lang') || 'ro');
-                    var codeEl = document.getElementById('pwaLangCode');
-                    if (codeEl) codeEl.textContent = currentLang.toUpperCase();
-                    document.getElementById('pwaLangOptEn').classList.toggle('selected', currentLang === 'en');
-                    document.getElementById('pwaLangOptRo').classList.toggle('selected', currentLang === 'ro');
+                    // Sync language display without defaulting to Romanian when getter/storage is unavailable
+                    var currentLang = (typeof window._currentLang === 'function') ? window._currentLang() : null;
+                    if (!currentLang) {
+                        try {
+                            currentLang = localStorage.getItem('detectlab_lang');
+                        } catch (e) {}
+                    }
+                    if (currentLang && (currentLang === 'en' || currentLang === 'ro')) {
+                        var codeEl = document.getElementById('pwaLangCode');
+                        if (codeEl) codeEl.textContent = currentLang.toUpperCase();
+                        var enOpt = document.getElementById('pwaLangOptEn');
+                        var roOpt = document.getElementById('pwaLangOptRo');
+                        if (enOpt) enOpt.classList.toggle('selected', currentLang === 'en');
+                        if (roOpt) roOpt.classList.toggle('selected', currentLang === 'ro');
+                    }
                 }
 
                 // Update bottom bar periodically (syncs with auth state)

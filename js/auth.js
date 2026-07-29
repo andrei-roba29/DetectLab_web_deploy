@@ -5,6 +5,49 @@
         ══════════════════════════════════════════════ */
         (function () {
             var _user = null;
+            var _authReadyResolve;
+            window._authReadyPromise = new Promise(function (resolve) {
+                _authReadyResolve = resolve;
+            });
+
+            var _startupEventReceived = false;
+            var _startupComplete = false;
+
+            function _dispatchAuthChange() {
+                try {
+                    window.dispatchEvent(new CustomEvent('detectlab:authchange', {
+                        detail: { user: _user }
+                    }));
+                } catch (e) {}
+            }
+
+            function isAuthErrorFatal(err) {
+                if (!err) return false;
+                var status = err.status || (err.error && err.error.status);
+                if (status === 401 || status === 403 || status === 400) {
+                    return true;
+                }
+                var msg = String(err.message || err.error_description || err.name || '').toLowerCase();
+                var fatalKeywords = [
+                    'invalid refresh token',
+                    'refresh_token_not_found',
+                    'already used',
+                    'jwt expired',
+                    'token is expired',
+                    'user not found',
+                    'invalid claim',
+                    'session_not_found',
+                    'authsessionmissingerror',
+                    '401',
+                    '403'
+                ];
+                for (var i = 0; i < fatalKeywords.length; i++) {
+                    if (msg.indexOf(fatalKeywords[i]) !== -1) {
+                        return true;
+                    }
+                }
+                return false;
+            }
 
 /* Sync the in-memory user (and the header / map-gate UI) with a
    Supabase session object — or clear it when signed out. */
@@ -23,34 +66,107 @@ function _syncFromSession(session) {
 
 try {
     if (window.supabaseClient && window.supabaseClient.auth) {
-        // Restore the persisted session from local storage so the account
-        // controls reappear immediately on PWA relaunch — getSession()
-        // resolves locally and does not depend on a network round trip.
-        window.supabaseClient.auth.getSession().then(function (result) {
-            var session = result && result.data ? result.data.session : null;
-            if (!session || !session.user) return;
-            _syncFromSession(session);
-        }).catch(function (err) {
-            console.warn("Supabase getSession failed:", err);
-        });
-
         // Keep the UI synchronized with Supabase auth-state changes:
         // OAuth redirect return, token refresh, sign-in/out in other tabs.
         window.supabaseClient.auth.onAuthStateChange(function (event, session) {
-            if (event === 'INITIAL_SESSION') return; // handled by getSession() above
+            if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+                if (!_startupComplete) {
+                    _startupEventReceived = true;
+                }
+            }
+            if (event === 'INITIAL_SESSION') return; // handled by getSession() below
             _syncFromSession(session);
         });
+
+        // Restore the persisted session from local storage so the account
+        // controls reappear immediately on PWA relaunch — getSession()
+        // resolves locally and does not depend on a network round trip.
+        window.supabaseClient.auth.getSession().then(async function (result) {
+            var session = result && result.data ? result.data.session : null;
+            if (!session || !session.user) {
+                _clear();
+                _updateNav();
+                _updateMapGate();
+                _startupComplete = true;
+                if (_authReadyResolve) _authReadyResolve(_user);
+                return;
+            }
+
+            // A cached session exists: validate it with auth.getUser() before revealing UI
+            var validationFailedFatal = false;
+            var validatedUser = null;
+            try {
+                var timeoutPromise = new Promise(function (resolve, reject) {
+                    setTimeout(function () {
+                        reject(new Error("Network timeout"));
+                    }, 5000);
+                });
+                var getUserPromise = window.supabaseClient.auth.getUser();
+                var userResult = await Promise.race([getUserPromise, timeoutPromise]);
+                if (userResult && userResult.error) {
+                    if (isAuthErrorFatal(userResult.error)) {
+                        validationFailedFatal = true;
+                    }
+                } else if (userResult && userResult.data && userResult.data.user) {
+                    validatedUser = userResult.data.user;
+                }
+            } catch (err) {
+                if (isAuthErrorFatal(err)) {
+                    validationFailedFatal = true;
+                }
+            }
+
+            // Handle a newer SIGNED_IN/SIGNED_OUT event received while startup validation was running
+            if (_startupEventReceived) {
+                _startupComplete = true;
+                if (_authReadyResolve) _authReadyResolve(_user);
+                return;
+            }
+
+            if (validationFailedFatal) {
+                try {
+                    await window.supabaseClient.auth.signOut();
+                } catch (e) {}
+                _clear();
+                _updateNav();
+                _updateMapGate();
+                _startupComplete = true;
+                if (_authReadyResolve) _authReadyResolve(_user);
+                return;
+            }
+
+            // Valid session or preserved during temporary network failure/timeout
+            _syncFromSession(session);
+            _startupComplete = true;
+            if (_authReadyResolve) _authReadyResolve(_user);
+        }).catch(function (err) {
+            console.warn("Supabase getSession failed:", err);
+            _clear();
+            _updateNav();
+            _updateMapGate();
+            _startupComplete = true;
+            if (_authReadyResolve) _authReadyResolve(_user);
+        });
+    } else {
+        _startupComplete = true;
+        if (_authReadyResolve) _authReadyResolve(null);
     }
 } catch (err) {
     console.warn("Supabase init error:", err);
+    _startupComplete = true;
+    if (_authReadyResolve) _authReadyResolve(null);
 }
 
 function _save(u) {
+    var changed = (_user !== u);
     _user = u;
+    if (changed) _dispatchAuthChange();
 }
 
 function _clear() {
+    var changed = (_user !== null);
     _user = null;
+    if (changed) _dispatchAuthChange();
 }
 
 function _updateNav() {
@@ -492,11 +608,11 @@ window.switchTab = function (btn, tab) {
 };
 
 (function () {
-    if (!_user) {
-        window.addEventListener('load', function() {
+    window.addEventListener('load', function() {
+        if (!_user) {
             _showAuthGate('Explore the Map', 'Log in or create a free account.', true);
-        });
-    }
+        }
+    });
 })();
 
 console.log("✅ AUTH JS LOADED - ULTRA-DEFENSIVE VERSION");
