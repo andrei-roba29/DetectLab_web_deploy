@@ -1,8 +1,8 @@
 /* ============================================================
-   DetectLab — Service Worker v1.0.0
+   DetectLab — Service Worker v1.1.0
    ============================================================ */
 
-const CACHE_NAME = 'detectlab-v3';
+const CACHE_NAME = 'detectlab-v6';
 
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
@@ -17,7 +17,6 @@ const PRECACHE_URLS = [
   'css/fontawesome-all.min.css',
   'css/MarkerCluster.css',
   'css/MarkerCluster.Default.css',
-  'css/qgis2web.css',
   'js/translations.js',
   'js/leaflet.js',
   'js/L.Control.Layers.Tree.min.js',
@@ -35,6 +34,28 @@ const PRECACHE_URLS = [
   'images/pwa-icon-512.png'
 ];
 
+// ── Domains that must NEVER be intercepted by the SW ──
+//     Tile servers, APIs, and large data sources. Intercepting them adds
+//     latency (clone + cache-write on every tile) and can cause question-mark
+//     artifacts when the SW's network-first fetch races with the browser.
+const PASSTHROUGH_HOSTS = [
+  'supabase',           // auth / database
+  'workers.dev',        // APM tiles + feedback worker
+  'railway.app',        // detection backend
+  'r2.dev',             // Josephine / historical tiles + ONNX model
+  'geo-spatial.org',    // heritage WMS + eharta
+  'geo-spatial.ro',     // heritage WMS (eism)
+  'arcgisonline.com',   // Esri satellite tiles
+  'tiles.arcgis.com',   // LAKI III / MDH historical map tiles
+  'raw.githubusercontent.com', // heritage images + geo-data JSON
+  'githubusercontent.com',     // catch-all for GitHub CDN
+  'overpass-api.de',    // OSM Overpass queries
+  'cdn.jsdelivr.net',   // ONNX runtime CDN
+  'ran.cimec.ro',       // Romanian cultural data
+  'wikipedia.org',      // Wikipedia API
+  'openstreetmap.org'   // OSM tiles / API
+];
+
 // ── Install event: pre-cache essential static files ──
 self.addEventListener('install', function (event) {
   event.waitUntil(
@@ -44,7 +65,6 @@ self.addEventListener('install', function (event) {
         console.warn('[SW] Pre-cache partial failure:', err.message);
       });
     }).then(function () {
-      // Activate immediately — don't wait for page reload
       return self.skipWaiting();
     })
   );
@@ -63,45 +83,49 @@ self.addEventListener('activate', function (event) {
         })
       );
     }).then(function () {
-      // Take control of all clients immediately
       return self.clients.claim();
     })
   );
 });
 
 // ── Fetch event: network-first with cache fallback ──
-//     (Network-first for fresh data; fall back to cache when offline)
 self.addEventListener('fetch', function (event) {
   var request = event.request;
 
-  // ── Bypass caching for non-GET requests ──
+  // Only handle GET requests
   if (request.method !== 'GET') return;
 
-  var url = new URL(request.url);
-
-  // ── Never cache Supabase / authentication API calls ──
-  if (url.hostname.includes('supabase') || url.hostname.includes('auth')) {
+  // ── Only intercept same-origin requests ──
+  //     Cross-origin tile / API requests go straight to the network with
+  //     zero SW overhead. This is the single biggest performance win:
+  //     hundreds of tile requests per pan/zoom no longer pass through the
+  //     SW's clone-and-cache pipeline.
+  var requestURL;
+  try {
+    requestURL = new URL(request.url);
+  } catch (e) {
+    // Malformed URL — let the browser handle it
     return;
   }
 
-  // ── Never cache the geolocation / detection backends ──
-  if (url.hostname.includes('workers.dev') ||
-      url.hostname.includes('railway.app') ||
-      url.hostname.includes('r2.dev') ||
-      url.hostname.includes('geo-spatial.org') ||
-      url.hostname.includes('geo-spatial.ro') ||
-      url.hostname.includes('arcgisonline.com') ||
-      url.pathname.includes('/map/') ||
-      url.pathname.includes('/tile/')) {
+  // ── Pass through ALL cross-origin requests immediately ──
+  if (requestURL.origin !== location.origin) {
     return;
   }
 
-  // ── Strategy: Network-first for everything else ──
+  // ── Same-origin path-based exclusions ──
+  //     (These catch any same-origin proxy paths that serve tiles or API data)
+  if (requestURL.pathname.includes('/map/') ||
+      requestURL.pathname.includes('/tile/')) {
+    return;
+  }
+
+  // ── Strategy: Network-first for same-origin requests ──
   event.respondWith(
     fetch(request)
       .then(function (response) {
-        // Cache successful responses (status 200, not opaque)
-        if (response && response.status === 200 && response.type === 'basic') {
+        // Cache successful same-origin responses
+        if (response && response.status === 200) {
           var clone = response.clone();
           caches.open(CACHE_NAME).then(function (cache) {
             cache.put(request, clone);
