@@ -34,6 +34,18 @@
             display: none !important;
         }
 
+        /* Lock the body/html so there is no scroll bounce / rubber-band that
+           exposes white space below or above the fullscreen map. Also kill
+           any overscroll glow on iOS. (The JS adds .is-pwa to both html and
+           body so we can target html directly.) */
+        html.is-pwa,
+        body.is-pwa {
+            overflow: hidden !important;
+            overscroll-behavior: none !important;
+            height: 100% !important;
+            background-color: #060E1E !important;
+        }
+
         /* Solid bar so the fullscreen map doesn't bleed through the frosted
            nav and clash with the notch fill. Matches the body::before notch
            colour (#091123) for one seamless top edge. */
@@ -43,18 +55,28 @@
             border-bottom: 1px solid rgba(184, 216, 240, 0.1);
         }
 
-        /* Fullscreen map. width:100% (not 100vw) avoids the horizontal
-           scrollbar / blank side gutter that 100vw triggers on mobile. */
+        /* Fullscreen map.
+           - 100dvh (dynamic viewport height) properly accounts for the iOS
+             status bar and home indicator, eliminating the white gap that
+             100vh leaves on notched devices.
+           - 100svh (small viewport height) is the safest fallback for older
+             WebViews — it uses the smallest visible height.
+           - width:100% (not 100vw) avoids the horizontal scrollbar / blank
+             side gutter that 100vw triggers on mobile. */
         body.is-pwa #map-section {
             padding: 0 !important;
             margin: 0 !important;
             height: 100vh !important;
+            height: calc(var(--vh, 1vh) * 100) !important;
+            height: 100svh !important;
+            height: 100dvh !important;
             width: 100% !important;
             max-width: 100% !important;
             position: fixed;
             top: 0;
             left: 0;
             z-index: 10;
+            background: #060E1E;
         }
 
         body.is-pwa .map-header > div:first-child {
@@ -90,6 +112,31 @@
             box-shadow: none !important;
         }
 
+        /* ── Transparency panel: full height in PWA ──
+           The base CSS hardcodes the panel to 560px (the default map height).
+           In PWA mode the map fills the entire screen, so the panel must
+           stretch to match — otherwise it only covers the upper half. */
+        body.is-pwa .transp-panel {
+            height: 100% !important;
+            max-height: 100% !important;
+            top: 0 !important;
+        }
+
+        /* ── Transparency arrow tab: vertically centred in PWA ──
+           Base CSS positions it at top: 280px (centre of the 560px map).
+           In PWA mode the map is full-screen, so centre it at 50%. */
+        body.is-pwa .transp-arrow-tab {
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+        }
+
+        /* Hide map-controls in PWA mode — they sit below the map-frame in the
+           flow and would either overflow or cause a layout gap. The detection
+           toggle and fullscreen button are not needed in standalone mode. */
+        body.is-pwa .map-controls {
+            display: none !important;
+        }
+
         body.is-pwa #weatherPanel {
             height: 100% !important;
             overflow-y: auto;
@@ -100,6 +147,7 @@
             width: 100% !important;
             height: 100% !important;
             margin: 0 !important;
+            overflow: hidden !important;
         }
 
         /* Push Leaflet controls (zoom / locate / layers) below the floating
@@ -111,7 +159,7 @@
             top: calc(70px + env(safe-area-inset-top, 0px)) !important;
         }
 
-        /* Prevent closing auth modal when not logged in */
+        /* Prevent closing auth-modal when not logged in */
         body.is-pwa:not(.is-logged-in) .auth-close {
             display: none !important;
         }
@@ -2253,13 +2301,38 @@
             const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
             if (isPWA) {
                 document.body.classList.add('is-pwa');
-                
+                document.documentElement.classList.add('is-pwa');
+
+                // ── Fix 100vh on mobile PWA ──
+                // CSS 100dvh handles this on modern browsers, but we also set
+                // a CSS custom property --vh as a JS-based fallback for older
+                // WebViews that don't support dvh/svh. The #map-section rule
+                // above uses 100vh → 100svh → 100dvh; this JS fallback covers
+                // the remaining edge cases.
+                function setVH() {
+                    var vh = window.innerHeight * 0.01;
+                    document.documentElement.style.setProperty('--vh', vh + 'px');
+                }
+                setVH();
+                window.addEventListener('resize', setVH);
+                window.addEventListener('orientationchange', function() {
+                    setTimeout(setVH, 150);
+                });
+
                 // If map is already initialized, tell it to resize to the new fullscreen container
-                setTimeout(function() {
+                function resizeMap() {
                     if (window.map && typeof window.map.invalidateSize === 'function') {
                         window.map.invalidateSize();
                     }
-                }, 300);
+                }
+                setTimeout(resizeMap, 300);
+                // Also resize after orientation change or window resize
+                window.addEventListener('resize', function() {
+                    setTimeout(resizeMap, 100);
+                });
+                window.addEventListener('orientationchange', function() {
+                    setTimeout(resizeMap, 300);
+                });
 
                 let authCheckAttempts = 0;
                 // Set up observer to track auth state
