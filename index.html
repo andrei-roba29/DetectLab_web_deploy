@@ -34,17 +34,22 @@
             display: none !important;
         }
 
+        /* Solid bar so the fullscreen map doesn't bleed through the frosted
+           nav and clash with the notch fill. Matches the body::before notch
+           colour (#091123) for one seamless top edge. */
         body.is-pwa nav {
-            background: rgba(4, 10, 22, 0.7);
+            background: #091123;
             backdrop-filter: blur(8px);
             border-bottom: 1px solid rgba(184, 216, 240, 0.1);
         }
 
+        /* Fullscreen map. width:100% (not 100vw) avoids the horizontal
+           scrollbar / blank side gutter that 100vw triggers on mobile. */
         body.is-pwa #map-section {
             padding: 0 !important;
             margin: 0 !important;
             height: 100vh !important;
-            width: 100vw !important;
+            width: 100% !important;
             max-width: 100% !important;
             position: fixed;
             top: 0;
@@ -56,9 +61,11 @@
             display: none !important;
         }
 
+        /* Bottom pill: lift it clear of the iOS home indicator / Android
+           gesture bar via the bottom safe-area inset. */
         body.is-pwa .map-header {
             position: absolute;
-            bottom: 20px;
+            bottom: calc(20px + env(safe-area-inset-bottom, 0px));
             left: 50%;
             transform: translateX(-50%);
             z-index: 1000;
@@ -95,9 +102,13 @@
             margin: 0 !important;
         }
 
-        /* Push map controls down to not be covered by nav */
+        /* Push Leaflet controls (zoom / locate / layers) below the floating
+           nav AND the notch. The old fixed 70px ignored the top safe-area
+           inset, so on notched / status-bar devices the controls ended up
+           hidden behind the nav = "cut off at the top". Mirrors the
+           safe-area offset already used by mobile fullscreen mode. */
         body.is-pwa .leaflet-top {
-            top: 70px !important;
+            top: calc(70px + env(safe-area-inset-top, 0px)) !important;
         }
 
         /* Prevent closing auth modal when not logged in */
