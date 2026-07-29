@@ -122,6 +122,15 @@
         var menu = document.getElementById('userMenu');
         if (menu) menu.classList.add('hidden');
 
+        // In PWA standalone mode route to the overlay flow: the desktop flow
+        // below hides the map and calls scrollIntoView(), which strands the
+        // user away from the map in standalone mode.
+        if (document.body.classList.contains('is-pwa') &&
+            typeof window.pwaOpenAccount === 'function') {
+            window.pwaOpenAccount();
+            return;
+        }
+
         var user = (typeof window._authUser === 'function') ? window._authUser() : null;
         if (!user) {
             if (typeof window.openAuth === 'function') window.openAuth('login');
@@ -170,6 +179,16 @@
     }
 
     function closeAccountPanel() {
+        // In PWA standalone mode the account panel lives inside the PWA
+        // overlay; pwaCloseAccount() hides the overlay and restores the
+        // panel. Routing here keeps logout / delete-account flows from
+        // stranding the user in an overlay with no way back to the map.
+        if (document.body.classList.contains('is-pwa') &&
+            typeof window.pwaCloseAccount === 'function') {
+            window.pwaCloseAccount();
+            return;
+        }
+
         var accountPanel = document.getElementById('accountPanel');
         if (accountPanel) accountPanel.classList.remove('active');
 
@@ -242,6 +261,10 @@
         var msgEl = document.getElementById('acctPwMsg');
         if (msgEl) { msgEl.textContent = ''; msgEl.className = 'account-msg'; }
     }
+
+    // Exposed so the PWA account overlay (inline script in index.html) can
+    // refresh the account card without running the desktop openAccount() flow.
+    window.renderAccountPanel = renderAccountPanel;
 
     async function submitChangePassword() {
         var msgEl = document.getElementById('acctPwMsg');
