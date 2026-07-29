@@ -1,11 +1,11 @@
 {
-  "name": "DetectLab — Saving History Together",
+  "name": "DetectLab",
   "short_name": "DetectLab",
   "description": "An Archaeological Prediction Model that automatically identifies high-potential zones for ancient settlements using topographic, geological, and hydrographic data.",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#060E1E",
-  "theme_color": "#0D2B5E",
+  "theme_color": "#060E1E",
   "orientation": "any",
   "lang": "ro",
   "categories": ["education", "science", "maps"],
