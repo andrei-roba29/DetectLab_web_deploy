@@ -4519,11 +4519,12 @@
             }
         }
 
-        @media (min-width: 601px) {
-            .map-frame.is-fullscreen .btn-close-fullscreen {
-                top: calc(72px + env(safe-area-inset-top, 0px));
-            }
-        }
+        /* Desktop web browser: keep the ✕ exit-fullscreen button aligned in the
+           top-right corner. The base rule above already positions it at
+           top:16px / right:16px, so no downward override is needed here.
+           (An earlier min-width:601px rule pushed it down 72px, knocking it
+           out of the corner — removed. Mobile keeps its own bottom-right
+           placement defined in the max-width:600px block above.) */
 
         /*heritage-marker-icon*/
         .heritage-marker-icon {
