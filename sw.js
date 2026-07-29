@@ -2,7 +2,7 @@
    DetectLab — Service Worker v1.1.0
    ============================================================ */
 
-const CACHE_NAME = 'detectlab-v6';
+const CACHE_NAME = 'detectlab-v7';
 
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [

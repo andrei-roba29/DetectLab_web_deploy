@@ -49,23 +49,20 @@
         /* Nav is hidden entirely in PWA mode — see rule below with display:none */
 
         /* Fullscreen map.
-           Reserve exactly the height of the fixed bottom bar. The 44px
-           fallback prevents a first-paint overlap; PWA JS replaces it with
-           the measured bar height (including a device's home-indicator inset).
-           - 100dvh (dynamic viewport height) properly accounts for the iOS
-             status bar and home indicator, eliminating the white gap that
-             100vh leaves on notched devices.
-           - 100svh (small viewport height) is the safest fallback for older
-             WebViews — it uses the smallest visible height.
-           - width:100% (not 100vw) avoids the horizontal scrollbar / blank
-             side gutter that 100vw triggers on mobile. */
+           The map paints across the entire edge-to-edge viewport, including
+           both iOS safe areas. Controls are still kept clear of the notch and
+           home indicator below, but the safe-area space itself now shows the
+           map instead of a solid blue strip.
+           - 100dvh follows the currently visible standalone viewport.
+           - 100svh and --vh are fallbacks for older mobile WebViews.
+           - width:100% (not 100vw) avoids a horizontal blank gutter. */
         body.is-pwa #map-section {
             padding: 0 !important;
             margin: 0 !important;
-            height: calc(100vh - var(--pwa-bottom-bar-height, 44px)) !important;
-            height: calc(var(--vh, 1vh) * 100 - var(--pwa-bottom-bar-height, 44px)) !important;
-            height: calc(100svh - var(--pwa-bottom-bar-height, 44px)) !important;
-            height: calc(100dvh - var(--pwa-bottom-bar-height, 44px)) !important;
+            height: 100vh !important;
+            height: calc(var(--vh, 1vh) * 100) !important;
+            height: 100svh !important;
+            height: 100dvh !important;
             width: 100% !important;
             max-width: 100% !important;
             position: fixed;
@@ -73,6 +70,12 @@
             left: 0;
             z-index: 10;
             background: #060E1E;
+        }
+
+        /* styles.css normally paints a solid strip behind the iPhone notch.
+           In standalone mode the map itself is the safe-area background. */
+        body.is-pwa::before {
+            display: none !important;
         }
 
         /* Hide the bottom tab pill (Free Preview / Vreme) in PWA mode —
@@ -94,21 +97,20 @@
             box-shadow: none !important;
         }
 
-        /* ── Transparency panel: full height in PWA ──
-           The base CSS hardcodes the panel to 560px (the default map height).
-           In PWA mode the map fills the entire screen, so the panel must
-           stretch to match — otherwise it only covers the upper half. */
+        /* ── Transparency panel: full usable height in PWA ──
+           The base CSS hardcodes the panel to 560px. Stretch it from the top
+           safe area to the bottom controls, while the map continues behind. */
         body.is-pwa .transp-panel {
-            height: 100% !important;
-            max-height: 100% !important;
+            height: calc(100% - var(--pwa-bottom-controls-clearance, 44px)) !important;
+            max-height: calc(100% - var(--pwa-bottom-controls-clearance, 44px)) !important;
             top: 0 !important;
         }
 
-        /* ── Transparency arrow tab: vertically centred in PWA ──
-           Base CSS positions it at top: 280px (centre of the 560px map).
-           In PWA mode the map is full-screen, so centre it at 50%. */
+        /* ── Transparency arrow tab: vertically centred in the unobstructed
+           portion of the map (the same visual position it had before the map
+           began painting behind the bottom safe area). */
         body.is-pwa .transp-arrow-tab {
-            top: 50% !important;
+            top: calc(50% - var(--pwa-bottom-controls-half-clearance, 22px)) !important;
             transform: translateY(-50%) !important;
         }
 
@@ -121,6 +123,7 @@
 
         body.is-pwa #weatherPanel {
             height: 100% !important;
+            padding-bottom: var(--pwa-bottom-controls-clearance, 44px) !important;
             overflow-y: auto;
         }
         body.is-pwa .container {
@@ -162,22 +165,36 @@
             top: calc(14px + env(safe-area-inset-top, 0px)) !important;
         }
 
-        /* ── PWA BOTTOM BAR ── */
+        /* ── PWA BOTTOM BAR ──
+           Keep the controls above the device's real safe area, but do not turn
+           that safe area into extra bar padding. On an iPhone this leaves the
+           map visible behind the home indicator; on Android the inset is
+           normally zero and the bar remains flush with the visible viewport. */
         .pwa-bottom-bar {
             display: none;
             position: fixed;
-            bottom: 0;
+            bottom: var(--pwa-bottom-safe-offset, env(safe-area-inset-bottom, 0px));
             left: 0;
             right: 0;
             z-index: 2000;
             padding: 5px 8px;
-            padding-bottom: calc(5px + env(safe-area-inset-bottom, 0px));
+            padding-right: max(8px, env(safe-area-inset-right, 0px));
+            padding-left: max(8px, env(safe-area-inset-left, 0px));
             background: rgba(6, 14, 30, 0.94);
+            -webkit-backdrop-filter: blur(20px);
             backdrop-filter: blur(20px);
             border-top: 1px solid rgba(184, 216, 240, 0.12);
+            border-bottom: 1px solid rgba(184, 216, 240, 0.08);
             align-items: center;
             justify-content: space-between;
             gap: 6px;
+        }
+        body.is-pwa {
+            --pwa-bottom-safe-offset: env(safe-area-inset-bottom, 0px);
+            --pwa-bottom-controls-clearance: calc(
+                var(--pwa-bottom-bar-height, 44px) +
+                var(--pwa-bottom-safe-offset, 0px)
+            );
         }
         body.is-pwa .pwa-bottom-bar {
             display: flex;
@@ -402,9 +419,51 @@
             max-width: 100%;
         }
 
-        /* Lift map bottom content above the bottom bar */
+        /* The map now continues underneath the floating bottom controls. Lift
+           map UI by the measured bar height plus the device-specific inset so
+           its visual position stays unchanged and nothing becomes untappable. */
+        body.is-pwa #apm20SearchHelpBtn,
+        body.is-pwa #apm20SearchHelpHint {
+            bottom: calc(36px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa #apm20SearchHelpToast {
+            bottom: calc(90px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa #iosBldSearchHelpBtn,
+        body.is-pwa #iosBldSearchHelpHint,
+        body.is-pwa #iosBldSettingsBtn,
+        body.is-pwa #iosBldSuggestBtn {
+            bottom: calc(76px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa #iosBldSearchHelpToast {
+            bottom: calc(130px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa #iosBldSettingsPanel {
+            bottom: calc(124px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa #cs917ZoomHint {
+            bottom: calc(52px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa #dj917ZoomHint {
+            bottom: calc(96px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa #gj917ZoomHint {
+            bottom: calc(140px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa #mh917ZoomHint {
+            bottom: calc(184px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa #josephineZoomHint {
+            bottom: calc(18px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
+        body.is-pwa .leaflet-container::after {
+            bottom: calc(4px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
         body.is-pwa .leaflet-bottom {
-            bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+            bottom: calc(
+                var(--pwa-bottom-controls-clearance, 44px) +
+                56px + env(safe-area-inset-bottom, 0px)
+            ) !important;
         }
     </style>
 </head>
@@ -2626,11 +2685,13 @@
                 document.documentElement.classList.add('is-pwa');
 
                 // ── Keep the standalone viewport and fixed bottom bar in sync ──
-                // Older WebViews use --vh instead of dvh/svh. The bar's actual
-                // height is measured rather than assumed: its safe-area padding
-                // differs between iPhones, iPads, and Android devices.
+                // Older WebViews use --vh instead of dvh/svh. visualViewport
+                // tracks the actually visible area when mobile UI changes size.
+                // The device safe area is kept as an offset below the compact
+                // bar, rather than being painted as thick padding inside it.
                 function setVH() {
-                    var vh = window.innerHeight * 0.01;
+                    var visibleHeight = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+                    var vh = visibleHeight * 0.01;
                     document.documentElement.style.setProperty('--vh', vh + 'px');
                 }
 
@@ -2649,11 +2710,15 @@
                     var bottomBar = document.getElementById('pwaBottomBar');
                     if (bottomBar) {
                         var bottomBarHeight = Math.ceil(bottomBar.getBoundingClientRect().height);
+                        var safeOffset = parseFloat(window.getComputedStyle(bottomBar).bottom) || 0;
+                        var controlsClearance = bottomBarHeight + Math.max(0, safeOffset);
                         document.documentElement.style.setProperty('--pwa-bottom-bar-height', bottomBarHeight + 'px');
+                        document.body.style.setProperty('--pwa-bottom-controls-clearance', controlsClearance + 'px');
+                        document.body.style.setProperty('--pwa-bottom-controls-half-clearance', (controlsClearance / 2) + 'px');
                     }
-                    // Wait for the CSS variable to affect #map-section before
-                    // Leaflet recalculates its viewport. This keeps circles and
-                    // other vector layers visible at the lower map edge.
+                    // Wait for the CSS variables to reposition overlays before
+                    // Leaflet recalculates its edge-to-edge viewport. This keeps
+                    // circles and vector layers visible under either orientation.
                     window.requestAnimationFrame(resizeMap);
                 }
 

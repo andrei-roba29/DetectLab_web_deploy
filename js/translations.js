@@ -196,26 +196,51 @@
             }
         };
 
-        let currentLang = 'ro';
+        const LANGUAGE_STORAGE_KEY = 'detectlab_lang';
+
+        function getStoredLanguage() {
+            try {
+                var stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+                return translations[stored] ? stored : 'ro';
+            } catch (e) {
+                // Storage can be unavailable in private/restricted WebViews.
+                return 'ro';
+            }
+        }
+
+        let currentLang = getStoredLanguage();
 
         function toggleLangDropdown() {
             var dd = document.getElementById('langDropdown');
-            dd.classList.toggle('open');
+            if (dd) dd.classList.toggle('open');
         }
 
         function pickLang(lang) {
-            // Update trigger label
-            var flagMap = { en: '🇬🇧', ro: '🇷🇴' };
-            var codeMap = { en: 'EN', ro: 'RO' };
-            document.getElementById('langFlag').textContent = flagMap[lang];
-            document.getElementById('langCode').textContent = codeMap[lang];
-            // Update selected state
-            document.getElementById('langOptEn').classList.toggle('selected', lang === 'en');
-            document.getElementById('langOptRo').classList.toggle('selected', lang === 'ro');
-            // Close dropdown
-            document.getElementById('langDropdown').classList.remove('open');
-            // Apply language
             setLang(lang);
+            var dropdown = document.getElementById('langDropdown');
+            if (dropdown) dropdown.classList.remove('open');
+        }
+
+        function syncLanguageSelectors(lang) {
+            var flagMap = { en: '🇬🇧', ro: '🇷🇴' };
+            var code = lang.toUpperCase();
+            var flag = document.getElementById('langFlag');
+            var desktopCode = document.getElementById('langCode');
+            var desktopEn = document.getElementById('langOptEn');
+            var desktopRo = document.getElementById('langOptRo');
+            var pwaCode = document.getElementById('pwaLangCode');
+            var pwaFlag = document.getElementById('pwaLangFlag');
+            var pwaEn = document.getElementById('pwaLangOptEn');
+            var pwaRo = document.getElementById('pwaLangOptRo');
+
+            if (flag) flag.textContent = flagMap[lang];
+            if (desktopCode) desktopCode.textContent = code;
+            if (desktopEn) desktopEn.classList.toggle('selected', lang === 'en');
+            if (desktopRo) desktopRo.classList.toggle('selected', lang === 'ro');
+            if (pwaCode) pwaCode.textContent = code;
+            if (pwaFlag) pwaFlag.style.display = 'none';
+            if (pwaEn) pwaEn.classList.toggle('selected', lang === 'en');
+            if (pwaRo) pwaRo.classList.toggle('selected', lang === 'ro');
         }
 
         // Close dropdown when clicking outside
@@ -232,17 +257,35 @@
         const periodRO = { '/week': '/săpt.', '/month': '/lună', '/year': '/an' };
 
         function setLang(lang) {
+            if (!translations[lang]) lang = 'ro';
             currentLang = lang;
+
+            try {
+                localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+            } catch (e) {
+                // Keep the in-memory choice even when storage is unavailable.
+            }
+
+            document.documentElement.lang = lang;
             const T = translations[lang];
             document.querySelectorAll('.t[data-key]').forEach(el => {
                 const key = el.getAttribute('data-key');
                 if (T[key] !== undefined) el.innerHTML = T[key];
             });
+            syncLanguageSelectors(lang);
             updateBillingDisplay();
         }
 
-        // ⭐ INIȚIALIZARE TRADUCERE LA ÎNCĂRCARE ⭐
-        setLang('ro');
+        // Expose the canonical language state to PWA controls and map widgets.
+        // A top-level `let` is not available as window.currentLang, which was
+        // why the PWA polling fallback repeatedly reset the selector to RO.
+        window._currentLang = function () { return currentLang; };
+        window.pickLang = pickLang;
+        window.setLang = setLang;
+
+        // Restore the user's previous choice instead of forcing Romanian on
+        // every load/relaunch of the installed app.
+        setLang(currentLang);
 
         function toggleBilling() {
             isMonthly = !isMonthly;
