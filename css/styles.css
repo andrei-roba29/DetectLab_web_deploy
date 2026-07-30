@@ -4050,6 +4050,64 @@
                 color: rgba(184,216,240,0.28);
             }
 
+        .auth-checks {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: -2px;
+        }
+
+        .auth-check {
+            display: flex;
+            align-items: flex-start;
+            gap: 9px;
+            color: rgba(184,216,240,0.7);
+            font-size: 0.82rem;
+            line-height: 1.35;
+            cursor: pointer;
+        }
+
+        .auth-check input {
+            appearance: none;
+            -webkit-appearance: none;
+            flex: 0 0 auto;
+            width: 17px;
+            height: 17px;
+            margin: 1px 0 0;
+            border: 1px solid rgba(184,216,240,0.3);
+            border-radius: 4px;
+            background: rgba(184,216,240,0.06);
+            cursor: pointer;
+            position: relative;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .auth-check input:checked {
+            background: var(--violet);
+            border-color: var(--violet);
+        }
+
+        .auth-check input:checked::after {
+            content: '✓';
+            position: absolute;
+            inset: 0;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 15px;
+            text-align: center;
+        }
+
+        .auth-check a {
+            color: var(--sky);
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .auth-check a:hover {
+            color: #fff;
+        }
+
         .auth-submit {
             margin-top: 8px;
             padding: 13px;
