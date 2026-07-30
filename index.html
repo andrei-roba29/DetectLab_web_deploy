@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles.css?v=20260730">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -2453,6 +2453,16 @@
                     <label class="auth-label" for="regPass2">CONFIRM PASSWORD</label>
                     <input type="password" id="regPass2" class="auth-input" placeholder="Repeat password" autocomplete="new-password">
                 </div>
+                <div class="auth-checks">
+                    <label class="auth-check">
+                        <input type="checkbox" id="regTerms">
+                        <span>I agree to the <a href="#" onclick="openTerms(); return false;">Terms and Conditions</a></span>
+                    </label>
+                    <label class="auth-check">
+                        <input type="checkbox" id="regNewsletter">
+                        <span>Subscribe to Newsletter (discounts and useful info)</span>
+                    </label>
+                </div>
                 <button class="auth-submit" onclick="doRegister()">Create Free Account</button>
                 <div class="auth-divider"><span>or continue with</span></div>
                 <div class="auth-oauth-row">
@@ -2686,7 +2696,7 @@
           </div>
     </div>
 
-    <script src="js/auth.js?v=20260729"></script>
+    <script src="js/auth.js?v=20260730"></script>
 
 
     <div id="siteAlert">

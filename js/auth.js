@@ -444,6 +444,12 @@ window.doRegister = async function () {
             return;
         }
 
+        var regTerms = document.getElementById('regTerms');
+        if (!regTerms || !regTerms.checked) {
+            _showMsg('Please agree to the Terms and Conditions to continue.');
+            return;
+        }
+        var newsletterOptIn = document.getElementById('regNewsletter');
         var btn = regForm.querySelector('.auth-submit');
         if (!btn) {
             console.error("Submit button not found");
@@ -464,7 +470,8 @@ window.doRegister = async function () {
                 password: pass,
                 options: {
                     data: {
-                        full_name: name
+                        full_name: name,
+                        newsletter_opt_in: !!(newsletterOptIn && newsletterOptIn.checked)
                     }
                 }
             });
@@ -473,7 +480,8 @@ window.doRegister = async function () {
 
             // Clear inputs manually (div doesn't have .reset() method)
             allInputs.forEach(function(inp) {
-                inp.value = '';
+                if (inp.type === 'checkbox') inp.checked = false;
+                else inp.value = '';
             });
 
             _showMsg(
