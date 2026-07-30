@@ -2429,7 +2429,7 @@
                 roads: {
                     label: 'Roads', color: '#CC2222', weight: 2.0, enabled: false,
                     type: 'geojson',
-                    url: './data/roman_routes_under25mb.geojson'
+                    url: _AWMC + 'roads/roads.geojson'
                 },
                 // ── POINTS & LABELS ──
                 urban_areas: {
@@ -2462,7 +2462,7 @@
                 shade_persian: {
                     label: 'Persian Empire', color: '#B464C8', weight: 0.8, enabled: false,
                     type: 'geojson',
-                    url: _AWMC + 'political_shading/persian_extent/persian_extent.geojson'
+                    url: _AWMC + 'political_shading/persian_extent/extent_of_the_persian_empire.geojson'
                 },
                 shade_diocletian: {
                     label: 'Roman Provinces after Diocletian', color: '#DCA032', weight: 0.8, enabled: false,
@@ -2472,12 +2472,12 @@
                 shade_herod: {
                     label: "Herod's Empire", color: '#32B482', weight: 0.8, enabled: false,
                     type: 'geojson',
-                    url: _AWMC + 'political_shading/herod/herod.geojson'
+                    url: _AWMC + 'political_shading/herod/herods_kingdom.geojson'
                 },
                 shade_hasmonean: {
                     label: 'Hasmonean Kingdom', color: '#32A064', weight: 0.8, enabled: false,
                     type: 'geojson',
-                    url: _AWMC + 'political_shading/hasmonean/hasmonean.geojson'
+                    url: _AWMC + 'political_shading/hasmonean/hasmonean_kingdom.geojson'
                 }
             };
 
@@ -2629,6 +2629,18 @@
             window.toggleRomanLayer = function(on) {
                 _romanVisible = on;
                 if (on) {
+                    // The master switch must show a useful layer even when the
+                    // previous master-off action cleared every sub-layer.
+                    // Default to the canonical maximum extent (117 CE); users
+                    // can still select any additional historical layers below.
+                    var hasEnabledSubLayer = Object.keys(ROMAN_SUB_LAYERS).some(function (key) {
+                        return _romanEnabled[key];
+                    });
+                    if (!hasEnabledSubLayer) {
+                        _romanEnabled.shade_117 = true;
+                        var defaultRomanLayer = document.getElementById('roman_shade_117');
+                        if (defaultRomanLayer) defaultRomanLayer.checked = true;
+                    }
                     _romanGroup.addTo(map);
                     _loadRomanData();
                 } else {
