@@ -2,7 +2,7 @@
    DetectLab — Service Worker v1.2.0
    ============================================================ */
 
-const CACHE_NAME = 'detectlab-v11';
+const CACHE_NAME = 'detectlab-v12';
 
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
@@ -34,6 +34,7 @@ const PRECACHE_URLS = [
   'js/auth-forms.js',
   'js/account-legacy.js',
   'js/map-app.js',
+  'js/map-app.js?v=20260730b',
   'images/sonar_loading_animation.webp',
   'images/sonar_loading_animation.webp?v=20260729',
   'images/pwa-icon-192.png',

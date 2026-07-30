@@ -2423,13 +2423,22 @@
             // All layers now use GeoJSON from forked AWMC repo (andrei-roba29/geo_data) which mirrors
             // the current AWMC/geodata structure. Folder layout changed — see Cultural-Data/ in fork.
             var _AWMC = 'https://raw.githubusercontent.com/andrei-roba29/geo_data/master/Cultural-Data/';
+            // Canonical upstream (AWMC/geodata). Used as the primary source for datasets
+            // that are broken in the fork, and as an automatic fallback for every layer.
+            var _AWMC_UPSTREAM = 'https://raw.githubusercontent.com/AWMC/geodata/master/Cultural-Data/';
             var ROMAN_SUB_LAYERS = {
 
                 // ── INFRASTRUCTURE ──
+                // NOTE: the fork's Cultural-Data/roads/roads.geojson is a 2-byte stub — it was
+                // clobbered by a GitHub web-UI rename (roads.geojson → roads_vechi.geojson, then
+                // roman_routes_under25mb.geojson → roads.geojson) which committed empty content.
+                // The stub still returns HTTP 200, so the fetch "succeeded" and the layer silently
+                // died on JSON.parse. Serve roads from canonical upstream instead (3166 features).
                 roads: {
                     label: 'Roads', color: '#CC2222', weight: 2.0, enabled: false,
                     type: 'geojson',
-                    url: _AWMC + 'roads/roads.geojson'
+                    url: _AWMC_UPSTREAM + 'roads/roads.geojson',
+                    fallbackUrls: [_AWMC + 'roads/roads.geojson']
                 },
                 // ── POINTS & LABELS ──
                 urban_areas: {
@@ -2533,7 +2542,10 @@
                         },
                         onEachFeature: function(feature, layer) {
                             var p = feature.properties || {};
-                            var name = p.label || p.name || p.NAME || p.Label || p.LABEL || p.PLabel || '';
+                            // 'Name' / 'en_name' cover the AWMC roads dataset, whose road names
+                            // (Via Appia, Via Aurelia, …) live under a capitalised 'Name' key.
+                            var name = p.label || p.name || p.Name || p.NAME || p.en_name ||
+                                       p.Label || p.LABEL || p.PLabel || '';
                             if (name) {
                                 layer.bindTooltip(
                                     '<span style="font-family:\'Cinzel\',serif;font-size:0.78rem;color:#E8772A;">' + name + '</span>' +
@@ -2578,20 +2590,49 @@
                     if (lyr2) { _romanLayers[key] = lyr2; lyr2.addTo(_romanGroup); }
                     return;
                 }
-                fetch(cfg.url)
-                    .then(function(r){
-                        if (!r.ok) { console.warn('[Roman] "' + key + '" HTTP ' + r.status + ' — ' + cfg.url); return null; }
-                        return r.json();
-                    })
-                    .then(function(data) {
-                        if (!data) return;
-                        _romanCache[cfg.url] = data;
-                        if (!_romanEnabled[key] || !_romanVisible) return;
-                        var lyr3 = _buildRomanLeafletLayer(key, cfg, data);
-                        if (lyr3) { _romanLayers[key] = lyr3; lyr3.addTo(_romanGroup); }
-                        console.log('[Roman] "' + key + '" OK — ' + (data.features ? data.features.length : '?') + ' features');
-                    })
-                    .catch(function(e){ console.error('[Roman] "' + key + '" fetch error:', e.message, cfg.url); });
+                // Try the primary URL, then any declared fallbacks. A source counts as
+                // usable only when it parses AND actually carries features — some mirrors
+                // serve an empty/stub file with HTTP 200, which used to kill the layer
+                // silently (fetch "ok", JSON.parse throws, nothing ever renders).
+                var _urls = [cfg.url].concat(cfg.fallbackUrls || []);
+
+                function _fetchRomanFrom(i) {
+                    if (i >= _urls.length) {
+                        console.error('[Roman] "' + key + '" — all sources failed');
+                        return;
+                    }
+                    var url = _urls[i];
+                    fetch(url)
+                        .then(function(r){
+                            if (!r.ok) throw new Error('HTTP ' + r.status);
+                            return r.text();
+                        })
+                        .then(function(txt) {
+                            if (!txt || !txt.trim()) throw new Error('empty response body');
+                            var data;
+                            try {
+                                data = JSON.parse(txt);
+                            } catch (err) {
+                                throw new Error('invalid GeoJSON (' + err.message + ')');
+                            }
+                            if (!data || (Array.isArray(data.features) && data.features.length === 0)) {
+                                throw new Error('no features');
+                            }
+
+                            _romanCache[cfg.url] = data;
+                            if (!_romanEnabled[key] || !_romanVisible) return;
+                            var lyr3 = _buildRomanLeafletLayer(key, cfg, data);
+                            if (lyr3) { _romanLayers[key] = lyr3; lyr3.addTo(_romanGroup); }
+                            console.log('[Roman] "' + key + '" OK — ' +
+                                (data.features ? data.features.length : '?') + ' features');
+                        })
+                        .catch(function(e){
+                            console.warn('[Roman] "' + key + '" source failed (' + e.message + ') — ' + url);
+                            _fetchRomanFrom(i + 1);
+                        });
+                }
+
+                _fetchRomanFrom(0);
             }
 
             function _loadRomanData() {
