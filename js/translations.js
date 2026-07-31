@@ -76,6 +76,9 @@
                 layer_polishtactical1933: 'Tactical Polish Map 1933',
                 layer_ww1: 'WWI',
                 layer_ww2: 'WWII',
+                layer_satellite60s: "Satellite imagery 60's",
+                
+                
                 iosfree_hint: 'Search or zoom into a locality',
                 iosfree_loading: 'Loading image…',
                 iosfree_notfound: 'No map found for this locality',
@@ -173,6 +176,7 @@
                 layer_polishtactical1933: 'Harta tactică poloneză 1933',
                 layer_ww1: 'WWI',
                 layer_ww2: 'WWII',
+                layer_satellite60s: "Imagini satelitare anii 60'",
                 iosfree_hint: 'Caută sau zoom pe o localitate',
                 iosfree_loading: 'Se încarcă imaginea…',
                 iosfree_notfound: 'Nu s-a găsit hartă pentru această localitate',

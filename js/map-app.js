@@ -7403,6 +7403,12 @@
                     bounds: [[43.8345, 20.0391], [48.4584, 29.8828]],
                     label: 'WWII',
                     layerVar: '_ww2MapLayer'
+                },
+
+                satellite60s: {
+                    bounds: [[43.0688, 16.8750], [45.0890, 19.6875]],
+                    label: "Satellite imagery 60's",
+                    layerVar: '_sat60MapLayer'
                 }
             };
 
