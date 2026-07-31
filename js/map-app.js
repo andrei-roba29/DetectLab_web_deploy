@@ -3992,22 +3992,98 @@
 
             // ── NEARBY DETECTORISTS ──
             var nearbyLayer = L.layerGroup().addTo(map);
+            // Stable per-browser device id so the SAME account signed in on two phones
+            // (or two browser tabs) shows up as two distinct nearby detectorists instead
+            // of one row overwriting the other. Falls back gracefully if storage is blocked.
+            var DETECTOR_DEVICE_ID = (function () {
+                try {
+                    var d = localStorage.getItem('detector_device_id');
+                    if (!d) {
+                        d = (window.crypto && crypto.randomUUID)
+                            ? crypto.randomUUID()
+                            : 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+                        localStorage.setItem('detector_device_id', d);
+                    }
+                    return d;
+                } catch (e) {
+                    return 'web-' + Math.random().toString(36).slice(2);
+                }
+            })();
             function nearbyInitials(name) { return (name || '?').trim().split(/\s+/).slice(0,2).map(function(x){return x[0];}).join('').toUpperCase(); }
             function nearbyDistance(a,b,c,d) { var R=6371, x=(c-a)*Math.PI/180, y=(d-b)*Math.PI/180; var q=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2; return 2*R*Math.asin(Math.sqrt(q)); }
             function nearbyUser() { return window._authUser && window._authUser(); }
-            window.openNearbyDetectors = function() { var m=document.getElementById('nearbyModal'); if(m)m.classList.add('show'); };
+            window.openNearbyDetectors = function() {
+                var m=document.getElementById('nearbyModal'); if(m)m.classList.add('show');
+                // Broadcast our current position right away so others can see us,
+                // even if the GPS watcher hasn't fired again since we opened the panel.
+                if(_detLat !== null && typeof publishDetectorPresence === 'function') {
+                    publishDetectorPresence(_detLat, _detLng, true);
+                }
+            };
             window.closeNearbyDetectors = function() { var m=document.getElementById('nearbyModal'); if(m)m.classList.remove('show'); };
             window.searchNearbyDetectors = async function() {
                 var status=document.getElementById('nearbyStatus'); var user=nearbyUser();
                 if(!user) { status.innerHTML='Trebuie să fii autentificat pentru această funcție.<br><small>You must be logged in to use this feature.</small>'; return; }
-                if(_detLat === null) { status.innerHTML='Activează detectorul pentru a partaja locația ta.<br><small>Turn on Detect to share your location.</small>'; return; }
+                if(_detLat === null) { status.innerHTML='Activează detectorul (sau partajează locația) pentru a-ți transmite poziția.<br><small>Turn on Detect (or share your location) to broadcast your position.</small>'; return; }
                 status.innerHTML='Se caută…<br><small>Searching…</small>';
                 try {
-                    var r=await window.supabaseClient.from('detector_presence').select('user_id,full_name,email,latitude,longitude').eq('visible',true);
-                    if(r.error) throw r.error; nearbyLayer.clearLayers(); var found=0;
-                    (r.data||[]).forEach(function(row){ if(row.user_id===user.id) return; if(nearbyDistance(_detLat,_detLng,+row.latitude,+row.longitude)<=10) { found++; var icon=L.divIcon({className:'',html:'<div class="detector-nearby-marker">'+nearbyInitials(row.full_name)+'</div>',iconSize:[32,32],iconAnchor:[16,16]}); L.marker([row.latitude,row.longitude],{icon:icon}).bindPopup('<div class="map-place-popup"><strong>'+String(row.full_name||'Detectorist').replace(/[<>&]/g,'')+'</strong><br>'+String(row.email||'').replace(/[<>&]/g,'')+'</div>').addTo(nearbyLayer); }});
-                    status.innerHTML=found ? found+' detectorist(i) găsit(i).<br><small>detectorist(s) found.</small>' : 'Nu sunt detectoriști în apropiere.<br><small>No detectorists found nearby.</small>';
-                } catch(e) { console.warn('Nearby detectorists:',e); status.innerHTML='Căutarea nu este disponibilă momentan.<br><small>Search is unavailable right now.</small>'; }
+                    // Make sure OUR position is freshly published first, so the other
+                    // phone can see us even if its search runs a moment earlier.
+                    await publishDetectorPresence(_detLat, _detLng, true);
+
+                    // Try to read with device_id (new schema). If the migration hasn't been
+                    // applied yet, fall back to the legacy columns-only query.
+                    var rows, legacySchema = false;
+                    var res = await window.supabaseClient
+                        .from('detector_presence')
+                        .select('user_id,device_id,full_name,email,latitude,longitude')
+                        .eq('visible', true);
+                    if (res.error) {
+                        if (/device_id|column/i.test((res.error.message || '') + (res.error.details || '') + (res.error.hint || ''))) {
+                            var res2 = await window.supabaseClient
+                                .from('detector_presence')
+                                .select('user_id,full_name,email,latitude,longitude')
+                                .eq('visible', true);
+                            if (res2.error) throw res2.error;
+                            rows = res2.data || [];
+                            legacySchema = true;
+                        } else {
+                            throw res.error;
+                        }
+                    } else {
+                        rows = res.data || [];
+                    }
+
+                    nearbyLayer.clearLayers();
+                    var total = rows.length, found = 0;
+                    rows.forEach(function(row){
+                        // Skip only OUR device (allow two devices of the same account to see
+                        // each other on the new schema; fall back to user match on legacy schema).
+                        if (!legacySchema && row.device_id === DETECTOR_DEVICE_ID) return;
+                        if (legacySchema && row.user_id === user.id) return;
+                        if (nearbyDistance(_detLat,_detLng,+row.latitude,+row.longitude) <= 10) {
+                            found++;
+                            var icon=L.divIcon({className:'',html:'<div class="detector-nearby-marker">'+nearbyInitials(row.full_name)+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
+                            L.marker([row.latitude,row.longitude],{icon:icon}).bindPopup('<div class="map-place-popup"><strong>'+String(row.full_name||'Detectorist').replace(/[<>&]/g,'')+'</strong><br>'+String(row.email||'').replace(/[<>&]/g,'')+'</div>').addTo(nearbyLayer);
+                        }
+                    });
+                    if (found) {
+                        status.innerHTML = found + ' detectorist(i) găsit(i) în apropiere.<br><small>' + found + ' detectorist(s) found nearby.</small>';
+                        var layers = nearbyLayer.getLayers();
+                        if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds().pad(0.4));
+                    } else if (total > 0) {
+                        status.innerHTML = 'Niciun detectorist în raza de 10 km (' + total + ' activ(i) în total).<br><small>No detectorists within 10 km (' + total + ' active in total).</small>';
+                    } else {
+                        status.innerHTML = 'Nu sunt detectoriști în apropiere.<br><small>No detectorists found nearby.</small>';
+                    }
+                } catch(e) {
+                    var msg = (e && (e.message || (e.error && (e.error.message || e.error)) || e.details)) ? (e.message || (e.error && (e.error.message || e.error)) || e.details) : '';
+                    console.warn('Nearby detectorists:', e);
+                    var hint = '';
+                    if (/relation|does not exist|404|schema cache/i.test(msg)) hint = '<br><small>Tabela "detector_presence" lipsește — aplică migrările Supabase.</small>';
+                    else if (/permission|policy|42501|rls/i.test(msg)) hint = '<br><small>Acces blocat de RLS — verifică politicile pentru detector_presence.</small>';
+                    status.innerHTML = 'Căutarea nu este disponibilă momentan.' + hint + '<br><small>Search unavailable. ' + (msg ? String(msg).slice(0,160) : '') + '</small>';
+                }
             };
             async function publishDetectorPresence(lat,lng,visible) {
                 try {
@@ -4015,7 +4091,7 @@
                     if(!u || !window.supabaseClient) return;
                     var md=u.user_metadata||{};
                     var name=md.full_name||md.name||u.email||'Detectorist';
-                    var result = await window.supabaseClient.from('detector_presence').upsert({
+                    var payload = {
                         user_id:u.id,
                         full_name:name,
                         email:u.email||'',
@@ -4023,9 +4099,19 @@
                         longitude:lng,
                         visible:visible,
                         updated_at:new Date().toISOString()
-                    });
+                    };
+                    try { payload.device_id = DETECTOR_DEVICE_ID; } catch(e){}
+                    var result = await window.supabaseClient.from('detector_presence').upsert(payload);
                     if (result.error) {
-                        console.warn('[Presence] upsert error:', result.error.message || result.error);
+                        var em = (result.error.message || '') + (result.error.details || '') + (result.error.hint || '');
+                        // Legacy schema without the device_id column: retry without it.
+                        if (/device_id|column/i.test(em)) {
+                            var p2 = {}; for (var k in payload) { if (k !== 'device_id') p2[k] = payload[k]; }
+                            var r2 = await window.supabaseClient.from('detector_presence').upsert(p2);
+                            if (r2.error) console.warn('[Presence] upsert error:', r2.error.message || r2.error);
+                        } else {
+                            console.warn('[Presence] upsert error:', result.error.message || result.error);
+                        }
                     }
                 } catch(e) {
                     console.warn('[Presence] publish failed:', e && e.message ? e.message : e);
