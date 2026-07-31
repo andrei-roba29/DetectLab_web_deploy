@@ -720,6 +720,9 @@
             </div>
         </div>
 
+        <!-- Nearby detectorists: between language and profile -->
+        <div class="pwa-bar-item pwa-nearby-item"><button class="pwa-bar-trigger pwa-nearby-trigger" onclick="openNearbyDetectors()" title="See other detectorists in the area" aria-label="See other detectorists in the area"><span class="nearby-icon">⊙</span></button></div>
+
         <!-- 3. User Menu (expands up) -->
         <div class="pwa-bar-item" id="pwaUserItem">
             <!-- Logged-in trigger -->
@@ -2213,6 +2216,7 @@
                     </svg>
                     <span>Saved locations</span>
                 </button>
+                <button class="btn-nearby-detectors" id="nearbyDetectorsBtn" onclick="openNearbyDetectors()" title="See other detectorists in the area" aria-label="See other detectorists in the area"><span class="nearby-icon">⊙</span><span class="nearby-label">Detectorists</span></button>
                 <button class="btn-fullscreen" id="fullscreenBtn" onclick="toggleMapFullscreen()">
                     <svg id="fsIcon" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M1 5V1H5M9 1H13V5M13 9V13H9M5 13H1V9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -3221,6 +3225,14 @@
         })();
     </script>
 </body>
+
+    <div class="nearby-modal" id="nearbyModal" role="dialog" aria-modal="true" aria-labelledby="nearbyTitle">
+      <div class="nearby-dialog"><button class="nearby-close" onclick="closeNearbyDetectors()">×</button>
+        <h3 id="nearbyTitle">Vezi alți detectoriști în zonă<br><small>See other detectorists in the area</small></h3>
+        <p id="nearbyStatus">Cauți detectoriști pe o rază de 10 km?<br><small>Search within a 10 km radius?</small></p>
+        <div class="nearby-actions"><button onclick="searchNearbyDetectors()">Da / Yes</button><button class="secondary" onclick="closeNearbyDetectors()">Nu / No</button></div>
+      </div>
+    </div>
 
 <script src="js/account-legacy.js"></script>
 
