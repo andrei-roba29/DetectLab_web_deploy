@@ -3363,6 +3363,70 @@
         .coord-popup-copy:hover {
             background: rgba(107,63,160,0.85);
         }
+        .coord-popup-save {
+            margin-top: 5px;
+            width: 100%;
+            min-height: 27px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            background: rgba(184,216,240,0.08);
+            border: 1px solid rgba(184,216,240,0.38);
+            border-radius: 5px;
+            color: #B8D8F0;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 500;
+            padding: 4px 8px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .coord-popup-save:hover:not(:disabled) {
+            background: rgba(184,216,240,0.18);
+            border-color: rgba(184,216,240,0.65);
+            color: #fff;
+        }
+        .coord-popup-save:focus-visible {
+            outline: 2px solid #B8D8F0;
+            outline-offset: 2px;
+        }
+        .coord-popup-save:disabled {
+            cursor: wait;
+            opacity: 0.8;
+        }
+        .coord-popup-save.saved {
+            background: rgba(62,177,118,0.18);
+            border-color: rgba(62,177,118,0.6);
+            color: #8EE0B2;
+            cursor: default;
+            opacity: 1;
+        }
+        .coord-popup-save.error {
+            border-color: rgba(232,119,42,0.7);
+            color: #FFC08F;
+        }
+        .coord-popup-save-icon {
+            flex: 0 0 auto;
+        }
+        .coord-popup-status {
+            display: none;
+            max-width: 180px;
+            margin-top: 5px;
+            font-size: 0.65rem;
+            line-height: 1.25;
+            text-align: center;
+        }
+        .coord-popup-status.success,
+        .coord-popup-status.error {
+            display: block;
+        }
+        .coord-popup-status.success {
+            color: #8EE0B2;
+        }
+        .coord-popup-status.error {
+            color: #FFC08F;
+        }
 
         /* ── TRANSPARENCY PANEL ARROW TAB ── */
         .transp-arrow-tab {

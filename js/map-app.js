@@ -932,22 +932,119 @@
                         zIndexOffset: 900
                     }).addTo(map);
 
-                    var popupContent =
-                        '<div class="coord-popup-title">📍 Coordonate</div>' +
-                        '<div class="coord-popup-row"><span class="coord-popup-label">Lat:</span><span class="coord-popup-val" title="Click pentru selecție">' + lat + '</span></div>' +
-                        '<div class="coord-popup-row"><span class="coord-popup-label">Lng:</span><span class="coord-popup-val" title="Click pentru selecție">' + lng + '</span></div>' +
-                        '<button class="coord-popup-copy" onclick="(function(){' +
-                        'var t=\'' + lat + ', ' + lng + '\';' +
-                        'if(navigator.clipboard){navigator.clipboard.writeText(t).then(function(){' +
-                        'var b=document.querySelector(\'.coord-popup-copy\');if(b){b.textContent=\'✓ Copiat!\';setTimeout(function(){b.textContent=\'Copiază coordonatele\';},1500);}' +
-                        '});}else{var ta=document.createElement(\'textarea\');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand(\'copy\');document.body.removeChild(ta);}' +
-                        '})()">Copiază coordonatele</button>';
+                    var popupContent = createCoordPopupContent(lat, lng);
 
                     if (coordPopup) { map.closePopup(coordPopup); }
                     coordPopup = L.popup({ className: 'coord-popup', closeOnClick: false, autoClose: false })
                         .setLatLng(e.latlng)
                         .setContent(popupContent)
                         .openOn(map);
+                }
+
+                function createCoordPopupContent(lat, lng) {
+                    var content = document.createElement('div');
+                    content.innerHTML =
+                        '<div class="coord-popup-title">📍 Coordonate</div>' +
+                        '<div class="coord-popup-row"><span class="coord-popup-label">Lat:</span><span class="coord-popup-val" title="Click pentru selecție">' + lat + '</span></div>' +
+                        '<div class="coord-popup-row"><span class="coord-popup-label">Lng:</span><span class="coord-popup-val" title="Click pentru selecție">' + lng + '</span></div>' +
+                        '<button type="button" class="coord-popup-copy">Copiază coordonatele</button>' +
+                        '<button type="button" class="coord-popup-save" aria-label="Salvează coordonatele în contul tău">' +
+                        '<svg class="coord-popup-save-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+                        '<path d="M2.25 1.5h9.1l2.4 2.4v10.6H2.25v-13Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>' +
+                        '<path d="M5 1.5v4h6v-4M5 14.5V9h6v5.5" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>' +
+                        '<circle cx="9.6" cy="3.5" r=".7" fill="currentColor"/>' +
+                        '</svg>' +
+                        '<span class="coord-popup-save-label">Salvează</span>' +
+                        '</button>' +
+                        '<div class="coord-popup-status" role="status" aria-live="polite"></div>';
+
+                    var copyButton = content.querySelector('.coord-popup-copy');
+                    var saveButton = content.querySelector('.coord-popup-save');
+                    var status = content.querySelector('.coord-popup-status');
+                    var coordinatesText = lat + ', ' + lng;
+
+                    copyButton.addEventListener('click', function () {
+                        copyCoordinates(coordinatesText, copyButton);
+                    });
+
+                    saveButton.addEventListener('click', function () {
+                        saveCoordinates(Number(lat), Number(lng), saveButton, status);
+                    });
+
+                    return content;
+                }
+
+                function copyCoordinates(text, button) {
+                    function showCopied() {
+                        button.textContent = '✓ Copiat!';
+                        setTimeout(function () {
+                            if (button.isConnected) button.textContent = 'Copiază coordonatele';
+                        }, 1500);
+                    }
+
+                    function legacyCopy() {
+                        var textArea = document.createElement('textarea');
+                        textArea.value = text;
+                        textArea.style.position = 'fixed';
+                        textArea.style.opacity = '0';
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        try {
+                            document.execCommand('copy');
+                            showCopied();
+                        } finally {
+                            document.body.removeChild(textArea);
+                        }
+                    }
+
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).then(showCopied).catch(legacyCopy);
+                    } else {
+                        legacyCopy();
+                    }
+                }
+
+                async function saveCoordinates(lat, lng, button, status) {
+                    var label = button.querySelector('.coord-popup-save-label');
+                    button.disabled = true;
+                    button.classList.remove('saved', 'error');
+                    label.textContent = 'Se salvează…';
+                    status.textContent = '';
+                    status.className = 'coord-popup-status';
+
+                    try {
+                        if (!window.supabaseClient || !window.supabaseClient.auth) {
+                            throw new Error('Supabase nu este disponibil momentan.');
+                        }
+
+                        // Verify the session before inserting. The database fills user_id
+                        // from auth.uid(), and its RLS policy only permits the owner to save.
+                        var userResult = await window.supabaseClient.auth.getUser();
+                        if (userResult.error || !userResult.data || !userResult.data.user) {
+                            if (typeof window.openAuth === 'function') window.openAuth('login');
+                            throw new Error('Autentifică-te pentru a salva coordonatele.');
+                        }
+
+                        var insertResult = await window.supabaseClient
+                            .from('saved_coordinates')
+                            .insert({ latitude: lat, longitude: lng });
+
+                        if (insertResult.error) throw insertResult.error;
+
+                        button.classList.add('saved');
+                        label.textContent = 'Salvat!';
+                        status.textContent = 'Coordonatele au fost salvate.';
+                        status.classList.add('success');
+                    } catch (err) {
+                        console.error('Nu s-au putut salva coordonatele:', err);
+                        button.disabled = false;
+                        button.classList.add('error');
+                        label.textContent = 'Încearcă din nou';
+                        status.textContent = err && err.message
+                            ? err.message
+                            : 'Salvarea a eșuat. Încearcă din nou.';
+                        status.classList.add('error');
+                    }
                 }
             })();
 
