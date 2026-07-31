@@ -4914,3 +4914,13 @@
             }
         }
 
+
+/* Nearby detectorists */
+.btn-nearby-detectors { display:flex; align-items:center; gap:5px; background:transparent; border:0; color:inherit; cursor:pointer; padding:7px 9px; }
+.nearby-icon { font-size:25px; line-height:1; font-weight:700; }
+.pwa-nearby-trigger { min-width:42px; justify-content:center; padding:5px 8px; }
+.nearby-modal { display:none; position:fixed; inset:0; z-index:3000; background:rgba(0,0,0,.65); align-items:center; justify-content:center; }
+.nearby-modal.show { display:flex; }
+.nearby-dialog { position:relative; width:min(390px,calc(100% - 32px)); padding:28px 24px 24px; border-radius:14px; background:#17252b; color:#f5f0eb; text-align:center; box-shadow:0 12px 45px #000; }
+.nearby-dialog h3 { margin:0 0 16px; font-size:1.15rem; line-height:1.5; }.nearby-dialog small { opacity:.72; font-weight:400; }.nearby-dialog p { line-height:1.6; }.nearby-actions { display:flex; gap:10px; justify-content:center; margin-top:22px; }.nearby-actions button { border:0; border-radius:7px; padding:10px 24px; background:#d99b45; color:#182126; font-weight:700; cursor:pointer; }.nearby-actions .secondary { background:transparent; border:1px solid #78909c; color:#eee; }.nearby-close { position:absolute; right:10px; top:5px; background:none; border:0; color:#fff; font-size:27px; cursor:pointer; }
+.detector-nearby-marker { border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; background:#d99b45; color:#182126; border:2px solid #fff; font-weight:800; box-shadow:0 2px 8px #0008; }

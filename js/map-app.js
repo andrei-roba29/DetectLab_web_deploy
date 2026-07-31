@@ -3790,6 +3790,27 @@
                 }
             })();
 
+            // ── NEARBY DETECTORISTS ──
+            var nearbyLayer = L.layerGroup().addTo(map);
+            function nearbyInitials(name) { return (name || '?').trim().split(/\s+/).slice(0,2).map(function(x){return x[0];}).join('').toUpperCase(); }
+            function nearbyDistance(a,b,c,d) { var R=6371, x=(c-a)*Math.PI/180, y=(d-b)*Math.PI/180; var q=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2; return 2*R*Math.asin(Math.sqrt(q)); }
+            function nearbyUser() { return window._authUser && window._authUser(); }
+            window.openNearbyDetectors = function() { var m=document.getElementById('nearbyModal'); if(m)m.classList.add('show'); };
+            window.closeNearbyDetectors = function() { var m=document.getElementById('nearbyModal'); if(m)m.classList.remove('show'); };
+            window.searchNearbyDetectors = async function() {
+                var status=document.getElementById('nearbyStatus'); var user=nearbyUser();
+                if(!user) { status.innerHTML='Trebuie să fii autentificat pentru această funcție.<br><small>You must be logged in to use this feature.</small>'; return; }
+                if(_detLat === null) { status.innerHTML='Activează detectorul pentru a partaja locația ta.<br><small>Turn on Detect to share your location.</small>'; return; }
+                status.innerHTML='Se caută…<br><small>Searching…</small>';
+                try {
+                    var r=await window.supabaseClient.from('detector_presence').select('user_id,full_name,email,latitude,longitude').eq('visible',true);
+                    if(r.error) throw r.error; nearbyLayer.clearLayers(); var found=0;
+                    (r.data||[]).forEach(function(row){ if(row.user_id===user.id) return; if(nearbyDistance(_detLat,_detLng,+row.latitude,+row.longitude)<=10) { found++; var icon=L.divIcon({className:'',html:'<div class="detector-nearby-marker">'+nearbyInitials(row.full_name)+'</div>',iconSize:[32,32],iconAnchor:[16,16]}); L.marker([row.latitude,row.longitude],{icon:icon}).bindPopup('<div class="map-place-popup"><strong>'+String(row.full_name||'Detectorist').replace(/[<>&]/g,'')+'</strong><br>'+String(row.email||'').replace(/[<>&]/g,'')+'</div>').addTo(nearbyLayer); }});
+                    status.innerHTML=found ? found+' detectorist(i) găsit(i).<br><small>detectorist(s) found.</small>' : 'Nu sunt detectoriști în apropiere.<br><small>No detectorists found nearby.</small>';
+                } catch(e) { console.warn('Nearby detectorists:',e); status.innerHTML='Căutarea nu este disponibilă momentan.<br><small>Search is unavailable right now.</small>'; }
+            };
+            async function publishDetectorPresence(lat,lng,visible) { var u=nearbyUser(); if(!u || !window.supabaseClient) return; var md=u.user_metadata||{}; var name=md.full_name||md.name||u.email||'Detectorist'; await window.supabaseClient.from('detector_presence').upsert({user_id:u.id,full_name:name,email:u.email||'',latitude:lat,longitude:lng,visible:visible,updated_at:new Date().toISOString()}); }
+
             // ── FULLSCREEN ──
             var isFullscreen = false;
             window.toggleMapFullscreen = function () {
@@ -3955,6 +3976,7 @@
             function _detOnPosition(pos) {
                 _detLat = pos.coords.latitude;
                 _detLng = pos.coords.longitude;
+                publishDetectorPresence(_detLat, _detLng, true);
                 _detCheck(_detLat, _detLng);
             }
 
@@ -4029,6 +4051,7 @@
                         _det.watchId = null;
                     }
                     document.getElementById('siteAlert').classList.remove('visible');
+                    var presenceUser = nearbyUser(); if (presenceUser && window.supabaseClient) window.supabaseClient.from('detector_presence').delete().eq('user_id', presenceUser.id);
                     // Reset edge-trigger flags so the alert fires fresh on re-activation.
                     // Keep _detLat/_detLng — they're needed for the immediate recheck when
                     // the switch is turned back on, and harmless to retain while inactive.
