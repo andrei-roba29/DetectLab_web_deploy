@@ -54,8 +54,10 @@
 function _syncFromSession(session) {
     if (session && session.user) {
         _save({
+            id: session.user.id,
             name: session.user.user_metadata.full_name || session.user.email.split("@")[0],
-            email: session.user.email
+            email: session.user.email,
+            user_metadata: session.user.user_metadata
         });
     } else {
         _clear();
@@ -346,8 +348,10 @@ window.doLogin = async function () {
 
             const user = data.user;
             _save({
+                id: user.id,
                 name: user.user_metadata.full_name || user.email.split("@")[0],
-                email: user.email
+                email: user.email,
+                user_metadata: user.user_metadata
             });
 
             _updateNav();
