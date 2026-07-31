@@ -77,6 +77,7 @@
                 layer_ww1: 'WWI',
                 layer_ww2: 'WWII',
                 layer_satellite60s: "Satellite imagery 60's",
+                layer_banat: 'Banat - 1769-1772',
                 
                 
                 iosfree_hint: 'Search or zoom into a locality',
@@ -177,6 +178,7 @@
                 layer_ww1: 'WWI',
                 layer_ww2: 'WWII',
                 layer_satellite60s: "Imagini satelitare anii 60'",
+                layer_banat: 'Banat - 1769-1772',
                 iosfree_hint: 'Caută sau zoom pe o localitate',
                 iosfree_loading: 'Se încarcă imaginea…',
                 iosfree_notfound: 'Nu s-a găsit hartă pentru această localitate',
