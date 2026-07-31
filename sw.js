@@ -2,7 +2,7 @@
    DetectLab — Service Worker v1.3.0
    ============================================================ */
 
-const CACHE_NAME = 'detectlab-v19';
+const CACHE_NAME = 'detectlab-v20';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -42,8 +42,7 @@ const PRECACHE_URLS = [
   'js/auth-forms.js',
   'js/account-legacy.js',
   'js/map-app.js',
-  'js/map-app.js?v=2026073106',
-  'js/map-app.js?v=2026073107',
+  'js/map-app.js?v=2026073109',
   'images/sonar_loading_animation.webp',
   'images/sonar_loading_animation.webp?v=20260729',
   'images/pwa-icon-192.png',

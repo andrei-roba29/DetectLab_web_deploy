@@ -8201,39 +8201,112 @@
                 var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
                 var SAT60_INITIAL_OPACITY = 0.85;
 
-                // Discover all Corona layers dynamically from the GeoServer
+                // Romania extent (matches the coverage polygon above). Used to filter the
+                // CAST GetCapabilities down to ONLY the Corona frames that actually overlap
+                // Romania. Without this filter the GeoServer returns the ENTIRE global Corona
+                // archive (thousands of frames over the Middle East, USSR, Asia…). Even after
+                // chunking, that produced so many composite WMS sub-layers that Leaflet fired
+                // tens of thousands of GetMap requests at a single host (Chrome caps ~6
+                // concurrent connections), so they stalled: "0 / 22315 requests", 0 bytes
+                // transferred, no imagery ever appeared.
+                var SAT60_ROMANIA_BBOX = { minLng: 19.5, minLat: 43.5, maxLng: 30.5, maxLat: 48.5 };
+                // Absolute ceiling on how many Corona layers we ever request, so the layer
+                // can never flood the browser again even if bbox parsing goes wrong.
+                var SAT60_MAX_LAYERS = 300;
+                // How many layer names to join into one composite WMS LAYERS request.
+                // Fewer/larger chunks = fewer simultaneous tile requests. ~80 names keeps
+                // each GetMap URL well under ~2 KB.
+                var SAT60_CHUNK_SIZE = 80;
+                // Known-good passes/frames that cover Romania — used only if GetCapabilities
+                // is unreachable or no Romania bbox could be parsed.
+                var SAT60_FALLBACK_LAYERS = [
+                    "corona:1103-2139Fore", "corona:1103-2139Aft",
+                    "corona:1103-2155Fore", "corona:1103-2155Aft",
+                    "corona:1103-2167Fore", "corona:1103-2167Aft",
+                    "corona:1103-2171Fore", "corona:1103-2171Aft",
+                    "corona:1103-2183Fore", "corona:1103-2183Aft",
+                    "corona:1103-2200Fore", "corona:1103-2200Aft",
+                    "corona:1106-1042da023", "corona:1106-1042da024", "corona:1106-1042da025",
+                    "corona:1106-2070Fore", "corona:1106-2070Aft",
+                    "corona:1106-2119Fore", "corona:1106-2119Aft",
+                    "corona:1107-2170Fore", "corona:1107-2170Aft",
+                    "corona:1108-2135Fore", "corona:1108-2135Aft",
+                    "corona:1108-2167Fore", "corona:1108-2167Aft"
+                ];
+
+                // Discover the Corona layers that actually cover Romania.
+                //
+                // Fetches the GeoServer GetCapabilities once, walks every
+                // <Name>corona:…</Name>, reads the bounding box that belongs to THAT layer
+                // (scoped to before the next <Name>, so a sibling layer's bbox is never used)
+                // and keeps only the layers intersecting Romania.
                 function discoverCoronaLayers(callback) {
                     fetch(SAT60_WMS_URL + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities")
                         .then(function (r) { return r.text(); })
                         .then(function (xml) {
-                            var layers = [];
-                            var re = /<Name>(corona:[^<]+)<\/Name>/g;
-                            var match;
-                            while ((match = re.exec(xml)) !== null) {
-                                var name = match[1];
-                                // Skip metadata/index layers
-                                if (name.indexOf("footprints") !== -1) continue;
-                                layers.push(name);
+                            var allNames = [];
+                            var romaniaNames = [];
+                            var nameRe = /<Name>(corona:[^<]+)<\/Name>/g;
+                            // WMS 1.1.1: <LatLonBoundingBox minx=… miny=… maxx=… maxy=…/>
+                            // WMS 1.3.0: <EX_GeographicBoundingBox>…</…> (fallback just in case)
+                            var llRe = /<LatLonBoundingBox\s+([^\/]*)\/>/;
+                            var exRe = /<EX_GeographicBoundingBox>\s*<westBoundLongitude>([^<]+)<\/westBoundLongitude>\s*<eastBoundLongitude>([^<]+)<\/eastBoundLongitude>\s*<southBoundLatitude>([^<]+)<\/southBoundLatitude>\s*<northBoundLatitude>([^<]+)<\/northBoundLatitude>/;
+                            var m;
+                            while ((m = nameRe.exec(xml)) !== null) {
+                                var name = m[1];
+                                if (name.indexOf("footprints") !== -1) continue; // metadata/index layer
+                                allNames.push(name);
+
+                                // Restrict the search to this layer's own block.
+                                var slice = xml.substr(m.index, 6000);
+                                var stop = slice.indexOf("<Name>", 6);
+                                if (stop !== -1) slice = slice.substr(0, stop);
+
+                                var bbox = null;
+                                var ll = slice.match(llRe);
+                                if (ll) {
+                                    var a = ll[1];
+                                    var mn = parseFloat((a.match(/minx="([^"]+)"/) || [])[1]);
+                                    var my = parseFloat((a.match(/miny="([^"]+)"/) || [])[1]);
+                                    var mx = parseFloat((a.match(/maxx="([^"]+)"/) || [])[1]);
+                                    var ma = parseFloat((a.match(/maxy="([^"]+)"/) || [])[1]);
+                                    if (!isNaN(mn) && !isNaN(my) && !isNaN(mx) && !isNaN(ma)) {
+                                        bbox = { minLng: mn, minLat: my, maxLng: mx, maxLat: ma };
+                                    }
+                                }
+                                if (!bbox) {
+                                    var ex = slice.match(exRe);
+                                    if (ex) {
+                                        bbox = { minLng: parseFloat(ex[1]), maxLng: parseFloat(ex[2]), minLat: parseFloat(ex[3]), maxLat: parseFloat(ex[4]) };
+                                    }
+                                }
+
+                                if (bbox &&
+                                    bbox.minLng < SAT60_ROMANIA_BBOX.maxLng && bbox.maxLng > SAT60_ROMANIA_BBOX.minLng &&
+                                    bbox.minLat < SAT60_ROMANIA_BBOX.maxLat && bbox.maxLat > SAT60_ROMANIA_BBOX.minLat) {
+                                    romaniaNames.push(name);
+                                }
                             }
-                            console.log("[Sat60] Discovered", layers.length, "Corona WMS layers from CAST GeoServer");
-                            callback(layers);
+
+                            console.log("[Sat60] GetCapabilities: " + allNames.length + " Corona layers total, " + romaniaNames.length + " overlap Romania");
+
+                            var chosen;
+                            if (romaniaNames.length > 0) {
+                                chosen = romaniaNames.slice(0, SAT60_MAX_LAYERS);
+                            } else {
+                                // No Romania bbox could be matched (unusual capabilities format,
+                                // or the capabilities lists names without extents). Prefer the
+                                // curated fallback list — it is guaranteed to cover Romania and
+                                // stays tiny — over an arbitrary alphabetical slice that might
+                                // miss Romania entirely.
+                                console.warn("[Sat60] No Romania bbox matches in capabilities — using curated fallback list");
+                                chosen = SAT60_FALLBACK_LAYERS;
+                            }
+                            callback(chosen);
                         })
                         .catch(function (err) {
-                            console.warn("[Sat60] Failed to discover Corona layers, using fallback list:", err);
-                            callback([
-                                "corona:1103-2139Fore", "corona:1103-2139Aft",
-                                "corona:1103-2155Fore", "corona:1103-2155Aft",
-                                "corona:1103-2167Fore", "corona:1103-2167Aft",
-                                "corona:1103-2171Fore", "corona:1103-2171Aft",
-                                "corona:1103-2183Fore", "corona:1103-2183Aft",
-                                "corona:1103-2200Fore", "corona:1103-2200Aft",
-                                "corona:1106-1042da023", "corona:1106-1042da024", "corona:1106-1042da025",
-                                "corona:1106-2070Fore", "corona:1106-2070Aft",
-                                "corona:1106-2119Fore", "corona:1106-2119Aft",
-                                "corona:1107-2170Fore", "corona:1107-2170Aft",
-                                "corona:1108-2135Fore", "corona:1108-2135Aft",
-                                "corona:1108-2167Fore", "corona:1108-2167Aft"
-                            ]);
+                            console.warn("[Sat60] GetCapabilities failed, using fallback list:", err);
+                            callback(SAT60_FALLBACK_LAYERS);
                         });
                 }
 
@@ -8242,12 +8315,16 @@
                 window._sat60Ready = false;
 
                 discoverCoronaLayers(function (layerNames) {
-                    // Chunk the layers to avoid hitting URL length limits and to drastically reduce HTTP requests
-                    var chunkSize = 50;
+                    // Chunk the discovered layers to avoid hitting URL length limits and to
+                    // drastically cut the number of simultaneous tile requests. With the
+                    // Romania bbox filter the list is already small, so this typically yields
+                    // only a handful of composite WMS layers (a few dozen requests at most).
+                    var chunkSize = SAT60_CHUNK_SIZE;
                     var chunks = [];
                     for (var i = 0; i < layerNames.length; i += chunkSize) {
                         chunks.push(layerNames.slice(i, i + chunkSize));
                     }
+                    console.log("[Sat60] Building " + chunks.length + " composite WMS layer(s) from " + layerNames.length + " Corona frame(s)");
 
                     window._sat60FrameLayers = chunks.map(function (chunk) {
                         var layersParam = chunk.join(',');
