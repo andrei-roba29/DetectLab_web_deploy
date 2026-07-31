@@ -4,6 +4,14 @@
 
 const CACHE_NAME = 'detectlab-v13';
 
+// ── Detection settings ──
+let detectionEnabled = false;
+let backgroundDetectionEnabled = true; // can be disabled by user
+let lastKnownPosition = null;
+
+const PROTECTED_SITES_URL = 'https://detectlab-backend-production.up.railway.app/api/heritage-sites';
+const PROTECTED_SITES_CACHE_KEY = 'protected-sites';
+
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
   '.',
@@ -153,3 +161,215 @@ self.addEventListener('fetch', function (event) {
       })
   );
 });
+
+// ─────────────────────────────────────────────────────────────
+// BACKGROUND DETECTION + PERSISTENT NOTIFICATION + USER TOGGLE
+// ─────────────────────────────────────────────────────────────
+
+// Load detection state from IndexedDB on startup
+async function loadDetectionState() {
+    try {
+        const cache = await caches.open(CACHE_NAME);
+        const stored = await cache.match('detection-state');
+        if (stored) {
+            const state = await stored.json();
+            detectionEnabled = !!state.detectionEnabled;
+            backgroundDetectionEnabled = state.backgroundDetectionEnabled !== false;
+            console.log('[SW] Restored detection state:', { detectionEnabled, backgroundDetectionEnabled });
+        }
+    } catch (e) {
+        console.warn('[SW] Could not load detection state');
+    }
+}
+
+// Save detection state
+async function saveDetectionState() {
+    try {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put('detection-state', new Response(JSON.stringify({
+            detectionEnabled,
+            backgroundDetectionEnabled
+        })));
+    } catch (e) {}
+}
+
+// Message handler from the main app
+self.addEventListener('message', async (event) => {
+    if (!event.data) return;
+
+    if (event.data.type === 'SET_DETECTION') {
+        detectionEnabled = !!event.data.enabled;
+        await saveDetectionState();
+        
+        if (detectionEnabled && backgroundDetectionEnabled) {
+            await registerPeriodicSync();
+            await showPersistentDetectionNotification();
+        } else {
+            await hidePersistentDetectionNotification();
+        }
+        
+        console.log('[SW] Detection toggled:', detectionEnabled);
+    }
+
+    if (event.data.type === 'SET_BACKGROUND_DETECTION') {
+        backgroundDetectionEnabled = !!event.data.enabled;
+        await saveDetectionState();
+        
+        if (!backgroundDetectionEnabled) {
+            await hidePersistentDetectionNotification();
+        } else if (detectionEnabled) {
+            await showPersistentDetectionNotification();
+        }
+    }
+
+    if (event.data.type === 'GET_DETECTION_STATUS') {
+        event.ports[0].postMessage({
+            detectionEnabled,
+            backgroundDetectionEnabled
+        });
+    }
+});
+
+// Register periodic background sync
+async function registerPeriodicSync() {
+    if ('periodicSync' in self.registration) {
+        try {
+            await self.registration.periodicSync.register('detect-protected-areas', {
+                minInterval: 15 * 60 * 1000 // 15 minutes
+            });
+            console.log('[SW] Periodic sync registered');
+        } catch (err) {
+            console.warn('[SW] Periodic sync registration failed:', err);
+        }
+    }
+}
+
+// ── PERSISTENT NOTIFICATION (background running indicator) ──
+const PERSISTENT_NOTIFICATION_TAG = 'detectlab-background-detection';
+
+async function showPersistentDetectionNotification() {
+    if (!backgroundDetectionEnabled || !detectionEnabled) return;
+
+    try {
+        await self.registration.showNotification('DetectLab — Detection Active', {
+            body: 'Background detection is running. You will be notified when entering protected areas.',
+            icon: 'images/pwa-icon-192.png',
+            badge: 'images/pwa-icon-192.png',
+            tag: PERSISTENT_NOTIFICATION_TAG,
+            silent: true,
+            requireInteraction: false,
+            data: { type: 'persistent-detection' }
+        });
+        console.log('[SW] Persistent detection notification shown');
+    } catch (err) {
+        console.warn('[SW] Could not show persistent notification:', err);
+    }
+}
+
+async function hidePersistentDetectionNotification() {
+    const notifications = await self.registration.getNotifications({ tag: PERSISTENT_NOTIFICATION_TAG });
+    notifications.forEach(n => n.close());
+}
+
+// ── PERIODIC SYNC HANDLER ──
+self.addEventListener('periodicsync', async (event) => {
+    if (event.tag === 'detect-protected-areas') {
+        if (!detectionEnabled || !backgroundDetectionEnabled) return;
+        console.log('[SW] Running background protected-area check');
+        await performBackgroundCheck();
+    }
+});
+
+// Core background check logic
+async function performBackgroundCheck() {
+    if (!detectionEnabled || !backgroundDetectionEnabled) return;
+
+    try {
+        // Get current position
+        const position = await new Promise((resolve, reject) => {
+            // We can't use geolocation directly in SW in all browsers.
+            // Use the last known position sent from the main thread if available.
+            if (lastKnownPosition) {
+                resolve({ coords: lastKnownPosition });
+            } else {
+                reject(new Error('No position available'));
+            }
+        });
+
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+
+        const sites = await getProtectedSites();
+        const RADIUS = 600; // meters
+
+        let enteredSite = null;
+        for (const site of sites) {
+            const dist = getDistanceMeters(userLat, userLng, site.lat, site.lng);
+            if (dist <= RADIUS) {
+                enteredSite = site;
+                break;
+            }
+        }
+
+        if (enteredSite) {
+            await showProtectedAreaAlert(enteredSite);
+        }
+    } catch (err) {
+        console.warn('[SW] Background check error:', err.message);
+    }
+}
+
+function getDistanceMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function getProtectedSites() {
+    const cache = await caches.open(CACHE_NAME);
+    let response = await cache.match(PROTECTED_SITES_CACHE_KEY);
+    
+    if (!response) {
+        try {
+            const fresh = await fetch(PROTECTED_SITES_URL);
+            if (fresh.ok) {
+                const data = await fresh.json();
+                await cache.put(PROTECTED_SITES_CACHE_KEY, new Response(JSON.stringify(data)));
+                return data;
+            }
+        } catch (e) {}
+        return [];
+    }
+    
+    return response.json();
+}
+
+async function showProtectedAreaAlert(site) {
+    const title = '⚠️ ALERTĂ — Zonă protejată';
+    const body = `Ați intrat în raza de protecție a sitului: ${site.name || 'Sit arheologic'}\nActivitate interzisă prin lege.`;
+
+    await self.registration.showNotification(title, {
+        body: body,
+        icon: 'images/pwa-icon-192.png',
+        badge: 'images/pwa-icon-192.png',
+        tag: 'protected-area-alert',
+        requireInteraction: true,
+        vibrate: [200, 100, 200],
+        data: { siteId: site.id, lat: site.lat, lng: site.lng, type: 'alert' }
+    });
+}
+
+// On activate, restore state and show persistent notification if needed
+self.addEventListener('activate', async () => {
+    await loadDetectionState();
+    if (detectionEnabled && backgroundDetectionEnabled) {
+        await showPersistentDetectionNotification();
+    }
+});
+
+// Initial load
+loadDetectionState();

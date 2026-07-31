@@ -876,6 +876,13 @@
                         newWrap.style.cssText = 'border:none!important;box-shadow:none!important;background:none!important;';
                         newWrap.appendChild(coordBtn);
                         gap.parentNode.insertBefore(newWrap, gap.nextSibling);
+
+                        // Add footstep button right after coord button
+                        var trackWrap = document.createElement('div');
+                        trackWrap.className = 'leaflet-control leaflet-bar';
+                        trackWrap.style.cssText = 'border:none!important;box-shadow:none!important;background:none!important;';
+                        trackWrap.appendChild(trackBtn);
+                        gap.parentNode.insertBefore(trackWrap, newWrap.nextSibling);
                     } else {
                         // Fallback: append directly to top-left
                         var topLeft = document.querySelector('#detectlab-map .leaflet-top.leaflet-left');
@@ -940,6 +947,118 @@
                         .setContent(popupContent)
                         .openOn(map);
                 }
+
+                // ── TRACK RECORDING LOGIC ──
+                (function () {
+                    var isTracking = false;
+                    var trackPoints = [];
+                    var trackPolyline = null;
+                    var trackWatchId = null;
+                    var trackStartTime = null;
+
+                    function startTrackingPath() {
+                        if (isTracking) return;
+                        isTracking = true;
+                        trackPoints = [];
+                        trackStartTime = Date.now();
+
+                        if (trackPolyline) map.removeLayer(trackPolyline);
+                        trackPolyline = null;
+
+                        trackBtn.classList.add('active');
+                        trackBtn.title = 'Oprește înregistrarea traseului';
+
+                        if (!navigator.geolocation) {
+                            alert('Geolocation not supported');
+                            stopTrackingPath();
+                            return;
+                        }
+
+                        trackWatchId = navigator.geolocation.watchPosition(
+                            function (pos) {
+                                var lat = pos.coords.latitude;
+                                var lng = pos.coords.longitude;
+                                trackPoints.push([lat, lng]);
+
+                                if (trackPolyline) {
+                                    trackPolyline.setLatLngs(trackPoints);
+                                } else {
+                                    trackPolyline = L.polyline(trackPoints, {
+                                        color: '#E8772A',
+                                        weight: 3,
+                                        opacity: 0.85
+                                    }).addTo(map);
+                                }
+
+                                // Auto-stop after 10 hours
+                                if (Date.now() - trackStartTime > 10 * 60 * 60 * 1000) {
+                                    stopTrackingPath(true);
+                                }
+                            },
+                            function (err) {
+                                console.warn('Track error:', err);
+                            },
+                            { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+                        );
+                    }
+
+                    function stopTrackingPath(auto = false) {
+                        if (!isTracking) return;
+                        isTracking = false;
+
+                        if (trackWatchId !== null) {
+                            navigator.geolocation.clearWatch(trackWatchId);
+                            trackWatchId = null;
+                        }
+
+                        trackBtn.classList.remove('active');
+                        trackBtn.title = 'Înregistrează traseu';
+
+                        if (trackPoints.length < 2) {
+                            if (trackPolyline) map.removeLayer(trackPolyline);
+                            trackPolyline = null;
+                            trackPoints = [];
+                            return;
+                        }
+
+                        // Save to Supabase
+                        saveTrackToSupabase(trackPoints, auto);
+                    }
+
+                    async function saveTrackToSupabase(points, autoStopped) {
+                        try {
+                            if (!window.supabaseClient) return;
+
+                            const userRes = await window.supabaseClient.auth.getUser();
+                            if (!userRes.data || !userRes.data.user) return;
+
+                            const payload = {
+                                path: points,
+                                started_at: new Date(trackStartTime).toISOString(),
+                                ended_at: new Date().toISOString(),
+                                auto_stopped: autoStopped
+                            };
+
+                            await window.supabaseClient.from('user_tracks').insert(payload);
+                            console.log('[Track] Path saved to Supabase');
+                        } catch (e) {
+                            console.error('[Track] Failed to save path:', e);
+                        }
+                    }
+
+                    // Click handler
+                    L.DomEvent.on(trackBtn, 'click', function (e) {
+                        L.DomEvent.stopPropagation(e);
+                        if (isTracking) {
+                            stopTrackingPath();
+                        } else {
+                            startTrackingPath();
+                        }
+                    });
+
+                    // Expose for debugging
+                    window._trackPath = { start: startTrackingPath, stop: stopTrackingPath };
+                })();
 
                 function createCoordPopupContent(lat, lng) {
                     var content = document.createElement('div');
@@ -1098,6 +1217,112 @@
                     return marker;
                 }
 
+                // ── SAVED PATHS LAYER ──
+                var savedPathsLayer = L.layerGroup();
+                var savedPathsVisible = false;
+                var savedPathsRequested = false;
+
+                function createSavedPathPolyline(points) {
+                    if (!points || points.length < 2) return null;
+                    return L.polyline(points, {
+                        color: '#E8772A',
+                        weight: 3,
+                        opacity: 0.75
+                    });
+                }
+
+                // ── BOTTOM-LEFT SWITCHES (Pins + Paths) ──
+                var savedSwitchesContainer = null;
+
+                function showSavedSwitches() {
+                    if (savedSwitchesContainer) return;
+
+                    savedSwitchesContainer = document.createElement('div');
+                    savedSwitchesContainer.id = 'saved-switches';
+                    savedSwitchesContainer.style.cssText = `
+                        position: absolute; bottom: 60px; left: 12px; z-index: 1200;
+                        background: rgba(6,14,30,0.92); border: 1px solid rgba(184,216,240,0.2);
+                        border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;
+                        font-size: 0.75rem; color: #B8D8F0;
+                    `;
+
+                    // Pins switch
+                    var pinsRow = document.createElement('label');
+                    pinsRow.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
+                    pinsRow.innerHTML = `
+                        <input type="checkbox" id="switchSavedPins" ${isSavedLocationsVisible ? 'checked' : ''}>
+                        <span>Memorised pins</span>
+                    `;
+                    pinsRow.querySelector('input').onchange = function () {
+                        if (this.checked) {
+                            if (!savedLocationsRequested) window.toggleSavedCoordinates();
+                        } else {
+                            if (savedLocationsRequested) window.toggleSavedCoordinates();
+                        }
+                    };
+
+                    // Paths switch
+                    var pathsRow = document.createElement('label');
+                    pathsRow.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
+                    pathsRow.innerHTML = `
+                        <input type="checkbox" id="switchSavedPaths" ${savedPathsVisible ? 'checked' : ''}>
+                        <span>Memorised paths</span>
+                    `;
+                    pathsRow.querySelector('input').onchange = async function () {
+                        if (this.checked) {
+                            await loadAndShowSavedPaths();
+                        } else {
+                            savedPathsVisible = false;
+                            savedPathsLayer.clearLayers();
+                            if (map.hasLayer(savedPathsLayer)) map.removeLayer(savedPathsLayer);
+                        }
+                    };
+
+                    savedSwitchesContainer.appendChild(pinsRow);
+                    savedSwitchesContainer.appendChild(pathsRow);
+                    document.getElementById('detectlab-map').appendChild(savedSwitchesContainer);
+                }
+
+                function removeSavedSwitches() {
+                    if (savedSwitchesContainer) {
+                        savedSwitchesContainer.remove();
+                        savedSwitchesContainer = null;
+                    }
+                }
+
+                async function loadAndShowSavedPaths() {
+                    if (savedPathsRequested) return;
+                    savedPathsRequested = true;
+
+                    try {
+                        if (!window.supabaseClient) return;
+                        const userRes = await window.supabaseClient.auth.getUser();
+                        if (!userRes.data || !userRes.data.user) return;
+
+                        const { data, error } = await window.supabaseClient
+                            .from('user_tracks')
+                            .select('id, path, started_at')
+                            .order('started_at', { ascending: false })
+                            .limit(20);
+
+                        if (error || !data) return;
+
+                        savedPathsLayer.clearLayers();
+                        data.forEach(row => {
+                            if (row.path && row.path.length > 1) {
+                                const poly = createSavedPathPolyline(row.path);
+                                if (poly) savedPathsLayer.addLayer(poly);
+                            }
+                        });
+
+                        savedPathsLayer.addTo(map);
+                        savedPathsVisible = true;
+                    } catch (e) {
+                        console.error('Failed to load saved paths:', e);
+                    }
+                }
+
+                // ── TOGGLE SAVED LOCATIONS + PATHS ──
                 window.toggleSavedCoordinates = async function () {
                     // A second click always deactivates immediately, including
                     // while a previous request is still in flight.
@@ -1106,7 +1331,14 @@
                         isSavedLocationsVisible = false;
                         savedLocationsLayer.clearLayers();
                         if (map.hasLayer(savedLocationsLayer)) map.removeLayer(savedLocationsLayer);
+
+                        savedPathsRequested = false;
+                        savedPathsVisible = false;
+                        savedPathsLayer.clearLayers();
+                        if (map.hasLayer(savedPathsLayer)) map.removeLayer(savedPathsLayer);
+
                         setControlState(false);
+                        removeSavedSwitches();
                         return;
                     }
                     if (loadingSavedLocations) return;
@@ -1149,6 +1381,12 @@
                         });
                         savedLocationsLayer.addTo(map);
                         isSavedLocationsVisible = true;
+
+                        // Also load paths
+                        await loadAndShowSavedPaths();
+
+                        // Show the two switches
+                        showSavedSwitches();
                     } catch (err) {
                         console.error('Could not load saved locations:', err);
                         savedLocationsRequested = false;
@@ -3735,6 +3973,17 @@
             window.toggleDetection = function (on) {
                 _det.active = on;
                 document.getElementById('detectWrap').classList.toggle('active', on);
+
+                // ── Notify Service Worker + store state ──
+                try {
+                    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                        navigator.serviceWorker.controller.postMessage({
+                            type: 'SET_DETECTION',
+                            enabled: on
+                        });
+                    }
+                    localStorage.setItem('detection_enabled', on ? 'true' : 'false');
+                } catch (e) {}
 
                 if (on) {
                     if (!navigator.geolocation) {
