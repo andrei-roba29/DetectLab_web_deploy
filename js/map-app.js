@@ -2429,7 +2429,7 @@
                 roads: {
                     label: 'Roads', color: '#CC2222', weight: 2.0, enabled: false,
                     type: 'geojson',
-                    url: _AWMC + 'roads/roads.geojson'
+                    url: 'https://raw.githubusercontent.com/andrei-roba29/geo_data/d81cd21/Cultural-Data/roads/roman_routes_under25mb.geojson'
                 },
                 // ── POINTS & LABELS ──
                 urban_areas: {
