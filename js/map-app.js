@@ -1226,9 +1226,17 @@
             // saved pin from the map.
             (function () {
                 var savedLocationsLayer = L.layerGroup();
-                var isSavedLocationsVisible = false;
-                var savedLocationsRequested = false;
-                var loadingSavedLocations = false;
+                var savedPathsLayer = L.layerGroup();
+
+                // Master button state (memory-card button). Pins and paths are
+                // independent sublayers controlled by the checkboxes panel.
+                var savedPanelActive = false;
+                var savedPinsVisible = false;
+                var savedPinsLoading = false;
+                var savedPathsVisible = false;
+                var savedPathsLoading = false;
+                var savedSwitchesContainer = null;
+                var savedSwitchesStatus = null;
 
                 function setControlState(active) {
                     ['savedLocationsBtn', 'pwaSavedLocationsBtn'].forEach(function (id) {
@@ -1240,9 +1248,69 @@
                     });
                 }
 
+                function setSavedStatus(text, type) {
+                    if (!savedSwitchesStatus) return;
+                    savedSwitchesStatus.textContent = text || '';
+                    savedSwitchesStatus.style.display = text ? 'block' : 'none';
+                    savedSwitchesStatus.style.color = type === 'error' ? '#FFB09F' : 'rgba(184,216,240,0.72)';
+                }
+
+                function updateSavedSwitches() {
+                    var pinsInput = document.getElementById('switchSavedPins');
+                    if (pinsInput) {
+                        pinsInput.checked = !!savedPinsVisible;
+                        pinsInput.disabled = !!savedPinsLoading;
+                    }
+                    var pathsInput = document.getElementById('switchSavedPaths');
+                    if (pathsInput) {
+                        pathsInput.checked = !!savedPathsVisible;
+                        pathsInput.disabled = !!savedPathsLoading;
+                    }
+                }
+
+                async function getSavedLocationsUser() {
+                    if (!window.supabaseClient || !window.supabaseClient.auth) return null;
+
+                    // Let the central auth bootstrap finish when possible. This
+                    // prevents a click during startup from looking like a signed
+                    // out state and silently doing nothing.
+                    if (window._authReadyPromise) {
+                        try {
+                            await Promise.race([
+                                window._authReadyPromise,
+                                new Promise(function (resolve) { setTimeout(resolve, 1800); })
+                            ]);
+                        } catch (e) {}
+                    }
+
+                    // Prefer the cached local session for responsiveness in PWA
+                    // mode; fall back to getUser() for projects/browsers where
+                    // getSession() is not enough.
+                    try {
+                        var sessionRes = await window.supabaseClient.auth.getSession();
+                        var session = sessionRes && sessionRes.data ? sessionRes.data.session : null;
+                        if (session && session.user) return session.user;
+                    } catch (e) {}
+
+                    try {
+                        var userRes = await Promise.race([
+                            window.supabaseClient.auth.getUser(),
+                            new Promise(function (_, reject) {
+                                setTimeout(function () { reject(new Error('Auth timeout')); }, 6000);
+                            })
+                        ]);
+                        if (userRes && userRes.data && userRes.data.user) return userRes.data.user;
+                    } catch (e) {
+                        console.warn('Could not verify saved-locations session:', e);
+                    }
+                    return null;
+                }
+
                 function makeSavedLocationMarker(row) {
-                    var lat = Number(row.latitude);
-                    var lng = Number(row.longitude);
+                    var rawLat = row.latitude !== undefined ? row.latitude : row.lat;
+                    var rawLng = row.longitude !== undefined ? row.longitude : row.lng;
+                    var lat = Number(rawLat);
+                    var lng = Number(rawLng);
                     if (!isFinite(lat) || !isFinite(lng)) return null;
 
                     var title = row.title ? escapeHtml(row.title) : 'Punct salvat';
@@ -1287,6 +1355,7 @@
                         deleteBtn.textContent = 'Se șterge…';
                         try {
                             if (!window.supabaseClient) throw new Error('Supabase indisponibil');
+                            if (!row.id) throw new Error('Acest pin nu are ID pentru ștergere.');
                             var delRes = await window.supabaseClient
                                 .from('saved_coordinates')
                                 .delete()
@@ -1305,57 +1374,69 @@
                     return marker;
                 }
 
-                // ── SAVED PATHS LAYER ──
-                var savedPathsLayer = L.layerGroup();
-                var savedPathsVisible = false;
-                var savedPathsRequested = false;
+                function normalizePathPoints(points) {
+                    if (typeof points === 'string') {
+                        try { points = JSON.parse(points); } catch (e) { return []; }
+                    }
+                    if (!Array.isArray(points)) return [];
+                    var out = [];
+                    points.forEach(function (pt) {
+                        if (Array.isArray(pt) && pt.length >= 2) {
+                            out.push([Number(pt[0]), Number(pt[1])]);
+                        } else if (pt && typeof pt === 'object') {
+                            var lat = pt.lat !== undefined ? pt.lat : (pt.latitude !== undefined ? pt.latitude : pt.y);
+                            var lng = pt.lng !== undefined ? pt.lng : (pt.longitude !== undefined ? pt.longitude : pt.x);
+                            out.push([Number(lat), Number(lng)]);
+                        }
+                    });
+                    return out.filter(function (pt) {
+                        return isFinite(pt[0]) && isFinite(pt[1]);
+                    });
+                }
 
                 function createSavedPathPolyline(points) {
-                    if (!points || points.length < 2) return null;
-                    return L.polyline(points, {
+                    var normalized = normalizePathPoints(points);
+                    if (normalized.length < 2) return null;
+                    return L.polyline(normalized, {
                         color: '#E8772A',
                         weight: 3,
                         opacity: 0.75
                     });
                 }
 
-                // ── BOTTOM-LEFT SWITCHES (Pins + Paths) ──
-                var savedSwitchesContainer = null;
-
                 function showSavedSwitches() {
-                    if (savedSwitchesContainer) return;
+                    if (savedSwitchesContainer) {
+                        updateSavedSwitches();
+                        return;
+                    }
 
                     savedSwitchesContainer = document.createElement('div');
                     savedSwitchesContainer.id = 'saved-switches';
-                    savedSwitchesContainer.style.cssText = `
-                        position: absolute; bottom: 60px; left: 12px; z-index: 1200;
-                        background: rgba(6,14,30,0.92); border: 1px solid rgba(184,216,240,0.2);
-                        border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;
-                        font-size: 0.75rem; color: #B8D8F0;
-                    `;
+                    savedSwitchesContainer.style.cssText =
+                        'position:absolute;bottom:60px;left:12px;z-index:1200;' +
+                        'background:rgba(6,14,30,0.92);border:1px solid rgba(184,216,240,0.2);' +
+                        'border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:8px;' +
+                        'font-size:0.75rem;color:#B8D8F0;box-shadow:0 8px 24px rgba(0,0,0,0.35);';
 
-                    // Pins switch
                     var pinsRow = document.createElement('label');
                     pinsRow.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
-                    pinsRow.innerHTML = `
-                        <input type="checkbox" id="switchSavedPins" ${isSavedLocationsVisible ? 'checked' : ''}>
-                        <span>Memorised pins</span>
-                    `;
-                    pinsRow.querySelector('input').onchange = function () {
+                    pinsRow.innerHTML = '<input type="checkbox" id="switchSavedPins">' +
+                        '<span>Memorised pins</span>';
+                    pinsRow.querySelector('input').onchange = async function () {
                         if (this.checked) {
-                            if (!savedLocationsRequested) window.toggleSavedCoordinates();
+                            await loadAndShowSavedPins();
                         } else {
-                            if (savedLocationsRequested) window.toggleSavedCoordinates();
+                            savedPinsVisible = false;
+                            savedLocationsLayer.clearLayers();
+                            if (map.hasLayer(savedLocationsLayer)) map.removeLayer(savedLocationsLayer);
+                            updateSavedSwitches();
                         }
                     };
 
-                    // Paths switch
                     var pathsRow = document.createElement('label');
                     pathsRow.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
-                    pathsRow.innerHTML = `
-                        <input type="checkbox" id="switchSavedPaths" ${savedPathsVisible ? 'checked' : ''}>
-                        <span>Memorised paths</span>
-                    `;
+                    pathsRow.innerHTML = '<input type="checkbox" id="switchSavedPaths">' +
+                        '<span>Memorised paths</span>';
                     pathsRow.querySelector('input').onchange = async function () {
                         if (this.checked) {
                             await loadAndShowSavedPaths();
@@ -1363,104 +1444,57 @@
                             savedPathsVisible = false;
                             savedPathsLayer.clearLayers();
                             if (map.hasLayer(savedPathsLayer)) map.removeLayer(savedPathsLayer);
+                            updateSavedSwitches();
                         }
                     };
 
+                    savedSwitchesStatus = document.createElement('div');
+                    savedSwitchesStatus.style.cssText = 'display:none;font-size:0.68rem;line-height:1.25;max-width:180px;';
+
                     savedSwitchesContainer.appendChild(pinsRow);
                     savedSwitchesContainer.appendChild(pathsRow);
-                    document.getElementById('detectlab-map').appendChild(savedSwitchesContainer);
+                    savedSwitchesContainer.appendChild(savedSwitchesStatus);
+
+                    var mapEl = document.getElementById('detectlab-map');
+                    if (mapEl) mapEl.appendChild(savedSwitchesContainer);
+                    updateSavedSwitches();
                 }
 
                 function removeSavedSwitches() {
                     if (savedSwitchesContainer) {
                         savedSwitchesContainer.remove();
                         savedSwitchesContainer = null;
+                        savedSwitchesStatus = null;
                     }
                 }
 
-                async function loadAndShowSavedPaths() {
-                    if (savedPathsRequested) return;
-                    savedPathsRequested = true;
+                async function loadAndShowSavedPins() {
+                    if (savedPinsLoading) return;
+                    savedPinsLoading = true;
+                    setSavedStatus('Loading saved pins…');
+                    updateSavedSwitches();
 
                     try {
-                        if (!window.supabaseClient) return;
-                        const userRes = await window.supabaseClient.auth.getUser();
-                        if (!userRes.data || !userRes.data.user) return;
+                        var user = await getSavedLocationsUser();
+                        if (!user) {
+                            if (typeof window.openAuth === 'function') window.openAuth('login');
+                            throw new Error('Log in to view saved pins.');
+                        }
 
-                        const { data, error } = await window.supabaseClient
-                            .from('user_tracks')
-                            .select('id, path, started_at')
-                            .order('started_at', { ascending: false })
-                            .limit(20);
-
-                        if (error || !data) return;
-
-                        savedPathsLayer.clearLayers();
-                        data.forEach(row => {
-                            if (row.path && row.path.length > 1) {
-                                const poly = createSavedPathPolyline(row.path);
-                                if (poly) savedPathsLayer.addLayer(poly);
-                            }
-                        });
-
-                        savedPathsLayer.addTo(map);
-                        savedPathsVisible = true;
-                    } catch (e) {
-                        console.error('Failed to load saved paths:', e);
-                    }
-                }
-
-                // ── TOGGLE SAVED LOCATIONS + PATHS ──
-                window.toggleSavedCoordinates = async function () {
-                    // A second click always deactivates immediately, including
-                    // while a previous request is still in flight.
-                    if (savedLocationsRequested) {
-                        savedLocationsRequested = false;
-                        isSavedLocationsVisible = false;
-                        savedLocationsLayer.clearLayers();
-                        if (map.hasLayer(savedLocationsLayer)) map.removeLayer(savedLocationsLayer);
-
-                        savedPathsRequested = false;
-                        savedPathsVisible = false;
-                        savedPathsLayer.clearLayers();
-                        if (map.hasLayer(savedPathsLayer)) map.removeLayer(savedPathsLayer);
-
-                        setControlState(false);
-                        removeSavedSwitches();
-                        return;
-                    }
-                    if (loadingSavedLocations) return;
-
-                    if (!window.supabaseClient || !window.supabaseClient.auth) {
-                        console.error('Supabase is unavailable; saved locations cannot be loaded.');
-                        return;
-                    }
-
-                    var userResult;
-                    try {
-                        userResult = await window.supabaseClient.auth.getUser();
-                    } catch (err) {
-                        console.error('Could not verify the saved-locations session:', err);
-                        return;
-                    }
-                    if (userResult.error || !userResult.data || !userResult.data.user) {
-                        if (typeof window.openAuth === 'function') window.openAuth('login');
-                        return;
-                    }
-
-                    savedLocationsRequested = true;
-                    loadingSavedLocations = true;
-                    setControlState(true);
-                    try {
                         var result = await window.supabaseClient
                             .from('saved_coordinates')
-                            .select('id, latitude, longitude, title, description, created_at')
+                            .select('*')
                             .order('created_at', { ascending: false });
+                        if (result.error) {
+                            // Some older/manual tables may not have created_at;
+                            // still show pins instead of failing the whole panel.
+                            result = await window.supabaseClient
+                                .from('saved_coordinates')
+                                .select('*');
+                        }
                         if (result.error) throw result.error;
 
-                        // The user may have switched the control off while the
-                        // query was running; never re-add pins in that case.
-                        if (!savedLocationsRequested) return;
+                        if (!savedPanelActive) return;
 
                         savedLocationsLayer.clearLayers();
                         (result.data || []).forEach(function (row) {
@@ -1468,22 +1502,100 @@
                             if (marker) savedLocationsLayer.addLayer(marker);
                         });
                         savedLocationsLayer.addTo(map);
-                        isSavedLocationsVisible = true;
-
-                        // Also load paths
-                        await loadAndShowSavedPaths();
-
-                        // Show the two switches
-                        showSavedSwitches();
+                        savedPinsVisible = true;
+                        setSavedStatus((result.data && result.data.length) ? '' : 'No saved pins yet.');
                     } catch (err) {
                         console.error('Could not load saved locations:', err);
-                        savedLocationsRequested = false;
+                        savedPinsVisible = false;
                         savedLocationsLayer.clearLayers();
-                        setControlState(false);
+                        if (map.hasLayer(savedLocationsLayer)) map.removeLayer(savedLocationsLayer);
+                        setSavedStatus((err && err.message) ? err.message : 'Could not load saved pins.', 'error');
                     } finally {
-                        loadingSavedLocations = false;
-                        setControlState(savedLocationsRequested && isSavedLocationsVisible);
+                        savedPinsLoading = false;
+                        updateSavedSwitches();
                     }
+                }
+
+                async function loadAndShowSavedPaths() {
+                    if (savedPathsLoading) return;
+                    savedPathsLoading = true;
+                    setSavedStatus('Loading saved paths…');
+                    updateSavedSwitches();
+
+                    try {
+                        var user = await getSavedLocationsUser();
+                        if (!user) {
+                            if (typeof window.openAuth === 'function') window.openAuth('login');
+                            throw new Error('Log in to view saved paths.');
+                        }
+
+                        var result = await window.supabaseClient
+                            .from('user_tracks')
+                            .select('*')
+                            .order('started_at', { ascending: false })
+                            .limit(20);
+                        if (result.error) {
+                            // Keep compatibility with older/manual tables that
+                            // do not expose started_at yet.
+                            result = await window.supabaseClient
+                                .from('user_tracks')
+                                .select('*')
+                                .limit(20);
+                        }
+                        if (result.error) throw result.error;
+
+                        if (!savedPanelActive) return;
+
+                        savedPathsLayer.clearLayers();
+                        (result.data || []).forEach(function (row) {
+                            var poly = createSavedPathPolyline(row.path);
+                            if (poly) savedPathsLayer.addLayer(poly);
+                        });
+                        savedPathsLayer.addTo(map);
+                        savedPathsVisible = true;
+                        setSavedStatus((result.data && result.data.length) ? '' : 'No saved paths yet.');
+                    } catch (err) {
+                        console.error('Failed to load saved paths:', err);
+                        savedPathsVisible = false;
+                        savedPathsLayer.clearLayers();
+                        if (map.hasLayer(savedPathsLayer)) map.removeLayer(savedPathsLayer);
+                        setSavedStatus((err && err.message) ? err.message : 'Could not load saved paths.', 'error');
+                    } finally {
+                        savedPathsLoading = false;
+                        updateSavedSwitches();
+                    }
+                }
+
+                // ── TOGGLE SAVED LOCATIONS + PATHS ──
+                window.toggleSavedCoordinates = async function () {
+                    if (savedPanelActive) {
+                        savedPanelActive = false;
+                        savedPinsVisible = false;
+                        savedPathsVisible = false;
+                        savedLocationsLayer.clearLayers();
+                        savedPathsLayer.clearLayers();
+                        if (map.hasLayer(savedLocationsLayer)) map.removeLayer(savedLocationsLayer);
+                        if (map.hasLayer(savedPathsLayer)) map.removeLayer(savedPathsLayer);
+                        setControlState(false);
+                        removeSavedSwitches();
+                        return;
+                    }
+
+                    if (!window.supabaseClient || !window.supabaseClient.auth) {
+                        console.error('Supabase is unavailable; saved locations cannot be loaded.');
+                        return;
+                    }
+
+                    savedPanelActive = true;
+                    setControlState(true);
+                    showSavedSwitches();
+
+                    // Default action of the memory-card button: show saved pins.
+                    // The paths checkbox stays available even if pins fail to load.
+                    await loadAndShowSavedPins();
+                    if (!savedPanelActive) return;
+                    setControlState(true);
+                    updateSavedSwitches();
                 };
             })();
 
@@ -7467,7 +7579,12 @@
                 },
 
                 satellite60s: {
-                    bounds: [[43.0688, 16.8750], [45.0890, 19.6875]],
+                    // CORONA pass 1106-1042 is not a single sheet. The active
+                    // layer below combines the pass mosaic with the neighbouring
+                    // aft/fore frames (e.g. 1106-1042df018), so the coverage
+                    // rectangle must cover the whole visible swath, not just the
+                    // original da025 tile.
+                    bounds: [[43.0688, 16.8750], [46.1500, 21.1000]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer'
                 }
@@ -7842,25 +7959,44 @@
             })();
 
             // ── SATELIT 60s (WMS Corona via CAST UARK GeoServer) ──
-            // Strat premium nou. Folosește WMS cu tiling logic bazat pe BBOX.
+            // The CAST CORONA service publishes each film/pass as many separate
+            // WMS layers. The old implementation pointed at only one frame
+            // (1106-1042da025), so users only saw one sheet. Keep the requested
+            // example frame (1106-1042df018) covered by using the full Fore pass
+            // mosaic plus the neighbouring Aft frames that exist for this area.
             (function () {
                 map.createPane("pane_sat60");
                 map.getPane("pane_sat60").style.zIndex = 648;
                 map.getPane("pane_sat60").style.pointerEvents = "none";
 
-                window._sat60MapLayer = L.tileLayer.wms(
-                    "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms",
-                    {
-                        layers: "corona:1106-1042da025",
+                var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
+                var SAT60_INITIAL_OPACITY = 0.85;
+                var SAT60_CORONA_LAYERS = [
+                    // Full forward-camera pass. This includes the df sheets such
+                    // as corona:1106-1042df017 and corona:1106-1042df018.
+                    "corona:1106-1042Fore",
+
+                    // Aft-camera sheets exposed individually by CAST for the
+                    // adjacent south-western part of the same swath.
+                    "corona:1106-1042da023",
+                    "corona:1106-1042da024",
+                    "corona:1106-1042da025"
+                ];
+
+                window._sat60FrameLayers = SAT60_CORONA_LAYERS.map(function (layerName) {
+                    return L.tileLayer.wms(SAT60_WMS_URL, {
+                        layers: layerName,
                         format: "image/png",
                         transparent: true,
                         version: "1.1.1",
                         attribution: "© Corona 1960s (CAST UARK)",
                         tileSize: 256,
-                        opacity: 0.85,
+                        opacity: SAT60_INITIAL_OPACITY,
                         pane: "pane_sat60"
-                    }
-                );
+                    });
+                });
+
+                window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
 
                 window.toggleSatellite60sMap = function (on) {
                     if (on) {
@@ -7878,7 +8014,10 @@
 
                 window.setSatellite60sMapOpacity = function (val) {
                     document.getElementById("satellite60sMapPct").textContent = val + "%";
-                    window._sat60MapLayer.setOpacity(val / 100);
+                    var opacity = val / 100;
+                    window._sat60FrameLayers.forEach(function (layer) {
+                        if (layer.setOpacity) layer.setOpacity(opacity);
+                    });
                 };
             })();
 
