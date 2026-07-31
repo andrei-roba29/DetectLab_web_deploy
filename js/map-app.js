@@ -7226,6 +7226,47 @@
                 };
             })();
 
+            // ── SATELIT 60s (WMS Corona via CAST UARK GeoServer) ──
+            // Strat premium nou. Folosește WMS cu tiling logic bazat pe BBOX.
+            (function () {
+                map.createPane("pane_sat60");
+                map.getPane("pane_sat60").style.zIndex = 648;
+                map.getPane("pane_sat60").style.pointerEvents = "none";
+
+                window._sat60MapLayer = L.tileLayer.wms(
+                    "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms",
+                    {
+                        layers: "corona:1106-1042da025",
+                        format: "image/png",
+                        transparent: true,
+                        version: "1.1.1",
+                        attribution: "© Corona 1960s (CAST UARK)",
+                        tileSize: 256,
+                        opacity: 0.85,
+                        pane: "pane_sat60"
+                    }
+                );
+
+                window.toggleSatellite60sMap = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById("histPremiumToggle");
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._sat60MapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._sat60MapLayer) && map.removeLayer(window._sat60MapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setSatellite60sMapOpacity = function (val) {
+                    document.getElementById("satellite60sMapPct").textContent = val + "%";
+                    window._sat60MapLayer.setOpacity(val / 100);
+                };
+            })();
+
             // ── HARTI ISTORICE PREMIUM — PARENT GROUP FUNCTIONS ──
             var _histPremiumSubExpanded = false;
             window.toggleHistPremiumSubLayers = function() {
@@ -7256,7 +7297,8 @@
                 { id: 'moldovaWwiiMapToggle', fnName: 'toggleMoldovaWwiiMap' },
                 { id: 'polishTactical1933MapToggle', fnName: 'togglePolishTactical1933Map' },
                 { id: 'ww1MapToggle', fnName: 'toggleWw1Map' },
-                { id: 'ww2MapToggle', fnName: 'toggleWw2Map' }
+                { id: 'ww2MapToggle', fnName: 'toggleWw2Map' },
+                { id: 'satellite60sToggle', fnName: 'toggleSatellite60sMap' }
             ];
 
             window.toggleHistPremiumLayer = function (on) {
