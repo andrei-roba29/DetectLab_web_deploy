@@ -4090,7 +4090,7 @@
                     var u=nearbyUser();
                     if(!u || !window.supabaseClient) return;
                     var md=u.user_metadata||{};
-                    var name=md.full_name||md.name||u.email||'Detectorist';
+                    var name=u.name||md.full_name||md.name||u.email||'Detectorist';
                     var payload = {
                         user_id:u.id,
                         full_name:name,
@@ -8058,9 +8058,11 @@
                 var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
                 var SAT60_INITIAL_OPACITY = 0.85;
                 var SAT60_CORONA_LAYERS = [
-                    // Full forward-camera pass. This includes the df sheets such
-                    // as corona:1106-1042df017 and corona:1106-1042df018.
+                    // Mosaics covering wide swaths of both passes
                     "corona:1106-1042Fore",
+                    "corona:1106-1042Aft",
+                    "corona:1104-2155Fore",
+                    "corona:1104-2155Aft",
 
                     // Aft-camera sheets exposed individually by CAST for the
                     // adjacent south-western part of the same swath.
@@ -8068,6 +8070,22 @@
                     "corona:1106-1042da024",
                     "corona:1106-1042da025"
                 ];
+
+                // Dynamically generate individual camera frames for Romania coverage (indices 12 to 26)
+                var passes = ["1106-1042", "1104-2155"];
+                passes.forEach(function (pass) {
+                    for (var i = 12; i <= 26; i++) {
+                        var numStr = "0" + i;
+                        var dfLayer = "corona:" + pass + "df" + numStr;
+                        var daLayer = "corona:" + pass + "da" + numStr;
+                        if (SAT60_CORONA_LAYERS.indexOf(dfLayer) === -1) {
+                            SAT60_CORONA_LAYERS.push(dfLayer);
+                        }
+                        if (SAT60_CORONA_LAYERS.indexOf(daLayer) === -1) {
+                            SAT60_CORONA_LAYERS.push(daLayer);
+                        }
+                    }
+                });
 
                 window._sat60FrameLayers = SAT60_CORONA_LAYERS.map(function (layerName) {
                     return L.tileLayer.wms(SAT60_WMS_URL, {
