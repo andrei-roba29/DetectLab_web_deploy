@@ -2433,7 +2433,8 @@
                 background: #a02020;
             }
 
-        .btn-fullscreen {
+        .btn-fullscreen,
+        .btn-saved-locations {
             display: flex;
             align-items: center;
             gap: 7px;
@@ -2457,7 +2458,20 @@
                 color: #fff;
             }
 
-            .btn-fullscreen svg {
+            .btn-saved-locations:hover {
+                background: rgba(196,43,43,0.18);
+                border-color: rgba(196,43,43,0.55);
+                color: #ff8a8a;
+            }
+
+            .btn-saved-locations.is-active {
+                background: #c42b2b;
+                border-color: #e25353;
+                color: #fff;
+            }
+
+            .btn-fullscreen svg,
+            .btn-saved-locations svg {
                 flex-shrink: 0;
             }
 
@@ -2467,6 +2481,29 @@
             cursor: wait;
             pointer-events: none;
         }
+        .saved-location-marker-wrap {
+            background: transparent;
+            border: 0;
+        }
+
+        .saved-location-marker {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            color: #fff;
+            background: #c42b2b;
+            border: 2px solid #fff;
+            border-radius: 50% 50% 50% 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+            transform: rotate(-45deg);
+        }
+
+        .saved-location-marker svg {
+            transform: rotate(45deg);
+        }
+
         /* Fullscreen map state */
         .map-frame.is-fullscreen {
             position: fixed !important;

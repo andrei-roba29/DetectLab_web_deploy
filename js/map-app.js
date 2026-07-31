@@ -1048,6 +1048,119 @@
                 }
             })();
 
+            // ── SAVED LOCATIONS ─────────────────────────────────────────────
+            // This layer is intentionally separate from the one-off coordinate
+            // marker above. It is populated only while the memory-card control
+            // is active, so turning the control off immediately removes every
+            // saved pin from the map.
+            (function () {
+                var savedLocationsLayer = L.layerGroup();
+                var isSavedLocationsVisible = false;
+                var savedLocationsRequested = false;
+                var loadingSavedLocations = false;
+
+                function setControlState(active) {
+                    ['savedLocationsBtn', 'pwaSavedLocationsBtn'].forEach(function (id) {
+                        var button = document.getElementById(id);
+                        if (!button) return;
+                        button.classList.toggle('is-active', active);
+                        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+                        button.title = active ? 'Hide saved locations' : 'Show saved locations';
+                    });
+                }
+
+                function makeSavedLocationMarker(row) {
+                    var lat = Number(row.latitude);
+                    var lng = Number(row.longitude);
+                    if (!isFinite(lat) || !isFinite(lng)) return null;
+
+                    var marker = L.marker([lat, lng], {
+                        icon: L.divIcon({
+                            className: 'saved-location-marker-wrap',
+                            html: '<div class="saved-location-marker" title="Saved location">' +
+                                '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                                '<path d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z"/>' +
+                                '<circle cx="12" cy="10" r="2.3"/>' +
+                                '</svg></div>',
+                            iconSize: [28, 36],
+                            iconAnchor: [14, 34],
+                            popupAnchor: [0, -34]
+                        }),
+                        zIndexOffset: 850
+                    });
+                    var savedAt = row.created_at ? new Date(row.created_at) : null;
+                    marker.bindPopup(
+                        '<div class="map-place-popup"><strong>Saved location</strong><br>' +
+                        lat.toFixed(6) + ', ' + lng.toFixed(6) +
+                        (savedAt && !isNaN(savedAt.getTime()) ? '<br><small>' + savedAt.toLocaleString() + '</small>' : '') +
+                        '</div>'
+                    );
+                    return marker;
+                }
+
+                window.toggleSavedCoordinates = async function () {
+                    // A second click always deactivates immediately, including
+                    // while a previous request is still in flight.
+                    if (savedLocationsRequested) {
+                        savedLocationsRequested = false;
+                        isSavedLocationsVisible = false;
+                        savedLocationsLayer.clearLayers();
+                        if (map.hasLayer(savedLocationsLayer)) map.removeLayer(savedLocationsLayer);
+                        setControlState(false);
+                        return;
+                    }
+                    if (loadingSavedLocations) return;
+
+                    if (!window.supabaseClient || !window.supabaseClient.auth) {
+                        console.error('Supabase is unavailable; saved locations cannot be loaded.');
+                        return;
+                    }
+
+                    var userResult;
+                    try {
+                        userResult = await window.supabaseClient.auth.getUser();
+                    } catch (err) {
+                        console.error('Could not verify the saved-locations session:', err);
+                        return;
+                    }
+                    if (userResult.error || !userResult.data || !userResult.data.user) {
+                        if (typeof window.openAuth === 'function') window.openAuth('login');
+                        return;
+                    }
+
+                    savedLocationsRequested = true;
+                    loadingSavedLocations = true;
+                    setControlState(true);
+                    try {
+                        var result = await window.supabaseClient
+                            .from('saved_coordinates')
+                            .select('id, latitude, longitude, created_at')
+                            .order('created_at', { ascending: false });
+                        if (result.error) throw result.error;
+
+                        // The user may have switched the control off while the
+                        // query was running; never re-add pins in that case.
+                        if (!savedLocationsRequested) return;
+
+                        savedLocationsLayer.clearLayers();
+                        (result.data || []).forEach(function (row) {
+                            var marker = makeSavedLocationMarker(row);
+                            if (marker) savedLocationsLayer.addLayer(marker);
+                        });
+                        savedLocationsLayer.addTo(map);
+                        isSavedLocationsVisible = true;
+                    } catch (err) {
+                        console.error('Could not load saved locations:', err);
+                        savedLocationsRequested = false;
+                        savedLocationsLayer.clearLayers();
+                        setControlState(false);
+                    } finally {
+                        loadingSavedLocations = false;
+                        setControlState(savedLocationsRequested && isSavedLocationsVisible);
+                    }
+                };
+            })();
+
             map.createPane('pane_satellite');
             map.getPane('pane_satellite').style.zIndex = 400;
             var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
