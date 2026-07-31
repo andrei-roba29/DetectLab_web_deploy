@@ -8186,9 +8186,17 @@
                 window._sat60Ready = false;
 
                 discoverCoronaLayers(function (layerNames) {
-                    window._sat60FrameLayers = layerNames.map(function (name) {
+                    // Chunk the layers to avoid hitting URL length limits and to drastically reduce HTTP requests
+                    var chunkSize = 50;
+                    var chunks = [];
+                    for (var i = 0; i < layerNames.length; i += chunkSize) {
+                        chunks.push(layerNames.slice(i, i + chunkSize));
+                    }
+
+                    window._sat60FrameLayers = chunks.map(function (chunk) {
+                        var layersParam = chunk.join(',');
                         return L.tileLayer.wms(SAT60_WMS_URL, {
-                            layers: name,
+                            layers: layersParam,
                             format: "image/png",
                             transparent: true,
                             version: "1.1.1",
