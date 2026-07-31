@@ -2495,7 +2495,7 @@
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js"></script>
-    <script src="js/map-app.js?v=2026073106"></script>
+    <script src="js/map-app.js?v=2026073107"></script>
 
     <!-- AUTH MODAL -->
     <style>
@@ -3258,6 +3258,7 @@
         <h3 id="nearbyTitle">Vezi alți detectoriști în zonă<br><small>See other detectorists in the area</small></h3>
         <p id="nearbyStatus">Cauți detectoriști pe o rază de 10 km?<br><small>Search within a 10 km radius?</small></p>
         <div class="nearby-actions"><button onclick="searchNearbyDetectors()">Da / Yes</button><button class="secondary" onclick="closeNearbyDetectors()">Nu / No</button></div>
+        <div class="nearby-actions" style="margin-top:10px;"><button id="nearbyHomeBtn" class="secondary" style="display:none;" onclick="resetNearbyView()">Înapoi la vederea inițială<br><small>Back to the initial map view</small></button></div>
       </div>
     </div>
 
