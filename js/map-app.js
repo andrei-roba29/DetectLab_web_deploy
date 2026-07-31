@@ -662,9 +662,10 @@
                             // even if the user activates detection after live location is already on
                             _detLat = lat;
                             _detLng = lng;
-                            // Publish presence so other detectorists can see this user
+                            // Publish presence so other detectorists can see this user ONLY if we are in detecting mode.
+                            // Otherwise, setting visible to false cleans up any stale records.
                             if (typeof publishDetectorPresence === 'function') {
-                                publishDetectorPresence(lat, lng, true);
+                                publishDetectorPresence(lat, lng, _det.active);
                             }
                             if (_det.active) _detCheck(lat, lng);
                         },
@@ -4019,14 +4020,33 @@
             function nearbyDistance(a,b,c,d) { var R=6371, x=(c-a)*Math.PI/180, y=(d-b)*Math.PI/180; var q=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2; return 2*R*Math.asin(Math.sqrt(q)); }
             function nearbyUser() { return window._authUser && window._authUser(); }
             window.openNearbyDetectors = function() {
-                var m=document.getElementById('nearbyModal'); if(m)m.classList.add('show');
-                // Remember the current map view so the user can return to the initial
-                // aspect after the search zooms the map to the found pins.
-                _nearbyPrevView = { center: map.getCenter(), zoom: map.getZoom() };
-                // Broadcast our current position right away so others can see us,
-                // even if the GPS watcher hasn't fired again since we opened the panel.
-                if(_detLat !== null && typeof publishDetectorPresence === 'function') {
-                    publishDetectorPresence(_detLat, _detLng, true);
+                var m = document.getElementById('nearbyModal');
+                var hasPins = nearbyLayer && nearbyLayer.getLayers().length > 0;
+                
+                if (m && (m.classList.contains('show') || hasPins)) {
+                    // Modal is already open OR there are already pins on the map (clicking again).
+                    // We hide the modal, clear the pins, hide the home button and reset status.
+                    m.classList.remove('show');
+                    if (nearbyLayer) {
+                        nearbyLayer.clearLayers();
+                    }
+                    var homeBtn = document.getElementById('nearbyHomeBtn');
+                    if (homeBtn) homeBtn.style.display = 'none';
+                    
+                    var status = document.getElementById('nearbyStatus');
+                    if (status) {
+                        status.innerHTML = 'Cauți detectoriști pe o rază de 10 km?<br><small>Search within a 10 km radius?</small>';
+                    }
+                } else {
+                    if (m) m.classList.add('show');
+                    // Remember the current map view so the user can return to the initial
+                    // aspect after the search zooms the map to the found pins.
+                    _nearbyPrevView = { center: map.getCenter(), zoom: map.getZoom() };
+                    // Broadcast our current position right away so others can see us ONLY if we are in detecting mode,
+                    // otherwise set visible to false to clear any stale records.
+                    if(_detLat !== null && typeof publishDetectorPresence === 'function') {
+                        publishDetectorPresence(_detLat, _detLng, _det.active);
+                    }
                 }
             };
             window.closeNearbyDetectors = function() { var m=document.getElementById('nearbyModal'); if(m)m.classList.remove('show'); };
@@ -4048,8 +4068,8 @@
                 status.innerHTML='Se caută…<br><small>Searching…</small>';
                 try {
                     // Make sure OUR position is freshly published first, so the other
-                    // phone can see us even if its search runs a moment earlier.
-                    await publishDetectorPresence(_detLat, _detLng, true);
+                    // phone can see us even if its search runs a moment earlier (only if we are in detecting mode).
+                    await publishDetectorPresence(_detLat, _detLng, _det.active);
 
                     // Try to read with device_id (new schema). If the migration hasn't been
                     // applied yet, fall back to the legacy columns-only query.
@@ -4100,7 +4120,13 @@
                         // limit (maxNativeZoom 19). With only 1-2 nearby pins, an uncapped
                         // fitBounds jumps to the map max (20) and Leaflet hides every
                         // satellite tile — the "whole base map turns white" bug.
-                        if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds().pad(0.4), { maxZoom: 17 });
+                        if (layers.length) {
+                            var bounds = L.latLngBounds(layers.map(function(layer) { return layer.getLatLng(); }));
+                            if (_detLat !== null && _detLng !== null) {
+                                bounds.extend([_detLat, _detLng]);
+                            }
+                            map.fitBounds(bounds.pad(0.2), { maxZoom: 17 });
+                        }
                         var homeBtn = document.getElementById('nearbyHomeBtn');
                         if (homeBtn) homeBtn.style.display = '';
                     } else if (total > 0) {
@@ -4315,7 +4341,7 @@
             function _detOnPosition(pos) {
                 _detLat = pos.coords.latitude;
                 _detLng = pos.coords.longitude;
-                publishDetectorPresence(_detLat, _detLng, true);
+                publishDetectorPresence(_detLat, _detLng, _det.active);
                 _detCheck(_detLat, _detLng);
             }
 
@@ -4408,7 +4434,28 @@
                         _det.watchId = null;
                     }
                     document.getElementById('siteAlert').classList.remove('visible');
-                    var presenceUser = nearbyUser(); if (presenceUser && window.supabaseClient) window.supabaseClient.from('detector_presence').delete().eq('user_id', presenceUser.id);
+                    
+                    var presenceUser = nearbyUser();
+                    if (presenceUser && window.supabaseClient) {
+                        (async function() {
+                            try {
+                                var query = window.supabaseClient.from('detector_presence').delete().eq('user_id', presenceUser.id);
+                                if (typeof DETECTOR_DEVICE_ID !== 'undefined' && DETECTOR_DEVICE_ID) {
+                                    query = query.eq('device_id', DETECTOR_DEVICE_ID);
+                                }
+                                var delRes = await query;
+                                if (delRes.error && /device_id|column/i.test(delRes.error.message || '')) {
+                                    await window.supabaseClient.from('detector_presence').delete().eq('user_id', presenceUser.id);
+                                }
+                            } catch (err) {
+                                console.warn('[Presence] delete failed:', err);
+                                try {
+                                    await window.supabaseClient.from('detector_presence').delete().eq('user_id', presenceUser.id);
+                                } catch(e2){}
+                            }
+                        })();
+                    }
+                    
                     // Reset edge-trigger flags so the alert fires fresh on re-activation.
                     // Keep _detLat/_detLng — they're needed for the immediate recheck when
                     // the switch is turned back on, and harmless to retain while inactive.
