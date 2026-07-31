@@ -2,7 +2,7 @@
 <html lang="ro">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>DetectLab — Saving History Together</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#060E1E">
@@ -44,6 +44,51 @@
             overscroll-behavior: none !important;
             height: 100% !important;
             background-color: #060E1E !important;
+        }
+
+        /* Mobile/PWA zoom lock:
+           - Browser/page zoom is disabled by the viewport meta tag above.
+           - These touch-action rules prevent iOS/Android from interpreting
+             pinches that start on static UI (search, buttons, layer panels) as
+             page zoom gestures. Leaflet still receives gestures that start on
+             the map panes, so pinch zoom continues to work on the map itself. */
+        body.is-pwa #detectlab-map .leaflet-control,
+        body.is-pwa .map-search-wrap,
+        body.is-pwa .pwa-bottom-bar,
+        body.is-pwa .transp-panel,
+        body.is-pwa .transp-arrow-tab,
+        body.is-pwa .map-controls,
+        body.is-pwa #iosBldSettingsPanel,
+        body.is-pwa button,
+        body.is-pwa a,
+        body.is-pwa label {
+            touch-action: pan-x pan-y !important;
+            -ms-touch-action: pan-x pan-y !important;
+        }
+
+        body.is-pwa #detectlab-map .leaflet-pane,
+        body.is-pwa #detectlab-map .leaflet-map-pane {
+            touch-action: none !important;
+            -ms-touch-action: none !important;
+        }
+
+        /* Prevent iOS Safari from auto-zooming the visual viewport when a
+           search/input receives focus (it zooms inputs rendered under 16px). */
+        body.is-pwa input,
+        body.is-pwa select,
+        body.is-pwa textarea,
+        body.is-pwa .map-search-input,
+        body.is-pwa .weather-search-input {
+            font-size: 16px !important;
+        }
+
+        /* Weather/account overlays remain vertically scrollable in PWA mode. */
+        body.is-pwa #weatherPanel,
+        body.is-pwa .pwa-account-overlay,
+        body.is-pwa .auth-modal,
+        body.is-pwa .terms-box {
+            touch-action: pan-y !important;
+            -ms-touch-action: pan-y !important;
         }
 
         /* Nav is hidden entirely in PWA mode — see rule below with display:none */
@@ -2800,6 +2845,36 @@
             if (isPWA) {
                 document.body.classList.add('is-pwa');
                 document.documentElement.classList.add('is-pwa');
+
+                // Keep browser/page zoom disabled in standalone mode while
+                // still allowing Leaflet pinch zoom on the actual map surface.
+                // If a two-finger gesture starts over a static overlay (search,
+                // controls, expanded layer/transparency panels, bottom bar), the
+                // browser must not zoom the whole PWA UI.
+                function isLeafletMapGestureTarget(target) {
+                    var el = target && (target.nodeType === 1 ? target : target.parentElement);
+                    if (!el || !el.closest) return false;
+                    if (!el.closest('#detectlab-map')) return false;
+                    if (el.closest('.leaflet-control, .map-search-wrap, .pwa-bottom-bar, .transp-panel, .map-controls, button, input, select, textarea, label, a')) {
+                        return false;
+                    }
+                    return !!el.closest('.leaflet-pane, .leaflet-map-pane, .leaflet-container');
+                }
+
+                function blockNonMapPinch(e) {
+                    var isMultiTouch = e.touches && e.touches.length > 1;
+                    var isSafariGesture = e.type && e.type.indexOf('gesture') === 0;
+                    if ((isMultiTouch || isSafariGesture) && !isLeafletMapGestureTarget(e.target) && e.cancelable !== false) {
+                        e.preventDefault();
+                    }
+                }
+
+                ['touchstart', 'touchmove'].forEach(function(type) {
+                    document.addEventListener(type, blockNonMapPinch, { passive: false, capture: true });
+                });
+                ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(type) {
+                    document.addEventListener(type, blockNonMapPinch, { passive: false, capture: true });
+                });
 
                 // ── Keep the standalone viewport and fixed bottom bar in sync ──
                 // Older WebViews use --vh instead of dvh/svh. visualViewport
