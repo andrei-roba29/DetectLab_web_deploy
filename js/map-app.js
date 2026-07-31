@@ -7703,6 +7703,14 @@
                     bounds: [[43.5, 19.5], [48.5, 30.5]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer'
+                },
+
+                banat: {
+                    // Banat 1769-1772 (Habsburg Banat maps, raster XYZ tiles on Supabase).
+                    // Rough bounds covering the Banat region in western Romania.
+                    bounds: [[44.55, 20.85], [46.35, 22.45]],
+                    label: 'Banat 1769-1772',
+                    layerVar: '_banatMapLayer'
                 }
             };
 
@@ -8074,6 +8082,52 @@
                 };
             })();
 
+            // ── BANAT 1769-1772 (XYZ tiles, PNG, direct din Supabase storage) ──
+            // Strat premium nou. Același pattern ca celelalte hărți istorice de mai sus,
+            // dar sursa e bucket-ul Supabase (Harti/Banat), nu Cloudflare R2.
+            // Zoom-urile native sunt 11-15.
+            (function () {
+                map.createPane('pane_banat');
+                map.getPane('pane_banat').style.zIndex = 649;
+                map.getPane('pane_banat').style.pointerEvents = 'none';
+
+                // Reglabil live din consolă, fără redeploy: window.BANAT_TILE_MAX_NATIVE_Z.
+                // Zoom-urile disponibile sunt 11-15.
+                window.BANAT_TILE_MAX_NATIVE_Z = (window.BANAT_TILE_MAX_NATIVE_Z !== undefined) ? window.BANAT_TILE_MAX_NATIVE_Z : 15;
+
+                window._banatMapLayer = L.tileLayer(
+                    'https://dacboefvooxgsngxkavx.supabase.co/storage/v1/object/public/Harti/Banat/{z}/{x}/{y}.png',
+                    {
+                        minZoom: 11,
+                        maxZoom: 20,
+                        maxNativeZoom: window.BANAT_TILE_MAX_NATIVE_Z,
+                        tileSize: 256,
+                        opacity: 0.80,
+                        pane: 'pane_banat',
+                        attribution: '© Banat 1769-1772'
+                    }
+                );
+
+                window.toggleBanatMap = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._banatMapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._banatMapLayer) && map.removeLayer(window._banatMapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setBanatMapOpacity = function (val) {
+                    document.getElementById('banatMapPct').textContent = val + '%';
+                    window._banatMapLayer.setOpacity(val / 100);
+                };
+            })();
+
             // ── SATELIT 60s (WMS Corona via CAST UARK GeoServer) ──
             // FIX (2026-07): The old code hardcoded 2 passes (1106-1042, 1104-2155)
             // and dynamically generated frame names df012-df026/da012-da026 which
@@ -8187,7 +8241,7 @@
                 var panel = document.getElementById('histPremiumSubLayers');
                 var icon = document.getElementById('histPremiumExpandIcon');
                 if (_histPremiumSubExpanded) {
-                    panel.style.maxHeight = '800px';
+                    panel.style.maxHeight = '1000px';
                     panel.style.opacity = '1';
                     panel.style.marginTop = '10px';
                     icon.style.transform = 'rotate(0deg)';
@@ -8211,7 +8265,8 @@
                 { id: 'polishTactical1933MapToggle', fnName: 'togglePolishTactical1933Map' },
                 { id: 'ww1MapToggle', fnName: 'toggleWw1Map' },
                 { id: 'ww2MapToggle', fnName: 'toggleWw2Map' },
-                { id: 'satellite60sToggle', fnName: 'toggleSatellite60sMap' }
+                { id: 'satellite60sToggle', fnName: 'toggleSatellite60sMap' },
+                { id: 'banatMapToggle', fnName: 'toggleBanatMap' }
             ];
 
             window.toggleHistPremiumLayer = function (on) {
