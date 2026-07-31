@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260731">
+    <link rel="stylesheet" href="css/styles.css?v=2026073101">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -241,6 +241,32 @@
         }
         .pwa-bar-detect.detect-active .detect-toggle-label {
             color: #ff6b6b;
+        }
+
+        /* Saved locations button in the PWA bottom bar */
+        .pwa-saved-locations-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 30px;
+            padding: 0;
+            border-radius: 8px;
+            background: rgba(184, 216, 240, 0.08);
+            border: 1px solid rgba(184, 216, 240, 0.2);
+            color: rgba(245, 240, 235, 0.85);
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+        }
+        .pwa-saved-locations-btn:hover {
+            background: rgba(196, 43, 43, 0.18);
+            border-color: rgba(196, 43, 43, 0.55);
+            color: #ff8a8a;
+        }
+        .pwa-saved-locations-btn.is-active {
+            background: #c42b2b;
+            border-color: #e25353;
+            color: #fff;
         }
 
         /* Bottom bar trigger buttons (language / user) */
@@ -625,7 +651,18 @@
             </div>
         </div>
 
-        <!-- 2. Language Selector (expands up) -->
+        <!-- 2. Saved locations -->
+        <div class="pwa-bar-item">
+            <button class="pwa-saved-locations-btn" id="pwaSavedLocationsBtn" type="button" onclick="toggleSavedCoordinates()" title="Show saved locations" aria-label="Show saved locations" aria-pressed="false">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M5 3h11l3 3v15H5z" />
+                    <path d="M8 3v6h8V3M8 21v-7h8v7" />
+                    <circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- 3. Language Selector (expands up) -->
         <div class="pwa-bar-item" id="pwaLangItem">
             <button class="pwa-bar-trigger" id="pwaLangTrigger" onclick="togglePwaLangDropdown()">
                 <span id="pwaLangFlag" style="display:none">🇷🇴</span>
@@ -2123,6 +2160,14 @@
                         <span class="detect-track"></span>
                     </label>
                 </div>
+                <button class="btn-saved-locations" id="savedLocationsBtn" type="button" onclick="toggleSavedCoordinates()" title="Show saved locations" aria-label="Show saved locations" aria-pressed="false">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M5 3h11l3 3v15H5z" />
+                        <path d="M8 3v6h8V3M8 21v-7h8v7" />
+                        <circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" />
+                    </svg>
+                    <span>Saved locations</span>
+                </button>
                 <button class="btn-fullscreen" id="fullscreenBtn" onclick="toggleMapFullscreen()">
                     <svg id="fsIcon" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M1 5V1H5M9 1H13V5M13 9V13H9M5 13H1V9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -2374,7 +2419,7 @@
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js"></script>
-    <script src="js/map-app.js?v=20260731"></script>
+    <script src="js/map-app.js?v=2026073101"></script>
 
     <!-- AUTH MODAL -->
     <style>
