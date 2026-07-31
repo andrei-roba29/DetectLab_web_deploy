@@ -4033,6 +4033,9 @@
                     var homeBtn = document.getElementById('nearbyHomeBtn');
                     if (homeBtn) homeBtn.style.display = 'none';
                     
+                    var btnEl = document.getElementById('nearbyDetectorsBtn');
+                    if (btnEl) btnEl.classList.remove('is-active');
+                    
                     var status = document.getElementById('nearbyStatus');
                     if (status) {
                         status.innerHTML = 'Cauți detectoriști pe o rază de 10 km?<br><small>Search within a 10 km radius?</small>';
@@ -4127,12 +4130,18 @@
                             }
                             map.fitBounds(bounds.pad(0.2), { maxZoom: 17 });
                         }
+                        var btnEl = document.getElementById('nearbyDetectorsBtn');
+                        if (btnEl) btnEl.classList.add('is-active');
                         var homeBtn = document.getElementById('nearbyHomeBtn');
                         if (homeBtn) homeBtn.style.display = '';
                     } else if (total > 0) {
                         status.innerHTML = 'Niciun detectorist în raza de 10 km (' + total + ' activ(i) în total).<br><small>No detectorists within 10 km (' + total + ' active in total).</small>';
+                        var btnEl = document.getElementById('nearbyDetectorsBtn');
+                        if (btnEl) btnEl.classList.remove('is-active');
                     } else {
                         status.innerHTML = 'Nu sunt detectoriști în apropiere.<br><small>No detectorists found nearby.</small>';
+                        var btnEl = document.getElementById('nearbyDetectorsBtn');
+                        if (btnEl) btnEl.classList.remove('is-active');
                     }
                 } catch(e) {
                     var msg = (e && (e.message || (e.error && (e.error.message || e.error)) || e.details)) ? (e.message || (e.error && (e.error.message || e.error)) || e.details) : '';

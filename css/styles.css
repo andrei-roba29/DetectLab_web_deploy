@@ -4945,7 +4945,43 @@
 
 
 /* Nearby detectorists */
-.btn-nearby-detectors { display:flex; align-items:center; gap:5px; background:transparent; border:0; color:inherit; cursor:pointer; padding:7px 9px; }
+.btn-nearby-detectors {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(184, 216, 240, 0.06);
+    border: 1px solid rgba(184, 216, 240, 0.14);
+    color: rgba(184, 216, 240, 0.75);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.btn-nearby-detectors:hover {
+    background: rgba(43, 150, 196, 0.18);
+    border-color: rgba(43, 150, 196, 0.55);
+    color: #8adeff;
+}
+
+.btn-nearby-detectors.is-active {
+    background: #2b96c4;
+    border-color: #53b6e2;
+    color: #fff;
+}
+
+.btn-nearby-detectors .nearby-icon {
+    font-size: 14px;
+    line-height: 1;
+    font-weight: 700;
+    margin-top: -1px;
+}
+
 .nearby-icon { font-size:25px; line-height:1; font-weight:700; }
 .pwa-nearby-trigger { min-width:42px; justify-content:center; padding:5px 8px; }
 .nearby-modal { display:none; position:fixed; inset:0; z-index:3000; background:rgba(0,0,0,.65); align-items:center; justify-content:center; }
