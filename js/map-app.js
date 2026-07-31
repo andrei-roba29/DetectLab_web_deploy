@@ -863,6 +863,24 @@
                     '<circle cx="8" cy="6" r="1.6" fill="currentColor"/>' +
                     '</svg>';
 
+                // Build the track-recording button element directly (no wrapper div).
+                // IMPORTANT: this element MUST be declared here, before it is appended
+                // below (trackWrap.appendChild) and before the TRACK RECORDING LOGIC
+                // closure attaches its click handler — otherwise initMap aborts with
+                // "ReferenceError: trackBtn is not defined" and the whole map fails to
+                // initialize (blank/white map).
+                var trackBtn = document.createElement('button');
+                trackBtn.id = 'btnTrack';
+                trackBtn.className = 'btn-track';
+                trackBtn.title = 'Înregistrează traseu';
+                trackBtn.setAttribute('aria-label', 'Înregistrează un traseu GPS');
+                trackBtn.innerHTML =
+                    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+                    '<circle cx="3.5" cy="3.5" r="1.8" fill="currentColor"/>' +
+                    '<circle cx="12.5" cy="12.5" r="1.8" fill="currentColor"/>' +
+                    '<path d="M5.2 5.2 L10.8 10.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="1 2"/>' +
+                    '</svg>';
+
                 // Inject it into the same wrapper as btnMeasure (they share the same leaflet-bar div)
                 setTimeout(function () {
                     var measureWrap = document.getElementById('btnMeasure') && document.getElementById('btnMeasure').parentNode;
