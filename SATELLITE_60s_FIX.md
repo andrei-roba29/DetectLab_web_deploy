@@ -118,3 +118,8 @@ These passes were identified from the GeoServer capabilities as having multiple 
 - Each "pass" is a satellite revolution with fore/aft cameras producing multiple frames
 - Frame naming: `df` = fore camera, `da` = aft camera, followed by frame number
 - The GeoServer has hundreds of layers, most of which are not relevant to Romania, but the dynamic discovery ensures we get all available coverage
+
+## Performance & Request Choking Optimization (Update 2026-07-31)
+- **Problem**: When dynamic discovery loaded successfully, it returned almost ~2,000 layers. Creating a separate `L.tileLayer.wms` instance for each of these layers resulted in Leaflet making ~2,000 WMS tile requests for *each* grid tile on the map. In typical viewports with ~24 grid tiles, this caused Leaflet to attempt over 44,000 requests simultaneously, choking browser network resources and blocking the map from loading.
+- **Solution**: Implemented a **chunking optimization** that batches the discovered layers into groups of 50. Instead of 2,000 separate WMS layers, it creates 40 layers, each joining 50 layer names with a comma (e.g. `corona:pass1,corona:pass2,...`). This is standard for WMS, where the server composites the layers internally and returns a single combined tile.
+- **Result**: The number of requests is reduced by 50x (from 44,000+ to under 1,000 total across the view), resolving the browser lock-up and allowing the Satellite imagery 60's layers to load instantly and smoothly. URL lengths remain well under safe proxy/server limits (~1,200 characters).
