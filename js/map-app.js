@@ -662,6 +662,10 @@
                             // even if the user activates detection after live location is already on
                             _detLat = lat;
                             _detLng = lng;
+                            // Publish presence so other detectorists can see this user
+                            if (typeof publishDetectorPresence === 'function') {
+                                publishDetectorPresence(lat, lng, true);
+                            }
                             if (_det.active) _detCheck(lat, lng);
                         },
                         function (err) {
@@ -684,6 +688,11 @@
                         btn.title = 'My Location';
                     }
                 }
+
+                // Expose globally so the detection switch can auto-activate live location
+                window._startLiveLocation = startTracking;
+                window._stopLiveLocation = stopTracking;
+                window._isLiveLocationActive = function () { return watchId !== null; };
 
             })();
 
@@ -3827,7 +3836,28 @@
                     status.innerHTML=found ? found+' detectorist(i) găsit(i).<br><small>detectorist(s) found.</small>' : 'Nu sunt detectoriști în apropiere.<br><small>No detectorists found nearby.</small>';
                 } catch(e) { console.warn('Nearby detectorists:',e); status.innerHTML='Căutarea nu este disponibilă momentan.<br><small>Search is unavailable right now.</small>'; }
             };
-            async function publishDetectorPresence(lat,lng,visible) { var u=nearbyUser(); if(!u || !window.supabaseClient) return; var md=u.user_metadata||{}; var name=md.full_name||md.name||u.email||'Detectorist'; await window.supabaseClient.from('detector_presence').upsert({user_id:u.id,full_name:name,email:u.email||'',latitude:lat,longitude:lng,visible:visible,updated_at:new Date().toISOString()}); }
+            async function publishDetectorPresence(lat,lng,visible) {
+                try {
+                    var u=nearbyUser();
+                    if(!u || !window.supabaseClient) return;
+                    var md=u.user_metadata||{};
+                    var name=md.full_name||md.name||u.email||'Detectorist';
+                    var result = await window.supabaseClient.from('detector_presence').upsert({
+                        user_id:u.id,
+                        full_name:name,
+                        email:u.email||'',
+                        latitude:lat,
+                        longitude:lng,
+                        visible:visible,
+                        updated_at:new Date().toISOString()
+                    });
+                    if (result.error) {
+                        console.warn('[Presence] upsert error:', result.error.message || result.error);
+                    }
+                } catch(e) {
+                    console.warn('[Presence] publish failed:', e && e.message ? e.message : e);
+                }
+            }
 
             // ── FULLSCREEN ──
             var isFullscreen = false;
@@ -4034,6 +4064,13 @@
                         return;
                     }
 
+                    // ── Auto-activate live user location on map ──
+                    if (typeof window._startLiveLocation === 'function' &&
+                        typeof window._isLiveLocationActive === 'function' &&
+                        !window._isLiveLocationActive()) {
+                        window._startLiveLocation();
+                    }
+
                     // Auto-enable heritage sites layer + radiuses
                     var heritageChk = document.querySelector('input[onchange*="togglePatrimoniuLayer"]');
                     if (heritageChk && !heritageChk.checked) {
@@ -4055,13 +4092,24 @@
 
                     // If live location is already active, we already have coordinates —
                     // fire an immediate check instead of waiting for the next GPS tick.
+                    // The live-location watcher already publishes presence + checks sites,
+                    // so we only start the detection's own watcher as a fallback when
+                    // live location is NOT active (to avoid two concurrent watchPosition
+                    // calls, which can conflict on mobile browsers).
                     if (_detLat !== null) _detCheck(_detLat, _detLng);
 
-                    _det.watchId = navigator.geolocation.watchPosition(
-                        _detOnPosition,
-                        function (e) { console.warn('[DETECT] geo error', e.code, e.message); },
-                        { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
-                    );
+                    if (typeof window._isLiveLocationActive !== 'function' ||
+                        !window._isLiveLocationActive()) {
+                        // Live location is not active → start detection's own GPS watcher
+                        _det.watchId = navigator.geolocation.watchPosition(
+                            _detOnPosition,
+                            function (e) { console.warn('[DETECT] geo error', e.code, e.message); },
+                            { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+                        );
+                    } else {
+                        // Live location already active → its watcher handles presence + site checks
+                        _det.watchId = null;
+                    }
 
                 } else {
                     if (_det.watchId !== null) {
