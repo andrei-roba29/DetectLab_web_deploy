@@ -1087,12 +1087,26 @@
                     window._trackPath = { start: startTrackingPath, stop: stopTrackingPath };
                 })();
 
+                function escapeHtml(str) {
+                    if (!str) return '';
+                    return String(str)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#039;');
+                }
+
                 function createCoordPopupContent(lat, lng) {
                     var content = document.createElement('div');
                     content.innerHTML =
                         '<div class="coord-popup-title">📍 Coordonate</div>' +
                         '<div class="coord-popup-row"><span class="coord-popup-label">Lat:</span><span class="coord-popup-val" title="Click pentru selecție">' + lat + '</span></div>' +
                         '<div class="coord-popup-row"><span class="coord-popup-label">Lng:</span><span class="coord-popup-val" title="Click pentru selecție">' + lng + '</span></div>' +
+                        '<div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">' +
+                        '<input type="text" id="coordTitleInput" placeholder="Titlu pin (opțional)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(184,216,240,0.25); border-radius: 4px; padding: 4px 6px; color: #F5F0EB; font-size: 0.76rem; font-family: \'Outfit\', sans-serif; width: 100%; box-sizing: border-box;" autocomplete="off">' +
+                        '<textarea id="coordDescInput" placeholder="Descriere / Note (opțional)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(184,216,240,0.25); border-radius: 4px; padding: 4px 6px; color: #F5F0EB; font-size: 0.76rem; font-family: \'Outfit\', sans-serif; width: 100%; height: 40px; resize: none; box-sizing: border-box;" autocomplete="off"></textarea>' +
+                        '</div>' +
                         '<button type="button" class="coord-popup-copy">Copiază coordonatele</button>' +
                         '<button type="button" class="coord-popup-save" aria-label="Salvează coordonatele în contul tău">' +
                         '<svg class="coord-popup-save-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
@@ -1106,6 +1120,8 @@
 
                     var copyButton = content.querySelector('.coord-popup-copy');
                     var saveButton = content.querySelector('.coord-popup-save');
+                    var titleInput = content.querySelector('#coordTitleInput');
+                    var descInput = content.querySelector('#coordDescInput');
                     var status = content.querySelector('.coord-popup-status');
                     var coordinatesText = lat + ', ' + lng;
 
@@ -1114,7 +1130,9 @@
                     });
 
                     saveButton.addEventListener('click', function () {
-                        saveCoordinates(Number(lat), Number(lng), saveButton, status);
+                        var titleVal = titleInput ? titleInput.value.trim() : '';
+                        var descVal = descInput ? descInput.value.trim() : '';
+                        saveCoordinates(Number(lat), Number(lng), titleVal, descVal, saveButton, status);
                     });
 
                     return content;
@@ -1150,7 +1168,7 @@
                     }
                 }
 
-                async function saveCoordinates(lat, lng, button, status) {
+                async function saveCoordinates(lat, lng, title, description, button, status) {
                     var label = button.querySelector('.coord-popup-save-label');
                     button.disabled = true;
                     button.classList.remove('saved', 'error');
@@ -1171,9 +1189,16 @@
                             throw new Error('Autentifică-te pentru a salva coordonatele.');
                         }
 
+                        var insertData = {
+                            latitude: lat,
+                            longitude: lng
+                        };
+                        if (title) insertData.title = title;
+                        if (description) insertData.description = description;
+
                         var insertResult = await window.supabaseClient
                             .from('saved_coordinates')
-                            .insert({ latitude: lat, longitude: lng });
+                            .insert(insertData);
 
                         if (insertResult.error) throw insertResult.error;
 
@@ -1220,10 +1245,14 @@
                     var lng = Number(row.longitude);
                     if (!isFinite(lat) || !isFinite(lng)) return null;
 
+                    var title = row.title ? escapeHtml(row.title) : 'Punct salvat';
+                    var desc = row.description ? escapeHtml(row.description) : '';
+                    var savedAt = row.created_at ? new Date(row.created_at) : null;
+
                     var marker = L.marker([lat, lng], {
                         icon: L.divIcon({
                             className: 'saved-location-marker-wrap',
-                            html: '<div class="saved-location-marker" title="Saved location">' +
+                            html: '<div class="saved-location-marker" title="' + title + '">' +
                                 '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
                                 '<path d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z"/>' +
                                 '<circle cx="12" cy="10" r="2.3"/>' +
@@ -1234,13 +1263,45 @@
                         }),
                         zIndexOffset: 850
                     });
-                    var savedAt = row.created_at ? new Date(row.created_at) : null;
-                    marker.bindPopup(
-                        '<div class="map-place-popup"><strong>Saved location</strong><br>' +
+
+                    var popupContainer = document.createElement('div');
+                    popupContainer.className = 'map-place-popup';
+                    popupContainer.style.cssText = 'min-width: 180px;';
+
+                    var html = '<strong style="font-size:0.86rem; color:#F5F0EB;">' + title + '</strong>';
+                    if (desc) {
+                        html += '<p style="margin: 4px 0 6px 0; font-size:0.78rem; color:rgba(245,240,235,0.85); line-height:1.3;">' + desc.replace(/\n/g, '<br>') + '</p>';
+                    }
+                    html += '<div style="font-size:0.72rem; color:rgba(184,216,240,0.6); margin-top:2px;">' +
                         lat.toFixed(6) + ', ' + lng.toFixed(6) +
                         (savedAt && !isNaN(savedAt.getTime()) ? '<br><small>' + savedAt.toLocaleString() + '</small>' : '') +
-                        '</div>'
-                    );
+                        '</div>' +
+                        '<button type="button" class="coord-popup-delete" style="margin-top:8px; width:100%; background:rgba(232,80,42,0.25); border:1px solid rgba(232,80,42,0.5); border-radius:4px; color:#FFB09F; font-size:0.72rem; font-family:\'Outfit\',sans-serif; padding:4px 0; cursor:pointer; font-weight:500;">Șterge pinul</button>';
+
+                    popupContainer.innerHTML = html;
+
+                    var deleteBtn = popupContainer.querySelector('.coord-popup-delete');
+                    deleteBtn.addEventListener('click', async function () {
+                        if (!confirm('Sigur doriți să ștergeți acest pin salvat?')) return;
+                        deleteBtn.disabled = true;
+                        deleteBtn.textContent = 'Se șterge…';
+                        try {
+                            if (!window.supabaseClient) throw new Error('Supabase indisponibil');
+                            var delRes = await window.supabaseClient
+                                .from('saved_coordinates')
+                                .delete()
+                                .eq('id', row.id);
+                            if (delRes.error) throw delRes.error;
+
+                            savedLocationsLayer.removeLayer(marker);
+                        } catch (err) {
+                            console.error('Nu s-a putut șterge pinul:', err);
+                            deleteBtn.disabled = false;
+                            deleteBtn.textContent = 'Eroare. Încearcă din nou';
+                        }
+                    });
+
+                    marker.bindPopup(popupContainer);
                     return marker;
                 }
 
@@ -1393,7 +1454,7 @@
                     try {
                         var result = await window.supabaseClient
                             .from('saved_coordinates')
-                            .select('id, latitude, longitude, created_at')
+                            .select('id, latitude, longitude, title, description, created_at')
                             .order('created_at', { ascending: false });
                         if (result.error) throw result.error;
 
@@ -7403,6 +7464,12 @@
                     bounds: [[43.8345, 20.0391], [48.4584, 29.8828]],
                     label: 'WWII',
                     layerVar: '_ww2MapLayer'
+                },
+
+                satellite60s: {
+                    bounds: [[43.0688, 16.8750], [45.0890, 19.6875]],
+                    label: "Satellite imagery 60's",
+                    layerVar: '_sat60MapLayer'
                 }
             };
 

@@ -6,6 +6,8 @@ create table if not exists public.saved_coordinates (
     user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
     latitude double precision not null check (latitude between -90 and 90),
     longitude double precision not null check (longitude between -180 and 180),
+    title text,
+    description text,
     created_at timestamptz not null default now()
 );
 
