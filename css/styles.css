@@ -3341,6 +3341,35 @@
         .btn-coord.active:hover {
             background: rgba(184,216,240,0.30) !important;
         }
+        /* ── CUSTOM TRACK BUTTON ── */
+        .btn-track {
+            width: 38px;
+            height: 38px;
+            background: rgba(10,25,48,0.88) !important;
+            border: 1px solid rgba(184,216,240,0.18) !important;
+            border-radius: 10px !important;
+            backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+            color: #B8D8F0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        }
+        .btn-track:hover {
+            background: rgba(232,119,42,0.82) !important;
+            border-color: rgba(232,119,42,0.6) !important;
+            color: #fff;
+        }
+        .btn-track.active {
+            background: rgba(232,119,42,0.25) !important;
+            border-color: rgba(232,119,42,0.7) !important;
+            color: #E8772A;
+        }
+        .btn-track.active:hover {
+            background: rgba(232,119,42,0.55) !important;
+        }
         /* Coord popup tooltip */
         .coord-popup .leaflet-popup-content-wrapper {
             background: rgba(10,25,48,0.95);
