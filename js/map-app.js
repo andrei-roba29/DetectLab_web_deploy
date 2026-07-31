@@ -7697,12 +7697,10 @@
                 },
 
                 satellite60s: {
-                    // CORONA pass 1106-1042 is not a single sheet. The active
-                    // layer below combines the pass mosaic with the neighbouring
-                    // aft/fore frames (e.g. 1106-1042df018), so the coverage
-                    // rectangle must cover the whole visible swath, not just the
-                    // original da025 tile.
-                    bounds: [[43.0688, 16.8750], [46.1500, 21.1000]],
+                    // CORONA imagery covers all of Romania via multiple satellite
+                    // passes dynamically discovered from the CAST GeoServer. The
+                    // bounds span the full extent of Romania.
+                    bounds: [[43.5, 19.5], [48.5, 30.5]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer'
                 }
@@ -8077,11 +8075,14 @@
             })();
 
             // ── SATELIT 60s (WMS Corona via CAST UARK GeoServer) ──
-            // The CAST CORONA service publishes each film/pass as many separate
-            // WMS layers. The old implementation pointed at only one frame
-            // (1106-1042da025), so users only saw one sheet. Keep the requested
-            // example frame (1106-1042df018) covered by using the full Fore pass
-            // mosaic plus the neighbouring Aft frames that exist for this area.
+            // FIX (2026-07): The old code hardcoded 2 passes (1106-1042, 1104-2155)
+            // and dynamically generated frame names df012-df026/da012-da026 which
+            // mostly don't exist on the server. Only 3 frames (da023-025 of pass
+            // 1106-1042) actually existed - that's why users only saw 3 sheets.
+            // The coverage polygon was also wrong (17E-21E instead of all Romania).
+            // New approach: dynamically discover ALL Corona layers from the CAST
+            // GeoServer GetCapabilities at page load. This loads every available
+            // Corona frame across all passes, providing full coverage of Romania.
             (function () {
                 map.createPane("pane_sat60");
                 map.getPane("pane_sat60").style.zIndex = 648;
@@ -8089,50 +8090,68 @@
 
                 var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
                 var SAT60_INITIAL_OPACITY = 0.85;
-                var SAT60_CORONA_LAYERS = [
-                    // Mosaics covering wide swaths of both passes
-                    "corona:1106-1042Fore",
-                    "corona:1106-1042Aft",
-                    "corona:1104-2155Fore",
-                    "corona:1104-2155Aft",
 
-                    // Aft-camera sheets exposed individually by CAST for the
-                    // adjacent south-western part of the same swath.
-                    "corona:1106-1042da023",
-                    "corona:1106-1042da024",
-                    "corona:1106-1042da025"
-                ];
+                // Discover all Corona layers dynamically from the GeoServer
+                function discoverCoronaLayers(callback) {
+                    fetch(SAT60_WMS_URL + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities")
+                        .then(function (r) { return r.text(); })
+                        .then(function (xml) {
+                            var layers = [];
+                            var re = /<Name>(corona:[^<]+)<\/Name>/g;
+                            var match;
+                            while ((match = re.exec(xml)) !== null) {
+                                var name = match[1];
+                                // Skip metadata/index layers
+                                if (name.indexOf("footprints") !== -1) continue;
+                                layers.push(name);
+                            }
+                            console.log("[Sat60] Discovered", layers.length, "Corona WMS layers from CAST GeoServer");
+                            callback(layers);
+                        })
+                        .catch(function (err) {
+                            console.warn("[Sat60] Failed to discover Corona layers, using fallback list:", err);
+                            callback([
+                                "corona:1103-2139Fore", "corona:1103-2139Aft",
+                                "corona:1103-2155Fore", "corona:1103-2155Aft",
+                                "corona:1103-2167Fore", "corona:1103-2167Aft",
+                                "corona:1103-2171Fore", "corona:1103-2171Aft",
+                                "corona:1103-2183Fore", "corona:1103-2183Aft",
+                                "corona:1103-2200Fore", "corona:1103-2200Aft",
+                                "corona:1106-1042da023", "corona:1106-1042da024", "corona:1106-1042da025",
+                                "corona:1106-2070Fore", "corona:1106-2070Aft",
+                                "corona:1106-2119Fore", "corona:1106-2119Aft",
+                                "corona:1107-2170Fore", "corona:1107-2170Aft",
+                                "corona:1108-2135Fore", "corona:1108-2135Aft",
+                                "corona:1108-2167Fore", "corona:1108-2167Aft"
+                            ]);
+                        });
+                }
 
-                // Dynamically generate individual camera frames for Romania coverage (indices 12 to 26)
-                var passes = ["1106-1042", "1104-2155"];
-                passes.forEach(function (pass) {
-                    for (var i = 12; i <= 26; i++) {
-                        var numStr = "0" + i;
-                        var dfLayer = "corona:" + pass + "df" + numStr;
-                        var daLayer = "corona:" + pass + "da" + numStr;
-                        if (SAT60_CORONA_LAYERS.indexOf(dfLayer) === -1) {
-                            SAT60_CORONA_LAYERS.push(dfLayer);
-                        }
-                        if (SAT60_CORONA_LAYERS.indexOf(daLayer) === -1) {
-                            SAT60_CORONA_LAYERS.push(daLayer);
-                        }
+                window._sat60FrameLayers = [];
+                window._sat60MapLayer = L.layerGroup([]);
+                window._sat60Ready = false;
+
+                discoverCoronaLayers(function (layerNames) {
+                    window._sat60FrameLayers = layerNames.map(function (name) {
+                        return L.tileLayer.wms(SAT60_WMS_URL, {
+                            layers: name,
+                            format: "image/png",
+                            transparent: true,
+                            version: "1.1.1",
+                            attribution: "© Corona 1960s (CAST UARK)",
+                            tileSize: 256,
+                            opacity: SAT60_INITIAL_OPACITY,
+                            pane: "pane_sat60"
+                        });
+                    });
+                    window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
+                    window._sat60Ready = true;
+                    // If toggle was already switched on before discovery finished, add to map now
+                    var toggle = document.getElementById("satellite60sToggle");
+                    if (toggle && toggle.checked) {
+                        window._sat60MapLayer.addTo(map);
                     }
                 });
-
-                window._sat60FrameLayers = SAT60_CORONA_LAYERS.map(function (layerName) {
-                    return L.tileLayer.wms(SAT60_WMS_URL, {
-                        layers: layerName,
-                        format: "image/png",
-                        transparent: true,
-                        version: "1.1.1",
-                        attribution: "© Corona 1960s (CAST UARK)",
-                        tileSize: 256,
-                        opacity: SAT60_INITIAL_OPACITY,
-                        pane: "pane_sat60"
-                    });
-                });
-
-                window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
 
                 window.toggleSatellite60sMap = function (on) {
                     if (on) {
@@ -8141,7 +8160,11 @@
                             histPremToggle.checked = true;
                             window.toggleHistPremiumLayer(true);
                         }
-                        window._sat60MapLayer.addTo(map);
+                        if (window._sat60Ready) {
+                            window._sat60MapLayer.addTo(map);
+                        } else {
+                            console.log("[Sat60] Layers still being discovered, will add when ready");
+                        }
                     } else {
                         map.hasLayer(window._sat60MapLayer) && map.removeLayer(window._sat60MapLayer);
                     }
