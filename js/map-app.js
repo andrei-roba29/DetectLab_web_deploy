@@ -1606,7 +1606,10 @@
                 opacity: 1.0,
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
                 minZoom: 1,
-                maxZoom: 19,
+                // maxZoom must reach the map's own max (20): with maxZoom 19 Leaflet
+                // removed every satellite tile as soon as the map hit z20, leaving a
+                // fully white base map. maxNativeZoom 19 makes z20 reuse scaled z19 tiles.
+                maxZoom: 20,
                 maxNativeZoom: 19
             }).addTo(map);
             window._satLayer = satelliteLayer;
@@ -3992,6 +3995,9 @@
 
             // ── NEARBY DETECTORISTS ──
             var nearbyLayer = L.layerGroup().addTo(map);
+            // Map view captured when the nearby panel is opened, so "back to the
+            // initial view" can restore exactly what the user was looking at.
+            var _nearbyPrevView = null;
             // Stable per-browser device id so the SAME account signed in on two phones
             // (or two browser tabs) shows up as two distinct nearby detectorists instead
             // of one row overwriting the other. Falls back gracefully if storage is blocked.
@@ -4014,6 +4020,9 @@
             function nearbyUser() { return window._authUser && window._authUser(); }
             window.openNearbyDetectors = function() {
                 var m=document.getElementById('nearbyModal'); if(m)m.classList.add('show');
+                // Remember the current map view so the user can return to the initial
+                // aspect after the search zooms the map to the found pins.
+                _nearbyPrevView = { center: map.getCenter(), zoom: map.getZoom() };
                 // Broadcast our current position right away so others can see us,
                 // even if the GPS watcher hasn't fired again since we opened the panel.
                 if(_detLat !== null && typeof publishDetectorPresence === 'function') {
@@ -4021,6 +4030,17 @@
                 }
             };
             window.closeNearbyDetectors = function() { var m=document.getElementById('nearbyModal'); if(m)m.classList.remove('show'); };
+            // Restore the map view the user had before opening the nearby-detectorists
+            // panel (falls back to the initial full-canvas view) and close the panel.
+            window.resetNearbyView = function() {
+                if (_nearbyPrevView) {
+                    map.setView(_nearbyPrevView.center, _nearbyPrevView.zoom);
+                    _nearbyPrevView = null;
+                } else {
+                    map.fitBounds(APM_BOUNDS);
+                }
+                window.closeNearbyDetectors();
+            };
             window.searchNearbyDetectors = async function() {
                 var status=document.getElementById('nearbyStatus'); var user=nearbyUser();
                 if(!user) { status.innerHTML='Trebuie să fii autentificat pentru această funcție.<br><small>You must be logged in to use this feature.</small>'; return; }
@@ -4063,14 +4083,26 @@
                         if (legacySchema && row.user_id === user.id) return;
                         if (nearbyDistance(_detLat,_detLng,+row.latitude,+row.longitude) <= 10) {
                             found++;
-                            var icon=L.divIcon({className:'',html:'<div class="detector-nearby-marker">'+nearbyInitials(row.full_name)+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
-                            L.marker([row.latitude,row.longitude],{icon:icon}).bindPopup('<div class="map-place-popup"><strong>'+String(row.full_name||'Detectorist').replace(/[<>&]/g,'')+'</strong><br>'+String(row.email||'').replace(/[<>&]/g,'')+'</div>').addTo(nearbyLayer);
+                            var icon=L.divIcon({className:'',html:'<div class="detector-nearby-marker" title="'+String(row.full_name||'Detectorist').replace(/[<>&"]/g,'')+'">'+nearbyInitials(row.full_name)+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
+                            // zIndexOffset 1100 keeps these pins ABOVE our own live-location
+                            // marker (zIndexOffset 1000), so a detectorist standing at ~our
+                            // own position is still the one that receives the tap/click.
+                            // Clicking a pin opens a small window with full name + email.
+                            L.marker([+row.latitude,+row.longitude],{icon:icon,interactive:true,zIndexOffset:1100})
+                                .bindPopup('<div class="map-place-popup"><strong>'+String(row.full_name||'Detectorist').replace(/[<>&]/g,'')+'</strong><br>'+String(row.email||'').replace(/[<>&]/g,'')+'</div>')
+                                .addTo(nearbyLayer);
                         }
                     });
                     if (found) {
                         status.innerHTML = found + ' detectorist(i) găsit(i) în apropiere.<br><small>' + found + ' detectorist(s) found nearby.</small>';
                         var layers = nearbyLayer.getLayers();
-                        if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds().pad(0.4));
+                        // IMPORTANT: never let fitBounds zoom past the satellite base map's
+                        // limit (maxNativeZoom 19). With only 1-2 nearby pins, an uncapped
+                        // fitBounds jumps to the map max (20) and Leaflet hides every
+                        // satellite tile — the "whole base map turns white" bug.
+                        if (layers.length) map.fitBounds(L.featureGroup(layers).getBounds().pad(0.4), { maxZoom: 17 });
+                        var homeBtn = document.getElementById('nearbyHomeBtn');
+                        if (homeBtn) homeBtn.style.display = '';
                     } else if (total > 0) {
                         status.innerHTML = 'Niciun detectorist în raza de 10 km (' + total + ' activ(i) în total).<br><small>No detectorists within 10 km (' + total + ' active in total).</small>';
                     } else {
