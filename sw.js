@@ -42,7 +42,7 @@ const PRECACHE_URLS = [
   'js/auth-forms.js',
   'js/account-legacy.js',
   'js/map-app.js',
-  'js/map-app.js?v=2026080201',
+  'js/map-app.js?v=2026080202',
   'images/sonar_loading_animation.webp',
   'images/sonar_loading_animation.webp?v=20260729',
   'images/pwa-icon-192.png',

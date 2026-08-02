@@ -671,6 +671,9 @@
                         },
                         function (err) {
                             console.warn('Location error:', err.message);
+                            // Notify the nearby-detectorists wait (waitForDetPosition)
+                            // so it fails fast when the user denies location permission.
+                            if (typeof window._onDetectGeoError === 'function') window._onDetectGeoError(err);
                             stopTracking();
                         },
                         { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
@@ -4064,10 +4067,73 @@
                 }
                 window.closeNearbyDetectors();
             };
+            // Resolves true as soon as the detection / live-location GPS watchers deliver
+            // the first fix (_detLat/_detLng set), or false if a geolocation error fires
+            // first or no fix arrives within the timeout. Used by the nearby-detectorists
+            // search so that clicking "Yes" can auto-turn-on the user's live location,
+            // wait for the position, and then continue the search automatically.
+            function waitForDetPosition(timeoutMs) {
+                return new Promise(function (resolve) {
+                    if (_detLat !== null && _detLng !== null) { resolve(true); return; }
+                    var settled = false;
+                    function finish(ok) {
+                        if (settled) return;
+                        settled = true;
+                        if (window._onDetectGeoError === onGeoError) window._onDetectGeoError = null;
+                        clearInterval(poll);
+                        clearTimeout(deadline);
+                        resolve(ok);
+                    }
+                    var onGeoError = function () { finish(false); };
+                    window._onDetectGeoError = onGeoError;
+                    var poll = setInterval(function () {
+                        if (_detLat !== null && _detLng !== null) finish(true);
+                    }, 300);
+                    var deadline = setTimeout(function () { finish(false); }, timeoutMs || 25000);
+                });
+            }
             window.searchNearbyDetectors = async function() {
                 var status=document.getElementById('nearbyStatus'); var user=nearbyUser();
                 if(!user) { status.innerHTML='Trebuie să fii autentificat pentru această funcție.<br><small>You must be logged in to use this feature.</small>'; return; }
-                if(_detLat === null) { status.innerHTML='Activează detectorul (sau partajează locația) pentru a-ți transmite poziția.<br><small>Turn on Detect (or share your location) to broadcast your position.</small>'; return; }
+                if(_detLat === null) {
+                    // The user clicked "Yes" on the nearby-detectorists prompt: instead of
+                    // showing the dead-end "turn on Detect" message and stopping, auto-enable
+                    // Detect mode (which turns on the user's live location on the map and
+                    // starts the GPS watcher), wait for the first position fix, then fall
+                    // through and run the search with the freshly acquired coordinates.
+                    if (!navigator.geolocation) {
+                        status.innerHTML='Browserul tău nu suportă geolocalizarea.<br><small>Your browser does not support geolocation.</small>';
+                        return;
+                    }
+                    var autoEnabled = false;
+                    if (typeof window.toggleDetection === 'function' && !_det.active) {
+                        autoEnabled = true;
+                        status.innerHTML='Activăm detectorul și locația live…<br><small>Turning on Detect and your live location…</small>';
+                        try {
+                            window.toggleDetection(true);
+                        } catch (err) {
+                            console.warn('[Nearby] auto-enable Detect failed:', err);
+                            status.innerHTML='Nu am putut activa detectorul.<br><small>We could not turn on Detect.</small>';
+                            return;
+                        }
+                    } else if (typeof window.toggleDetection !== 'function') {
+                        status.innerHTML='Activează detectorul (sau partajează locația) pentru a-ți transmite poziția.<br><small>Turn on Detect (or share your location) to broadcast your position.</small>';
+                        return;
+                    } else {
+                        // Detect is already on but the GPS fix hasn't arrived yet — just wait for it.
+                        status.innerHTML='Așteptăm semnalul GPS pentru a-ți transmite poziția…<br><small>Waiting for your location to broadcast your position…</small>';
+                    }
+                    var gotFix = await waitForDetPosition();
+                    if (!gotFix) {
+                        // Location permission was denied / unavailable / timed out:
+                        // undo the automatic switch-on so the UI matches reality.
+                        if (autoEnabled && typeof window.toggleDetection === 'function' && _det.active) {
+                            try { window.toggleDetection(false); } catch (err) { console.warn('[Nearby] revert Detect failed:', err); }
+                        }
+                        status.innerHTML='Nu am putut activa locația ta. Verifică permisiunile de localizare din browser (sau activează manual Detect) și încearcă din nou.<br><small>We could not turn on your location. Check your browser location permissions (or enable Detect manually) and try again.</small>';
+                        return;
+                    }
+                }
                 status.innerHTML='Se caută…<br><small>Searching…</small>';
                 try {
                     // Make sure OUR position is freshly published first, so the other
@@ -4429,7 +4495,12 @@
                         // Live location is not active → start detection's own GPS watcher
                         _det.watchId = navigator.geolocation.watchPosition(
                             _detOnPosition,
-                            function (e) { console.warn('[DETECT] geo error', e.code, e.message); },
+                            function (e) {
+                                console.warn('[DETECT] geo error', e.code, e.message);
+                                // Notify the nearby-detectorists wait (waitForDetPosition)
+                                // so it fails fast when the user denies location permission.
+                                if (typeof window._onDetectGeoError === 'function') window._onDetectGeoError(e);
+                            },
                             { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
                         );
                     } else {
