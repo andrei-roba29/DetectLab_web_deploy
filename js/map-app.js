@@ -23,6 +23,8 @@
         });
         
         (function initMap() {
+            var ROMANIA_BOUNDS = L.latLngBounds([[43.5, 19.5], [48.5, 30.5]]);
+
             // ── SEARCH BAR (OSM Places ArcGIS — fără rate-limit) ──
             var searchDebounce = null;
             var selectedIndex = -1;
@@ -8310,9 +8312,8 @@
                 var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
                 var SAT60_INITIAL_OPACITY = 0.85;
 
-                // Romania bounds — defined at this scope so it is available both
+                // Romania bounds — defined at outer initMap scope so it is available both
                 // during discovery and later during lazy layer creation.
-                var ROMANIA_BOUNDS = L.latLngBounds([[43.5, 19.5], [48.5, 30.5]]);
 
                 // Discover all Corona layers dynamically from the GeoServer
                 function discoverCoronaLayers(callback) {
