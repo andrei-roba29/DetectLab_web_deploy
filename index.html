@@ -1759,6 +1759,42 @@
                                 <label class="apm-toggle-switch" title="Toggle Roads"><input type="checkbox" id="roman_roads" onchange="toggleRomanSub('roads',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
 
+                            <!-- Urban Areas -->
+                            <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);">
+                                <span style="display:flex;align-items:center;gap:5px;">
+                                    <span style="width:10px;height:10px;border-radius:2px;background:rgba(240,192,96,0.55);border:1px solid #F0C060;flex-shrink:0;display:inline-block;"></span>
+                                    <span class="t" data-key="layer_urban_areas">Urban Areas</span>
+                                </span>
+                                <label class="apm-toggle-switch" title="Toggle Urban Areas"><input type="checkbox" id="roman_urban_areas" onchange="toggleRomanSub('urban_areas',this.checked)"><span class="apm-toggle-track"></span></label>
+                            </div>
+
+                            <!-- Aqueducts -->
+                            <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);">
+                                <span style="display:flex;align-items:center;gap:5px;">
+                                    <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 5 Q3 1 5 5 Q7 9 9 5" stroke="#44AABB" stroke-width="1.5" fill="none" stroke-linecap="round" /></svg>
+                                    <span class="t" data-key="layer_aqueducts">Aqueducts</span>
+                                </span>
+                                <label class="apm-toggle-switch" title="Toggle Aqueducts"><input type="checkbox" id="roman_aqueducts" onchange="toggleRomanSub('aqueducts',this.checked)"><span class="apm-toggle-track"></span></label>
+                            </div>
+
+                            <!-- Walls -->
+                            <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);">
+                                <span style="display:flex;align-items:center;gap:5px;">
+                                    <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="2" width="8" height="6" rx="0.5" fill="none" stroke="#888888" stroke-width="1.2" /><line x1="1" y1="4" x2="9" y2="4" stroke="#888888" stroke-width="0.8" /><line x1="1" y1="6" x2="9" y2="6" stroke="#888888" stroke-width="0.8" /><line x1="3" y1="2" x2="3" y2="8" stroke="#888888" stroke-width="0.8" /><line x1="7" y1="2" x2="7" y2="8" stroke="#888888" stroke-width="0.8" /></svg>
+                                    <span class="t" data-key="layer_walls">Walls</span>
+                                </span>
+                                <label class="apm-toggle-switch" title="Toggle Walls"><input type="checkbox" id="roman_walls" onchange="toggleRomanSub('walls',this.checked)"><span class="apm-toggle-track"></span></label>
+                            </div>
+
+                            <!-- Regional Names -->
+                            <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);">
+                                <span style="display:flex;align-items:center;gap:5px;">
+                                    <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 8 L5 2 L8 8" stroke="#D4A0D4" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round" /><line x1="3.5" y1="6" x2="6.5" y2="6" stroke="#D4A0D4" stroke-width="0.8" /></svg>
+                                    <span class="t" data-key="layer_regional_names">Regional Names</span>
+                                </span>
+                                <label class="apm-toggle-switch" title="Toggle Regional Names"><input type="checkbox" id="roman_regional_names" onchange="toggleRomanSub('regional_names',this.checked)"><span class="apm-toggle-track"></span></label>
+                            </div>
+
                             <!-- Political Shading header -->
                             <div style="font-size:0.68rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,119,42,0.7);margin-top:4px;margin-bottom:2px;" class="t" data-key="layer_political_shading">Political Shading</div>
 

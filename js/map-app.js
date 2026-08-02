@@ -3092,6 +3092,21 @@
                     type: 'geojson',
                     url: _AWMC + 'urban_areas/urban_areas.geojson'
                 },
+                aqueducts: {
+                    label: 'Aqueducts', color: '#44AABB', weight: 2.0, enabled: false,
+                    type: 'geojson',
+                    url: _AWMC + 'aqueducts/aqueducts.geojson'
+                },
+                walls: {
+                    label: 'Walls', color: '#888888', weight: 2.0, enabled: false,
+                    type: 'geojson',
+                    url: _AWMC + 'walls/walls.geojson'
+                },
+                regional_names: {
+                    label: 'Regional Names', color: '#D4A0D4', weight: 1.5, enabled: false,
+                    type: 'geojson',
+                    url: _AWMC + 'regional_name_linework/regional_names_linework.geojson'
+                },
 
                 // ── POLITICAL SHADING ──
                 shade_117: {
@@ -3149,6 +3164,27 @@
             var _romanGroup = L.layerGroup([], { pane: 'pane_roman' });
             window._romanGroup = _romanGroup;
 
+            // ── Romania bounds helper: non-shade Roman layers are Romania-only ──
+            function _romanFeatureInBounds(feature) {
+                var b = ROMANIA_BOUNDS;
+                if (!b) return true;
+                function checkCoord(c) {
+                    return c[1] >= b.getSouth() && c[1] <= b.getNorth() && c[0] >= b.getWest() && c[0] <= b.getEast();
+                }
+                function checkGeom(g) {
+                    if (!g) return false;
+                    if (g.type === 'Point') return checkCoord(g.coordinates);
+                    if (g.type === 'MultiPoint') return g.coordinates.some(checkCoord);
+                    if (g.type === 'LineString') return g.coordinates.some(checkCoord);
+                    if (g.type === 'MultiLineString') return g.coordinates.some(function(r) { return r.some(checkCoord); });
+                    if (g.type === 'Polygon') return g.coordinates.some(function(r) { return r.some(checkCoord); });
+                    if (g.type === 'MultiPolygon') return g.coordinates.some(function(p) { return p.some(function(r) { return r.some(checkCoord); }); });
+                    if (g.type === 'GeometryCollection') return g.geometries.some(checkGeom);
+                    return false;
+                }
+                return checkGeom(feature.geometry);
+            }
+
             // ── Build one Leaflet layer for a sub-layer config ──
             function _buildRomanLeafletLayer(key, cfg, geojsonData) {
                 if (cfg.type === 'wms') {
@@ -3163,8 +3199,10 @@
                     });
                 }
                 if (cfg.type === 'geojson' && geojsonData) {
+                    var isShade = key.indexOf('shade_') === 0;
                     return L.geoJSON(geojsonData, {
                         pane: 'pane_roman',
+                        filter: isShade ? null : _romanFeatureInBounds,
                         style: function() {
                             return {
                                 color: cfg.color,
@@ -3320,7 +3358,7 @@
                 var panel = document.getElementById('romanSubLayers');
                 var icon = document.getElementById('romanExpandIcon');
                 if (_romanSubExpanded) {
-                    panel.style.maxHeight = '400px';
+                    panel.style.maxHeight = '500px';
                     panel.style.opacity = '1';
                     panel.style.marginTop = '10px';
                     icon.style.transform = 'rotate(0deg)';
