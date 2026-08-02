@@ -855,6 +855,16 @@
 
             })();
 
+            function escapeHtml(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
             // ── CUSTOM COORD PIN BUTTON ──
             (function () {
                 var coordActive = false;
@@ -1087,16 +1097,6 @@
                     // Expose for debugging
                     window._trackPath = { start: startTrackingPath, stop: stopTrackingPath };
                 })();
-
-                function escapeHtml(str) {
-                    if (!str) return '';
-                    return String(str)
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#039;');
-                }
 
                 function createCoordPopupContent(lat, lng) {
                     var content = document.createElement('div');
