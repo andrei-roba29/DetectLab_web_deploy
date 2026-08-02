@@ -8201,6 +8201,10 @@
                 var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
                 var SAT60_INITIAL_OPACITY = 0.85;
 
+                // Romania bounds — defined at this scope so it is available both
+                // during discovery and later during lazy layer creation.
+                var ROMANIA_BOUNDS = L.latLngBounds([[43.5, 19.5], [48.5, 30.5]]);
+
                 // Discover all Corona layers dynamically from the GeoServer
                 function discoverCoronaLayers(callback) {
                     fetch(SAT60_WMS_URL + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities")
@@ -8209,13 +8213,14 @@
                             var layers = [];
                             var re = /<Name>(corona:[^<]+)<\/Name>/g;
                             var match;
-                            while ((match = re.exec(xml)) !== null) {
+                            var MAX_RAW_LAYERS = 600; // safety: we will never use more than this anyway
+                            while ((match = re.exec(xml)) !== null && layers.length < MAX_RAW_LAYERS) {
                                 var name = match[1];
                                 // Skip metadata/index layers
                                 if (name.indexOf("footprints") !== -1) continue;
                                 layers.push(name);
                             }
-                            console.log("[Sat60] Discovered", layers.length, "Corona WMS layers from CAST GeoServer");
+                            console.log("[Sat60] Discovered", layers.length, "Corona WMS layers from CAST GeoServer (capped at parse time if huge)");
                             callback(layers);
                         })
                         .catch(function (err) {
@@ -8242,32 +8247,65 @@
                 window._sat60Ready = false;
 
                 discoverCoronaLayers(function (layerNames) {
-                    // Chunk the layers to avoid hitting URL length limits and to drastically reduce HTTP requests
-                    var chunkSize = 50;
-                    var chunks = [];
-                    for (var i = 0; i < layerNames.length; i += chunkSize) {
-                        chunks.push(layerNames.slice(i, i + chunkSize));
+                    // CRITICAL FIX for "0 / 29920 requests" + ever-increasing transferred/resources:
+                    // A full GetCapabilities often returns thousands of worldwide Corona layers.
+                    // Each L.tileLayer.wms causes Leaflet to make a separate tile request *per visible tile*.
+                    // 100+ layers × 20-30 tiles/view = thousands of simultaneous requests → browser chokes.
+                    //
+                    // Strategy (very aggressive now):
+                    // - Hard-cap to **1** combined WMS layer total (maximum safety).
+                    // - Only create when user actually turns the toggle ON (lazy creation).
+                    // - If huge list from server → use small curated Romania set.
+                    // - Add strict bounds + zoom limits on every WMS layer.
+
+                    var MAX_COMBINED_WMS_LAYERS = 1;   // ABSOLUTE MAX — only ever create 1 L.tileLayer.wms
+                    var CHUNK_SIZE = 200;              // one big combined layer
+
+                    var effectiveLayers = layerNames;
+
+                    // If the server gave us a ridiculous number of layers, fall back to the curated Romania list.
+                    // This prevents the "29920 requests" storm.
+                    if (layerNames.length > 300) {
+                        console.warn("[Sat60] GetCapabilities returned", layerNames.length, "layers (worldwide). Using curated Romania fallback instead to avoid request explosion.");
+                        effectiveLayers = [
+                            "corona:1103-2139Fore", "corona:1103-2139Aft",
+                            "corona:1103-2155Fore", "corona:1103-2155Aft",
+                            "corona:1103-2167Fore", "corona:1103-2167Aft",
+                            "corona:1103-2171Fore", "corona:1103-2171Aft",
+                            "corona:1103-2183Fore", "corona:1103-2183Aft",
+                            "corona:1103-2200Fore", "corona:1103-2200Aft",
+                            "corona:1106-1042da023", "corona:1106-1042da024", "corona:1106-1042da025",
+                            "corona:1106-2070Fore", "corona:1106-2070Aft",
+                            "corona:1106-2119Fore", "corona:1106-2119Aft",
+                            "corona:1107-2170Fore", "corona:1107-2170Aft",
+                            "corona:1108-2135Fore", "corona:1108-2135Aft",
+                            "corona:1108-2167Fore", "corona:1108-2167Aft"
+                        ];
                     }
 
-                    window._sat60FrameLayers = chunks.map(function (chunk) {
-                        var layersParam = chunk.join(',');
-                        return L.tileLayer.wms(SAT60_WMS_URL, {
-                            layers: layersParam,
-                            format: "image/png",
-                            transparent: true,
-                            version: "1.1.1",
-                            attribution: "© Corona 1960s (CAST UARK)",
-                            tileSize: 256,
-                            opacity: SAT60_INITIAL_OPACITY,
-                            pane: "pane_sat60"
-                        });
+                    // Build at most MAX_COMBINED_WMS_LAYERS combined layers
+                    var chunks = [];
+                    for (var i = 0; i < effectiveLayers.length && chunks.length < MAX_COMBINED_WMS_LAYERS; i += CHUNK_SIZE) {
+                        chunks.push(effectiveLayers.slice(i, i + CHUNK_SIZE));
+                    }
+
+                    console.log("[Sat60] Will create", chunks.length, "combined WMS layers (capped). Raw layers considered:", effectiveLayers.length);
+
+                    // Store the *definitions* (not yet instantiated tile layers)
+                    window._sat60LayerDefs = chunks.map(function (chunk) {
+                        return {
+                            layers: chunk.join(',')
+                        };
                     });
-                    window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
+
+                    window._sat60FrameLayers = [];
+                    window._sat60MapLayer = L.layerGroup([]);
                     window._sat60Ready = true;
-                    // If toggle was already switched on before discovery finished, add to map now
+
+                    // If the toggle was already ON when discovery finished, activate now
                     var toggle = document.getElementById("satellite60sToggle");
                     if (toggle && toggle.checked) {
-                        window._sat60MapLayer.addTo(map);
+                        window.toggleSatellite60sMap(true);
                     }
                 });
 
@@ -8278,13 +8316,55 @@
                             histPremToggle.checked = true;
                             window.toggleHistPremiumLayer(true);
                         }
-                        if (window._sat60Ready) {
-                            window._sat60MapLayer.addTo(map);
-                        } else {
+
+                        if (!window._sat60Ready) {
                             console.log("[Sat60] Layers still being discovered, will add when ready");
+                            return;
+                        }
+
+                        // LAZY CREATION: only build the actual L.tileLayer.wms instances
+                        // the first time the user turns the layer ON. This is the main
+                        // fix for the "0 / 29920 requests, increasing kB transferred"
+                        // symptom — we no longer create dozens of WMS layers at page load.
+                        if (window._sat60FrameLayers.length === 0 && window._sat60LayerDefs && window._sat60LayerDefs.length > 0) {
+                            console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length, "WMS layers now that toggle is ON");
+                            window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
+                                var lyr = L.tileLayer.wms(SAT60_WMS_URL, {
+                                    layers: def.layers,
+                                    format: "image/png",
+                                    transparent: true,
+                                    version: "1.1.1",
+                                    attribution: "© Corona 1960s (CAST UARK)",
+                                    tileSize: 256,
+                                    opacity: SAT60_INITIAL_OPACITY,
+                                    pane: "pane_sat60",
+                                    bounds: ROMANIA_BOUNDS,   // stop requesting tiles outside Romania
+                                    minZoom: 8,               // do not request tiles at very low zoom (prevents thousands of requests)
+                                    maxZoom: 16,
+                                    maxNativeZoom: 14
+                                });
+                                return lyr;
+                            });
+                            window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
+                        }
+
+                        if (window._sat60MapLayer) {
+                            window._sat60MapLayer.addTo(map);
+
+                            // Helpful debug: log what the first tile URL will look like
+                            // so user can paste it in browser / check DevTools Network tab
+                            try {
+                                var firstLayer = window._sat60FrameLayers[0];
+                                if (firstLayer && firstLayer._url) {
+                                    var sampleUrl = firstLayer.getTileUrl({ x: 140, y: 80, z: 7 }); // rough Romania tile
+                                    console.log("[Sat60] Sample tile URL (paste in new tab to test):", sampleUrl);
+                                }
+                            } catch (e) {}
                         }
                     } else {
-                        map.hasLayer(window._sat60MapLayer) && map.removeLayer(window._sat60MapLayer);
+                        if (window._sat60MapLayer) {
+                            map.hasLayer(window._sat60MapLayer) && map.removeLayer(window._sat60MapLayer);
+                        }
                     }
                     window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
                 };
@@ -8292,9 +8372,12 @@
                 window.setSatellite60sMapOpacity = function (val) {
                     document.getElementById("satellite60sMapPct").textContent = val + "%";
                     var opacity = val / 100;
-                    window._sat60FrameLayers.forEach(function (layer) {
-                        if (layer.setOpacity) layer.setOpacity(opacity);
-                    });
+                    // Works whether layers were created eagerly or lazily
+                    if (window._sat60FrameLayers && window._sat60FrameLayers.length) {
+                        window._sat60FrameLayers.forEach(function (layer) {
+                            if (layer && layer.setOpacity) layer.setOpacity(opacity);
+                        });
+                    }
                 };
             })();
 
