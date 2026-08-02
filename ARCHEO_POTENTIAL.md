@@ -21,6 +21,26 @@ Premium map analysis layer for DetectLab.
 
 ---
 
+## Clicking a candidate — popup with star rating
+
+Every candidate circle is **clickable**. Clicking opens a small popup with:
+
+- **Classification + raw score %** (`High Potential — 72%`).
+- **5-star rating** — the score (0–1) is converted to `score × 5 / 5` stars with
+  partial fill (e.g. `0.72 → 3.6/5`). The stars' color comes from the score's
+  heat scale: **red** (low) → **amber** (medium) → **violet** (high), so the
+  color itself also encodes the score.
+- **Distance to the closest known site** (always ≥ 700 m by the mandatory
+  distance filter — the exact value is shown, e.g. `812 m`).
+- Full scoring breakdown: nearby site count, average distance, local density,
+  triangle quality, and coordinates.
+
+Internally the color mapping lives in `scoreColor()` and the star markup in
+`starRatingHtml()` (both exposed on `_archeoPotentialDebug`); the heat-scale
+stops are defined in `SCORE_COLOR_STOPS`.
+
+---
+
 ## Workflow (button press)
 
 1. Take the **current map center** (`map.getCenter()`).

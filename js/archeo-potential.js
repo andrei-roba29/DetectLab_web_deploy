@@ -722,6 +722,17 @@
             if (ddx * ddx + ddy * ddy <= S.DENSITY_RADIUS_M * S.DENSITY_RADIUS_M) density++;
         }
 
+        // Distance to the closest known site in the working area (always
+        // ≥ SITE_RADIUS + SITE_BUFFER, since every candidate passed the
+        // mandatory distance filter — but the exact value is useful info).
+        var closestSiteM = Infinity;
+        var allSites = ctx.sites || ctx.siteIndex.queryCircle(seed.x, seed.y, ctx.radius || 20000);
+        for (var ci = 0; ci < allSites.length; ci++) {
+            var sdx = seed.x - allSites[ci].x, sdy = seed.y - allSites[ci].y;
+            var sd = Math.sqrt(sdx * sdx + sdy * sdy);
+            if (sd < closestSiteM) closestSiteM = sd;
+        }
+
         var sNearby = clamp01(nearby.length / S.NEARBY_COUNT_REF);
         var sAvgDist = 1 - clamp01(avgDist / S.AVG_DIST_REFERENCE_M);
         var sTri = clamp01(seed.triScore);
@@ -740,6 +751,7 @@
                 avgDistM: Math.round(avgDist),
                 densityCount: density,
                 triQuality: seed.triQuality,
+                closestSiteM: isFinite(closestSiteM) ? Math.round(closestSiteM) : null,
                 sNearby: sNearby, sAvgDist: sAvgDist, sTri: sTri, sDensity: sDensity
             }
         };
@@ -792,18 +804,62 @@
         if (pane && pane.style) pane.style.zIndex = CONFIG.PANE_Z_INDEX;
     }
 
+    // ── Score → color (heat scale) ──────────────────────────────────────────
+    // Maps the valid score range [SCORE_DISCARD_BELOW .. 1] onto a
+    // red → amber → violet gradient, matching the layer's purple "high"
+    // visual language (low scores burn red, high scores glow violet).
+    var SCORE_COLOR_STOPS = [
+        { s: 0.25, rgb: [224, 82, 82] },   // #E05252 red (low)
+        { s: 0.55, rgb: [240, 160, 48] },  // #F0A030 amber (medium)
+        { s: 1.00, rgb: [123, 63, 212] }   // #7B3FD4 violet (high)
+    ];
+
+    function scoreColor(score) {
+        var t = Math.max(SCORE_COLOR_STOPS[0].s, Math.min(SCORE_COLOR_STOPS[SCORE_COLOR_STOPS.length - 1].s, score));
+        for (var i = 1; i < SCORE_COLOR_STOPS.length; i++) {
+            if (t <= SCORE_COLOR_STOPS[i].s) {
+                var a = SCORE_COLOR_STOPS[i - 1], b = SCORE_COLOR_STOPS[i];
+                var f = (t - a.s) / (b.s - a.s);
+                var r = Math.round(a.rgb[0] + (b.rgb[0] - a.rgb[0]) * f);
+                var g = Math.round(a.rgb[1] + (b.rgb[1] - a.rgb[1]) * f);
+                var bl = Math.round(a.rgb[2] + (b.rgb[2] - a.rgb[2]) * f);
+                return 'rgb(' + r + ',' + g + ',' + bl + ')';
+            }
+        }
+        return 'rgb(' + SCORE_COLOR_STOPS[SCORE_COLOR_STOPS.length - 1].rgb.join(',') + ')';
+    }
+
+    // ── 5-star rating ───────────────────────────────────────────────────────
+    // 5 gray stars with a colored overlay clipped to `score × 100%` — so the
+    // number of lit stars equals the score (e.g. 0.72 → 3.6/5 stars) and the
+    // color itself also reflects the score (heat scale, see scoreColor()).
+    function starRatingHtml(score) {
+        var pct = Math.round(Math.max(0, Math.min(1, score)) * 100);
+        var color = scoreColor(score);
+        var stars = '★★★★★';
+        return '<span style="display:inline-flex;align-items:center;gap:8px">' +
+            '<span style="position:relative;display:inline-block;font-size:1.05rem;line-height:1;letter-spacing:2px">' +
+            '<span style="color:rgba(245,240,235,0.18)">' + stars + '</span>' +
+            '<span style="position:absolute;left:0;top:0;width:' + pct + '%;overflow:hidden;white-space:nowrap;color:' + color + '">' + stars + '</span>' +
+            '</span>' +
+            '<span style="font-size:0.8rem;font-weight:700;color:' + color + '">' + (score * 5).toFixed(1) + '/5</span>' +
+            '</span>';
+    }
+
     function popupHtml(c, idx) {
         var cls = classify(c.score) === 'high' ? tr('class_high') : tr('class_medium');
+        var color = scoreColor(c.score);
         var pct = Math.round(c.score * 100);
-        return '<div style="font-family:Outfit,sans-serif;min-width:200px;padding:2px">' +
+        return '<div style="font-family:Outfit,sans-serif;min-width:215px;padding:2px">' +
             '<div style="font-family:Cinzel,serif;font-size:0.85rem;color:#c4a0f0;font-weight:700;margin-bottom:8px">' +
             '🔎 ' + tr('candidate') + ' #' + idx + '</div>' +
-            '<div style="font-size:0.78rem;color:rgba(245,240,235,0.9);margin-bottom:6px">' +
-            '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:' +
-            (cls === tr('class_high') ? '#6B2FA0' : '#B388E8') + '"></span>' +
+            '<div style="font-size:0.78rem;color:rgba(245,240,235,0.9);margin-bottom:7px">' +
+            '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:' + color + '"></span>' +
             '<strong>' + cls + '</strong> — ' + pct + '%</div>' +
-            '<div style="font-size:0.72rem;color:rgba(245,240,235,0.65);line-height:1.6">' +
+            '<div style="margin-bottom:8px">' + starRatingHtml(c.score) + '</div>' +
+            '<div style="font-size:0.72rem;color:rgba(245,240,235,0.65);line-height:1.7">' +
             '📍 ' + c.lat.toFixed(5) + ', ' + c.lng.toFixed(5) + '<br>' +
+            tr('closest_site') + ': <strong style="color:' + color + '">' + c.factors.closestSiteM + ' m</strong><br>' +
             tr('nearby') + ': ' + c.factors.nearbyCount + ' &nbsp;·&nbsp; ' +
             tr('avg_dist') + ': ' + c.factors.avgDistM + ' m<br>' +
             tr('density') + ': ' + c.factors.densityCount + ' &nbsp;·&nbsp; ' +
@@ -899,6 +955,7 @@
             class_high: 'High Potential',
             class_medium: 'Medium Potential',
             nearby: 'Nearby sites',
+            closest_site: 'Closest site',
             avg_dist: 'Avg. distance',
             density: 'Density',
             tri_quality: 'Triangle quality',
@@ -918,6 +975,7 @@
             class_high: 'Potențial Ridicat',
             class_medium: 'Potențial Mediu',
             nearby: 'Situri apropiate',
+            closest_site: 'Situl cel mai apropiat',
             avg_dist: 'Distanță medie',
             density: 'Densitate',
             tri_quality: 'Calitate triunghi',
@@ -1168,6 +1226,9 @@
         classify: classify,
         selectSeparated: selectSeparated,
         pointInPolygon: pointInPolygon,
+        scoreColor: scoreColor,
+        starRatingHtml: starRatingHtml,
+        popupHtml: popupHtml,
         uatPixelAt: uatPixelAt,
         _uatTileZ: uatTileZ
     };

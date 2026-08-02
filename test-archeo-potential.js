@@ -101,6 +101,7 @@ console.log('\n[Scoring / classification]');
     }
     // candidate inside the ring, 400m from all ring sites → high potential
     const ctx = {
+        sites: sites.map(s => ({ x: s.x, y: s.y })),
         siteIndex: (() => {
             const gi = { cells: new Map(), insert(x, y, item) {
                 const cx = Math.floor(x / 1200), cy = Math.floor(y / 1200);
@@ -131,9 +132,11 @@ console.log('\n[Scoring / classification]');
     const scored = D.scoreCandidate(seed, ctx);
     check('ring center classified High', D.classify(scored.score) === 'high', 'score ' + scored.score.toFixed(3));
     check('nearby count = 10', scored.factors.nearbyCount === 10, scored.factors.nearbyCount);
+    check('closest site = 1200 m (ring radius)', scored.factors.closestSiteM === 1200, scored.factors.closestSiteM);
 
     // isolated pair, far from everything → low score
     const ctx2 = {
+        sites: sites.slice(0, 2).map(s => ({ x: s.x, y: s.y })),
         siteIndex: (() => {
             const gi = { cells: new Map(), insert(x, y, item) {
                 const cx = Math.floor(x / 1200), cy = Math.floor(y / 1200);
@@ -166,6 +169,29 @@ console.log('\n[Scoring / classification]');
     const c = { x: 2000, y: 0, lat: 0, lng: 0, score: 0.7, factors: {} }; // far
     const sel = D.selectSeparated([a, b, c]);
     check('separation keeps a + c (drops b)', sel.length === 2 && sel[0] === a && sel[1] === c, 'kept ' + sel.length);
+}
+
+// ── 4b. Star rating + score color ─────────────────────────────────────
+console.log('\n[Star rating / score color]');
+{
+    const star = D.starRatingHtml(0.72);
+    check('star row renders 5 stars', (star.match(/★/g) || []).length === 10, star); // 5 gray + 5 colored
+    check('star row shows /5 rating', /3\.6\/5/.test(star), star);
+    check('star overlay width = 72%', /width:72%/.test(star), star);
+
+    const cLow = D.scoreColor(0.25), cMid = D.scoreColor(0.55), cHigh = D.scoreColor(1.0);
+    const parse = (s) => s.match(/(\d+),(\d+),(\d+)/).slice(1).map(Number);
+    const [lr, lg, lb] = parse(cLow);
+    const [hr, hg, hb] = parse(cHigh);
+    check('low score = red-ish (r dominant)', lr > lg && lr > lb, cLow);
+    check('high score = violet-ish (b dominant)', hb > hr && hb > lg, cHigh);
+    const [mr, mg, mb] = parse(cMid);
+    check('mid score = amber-ish (g high, r high)', mg > mb && mr > mb, cMid);
+
+    const popup = D.popupHtml({ score: 0.72, lat: 46.8, lng: 23.6, factors: {
+        closestSiteM: 812, nearbyCount: 5, avgDistM: 940, densityCount: 7, triQuality: 0.66 } }, 1);
+    check('popup contains star rating', popup.indexOf('★') !== -1);
+    check('popup shows closest site distance', /812\s*m/.test(popup), popup);
 }
 
 // ── 5. collectSitesInRadius with fake layer data ──────────────────────
@@ -323,6 +349,8 @@ console.log('\n[End-to-end pipeline]');
         return d <= 10000 + 1;
     }));
     check('classifications valid', results.every(r => r.classification === 'medium' || r.classification === 'high'));
+    check('every candidate ≥ 700 m from closest site', results.every(r => r.factors.closestSiteM >= 700),
+        JSON.stringify(results.map(r => r.factors.closestSiteM)));
 
     console.log(failures === 0 ? '\nALL TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
     process.exit(failures === 0 ? 0 : 1);
