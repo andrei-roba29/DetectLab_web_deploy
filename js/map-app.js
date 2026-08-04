@@ -3102,6 +3102,214 @@
                 document.head.appendChild(s);
             })();
 
+            // ── CLASATE ARTIFACTS LAYER (INP - CIMEC classified cultural goods) ──
+            // Served from DetectLab's own API. Shows ~21,761 classified archaeological
+            // artifacts from the Romanian National Heritage registry (clasate.cimec.ro).
+            map.createPane('pane_clasate');
+            map.getPane('pane_clasate').style.zIndex = 615;
+
+            var CLASATE_API_BASE = DETECTLAB_API_BASE; // same backend
+            var _clasateLayer = null;       // L.layerGroup of circle markers
+            var _clasateData = null;        // raw GeoJSON FeatureCollection
+            var _clasateVisible = false;
+            var _clasateCanvasRenderer = L.canvas({ pane: 'pane_clasate' });
+            var _clasateOpacity = 0.8;
+
+            function _buildClasatePopup(props) {
+                var html = '<div style="max-width:300px">';
+                html += '<div style="font-size:0.95rem;font-weight:600;margin-bottom:4px;color:#FFD700">' +
+                        (props.name || 'Unknown') + '</div>';
+                if (props.classification) {
+                    html += '<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.65rem;margin-bottom:6px;' +
+                            'background:' + (props.classification === 'Tezaur' ? 'rgba(255,215,0,0.2);color:#FFD700' : 'rgba(79,195,247,0.2);color:#4FC3F7') + '">' +
+                            props.classification + '</span>';
+                }
+                var fields = [
+                    ['Dating', props.dating],
+                    ['Period', props.period],
+                    ['Culture', props.culture],
+                    ['Finding place', props.finding_place],
+                    ['Holder', props.holder],
+                    ['Material', props.material],
+                    ['Inventory', props.inventory_nr],
+                ];
+                for (var i = 0; i < fields.length; i++) {
+                    if (fields[i][1]) {
+                        html += '<div style="font-size:0.72rem;margin-top:3px"><span style="opacity:0.5">' +
+                                fields[i][0] + ':</span> ' + fields[i][1] + '</div>';
+                    }
+                }
+                if (props.description) {
+                    html += '<div style="font-size:0.68rem;margin-top:6px;opacity:0.7;max-height:80px;overflow:hidden;text-overflow:ellipsis">' +
+                            props.description.substring(0, 300) + (props.description.length > 300 ? '…' : '') + '</div>';
+                }
+                if (props.detail_url) {
+                    html += '<div style="margin-top:6px"><a href="' + props.detail_url + '" target="_blank" ' +
+                            'style="color:#FFD700;font-size:0.72rem;text-decoration:underline">View on clasate.cimec.ro →</a></div>';
+                }
+                html += '</div>';
+                return html;
+            }
+
+            function _buildClasateVisuals() {
+                if (!_clasateLayer) _clasateLayer = L.layerGroup([]);
+                _clasateLayer.clearLayers();
+                if (!_clasateData || !_clasateData.features) return;
+
+                var feats = _clasateData.features;
+                for (var i = 0; i < feats.length; i++) {
+                    var f = feats[i];
+                    if (!f.geometry || !f.geometry.coordinates) continue;
+                    var latlng = L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]);
+                    var props = f.properties || {};
+
+                    // Color by classification
+                    var color;
+                    if (props.classification === 'Tezaur') color = '#FFD700';
+                    else if (props.classification === 'Fond') color = '#4FC3F7';
+                    else color = '#888';
+
+                    var marker = L.circleMarker(latlng, {
+                        renderer: _clasateCanvasRenderer,
+                        radius: 3.5,
+                        color: color,
+                        weight: 1,
+                        fillColor: color,
+                        fillOpacity: _clasateOpacity,
+                        opacity: _clasateOpacity
+                    });
+                    marker.bindPopup(_buildClasatePopup(props), { className: 'clasate-popup' });
+                    _clasateLayer.addLayer(marker);
+                }
+                // Update stats bar
+                var statsBar = document.getElementById('clasateStatsBar');
+                if (statsBar) statsBar.textContent = feats.length + ' artifacts on map';
+
+                console.log('[Clasate] Built ' + _clasateLayer.getLayers().length + ' markers');
+            }
+
+            function _loadClasateData(period, culture) {
+                var url = CLASATE_API_BASE + '/clasate/geojson';
+                var params = [];
+                if (period) params.push('period=' + encodeURIComponent(period));
+                if (culture) params.push('culture=' + encodeURIComponent(culture));
+                if (params.length) url += '?' + params.join('&');
+
+                return fetch(url)
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        return r.json();
+                    })
+                    .then(function (fc) {
+                        if (!fc || !Array.isArray(fc.features)) {
+                            throw new Error('Invalid GeoJSON response');
+                        }
+                        _clasateData = fc;
+                        console.log('[Clasate] Loaded ' + fc.features.length + ' artifacts from API');
+                        _buildClasateVisuals();
+                        return fc;
+                    })
+                    .catch(function (err) {
+                        console.warn('[Clasate] Failed to load:', err.message);
+                        _clasateData = { type: 'FeatureCollection', features: [] };
+                        _buildClasateVisuals();
+                    });
+            }
+
+            function _loadClasateFilters() {
+                // Populate filter dropdowns
+                fetch(CLASATE_API_BASE + '/clasate/periods/list')
+                    .then(function (r) { return r.json(); })
+                    .then(function (items) {
+                        var sel = document.getElementById('clasatePeriodFilter');
+                        if (!sel) return;
+                        items.forEach(function (item) {
+                            var opt = document.createElement('option');
+                            opt.value = item.value;
+                            opt.textContent = item.value + ' (' + item.count + ')';
+                            sel.appendChild(opt);
+                        });
+                    })
+                    .catch(function () {});
+
+                fetch(CLASATE_API_BASE + '/clasate/cultures/list')
+                    .then(function (r) { return r.json(); })
+                    .then(function (items) {
+                        var sel = document.getElementById('clasateCultureFilter');
+                        if (!sel) return;
+                        items.forEach(function (item) {
+                            var opt = document.createElement('option');
+                            opt.value = item.value;
+                            opt.textContent = item.value + ' (' + item.count + ')';
+                            sel.appendChild(opt);
+                        });
+                    })
+                    .catch(function () {});
+            }
+
+            // Toggle function (called from HTML checkbox)
+            window.toggleClasateLayer = function (on) {
+                _clasateVisible = on;
+                var filtersEl = document.getElementById('clasateFilters');
+                if (filtersEl) filtersEl.style.display = on ? '' : 'none';
+
+                if (on) {
+                    if (!_clasateData) {
+                        _loadClasateData().then(function () {
+                            if (_clasateLayer) _clasateLayer.addTo(map);
+                        });
+                        _loadClasateFilters();
+                    } else {
+                        if (_clasateLayer) _clasateLayer.addTo(map);
+                    }
+                } else {
+                    if (_clasateLayer) map.removeLayer(_clasateLayer);
+                }
+            };
+
+            // Filter function (called from dropdowns)
+            window.filterClasateLayer = function () {
+                var period = (document.getElementById('clasatePeriodFilter') || {}).value || '';
+                var culture = (document.getElementById('clasateCultureFilter') || {}).value || '';
+                _loadClasateData(period, culture).then(function () {
+                    if (_clasateVisible && _clasateLayer) _clasateLayer.addTo(map);
+                });
+            };
+
+            // Refresh function
+            window._refreshClasateLayer = function () {
+                _clasateData = null;
+                if (_clasateLayer) _clasateLayer.clearLayers();
+                var period = (document.getElementById('clasatePeriodFilter') || {}).value || '';
+                var culture = (document.getElementById('clasateCultureFilter') || {}).value || '';
+                _loadClasateData(period, culture).then(function () {
+                    if (_clasateVisible && _clasateLayer) _clasateLayer.addTo(map);
+                });
+            };
+
+            // Opacity control
+            window.setClasateOpacity = function (val) {
+                _clasateOpacity = val / 100;
+                document.getElementById('clasatePct').textContent = val + '%';
+                if (_clasateLayer) {
+                    _clasateLayer.eachLayer(function (l) {
+                        if (l.setStyle) l.setStyle({ fillOpacity: _clasateOpacity, opacity: _clasateOpacity });
+                    });
+                }
+            };
+
+            // Clasate popup styles
+            (function () {
+                var s = document.createElement('style');
+                s.textContent =
+                    '.clasate-popup .leaflet-popup-content-wrapper{background:rgba(6,14,30,0.95);backdrop-filter:blur(16px);border:1px solid rgba(255,215,0,0.4);border-radius:10px;color:#F5F0EB;box-shadow:0 8px 32px rgba(0,0,0,0.6)}' +
+                    '.clasate-popup .leaflet-popup-tip{background:rgba(6,14,30,0.95)}' +
+                    '.clasate-popup .leaflet-popup-close-button{color:#FFD700!important}';
+                document.head.appendChild(s);
+            })();
+
+            // ── END CLASATE LAYER ──
+
             map.createPane('pane_apm');
             map.getPane('pane_apm').style.zIndex = 401;
 

@@ -1,0 +1,7 @@
+name = "clasate-scraper"
+main = "src/worker.js"
+compatibility_date = "2024-01-01"
+
+# This worker acts as a proxy to clasate.cimec.ro, bypassing
+# TLS issues that affect some environments (sandboxes, Docker, etc.)
+# Deploy: npx wrangler deploy
