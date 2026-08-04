@@ -8309,46 +8309,96 @@
                 map.getPane("pane_sat60").style.zIndex = 648;
                 map.getPane("pane_sat60").style.pointerEvents = "none";
 
-                var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
+                var SAT60_GWC_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
+                var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/wms";
                 var SAT60_INITIAL_OPACITY = 0.85;
+
+                // Curated list of verified Corona frame layer names from CAST GeoServer
+                // whose geographic bounding boxes cover Romanian territory.
+                var FALLBACK_ROMANIA_LAYERS = [
+                    "corona:1105-2235df064", "corona:1105-2235df065", "corona:1105-2235df066", "corona:1105-2235df067",
+                    "corona:1105-2235df075", "corona:1105-2235df076", "corona:1105-2235df077", "corona:1105-2235df078", "corona:1105-2235df079",
+                    "corona:1105-2235df080", "corona:1105-2235df081", "corona:1105-2235df082", "corona:1105-2235df083", "corona:1105-2235df084",
+                    "corona:1103-2167df101", "corona:1103-2167df103",
+                    "corona:1105-2235df050", "corona:1105-2235df051", "corona:1105-2235df052", "corona:1105-2235df053", "corona:1105-2235df054",
+                    "corona:1105-2235df056", "corona:1105-2235df057", "corona:1105-2235df058", "corona:1105-2235df059", "corona:1105-2235df060",
+                    "corona:1105-2235df061", "corona:1105-2235df062", "corona:1105-2235df063",
+                    "corona:1105-2235df042", "corona:1105-2235df043", "corona:1105-2235df044", "corona:1105-2235df045", "corona:1105-2235df046",
+                    "corona:1105-2235df047", "corona:1105-2235df048", "corona:1105-2235df049",
+                    "corona:1110-2289df053", "corona:1110-2289df054", "corona:1110-2289df055",
+                    "corona:1110-2289df036", "corona:1110-2289df037", "corona:1110-2289df038", "corona:1110-2289df039",
+                    "corona:1105-2235df103", "corona:1105-2235df104",
+                    "corona:1105-2235df110", "corona:1105-2235df112", "corona:1105-2235df113", "corona:1105-2235df114", "corona:1105-2235df115",
+                    "corona:1105-2235df117", "corona:1105-2235df118", "corona:1105-2235df119"
+                ];
 
                 // Romania bounds — defined at outer initMap scope so it is available both
                 // during discovery and later during lazy layer creation.
 
                 // Discover all Corona layers dynamically from the GeoServer
                 function discoverCoronaLayers(callback) {
-                    fetch(SAT60_WMS_URL + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities")
+                    fetch(SAT60_GWC_URL + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities")
                         .then(function (r) { return r.text(); })
                         .then(function (xml) {
-                            var layers = [];
-                            var re = /<Name>(corona:[^<]+)<\/Name>/g;
-                            var match;
-                            var MAX_RAW_LAYERS = 600; // safety: we will never use more than this anyway
-                            while ((match = re.exec(xml)) !== null && layers.length < MAX_RAW_LAYERS) {
-                                var name = match[1];
-                                // Skip metadata/index layers
-                                if (name.indexOf("footprints") !== -1) continue;
-                                layers.push(name);
+                            var discovered = [];
+                            try {
+                                var parser = new DOMParser();
+                                var doc = parser.parseFromString(xml, "text/xml");
+                                var layerNodes = doc.getElementsByTagName("Layer");
+                                // Romania geographic bounds (Lon: 19.5 to 30.5, Lat: 43.5 to 48.5)
+                                var RO_MIN_X = 19.5, RO_MAX_X = 30.5;
+                                var RO_MIN_Y = 43.5, RO_MAX_Y = 48.5;
+
+                                for (var i = 0; i < layerNodes.length; i++) {
+                                    var node = layerNodes[i];
+                                    var nameEl = node.getElementsByTagName("Name")[0];
+                                    if (!nameEl || !nameEl.textContent) continue;
+                                    var name = nameEl.textContent.trim();
+                                    if (name.indexOf("corona:") !== 0) continue;
+                                    if (name.indexOf("footprints") !== -1) continue;
+
+                                    var minx = NaN, miny = NaN, maxx = NaN, maxy = NaN;
+                                    var bboxEl = node.getElementsByTagName("LatLonBoundingBox")[0];
+                                    if (bboxEl) {
+                                        minx = parseFloat(bboxEl.getAttribute("minx"));
+                                        miny = parseFloat(bboxEl.getAttribute("miny"));
+                                        maxx = parseFloat(bboxEl.getAttribute("maxx"));
+                                        maxy = parseFloat(bboxEl.getAttribute("maxy"));
+                                    } else {
+                                        var bboxes = node.getElementsByTagName("BoundingBox");
+                                        for (var b = 0; b < bboxes.length; b++) {
+                                            var srs = (bboxes[b].getAttribute("SRS") || bboxes[b].getAttribute("CRS") || "").toUpperCase();
+                                            if (srs.indexOf("4326") !== -1 || srs.indexOf("84") !== -1) {
+                                                minx = parseFloat(bboxes[b].getAttribute("minx"));
+                                                miny = parseFloat(bboxes[b].getAttribute("miny"));
+                                                maxx = parseFloat(bboxes[b].getAttribute("maxx"));
+                                                maxy = parseFloat(bboxes[b].getAttribute("maxy"));
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (isNaN(minx) || isNaN(miny) || isNaN(maxx) || isNaN(maxy)) continue;
+
+                                    // Intersection check: layer must overlap Romania
+                                    if (maxx >= RO_MIN_X && minx <= RO_MAX_X && maxy >= RO_MIN_Y && miny <= RO_MAX_Y) {
+                                        discovered.push(name);
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn("[Sat60] Error parsing GetCapabilities XML:", e);
                             }
-                            console.log("[Sat60] Discovered", layers.length, "Corona WMS layers from CAST GeoServer (capped at parse time if huge)");
-                            callback(layers);
+
+                            if (discovered.length > 0) {
+                                console.log("[Sat60] Discovered", discovered.length, "Corona WMS layers intersecting Romania from CAST GeoServer");
+                                callback(discovered);
+                            } else {
+                                console.warn("[Sat60] No layers matched Romania bbox in GetCapabilities, using curated Romania list");
+                                callback(FALLBACK_ROMANIA_LAYERS);
+                            }
                         })
                         .catch(function (err) {
-                            console.warn("[Sat60] Failed to discover Corona layers, using fallback list:", err);
-                            callback([
-                                "corona:1103-2139Fore", "corona:1103-2139Aft",
-                                "corona:1103-2155Fore", "corona:1103-2155Aft",
-                                "corona:1103-2167Fore", "corona:1103-2167Aft",
-                                "corona:1103-2171Fore", "corona:1103-2171Aft",
-                                "corona:1103-2183Fore", "corona:1103-2183Aft",
-                                "corona:1103-2200Fore", "corona:1103-2200Aft",
-                                "corona:1106-1042da023", "corona:1106-1042da024", "corona:1106-1042da025",
-                                "corona:1106-2070Fore", "corona:1106-2070Aft",
-                                "corona:1106-2119Fore", "corona:1106-2119Aft",
-                                "corona:1107-2170Fore", "corona:1107-2170Aft",
-                                "corona:1108-2135Fore", "corona:1108-2135Aft",
-                                "corona:1108-2167Fore", "corona:1108-2167Aft"
-                            ]);
+                            console.warn("[Sat60] Failed to discover Corona layers, using curated Romania list:", err);
+                            callback(FALLBACK_ROMANIA_LAYERS);
                         });
                 }
 
@@ -8357,51 +8407,21 @@
                 window._sat60Ready = false;
 
                 discoverCoronaLayers(function (layerNames) {
-                    // CRITICAL FIX for "0 / 29920 requests" + ever-increasing transferred/resources:
-                    // A full GetCapabilities often returns thousands of worldwide Corona layers.
-                    // Each L.tileLayer.wms causes Leaflet to make a separate tile request *per visible tile*.
-                    // 100+ layers × 20-30 tiles/view = thousands of simultaneous requests → browser chokes.
-                    //
-                    // Strategy (very aggressive now):
-                    // - Hard-cap to **1** combined WMS layer total (maximum safety).
-                    // - Only create when user actually turns the toggle ON (lazy creation).
-                    // - If huge list from server → use small curated Romania set.
-                    // - Add strict bounds + zoom limits on every WMS layer.
+                    // We combine the Romania layers into groups of 40 layers each.
+                    // This creates at most 3 WMS layer instances, keeping requests tiny while
+                    // keeping each URL well under safe server limits (~1,000 characters).
+                    var MAX_COMBINED_WMS_LAYERS = 4;
+                    var CHUNK_SIZE = 40;
 
-                    var MAX_COMBINED_WMS_LAYERS = 1;   // ABSOLUTE MAX — only ever create 1 L.tileLayer.wms
-                    var CHUNK_SIZE = 200;              // one big combined layer
+                    var effectiveLayers = (layerNames && layerNames.length > 0) ? layerNames : FALLBACK_ROMANIA_LAYERS;
 
-                    var effectiveLayers = layerNames;
-
-                    // If the server gave us a ridiculous number of layers, fall back to the curated Romania list.
-                    // This prevents the "29920 requests" storm.
-                    if (layerNames.length > 300) {
-                        console.warn("[Sat60] GetCapabilities returned", layerNames.length, "layers (worldwide). Using curated Romania fallback instead to avoid request explosion.");
-                        effectiveLayers = [
-                            "corona:1103-2139Fore", "corona:1103-2139Aft",
-                            "corona:1103-2155Fore", "corona:1103-2155Aft",
-                            "corona:1103-2167Fore", "corona:1103-2167Aft",
-                            "corona:1103-2171Fore", "corona:1103-2171Aft",
-                            "corona:1103-2183Fore", "corona:1103-2183Aft",
-                            "corona:1103-2200Fore", "corona:1103-2200Aft",
-                            "corona:1106-1042da023", "corona:1106-1042da024", "corona:1106-1042da025",
-                            "corona:1106-2070Fore", "corona:1106-2070Aft",
-                            "corona:1106-2119Fore", "corona:1106-2119Aft",
-                            "corona:1107-2170Fore", "corona:1107-2170Aft",
-                            "corona:1108-2135Fore", "corona:1108-2135Aft",
-                            "corona:1108-2167Fore", "corona:1108-2167Aft"
-                        ];
-                    }
-
-                    // Build at most MAX_COMBINED_WMS_LAYERS combined layers
                     var chunks = [];
                     for (var i = 0; i < effectiveLayers.length && chunks.length < MAX_COMBINED_WMS_LAYERS; i += CHUNK_SIZE) {
                         chunks.push(effectiveLayers.slice(i, i + CHUNK_SIZE));
                     }
 
-                    console.log("[Sat60] Will create", chunks.length, "combined WMS layers (capped). Raw layers considered:", effectiveLayers.length);
+                    console.log("[Sat60] Will create", chunks.length, "combined WMS layers. Total Romania layers considered:", effectiveLayers.length);
 
-                    // Store the *definitions* (not yet instantiated tile layers)
                     window._sat60LayerDefs = chunks.map(function (chunk) {
                         return {
                             layers: chunk.join(',')
@@ -8433,9 +8453,7 @@
                         }
 
                         // LAZY CREATION: only build the actual L.tileLayer.wms instances
-                        // the first time the user turns the layer ON. This is the main
-                        // fix for the "0 / 29920 requests, increasing kB transferred"
-                        // symptom — we no longer create dozens of WMS layers at page load.
+                        // the first time the user turns the layer ON.
                         if (window._sat60FrameLayers.length === 0 && window._sat60LayerDefs && window._sat60LayerDefs.length > 0) {
                             console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length, "WMS layers now that toggle is ON");
                             window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
@@ -8449,9 +8467,9 @@
                                     opacity: SAT60_INITIAL_OPACITY,
                                     pane: "pane_sat60",
                                     bounds: ROMANIA_BOUNDS,   // stop requesting tiles outside Romania
-                                    minZoom: 8,               // do not request tiles at very low zoom (prevents thousands of requests)
-                                    maxZoom: 16,
-                                    maxNativeZoom: 14
+                                    minZoom: 5,               // fetch tiles starting from zoom 5 (Romania overview)
+                                    maxZoom: 18,
+                                    maxNativeZoom: 15
                                 });
                                 return lyr;
                             });
@@ -8461,12 +8479,10 @@
                         if (window._sat60MapLayer) {
                             window._sat60MapLayer.addTo(map);
 
-                            // Helpful debug: log what the first tile URL will look like
-                            // so user can paste it in browser / check DevTools Network tab
                             try {
                                 var firstLayer = window._sat60FrameLayers[0];
                                 if (firstLayer && firstLayer._url) {
-                                    var sampleUrl = firstLayer.getTileUrl({ x: 140, y: 80, z: 7 }); // rough Romania tile
+                                    var sampleUrl = firstLayer.getTileUrl({ x: 72, y: 45, z: 7 }); // Romania tile at zoom 7
                                     console.log("[Sat60] Sample tile URL (paste in new tab to test):", sampleUrl);
                                 }
                             } catch (e) {}
