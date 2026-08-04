@@ -620,6 +620,16 @@
                     }
                 }, 200);
 
+                // This is shared with trail recording as well as the live-location
+                // button. Keeping the marker update in one place ensures that starting a
+                // trail always gives the user an immediate, visible location pin.
+                function showLiveLocation(lat, lng, accuracy, shouldCenter) {
+                    createMarker(lat, lng, accuracy);
+                    if (shouldCenter) {
+                        map.flyTo([lat, lng], Math.max(map.getZoom(), 14), { duration: 1.2 });
+                    }
+                }
+
                 function createMarker(lat, lng, accuracy) {
                     removeMarker();
                     var icon = L.divIcon({
@@ -658,8 +668,7 @@
                             var lat = pos.coords.latitude;
                             var lng = pos.coords.longitude;
                             var acc = pos.coords.accuracy;
-                            createMarker(lat, lng, acc);
-                            map.flyTo([lat, lng], Math.max(map.getZoom(), 14), { duration: 1.2 });
+                            showLiveLocation(lat, lng, acc, true);
                             // Share coordinates with detection system so it can fire immediately
                             // even if the user activates detection after live location is already on
                             _detLat = lat;
@@ -699,6 +708,10 @@
                 window._startLiveLocation = startTracking;
                 window._stopLiveLocation = stopTracking;
                 window._isLiveLocationActive = function () { return watchId !== null; };
+                // Trail recording owns a separate GPS watch so it can be stopped without
+                // turning off a manually enabled live-location session. It uses this small
+                // public bridge to render the same pin and accuracy circle.
+                window._showLiveLocation = showLiveLocation;
 
             })();
 
@@ -996,56 +1009,102 @@
                     var isTracking = false;
                     var trackPoints = [];
                     var trackPolyline = null;
+                    var trackStartMarker = null;
+                    var trackCurrentMarker = null;
                     var trackWatchId = null;
                     var trackStartTime = null;
 
+                    function updateTrackMarkers(lat, lng) {
+                        var latLng = [lat, lng];
+                        if (!trackStartMarker) {
+                            trackStartMarker = L.circleMarker(latLng, {
+                                radius: 5, color: '#fff', weight: 2,
+                                fillColor: '#E8772A', fillOpacity: 1, interactive: false
+                            }).addTo(map);
+                        }
+                        if (!trackCurrentMarker) {
+                            trackCurrentMarker = L.circleMarker(latLng, {
+                                radius: 4, color: '#fff', weight: 2,
+                                fillColor: '#E8772A', fillOpacity: 1, interactive: false
+                            }).addTo(map);
+                        } else {
+                            trackCurrentMarker.setLatLng(latLng);
+                        }
+                    }
+
+                    function clearTrackLayers() {
+                        if (trackPolyline) { map.removeLayer(trackPolyline); trackPolyline = null; }
+                        if (trackStartMarker) { map.removeLayer(trackStartMarker); trackStartMarker = null; }
+                        if (trackCurrentMarker) { map.removeLayer(trackCurrentMarker); trackCurrentMarker = null; }
+                    }
+
                     function startTrackingPath() {
                         if (isTracking) return;
+                        if (!navigator.geolocation) {
+                            alert('Geolocation is not supported by your browser.');
+                            return;
+                        }
+
                         isTracking = true;
                         trackPoints = [];
                         trackStartTime = Date.now();
-
-                        if (trackPolyline) map.removeLayer(trackPolyline);
-                        trackPolyline = null;
-
+                        clearTrackLayers();
                         trackBtn.classList.add('active');
-                        trackBtn.title = 'Oprește înregistrarea traseului';
-
-                        if (!navigator.geolocation) {
-                            alert('Geolocation not supported');
-                            stopTrackingPath();
-                            return;
-                        }
+                        trackBtn.title = 'Recording trail — waiting for GPS';
 
                         trackWatchId = navigator.geolocation.watchPosition(
                             function (pos) {
                                 var lat = pos.coords.latitude;
                                 var lng = pos.coords.longitude;
-                                trackPoints.push([lat, lng]);
+                                var accuracy = pos.coords.accuracy;
+                                var previous = trackPoints[trackPoints.length - 1];
 
-                                if (trackPolyline) {
-                                    trackPolyline.setLatLngs(trackPoints);
-                                } else {
-                                    trackPolyline = L.polyline(trackPoints, {
-                                        color: '#E8772A',
-                                        weight: 3,
-                                        opacity: 0.85
-                                    }).addTo(map);
+                                // Location providers sometimes repeat the exact same fix.
+                                // Do not add those duplicates, but do keep the pin current.
+                                if (!previous || previous[0] !== lat || previous[1] !== lng) {
+                                    trackPoints.push([lat, lng]);
+                                }
+                                updateTrackMarkers(lat, lng);
+                                if (typeof window._showLiveLocation === 'function') {
+                                    window._showLiveLocation(lat, lng, accuracy, trackPoints.length === 1);
                                 }
 
-                                // Auto-stop after 10 hours
+                                if (trackPoints.length >= 2) {
+                                    if (trackPolyline) {
+                                        trackPolyline.setLatLngs(trackPoints);
+                                    } else {
+                                        trackPolyline = L.polyline(trackPoints, {
+                                            color: '#E8772A', weight: 4, opacity: 0.9,
+                                            lineCap: 'round', lineJoin: 'round'
+                                        }).addTo(map);
+                                    }
+                                }
+                                trackBtn.title = 'Stop recording trail (' + trackPoints.length + ' GPS points)';
+
+                                // Auto-stop after 10 hours.
                                 if (Date.now() - trackStartTime > 10 * 60 * 60 * 1000) {
                                     stopTrackingPath(true);
                                 }
                             },
                             function (err) {
-                                console.warn('Track error:', err);
+                                console.warn('Track location error:', err);
+                                var messages = {
+                                    1: 'Location permission was denied. Trail recording has stopped.',
+                                    2: 'Your location is currently unavailable. Trail recording has stopped.',
+                                    3: 'Location request timed out. Trail recording has stopped.'
+                                };
+                                stopTrackingPath(false, true);
+                                alert(messages[err.code] || 'Could not get your location. Trail recording has stopped.');
                             },
-                            { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+                            { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
                         );
                     }
 
-                    function stopTrackingPath(auto = false) {
+                    // suppressSave is used for a GPS failure: no save question should be
+                    // shown for a recording that never successfully started.
+                    function stopTrackingPath(auto, suppressSave) {
+                        if (typeof auto === 'undefined') auto = false;
+                        if (typeof suppressSave === 'undefined') suppressSave = false;
                         if (!isTracking) return;
                         isTracking = false;
 
@@ -1053,53 +1112,68 @@
                             navigator.geolocation.clearWatch(trackWatchId);
                             trackWatchId = null;
                         }
-
                         trackBtn.classList.remove('active');
-                        trackBtn.title = 'Înregistrează traseu';
+                        trackBtn.title = 'Record trail';
 
                         if (trackPoints.length < 2) {
-                            if (trackPolyline) map.removeLayer(trackPolyline);
-                            trackPolyline = null;
+                            clearTrackLayers();
+                            if (!suppressSave && !auto) {
+                                alert('Trail recording stopped. Move a little farther to create a trail.');
+                            }
                             trackPoints = [];
                             return;
                         }
 
-                        // Save to Supabase
-                        saveTrackToSupabase(trackPoints, auto);
+                        if (auto) {
+                            saveTrackToSupabase(trackPoints, true);
+                            return;
+                        }
+
+                        // A deliberate stop must always give the user control over whether
+                        // their location history is stored.
+                        var shouldSave = window.confirm('Save this trail to your account?');
+                        if (shouldSave) {
+                            saveTrackToSupabase(trackPoints, false);
+                        } else {
+                            clearTrackLayers();
+                            trackPoints = [];
+                        }
                     }
 
                     async function saveTrackToSupabase(points, autoStopped) {
                         try {
-                            if (!window.supabaseClient) return;
-
-                            const userRes = await window.supabaseClient.auth.getUser();
-                            if (!userRes.data || !userRes.data.user) return;
-
-                            const payload = {
+                            if (!window.supabaseClient) {
+                                alert('Please sign in to save your trail.');
+                                return false;
+                            }
+                            var userRes = await window.supabaseClient.auth.getUser();
+                            if (!userRes.data || !userRes.data.user) {
+                                alert('Please sign in to save your trail.');
+                                return false;
+                            }
+                            var payload = {
                                 path: points,
                                 started_at: new Date(trackStartTime).toISOString(),
                                 ended_at: new Date().toISOString(),
                                 auto_stopped: autoStopped
                             };
-
-                            await window.supabaseClient.from('user_tracks').insert(payload);
+                            var result = await window.supabaseClient.from('user_tracks').insert(payload);
+                            if (result.error) throw result.error;
                             console.log('[Track] Path saved to Supabase');
+                            return true;
                         } catch (e) {
                             console.error('[Track] Failed to save path:', e);
+                            alert('We could not save this trail. Please try again.');
+                            return false;
                         }
                     }
 
-                    // Click handler
                     L.DomEvent.on(trackBtn, 'click', function (e) {
                         L.DomEvent.stopPropagation(e);
-                        if (isTracking) {
-                            stopTrackingPath();
-                        } else {
-                            startTrackingPath();
-                        }
+                        if (isTracking) stopTrackingPath();
+                        else startTrackingPath();
                     });
 
-                    // Expose for debugging
                     window._trackPath = { start: startTrackingPath, stop: stopTrackingPath };
                 })();
 
