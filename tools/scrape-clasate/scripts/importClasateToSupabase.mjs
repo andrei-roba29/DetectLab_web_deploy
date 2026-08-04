@@ -14,11 +14,17 @@
 
 import 'dotenv/config';
 import pg from 'pg';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Try loading .env from backend dir if not found locally
+const backendEnv = resolve(__dirname, '..', '..', '..', 'backend', '.env');
+if (!process.env.DATABASE_URL && existsSync(backendEnv)) {
+  (await import('dotenv')).config({ path: backendEnv });
+}
 
 const INPUT_PATH = process.argv[2] || resolve(__dirname, '..', 'data/clasate_artifacts.json');
 const BATCH_SIZE = 500;

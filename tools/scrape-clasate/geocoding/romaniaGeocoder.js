@@ -11,7 +11,12 @@
  *   3. County centroid fallback
  */
 
-import { logger } from '../../logger.js';
+// Standalone logger (no dependency on backend's pino logger)
+const logger = {
+  warn: (...args) => console.warn('[geocoder]', ...args),
+  info: (...args) => console.log('[geocoder]', ...args),
+  error: (...args) => console.error('[geocoder]', ...args),
+};
 
 // ── Romanian county centroids (WGS84) ──────────────────────────────
 // Source: INSSE / Wikipedia centroid data

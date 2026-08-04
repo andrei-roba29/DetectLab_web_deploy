@@ -32,8 +32,8 @@ Supabase (PostGIS), and serves the data as GeoJSON for the DetectLab map.
 ### 1. Install dependencies
 
 ```bash
-cd backend
-npm install puppeteer   # adds Chromium (~170MB, one-time)
+cd tools/scrape-clasate
+npm install
 ```
 
 ### 2. Run the scraper
@@ -50,33 +50,13 @@ PUPPETEER_HEADLESS=false node scripts/scrapeClasate.mjs    # see the browser
 SCRAPE_RESUME=true node scripts/scrapeClasate.mjs          # resume from last checkpoint
 ```
 
-The scraper:
-1. Opens a headless Chromium browser
-2. Navigates through 436 listing pages (50 items each)
-3. Collects all detail page URLs
-4. Visits each detail page to extract:
-   - **Name** (Tip)
-   - **Description** (Descriere)
-   - **Dating** (Datare)
-   - **Period** (Epoca/Perioada)
-   - **Culture** (Etnia/Cultura)
-   - **Finding place** (Loc de descoperire)
-   - **Holder** (Deținător)
-   - **Material** (Material/Tehnică)
-   - **Classification** (Fond/Tezaur)
-   - **Inventory number** (Nr. inventar)
-   - **Image URL**
-5. Geocodes finding places → approximate coordinates
-6. Saves checkpoints every 100 items
-
 ### 3. Import into Supabase
 
 ```bash
 node scripts/importClasateToSupabase.mjs
 ```
 
-This reads `data/clasate_artifacts.json` and upserts all rows into the
-`clasate_artifacts` PostGIS table.
+Reads DATABASE_URL from `../../backend/.env` automatically.
 
 ### 4. API endpoints
 
@@ -146,14 +126,21 @@ clasate_artifacts (
 
 ## Files
 
+**One-time tools** (this directory — `tools/scrape-clasate/`):
+
+| Path | Purpose |
+|---|---|
+| `scripts/scrapeClasate.mjs` | Puppeteer scraper |
+| `scripts/importClasateToSupabase.mjs` | Supabase import |
+| `geocoding/romaniaGeocoder.js` | Geocoding engine |
+| `data/clasate_artifacts.json` | Scraped data (output) |
+
+**Permanent project files** (in `backend/` and root):
+
 | Path | Purpose |
 |---|---|
 | `supabase/migrations/20260804000000_create_clasate_artifacts.sql` | DB schema |
-| `backend/scripts/scrapeClasate.mjs` | Puppeteer scraper |
-| `backend/scripts/importClasateToSupabase.mjs` | Supabase import |
-| `backend/src/services/geocoding/romaniaGeocoder.js` | Geocoding engine |
 | `backend/src/routes/clasate.js` | API endpoints |
-| `backend/data/clasate_artifacts.json` | Scraped data (output) |
 
 ## Rate Limiting
 

@@ -9,7 +9,7 @@
  *
  * USAGE:
  *   # Install Puppeteer first (one-time):
- *   cd backend && npm install puppeteer
+ *   cd tools/scrape-clasate && npm install puppeteer
  *
  *   # Run the full scraper (takes ~6-12 hours for all 21,761 items):
  *   node scripts/scrapeClasate.mjs
@@ -44,7 +44,7 @@ import puppeteer from 'puppeteer';
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { geocodeFindingPlace } from '../src/services/geocoding/romaniaGeocoder.js';
+import { geocodeFindingPlace } from '../geocoding/romaniaGeocoder.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
