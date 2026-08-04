@@ -673,10 +673,12 @@
                             // even if the user activates detection after live location is already on
                             _detLat = lat;
                             _detLng = lng;
-                            // Publish presence so other detectorists can see this user ONLY if we are in detecting mode.
-                            // Otherwise, setting visible to false cleans up any stale records.
+                            // Publish presence so other detectorists can see this user ONLY if
+                            // BOTH detecting mode AND live location are active.  If either is off,
+                            // setting visible to false hides them from "See other detectorists".
                             if (typeof publishDetectorPresence === 'function') {
-                                publishDetectorPresence(lat, lng, _det.active);
+                                var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
+                                publishDetectorPresence(lat, lng, _det.active && _liveActive);
                             }
                             if (_det.active) _detCheck(lat, lng);
                         },
@@ -701,6 +703,26 @@
                     if (btn) {
                         btn.classList.remove('active');
                         btn.title = 'My Location';
+                    }
+                    // ── Clean up presence: user is no longer visible to others ──
+                    // A detectorist must have BOTH detection ON AND live location ON
+                    // to appear in "See other detectorists in the area".  Turning off
+                    // live location means they should immediately disappear from results.
+                    if (_detLat !== null && typeof publishDetectorPresence === 'function') {
+                        publishDetectorPresence(_detLat, _detLng, false);
+                    }
+                    // If detection is still active but live location was just turned off,
+                    // start detection's own GPS watcher as a fallback so the heritage-site
+                    // proximity alert still works even without the live-location button on.
+                    if (typeof _det !== 'undefined' && _det.active && _det.watchId === null && navigator.geolocation) {
+                        _det.watchId = navigator.geolocation.watchPosition(
+                            _detOnPosition,
+                            function (e) {
+                                console.warn('[DETECT] geo error', e.code, e.message);
+                                if (typeof window._onDetectGeoError === 'function') window._onDetectGeoError(e);
+                            },
+                            { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+                        );
                     }
                 }
 
@@ -4162,10 +4184,11 @@
                     // Remember the current map view so the user can return to the initial
                     // aspect after the search zooms the map to the found pins.
                     _nearbyPrevView = { center: map.getCenter(), zoom: map.getZoom() };
-                    // Broadcast our current position right away so others can see us ONLY if we are in detecting mode,
-                    // otherwise set visible to false to clear any stale records.
+                    // Broadcast our current position right away so others can see us ONLY if
+                    // BOTH detecting mode AND live location are active.
                     if(_detLat !== null && typeof publishDetectorPresence === 'function') {
-                        publishDetectorPresence(_detLat, _detLng, _det.active);
+                        var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
+                        publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive);
                     }
                 }
             };
@@ -4251,22 +4274,30 @@
                 status.innerHTML='Se caută…<br><small>Searching…</small>';
                 try {
                     // Make sure OUR position is freshly published first, so the other
-                    // phone can see us even if its search runs a moment earlier (only if we are in detecting mode).
-                    await publishDetectorPresence(_detLat, _detLng, _det.active);
+                    // phone can see us even if its search runs a moment earlier — but only
+                    // if BOTH detecting mode AND live location are active.
+                    var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
+                    await publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive);
 
                     // Try to read with device_id (new schema). If the migration hasn't been
                     // applied yet, fall back to the legacy columns-only query.
                     var rows, legacySchema = false;
+                    // Only show detectorists whose position was updated in the last
+                    // 5 minutes — excludes stale rows left behind when a user closes
+                    // the browser without turning off detection / live location.
+                    var _staleCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
                     var res = await window.supabaseClient
                         .from('detector_presence')
                         .select('user_id,device_id,full_name,email,latitude,longitude')
-                        .eq('visible', true);
+                        .eq('visible', true)
+                        .gt('updated_at', _staleCutoff);
                     if (res.error) {
                         if (/device_id|column/i.test((res.error.message || '') + (res.error.details || '') + (res.error.hint || ''))) {
                             var res2 = await window.supabaseClient
                                 .from('detector_presence')
                                 .select('user_id,full_name,email,latitude,longitude')
-                                .eq('visible', true);
+                                .eq('visible', true)
+                                .gt('updated_at', _staleCutoff);
                             if (res2.error) throw res2.error;
                             rows = res2.data || [];
                             legacySchema = true;
@@ -4530,7 +4561,9 @@
             function _detOnPosition(pos) {
                 _detLat = pos.coords.latitude;
                 _detLng = pos.coords.longitude;
-                publishDetectorPresence(_detLat, _detLng, _det.active);
+                // Only visible to others if BOTH detection mode AND live location are active.
+                var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
+                publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive);
                 _detCheck(_detLat, _detLng);
             }
 
@@ -4598,11 +4631,14 @@
 
                     // If live location is already active, we already have coordinates —
                     // fire an immediate check instead of waiting for the next GPS tick.
-                    // The live-location watcher already publishes presence + checks sites,
-                    // so we only start the detection's own watcher as a fallback when
-                    // live location is NOT active (to avoid two concurrent watchPosition
-                    // calls, which can conflict on mobile browsers).
-                    if (_detLat !== null) _detCheck(_detLat, _detLng);
+                    // Also publish presence right away so other detectorists can see us
+                    // immediately (both detection AND live location are now on).
+                    if (_detLat !== null) {
+                        _detCheck(_detLat, _detLng);
+                        if (typeof publishDetectorPresence === 'function') {
+                            publishDetectorPresence(_detLat, _detLng, true);
+                        }
+                    }
 
                     if (typeof window._isLiveLocationActive !== 'function' ||
                         !window._isLiveLocationActive()) {
@@ -4629,25 +4665,13 @@
                     }
                     document.getElementById('siteAlert').classList.remove('visible');
                     
-                    var presenceUser = nearbyUser();
-                    if (presenceUser && window.supabaseClient) {
-                        (async function() {
-                            try {
-                                var query = window.supabaseClient.from('detector_presence').delete().eq('user_id', presenceUser.id);
-                                if (typeof DETECTOR_DEVICE_ID !== 'undefined' && DETECTOR_DEVICE_ID) {
-                                    query = query.eq('device_id', DETECTOR_DEVICE_ID);
-                                }
-                                var delRes = await query;
-                                if (delRes.error && /device_id|column/i.test(delRes.error.message || '')) {
-                                    await window.supabaseClient.from('detector_presence').delete().eq('user_id', presenceUser.id);
-                                }
-                            } catch (err) {
-                                console.warn('[Presence] delete failed:', err);
-                                try {
-                                    await window.supabaseClient.from('detector_presence').delete().eq('user_id', presenceUser.id);
-                                } catch(e2){}
-                            }
-                        })();
+                    // Set visible=false (instead of deleting) so the user immediately
+                    // disappears from "See other detectorists" results.  Using
+                    // publishDetectorPresence avoids a race with the live-location
+                    // GPS watcher which would otherwise re-insert the row on its
+                    // next tick — and also handles the device_id column fallback.
+                    if (_detLat !== null && typeof publishDetectorPresence === 'function') {
+                        publishDetectorPresence(_detLat, _detLng, false);
                     }
                     
                     // Reset edge-trigger flags so the alert fires fresh on re-activation.
