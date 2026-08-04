@@ -8,7 +8,9 @@
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
     "migrate": "node scripts/runMigrations.js",
-    "sync": "node scripts/runSyncOnce.js"
+    "sync": "node scripts/runSyncOnce.js",
+    "scrape:clasate": "node scripts/scrapeClasate.mjs",
+    "import:clasate": "node scripts/importClasateToSupabase.mjs"
   },
   "dependencies": {
     "compression": "^1.7.5",

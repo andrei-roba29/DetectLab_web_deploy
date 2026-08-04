@@ -6,6 +6,7 @@ import { env } from './config/env.js';
 import { logger } from './logger.js';
 import sitesRouter from './routes/sites.js';
 import layersRouter from './routes/layers.js';
+import clasateRouter from './routes/clasate.js';
 import { startScheduler } from './jobs/scheduler.js';
 
 const app = express();
@@ -19,6 +20,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use('/api', sitesRouter);
 app.use('/api', layersRouter);
+app.use('/api', clasateRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
