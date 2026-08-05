@@ -4944,16 +4944,444 @@
                 map.getPane('pane_josephine').style.zIndex = 650;
                 map.getPane('pane_josephine').style.pointerEvents = 'none';
 
-                var _jLayer = L.tileLayer('https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/Josephine/{z}/{x}/{y}.jpg', {
+                // ── JOSEPHINE MAP + — visual-source router ───────────────────────────
+                // The Cloudflare raster remains the canonical Josephine source for the
+                // "Clădiri dispărute" analysis below.  This router affects *only* what is
+                // drawn for the premium Josephine Map + layer.
+                //
+                // Rule requested for the visual layer:
+                //   • if even one exterior pixel of the Supabase raster would be on screen
+                //     (transparent, partially transparent, or strict opaque black), draw
+                //     Supabase;
+                //   • otherwise draw the existing Cloudflare map.
+                //
+                // Supabase has native tiles at z10–z14.  Leaflet safely underzooms/overzooms
+                // those native levels, so the same decision works at every map zoom.
+                var JOSEPHINE_CLOUDFLARE_TILE_URL =
+                    'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/Josephine/{z}/{x}/{y}.jpg';
+                var JOSEPHINE_SUPABASE_TILE_URL =
+                    'https://dacboefvooxgsngxkavx.supabase.co/storage/v1/object/public/Harti/Joseph/{z}/{x}/{y}.png';
+                var JOSEPHINE_SUPABASE_MIN_NATIVE_Z = 10;
+                var JOSEPHINE_SUPABASE_MAX_NATIVE_Z = 14;
+                var JOSEPHINE_TILE_SIZE = 256;
+
+                var _jCloudflareLayer = L.tileLayer(JOSEPHINE_CLOUDFLARE_TILE_URL, {
                     minZoom: 8,
                     maxZoom: 20,
                     maxNativeZoom: 15,
-                    tileSize: 256,
+                    tileSize: JOSEPHINE_TILE_SIZE,
                     opacity: _opacity,
                     pane: 'pane_josephine'
                 });
+
+                var _jSupabaseLayer = L.tileLayer(JOSEPHINE_SUPABASE_TILE_URL, {
+                    minZoom: 8,
+                    maxZoom: 20,
+                    minNativeZoom: JOSEPHINE_SUPABASE_MIN_NATIVE_Z,
+                    maxNativeZoom: JOSEPHINE_SUPABASE_MAX_NATIVE_Z,
+                    tileSize: JOSEPHINE_TILE_SIZE,
+                    opacity: _opacity,
+                    pane: 'pane_josephine',
+                    // The coverage detector below reads the same public PNGs in a canvas.
+                    // Supabase Storage serves the public bucket with CORS enabled.
+                    crossOrigin: 'anonymous',
+                    noWrap: true
+                });
+
+                // Keep one stable public layer reference.  Several established features
+                // (notably the premium toggle, UAT suppression and Buildings Search UI)
+                // already use _jLayerRef/map.hasLayer().  A LayerGroup lets those features
+                // continue to see Josephine Map + as active while the visual child switches.
+                var _jLayer = L.layerGroup([_jCloudflareLayer]);
+                var _jActiveVisualLayer = _jCloudflareLayer;
+                var _josephineVisualSource = 'cloudflare';
+
+                _jLayer.setOpacity = function (opacity) {
+                    _jCloudflareLayer.setOpacity(opacity);
+                    _jSupabaseLayer.setOpacity(opacity);
+                    return _jLayer;
+                };
+                _jLayer.getVisualSource = function () {
+                    return _josephineVisualSource;
+                };
+
+                window._jLayer = _jLayer;
                 window._jLayerRef = _jLayer;
-                console.log('[Josephine] _jLayer created:', _jLayer, '| map:', typeof map);
+                window._jCloudflareLayer = _jCloudflareLayer;
+                window._jSupabaseLayer = _jSupabaseLayer;
+                window._josephineVisualSource = _josephineVisualSource;
+                console.log('[Josephine] premium visual router created:', _jLayer, '| map:', typeof map);
+
+                // The conservative envelope only avoids needless probes far outside the
+                // raster.  It is deliberately a little larger than the known source extent;
+                // the actual decision is always made from the PNG alpha/RGB pixels below.
+                var _josephineSupabaseProbeEnvelope = L.latLngBounds(
+                    [[44.70, 21.70], [48.10, 26.95]]
+                );
+                var _josephineMaskCache = {};
+                var _josephineMaskInflight = {};
+                var _josephineMaskClock = 0;
+                var _josephineMaskCacheLimit = 96;
+                var _josephineRouteTimer = null;
+                var _josephineRouteRevision = 0;
+
+                function _josephineSupabaseTileUrl(z, x, y) {
+                    return JOSEPHINE_SUPABASE_TILE_URL
+                        .replace('{z}', z)
+                        .replace('{x}', x)
+                        .replace('{y}', y);
+                }
+
+                function _rememberJosephineMask(key, mask) {
+                    mask.used = ++_josephineMaskClock;
+                    _josephineMaskCache[key] = mask;
+
+                    var keys = Object.keys(_josephineMaskCache);
+                    if (keys.length <= _josephineMaskCacheLimit) return;
+
+                    // Drop the least recently used decoded mask.  This keeps the precise
+                    // per-pixel cache bounded even after a long pan across the country.
+                    var oldestKey = null;
+                    var oldestUse = Infinity;
+                    keys.forEach(function (candidate) {
+                        var entry = _josephineMaskCache[candidate];
+                        if (entry.used < oldestUse) {
+                            oldestUse = entry.used;
+                            oldestKey = candidate;
+                        }
+                    });
+                    if (oldestKey) delete _josephineMaskCache[oldestKey];
+                }
+
+                function _decodeJosephineMask(blob) {
+                    return new Promise(function (resolve, reject) {
+                        var URLApi = window.URL || window.webkitURL;
+                        if (!URLApi || !URLApi.createObjectURL) {
+                            reject(new Error('Blob URL support is unavailable'));
+                            return;
+                        }
+
+                        var objectUrl = URLApi.createObjectURL(blob);
+                        var img = new Image();
+                        img.onload = function () {
+                            try {
+                                var canvas = document.createElement('canvas');
+                                canvas.width = JOSEPHINE_TILE_SIZE;
+                                canvas.height = JOSEPHINE_TILE_SIZE;
+                                var ctx = canvas.getContext('2d', { willReadFrequently: true });
+                                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                                var rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                                var exterior = new Uint8Array(JOSEPHINE_TILE_SIZE * JOSEPHINE_TILE_SIZE);
+                                var hasExterior = false;
+
+                                // Do not use a "dark" threshold here: dark cartographic ink is
+                                // valid map content.  The supplied exterior is either alpha <
+                                // 255 or exact RGB black (the opaque black strip found in the
+                                // Supabase boundary tiles).
+                                for (var px = 0, i = 0; i < exterior.length; i++, px += 4) {
+                                    if (rgba[px + 3] < 255 ||
+                                        (rgba[px] === 0 && rgba[px + 1] === 0 && rgba[px + 2] === 0)) {
+                                        exterior[i] = 1;
+                                        hasExterior = true;
+                                    }
+                                }
+                                resolve({ kind: 'mask', exterior: exterior, hasExterior: hasExterior });
+                            } catch (err) {
+                                reject(err);
+                            } finally {
+                                URLApi.revokeObjectURL(objectUrl);
+                            }
+                        };
+                        img.onerror = function () {
+                            URLApi.revokeObjectURL(objectUrl);
+                            reject(new Error('Supabase tile image could not be decoded'));
+                        };
+                        img.src = objectUrl;
+                    });
+                }
+
+                function _getJosephineSupabaseMask(z, x, y) {
+                    var key = z + '/' + x + '/' + y;
+                    var cached = _josephineMaskCache[key];
+                    if (cached) {
+                        cached.used = ++_josephineMaskClock;
+                        return Promise.resolve(cached);
+                    }
+                    if (_josephineMaskInflight[key]) return _josephineMaskInflight[key];
+
+                    // A missing XYZ object is an exterior area.  Other network/CORS failures
+                    // are intentionally "unknown", not exterior, so a transient failure never
+                    // replaces a known-good Cloudflare view with an empty raster.
+                    var request = fetch(_josephineSupabaseTileUrl(z, x, y), {
+                        mode: 'cors',
+                        credentials: 'omit',
+                        cache: 'force-cache'
+                    }).then(function (response) {
+                        if (response.status === 404) return { kind: 'outside' };
+                        if (!response.ok) return { kind: 'unknown' };
+                        return response.blob().then(_decodeJosephineMask);
+                    }).then(function (mask) {
+                        delete _josephineMaskInflight[key];
+                        if (mask.kind !== 'unknown') _rememberJosephineMask(key, mask);
+                        return mask;
+                    }).catch(function () {
+                        delete _josephineMaskInflight[key];
+                        return { kind: 'unknown' };
+                    });
+
+                    _josephineMaskInflight[key] = request;
+                    return request;
+                }
+
+                function _josephineMaskHasExteriorInRect(mask, left, top, right, bottom) {
+                    if (mask.kind === 'outside') return true;
+                    if (mask.kind !== 'mask' || !mask.hasExterior) return false;
+
+                    // right/bottom are exclusive pixel coordinates in the source tile.
+                    var x0 = Math.max(0, Math.floor(left));
+                    var y0 = Math.max(0, Math.floor(top));
+                    var x1 = Math.min(JOSEPHINE_TILE_SIZE, Math.ceil(right));
+                    var y1 = Math.min(JOSEPHINE_TILE_SIZE, Math.ceil(bottom));
+                    if (x1 <= x0 || y1 <= y0) return false;
+
+                    for (var y = y0; y < y1; y++) {
+                        var offset = y * JOSEPHINE_TILE_SIZE;
+                        for (var x = x0; x < x1; x++) {
+                            if (mask.exterior[offset + x]) return true;
+                        }
+                    }
+                    return false;
+                }
+
+                function _josephineViewportEscapesProbeEnvelope(bounds) {
+                    return bounds.getWest() < _josephineSupabaseProbeEnvelope.getWest() ||
+                        bounds.getEast() > _josephineSupabaseProbeEnvelope.getEast() ||
+                        bounds.getSouth() < _josephineSupabaseProbeEnvelope.getSouth() ||
+                        bounds.getNorth() > _josephineSupabaseProbeEnvelope.getNorth();
+                }
+
+                function _getJosephineVisibleSupabaseTileRects() {
+                    var z = Math.max(
+                        JOSEPHINE_SUPABASE_MIN_NATIVE_Z,
+                        Math.min(JOSEPHINE_SUPABASE_MAX_NATIVE_Z, Math.round(map.getZoom()))
+                    );
+                    var bounds = map.getBounds();
+                    var nw = map.project(bounds.getNorthWest(), z);
+                    var se = map.project(bounds.getSouthEast(), z);
+                    var worldSize = JOSEPHINE_TILE_SIZE * Math.pow(2, z);
+
+                    // The source is non-wrapping.  If any part of the screen reaches past
+                    // Web-Mercator's world, that part cannot contain Josephine map content.
+                    if (nw.x < 0 || nw.y < 0 || se.x > worldSize || se.y > worldSize) {
+                        return { outside: true, tiles: [] };
+                    }
+
+                    var minTileX = Math.floor(nw.x / JOSEPHINE_TILE_SIZE);
+                    var maxTileX = Math.floor((se.x - 0.000001) / JOSEPHINE_TILE_SIZE);
+                    var minTileY = Math.floor(nw.y / JOSEPHINE_TILE_SIZE);
+                    var maxTileY = Math.floor((se.y - 0.000001) / JOSEPHINE_TILE_SIZE);
+                    var tileCount = (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
+
+                    // A screen that covers this many native tiles is necessarily broader than
+                    // the small Josephine sheet.  Avoid a large probe burst at very low zoom.
+                    if (tileCount > 64) return { outside: true, tiles: [] };
+
+                    var tiles = [];
+                    for (var ty = minTileY; ty <= maxTileY; ty++) {
+                        for (var tx = minTileX; tx <= maxTileX; tx++) {
+                            var tileLeft = tx * JOSEPHINE_TILE_SIZE;
+                            var tileTop = ty * JOSEPHINE_TILE_SIZE;
+                            tiles.push({
+                                z: z,
+                                x: tx,
+                                y: ty,
+                                left: Math.max(0, nw.x - tileLeft),
+                                top: Math.max(0, nw.y - tileTop),
+                                right: Math.min(JOSEPHINE_TILE_SIZE, se.x - tileLeft),
+                                bottom: Math.min(JOSEPHINE_TILE_SIZE, se.y - tileTop)
+                            });
+                        }
+                    }
+                    return { outside: false, tiles: tiles };
+                }
+
+                function _doesJosephineViewportNeedSupabase() {
+                    var bounds = map.getBounds();
+                    if (_josephineViewportEscapesProbeEnvelope(bounds)) {
+                        return Promise.resolve({ useSupabase: true, reason: 'outside source envelope' });
+                    }
+
+                    var plan = _getJosephineVisibleSupabaseTileRects();
+                    if (plan.outside) return Promise.resolve({ useSupabase: true, reason: 'outside Web-Mercator tile range' });
+                    if (!plan.tiles.length) return Promise.resolve({ useSupabase: false, reason: 'empty tile plan' });
+
+                    return Promise.all(plan.tiles.map(function (tile) {
+                        return _getJosephineSupabaseMask(tile.z, tile.x, tile.y)
+                            .then(function (mask) { return { tile: tile, mask: mask }; });
+                    })).then(function (results) {
+                        var unknown = false;
+                        for (var i = 0; i < results.length; i++) {
+                            var result = results[i];
+                            if (result.mask.kind === 'unknown') {
+                                unknown = true;
+                                continue;
+                            }
+                            if (_josephineMaskHasExteriorInRect(
+                                result.mask,
+                                result.tile.left,
+                                result.tile.top,
+                                result.tile.right,
+                                result.tile.bottom
+                            )) {
+                                return { useSupabase: true, reason: 'visible black/transparent exterior pixel' };
+                            }
+                        }
+                        // Unknown probes retain Cloudflare.  The next move/zoom retries them.
+                        return { useSupabase: false, reason: unknown ? 'coverage probe unavailable' : 'viewport fully inside Supabase map content' };
+                    });
+                }
+
+                // ── Visual source transition overlay ───────────────────────────────────
+                // The map source is swapped only after the Supabase coverage check above.
+                // While the new tile layer is loading, show the app's sonar animation over a
+                // blurred map so a Cloudflare ↔ Supabase transition never looks like a flash.
+                var _josephineTransitionEl = null;
+                var _josephineTransitionId = 0;
+                var _josephineTransitionStartedAt = 0;
+                var _josephineTransitionWait = null;
+                var JOSEPHINE_TRANSITION_MIN_MS = 260;
+                var JOSEPHINE_TRANSITION_MAX_MS = 3500;
+
+                function _getJosephineTransitionEl() {
+                    if (!_josephineTransitionEl) {
+                        _josephineTransitionEl = document.getElementById('josephineSourceTransition');
+                    }
+                    return _josephineTransitionEl;
+                }
+
+                function _clearJosephineTransitionWait() {
+                    if (!_josephineTransitionWait) return;
+                    _josephineTransitionWait.layer.off('load', _josephineTransitionWait.onLoad);
+                    clearTimeout(_josephineTransitionWait.timeout);
+                    _josephineTransitionWait = null;
+                }
+
+                function _beginJosephineTransition() {
+                    _clearJosephineTransitionWait();
+                    _josephineTransitionId++;
+                    _josephineTransitionStartedAt = Date.now();
+                    var el = _getJosephineTransitionEl();
+                    if (el) {
+                        el.setAttribute('aria-hidden', 'false');
+                        el.classList.add('is-visible');
+                    }
+                    return _josephineTransitionId;
+                }
+
+                function _finishJosephineTransition(transitionId) {
+                    if (!transitionId || transitionId !== _josephineTransitionId) return;
+                    var delay = Math.max(0, JOSEPHINE_TRANSITION_MIN_MS - (Date.now() - _josephineTransitionStartedAt));
+                    setTimeout(function () {
+                        if (transitionId !== _josephineTransitionId) return;
+                        var el = _getJosephineTransitionEl();
+                        if (el) {
+                            el.classList.remove('is-visible');
+                            el.setAttribute('aria-hidden', 'true');
+                        }
+                    }, delay);
+                }
+
+                function _cancelJosephineTransition() {
+                    _clearJosephineTransitionWait();
+                    _josephineTransitionId++;
+                    var el = _getJosephineTransitionEl();
+                    if (el) {
+                        el.classList.remove('is-visible');
+                        el.setAttribute('aria-hidden', 'true');
+                    }
+                }
+
+                function _waitForJosephineVisualLayer(layer, transitionId) {
+                    // Register before adding the child layer to the LayerGroup.  Leaflet's
+                    // `load` event means every tile requested for the current viewport has
+                    // either loaded or errored, which is the right moment to fade away.
+                    var settled = false;
+                    function settle() {
+                        if (settled) return;
+                        settled = true;
+                        layer.off('load', onLoad);
+                        if (_josephineTransitionWait && _josephineTransitionWait.transitionId === transitionId) {
+                            clearTimeout(_josephineTransitionWait.timeout);
+                            _josephineTransitionWait = null;
+                        }
+                        _finishJosephineTransition(transitionId);
+                    }
+                    function onLoad() { settle(); }
+
+                    layer.on('load', onLoad);
+                    _josephineTransitionWait = {
+                        layer: layer,
+                        onLoad: onLoad,
+                        transitionId: transitionId,
+                        // Never leave the map covered if a remote tile server is unavailable.
+                        timeout: setTimeout(settle, JOSEPHINE_TRANSITION_MAX_MS)
+                    };
+                }
+
+                function _setJosephineVisualSource(source, reason) {
+                    var nextLayer = source === 'supabase' ? _jSupabaseLayer : _jCloudflareLayer;
+                    if (_jActiveVisualLayer === nextLayer) return;
+
+                    // Source changes that happen while the premium group is not on the map
+                    // need no visual transition.  Actual Cloudflare ↔ Supabase swaps do.
+                    var transitionId = map.hasLayer(_jLayer) ? _beginJosephineTransition() : 0;
+                    if (transitionId) _waitForJosephineVisualLayer(nextLayer, transitionId);
+
+                    if (_jLayer.hasLayer(_jActiveVisualLayer)) _jLayer.removeLayer(_jActiveVisualLayer);
+                    if (!_jLayer.hasLayer(nextLayer)) _jLayer.addLayer(nextLayer);
+                    _jActiveVisualLayer = nextLayer;
+                    _josephineVisualSource = source;
+                    window._josephineVisualSource = source;
+                    console.info('[Josephine] visual source → ' + source + ' (' + reason + ')');
+                }
+
+                function _scheduleJosephineVisualSourceCheck() {
+                    if (!map.hasLayer(_jLayer)) return;
+                    var revision = ++_josephineRouteRevision;
+                    if (_josephineRouteTimer) clearTimeout(_josephineRouteTimer);
+                    _josephineRouteTimer = setTimeout(function () {
+                        _josephineRouteTimer = null;
+                        _doesJosephineViewportNeedSupabase().then(function (decision) {
+                            if (revision !== _josephineRouteRevision || !map.hasLayer(_jLayer)) return;
+                            _setJosephineVisualSource(decision.useSupabase ? 'supabase' : 'cloudflare', decision.reason);
+                        }).catch(function () {
+                            // Preserve the Cloudflare view if an unexpected probe issue occurs.
+                            if (revision === _josephineRouteRevision && map.hasLayer(_jLayer)) {
+                                _setJosephineVisualSource('cloudflare', 'coverage probe error');
+                            }
+                        });
+                    }, 60);
+                }
+
+                // A stable manual hook is useful after a browser cache is cleared or when
+                // inspecting a source tile in DevTools; normal users never need to call it.
+                window.refreshJosephineVisualSource = _scheduleJosephineVisualSourceCheck;
+                _jLayer.on('add', function () {
+                    // Start from the established source while the exact Supabase pixel probe
+                    // runs; this avoids a blank flash and avoids loading both visual sources.
+                    _setJosephineVisualSource('cloudflare', 'initial coverage check');
+                    _scheduleJosephineVisualSourceCheck();
+                });
+                _jLayer.on('remove', function () {
+                    _josephineRouteRevision++;
+                    _cancelJosephineTransition();
+                    if (_josephineRouteTimer) {
+                        clearTimeout(_josephineRouteTimer);
+                        _josephineRouteTimer = null;
+                    }
+                });
+                map.on('moveend zoomend', _scheduleJosephineVisualSourceCheck);
 
                 // ── "Zoom in" hint ──
                 var _hintEl = null;
@@ -5267,6 +5695,9 @@
                 map.createPane('pane_ios_bld_search_help');
                 map.getPane('pane_ios_bld_search_help').style.zIndex = 651;
 
+                // IMPORTANT: this deliberately stays on Cloudflare.  The visual premium
+                // layer may switch to Supabase at a map boundary, but "Clădiri dispărute"
+                // must always analyse the established Cloudflare Josephine imagery.
                 var TILE_URL_JOSEPHINE_PLUS = 'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/Josephine/{z}/{x}/{y}.jpg';
                 var JOSEPHINE_MAX_NATIVE_Z = 15; // ultimul nivel cu tile-uri reale generate static în R2
                 var TILE_SIZE  = 256;
