@@ -1443,11 +1443,20 @@
            The visual premium layer can switch between the Cloudflare raster
            and the Supabase raster when the viewport reaches a source boundary.
            This sits above the map only during that switch, softly blurs the
-           frozen map beneath it, and reuses the app's sonar loading animation. */
+           frozen map beneath it, and reuses the app's sonar loading animation.
+
+           z-index MUST stay below the transparency side panel (.transp-panel,
+           z-index 1001) and its arrow tab (.transp-arrow-tab, z-index 1002) in
+           every stacking context, so the overlay blurs only the map canvas and
+           never covers, blurs, hides, restacks or blocks the side panel, its
+           tabs or its scrolling. 950 sits above the Leaflet tile/radius panes
+           (≤900) and well below the panel/tab/search-bar (≥1000). In fullscreen
+           the panel/tab jump to 10002/10003 and the search bar to 1000, so the
+           overlay (950) stays below them there too. */
         .josephine-source-transition {
             position: absolute;
             inset: 0;
-            z-index: 1200;
+            z-index: 950;
             display: flex;
             align-items: center;
             justify-content: center;

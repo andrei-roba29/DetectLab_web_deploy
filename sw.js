@@ -2,7 +2,7 @@
    DetectLab — Service Worker v1.3.2
    ============================================================ */
 
-const CACHE_NAME = 'detectlab-v24';
+const CACHE_NAME = 'detectlab-v25';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -17,7 +17,7 @@ const PRECACHE_URLS = [
   '.',
   'index.html',
   'css/styles.css',
-  'css/styles.css?v=2026080501',
+  'css/styles.css?v=2026080502',
   'css/leaflet.css',
   'css/L.Control.Layers.Tree.css',
   'css/L.Control.Locate.min.css',
