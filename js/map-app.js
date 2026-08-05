@@ -939,10 +939,9 @@
                 trackBtn.title = 'Înregistrează traseu';
                 trackBtn.setAttribute('aria-label', 'Înregistrează un traseu GPS');
                 trackBtn.innerHTML =
-                    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-                    '<circle cx="3.5" cy="3.5" r="1.8" fill="currentColor"/>' +
-                    '<circle cx="12.5" cy="12.5" r="1.8" fill="currentColor"/>' +
-                    '<path d="M5.2 5.2 L10.8 10.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="1 2"/>' +
+                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                    '<path d="M3 18l4-4M7 18l4-4M11 18l4-4M15 18l4-4"/>' +
+                    '<path d="M4 12l3-3 3 3 3-3 3 3 3-3 3 3"/>' +
                     '</svg>';
 
                 // Inject it into the same wrapper as btnMeasure (they share the same leaflet-bar div)
@@ -1158,6 +1157,21 @@
                         // A deliberate stop must always give the user control over whether
                         // their location history is stored.
                         var shouldSave = window.confirm('Save this trail to your account?');
+                if (shouldSave && window.supabaseClient && trackPoints.length > 1) {
+                    const user = window._authUser && window._authUser();
+                    if (user) {
+                        const payload = {
+                            user_id: user.id,
+                            name: 'Trail ' + new Date().toLocaleDateString(),
+                            points: trackPoints,
+                            created_at: new Date().toISOString()
+                        };
+                        window.supabaseClient.from('trails').insert([payload]).then(({error}) => {
+                            if (error) console.error('Trail save error:', error);
+                            else alert('Trail saved!');
+                        });
+                    }
+                }
                         if (shouldSave) {
                             saveTrackToSupabase(trackPoints, false);
                         } else {
@@ -3401,15 +3415,10 @@
                     url: 'https://raw.githubusercontent.com/andrei-roba29/geo_data/d81cd21/Cultural-Data/roads/roman_routes_under25mb.geojson'
                 },
                 // ── POINTS & LABELS ──
-                urban_areas: {
-                    label: 'Urban Areas', color: '#F0C060', weight: 1.0, enabled: false,
+                vici_sites: {
+                    label: 'Roman Sites (Vici)', color: '#E8772A', weight: 1.5, enabled: false,
                     type: 'geojson',
-                    url: _AWMC + 'urban_areas/urban_areas.geojson'
-                },
-                aqueducts: {
-                    label: 'Aqueducts', color: '#44AABB', weight: 2.0, enabled: false,
-                    type: 'geojson',
-                    url: _AWMC + 'aqueducts/aqueducts.geojson'
+                    url: 'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/vici_roman_romania.geojson'
                 },
                 walls: {
                     label: 'Walls', color: '#888888', weight: 2.0, enabled: false,
@@ -3626,8 +3635,11 @@
                 if (on) {
                     _loadRomanSubLayer(key);
                 } else {
-                    if (_romanLayers[key] && _romanGroup.hasLayer(_romanLayers[key])) {
-                        _romanGroup.removeLayer(_romanLayers[key]);
+                    if (_romanLayers[key]) {
+                        if (_romanGroup.hasLayer(_romanLayers[key])) {
+                            _romanGroup.removeLayer(_romanLayers[key]);
+                        }
+                        delete _romanLayers[key];
                     }
                 }
             };
@@ -8379,6 +8391,48 @@
                 };
             })();
 
+
+            // ── MOLDOVA 1771 (3 stitched sheets from Národní knihovna České republiky) ──
+            (function () {
+                map.createPane('pane_moldova1771');
+                map.getPane('pane_moldova1771').style.zIndex = 650;
+                map.getPane('pane_moldova1771').style.pointerEvents = 'none';
+
+                window.MOLDOVA1771_TILE_MAX_NATIVE_Z = (window.MOLDOVA1771_TILE_MAX_NATIVE_Z !== undefined) ? window.MOLDOVA1771_TILE_MAX_NATIVE_Z : 15;
+
+                window._moldova1771MapLayer = L.tileLayer(
+                    'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/Moldova_1771/{z}/{x}/{y}.jpg',
+                    {
+                        minZoom: 8,
+                        maxZoom: 20,
+                        maxNativeZoom: window.MOLDOVA1771_TILE_MAX_NATIVE_Z,
+                        tileSize: 256,
+                        opacity: 0.80,
+                        pane: 'pane_moldova1771',
+                        attribution: '© Národní knihovna České republiky'
+                    }
+                );
+
+                window.toggleMoldova1771Map = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._moldova1771MapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._moldova1771MapLayer) && map.removeLayer(window._moldova1771MapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setMoldova1771MapOpacity = function (val) {
+                    document.getElementById('moldova1771MapPct').textContent = val + '%';
+                    window._moldova1771MapLayer.setOpacity(val / 100);
+                };
+            })();
+
             // ── MOLDOVA WWII (XYZ tiles, JPG, direct din Cloudflare R2) ──
             // Strat premium nou. Același pattern ca celelalte hărți istorice de mai sus,
             // subfolderul fiind moldova-wwii din același bucket R2.
@@ -8725,7 +8779,7 @@
                     // This creates at most 3 WMS layer instances, keeping requests tiny while
                     // keeping each URL well under safe server limits (~1,000 characters).
                     var MAX_COMBINED_WMS_LAYERS = 4;
-                    var CHUNK_SIZE = 40;
+                    var CHUNK_SIZE = 12;
 
                     var effectiveLayers = (layerNames && layerNames.length > 0) ? layerNames : FALLBACK_ROMANIA_LAYERS;
 
@@ -8848,6 +8902,7 @@
                 { id: 'bucovinaMapToggle', fnName: 'toggleBucovinaMap' },
                 { id: 'austrohuMapToggle', fnName: 'toggleAustrohuMap' },
                 { id: 'moldova1868MapToggle', fnName: 'toggleMoldova1868Map' },
+                { id: 'moldova1771MapToggle', fnName: 'toggleMoldova1771Map' },
                 { id: 'moldovaWwiiMapToggle', fnName: 'toggleMoldovaWwiiMap' },
                 { id: 'polishTactical1933MapToggle', fnName: 'togglePolishTactical1933Map' },
                 { id: 'ww1MapToggle', fnName: 'toggleWw1Map' },
