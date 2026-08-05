@@ -5242,9 +5242,101 @@
                     });
                 }
 
+                // ── Visual source transition overlay ───────────────────────────────────
+                // The map source is swapped only after the Supabase coverage check above.
+                // While the new tile layer is loading, show the app's sonar animation over a
+                // blurred map so a Cloudflare ↔ Supabase transition never looks like a flash.
+                var _josephineTransitionEl = null;
+                var _josephineTransitionId = 0;
+                var _josephineTransitionStartedAt = 0;
+                var _josephineTransitionWait = null;
+                var JOSEPHINE_TRANSITION_MIN_MS = 260;
+                var JOSEPHINE_TRANSITION_MAX_MS = 3500;
+
+                function _getJosephineTransitionEl() {
+                    if (!_josephineTransitionEl) {
+                        _josephineTransitionEl = document.getElementById('josephineSourceTransition');
+                    }
+                    return _josephineTransitionEl;
+                }
+
+                function _clearJosephineTransitionWait() {
+                    if (!_josephineTransitionWait) return;
+                    _josephineTransitionWait.layer.off('load', _josephineTransitionWait.onLoad);
+                    clearTimeout(_josephineTransitionWait.timeout);
+                    _josephineTransitionWait = null;
+                }
+
+                function _beginJosephineTransition() {
+                    _clearJosephineTransitionWait();
+                    _josephineTransitionId++;
+                    _josephineTransitionStartedAt = Date.now();
+                    var el = _getJosephineTransitionEl();
+                    if (el) {
+                        el.setAttribute('aria-hidden', 'false');
+                        el.classList.add('is-visible');
+                    }
+                    return _josephineTransitionId;
+                }
+
+                function _finishJosephineTransition(transitionId) {
+                    if (!transitionId || transitionId !== _josephineTransitionId) return;
+                    var delay = Math.max(0, JOSEPHINE_TRANSITION_MIN_MS - (Date.now() - _josephineTransitionStartedAt));
+                    setTimeout(function () {
+                        if (transitionId !== _josephineTransitionId) return;
+                        var el = _getJosephineTransitionEl();
+                        if (el) {
+                            el.classList.remove('is-visible');
+                            el.setAttribute('aria-hidden', 'true');
+                        }
+                    }, delay);
+                }
+
+                function _cancelJosephineTransition() {
+                    _clearJosephineTransitionWait();
+                    _josephineTransitionId++;
+                    var el = _getJosephineTransitionEl();
+                    if (el) {
+                        el.classList.remove('is-visible');
+                        el.setAttribute('aria-hidden', 'true');
+                    }
+                }
+
+                function _waitForJosephineVisualLayer(layer, transitionId) {
+                    // Register before adding the child layer to the LayerGroup.  Leaflet's
+                    // `load` event means every tile requested for the current viewport has
+                    // either loaded or errored, which is the right moment to fade away.
+                    var settled = false;
+                    function settle() {
+                        if (settled) return;
+                        settled = true;
+                        layer.off('load', onLoad);
+                        if (_josephineTransitionWait && _josephineTransitionWait.transitionId === transitionId) {
+                            clearTimeout(_josephineTransitionWait.timeout);
+                            _josephineTransitionWait = null;
+                        }
+                        _finishJosephineTransition(transitionId);
+                    }
+                    function onLoad() { settle(); }
+
+                    layer.on('load', onLoad);
+                    _josephineTransitionWait = {
+                        layer: layer,
+                        onLoad: onLoad,
+                        transitionId: transitionId,
+                        // Never leave the map covered if a remote tile server is unavailable.
+                        timeout: setTimeout(settle, JOSEPHINE_TRANSITION_MAX_MS)
+                    };
+                }
+
                 function _setJosephineVisualSource(source, reason) {
                     var nextLayer = source === 'supabase' ? _jSupabaseLayer : _jCloudflareLayer;
                     if (_jActiveVisualLayer === nextLayer) return;
+
+                    // Source changes that happen while the premium group is not on the map
+                    // need no visual transition.  Actual Cloudflare ↔ Supabase swaps do.
+                    var transitionId = map.hasLayer(_jLayer) ? _beginJosephineTransition() : 0;
+                    if (transitionId) _waitForJosephineVisualLayer(nextLayer, transitionId);
 
                     if (_jLayer.hasLayer(_jActiveVisualLayer)) _jLayer.removeLayer(_jActiveVisualLayer);
                     if (!_jLayer.hasLayer(nextLayer)) _jLayer.addLayer(nextLayer);
@@ -5283,6 +5375,7 @@
                 });
                 _jLayer.on('remove', function () {
                     _josephineRouteRevision++;
+                    _cancelJosephineTransition();
                     if (_josephineRouteTimer) {
                         clearTimeout(_josephineRouteTimer);
                         _josephineRouteTimer = null;

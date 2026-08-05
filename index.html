@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=2026073102">
+    <link rel="stylesheet" href="css/styles.css?v=2026080501">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -862,6 +862,12 @@
             <div class="map-frame">
                 <div class="map-wrapper">
                     <div id="detectlab-map" style="width:100%;height:100%;"></div>
+
+                    <!-- Josephine Map + source transition — shown only while the premium
+                         raster switches between Cloudflare and Supabase. -->
+                    <div id="josephineSourceTransition" class="josephine-source-transition" aria-hidden="true">
+                        <img src="images/sonar_loading_animation.webp?v=20260729" alt="" aria-hidden="true" width="512" height="512">
+                    </div>
 
                     <!-- APM 2.0 Search Help — overlay flotant centrat pe hartă, ancorat în map-wrapper (la fel ca celelalte controale/hint-uri ale hărții) -->
                     <div id="apm20SearchHelpToast"></div>
@@ -2660,7 +2666,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js"></script>
     <script src="js/events.js?v=20260805"></script>
-    <script src="js/map-app.js?v=2026080501"></script>
+    <script src="js/map-app.js?v=2026080502"></script>
     <script src="js/archeo-potential.js?v=20260803"></script>
 
     <!-- AUTH MODAL -->
