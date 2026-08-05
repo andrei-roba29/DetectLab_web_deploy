@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=2026080501">
+    <link rel="stylesheet" href="css/styles.css?v=2026080502">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -1330,6 +1330,41 @@
                                     <line x1="4.5" y1="3" x2="8.5" y2="3" stroke="#FFD700" stroke-width="0.8"/>
                                     <ellipse cx="6.5" cy="11.5" rx="1.5" ry="0.6" fill="#FFD700" opacity="0.4"/>
                                 </svg>
+                                <span class="t" data-key="layer_clasate">Clasate Artifacts (INP)</span>
+                            </span>
+                            <label class="apm-toggle-switch" style="margin-left:auto;flex-shrink:0" title="Toggle Clasate Artifacts">
+                                <input type="checkbox" id="clasateToggle" onchange="toggleClasateLayer(this.checked)">
+                                <span class="apm-toggle-track"></span>
+                            </label>
+                        </div>
+                        <div class="transp-layer-label" style="margin-bottom:6px;margin-top:4px">
+                            <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="layer_opacity_label">Opacity</span>
+                            <span style="display:flex;align-items:center;gap:5px">
+                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Clasate Artifacts (INP)','© clasate.cimec.ro')" title="Layer info"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="7.5" r="1.3" fill="currentColor"/><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor"/></svg></button>
+                                <span class="pct" id="clasatePct">80%</span>
+                            </span>
+                        </div>
+                        <input type="range" class="transp-slider" id="clasateOpacitySlider"
+                               min="0" max="100" value="80"
+                               oninput="setClasateOpacity(this.value)">
+                        <!-- Clasate filters (period / culture) — shown only while the layer is on -->
+                        <div id="clasateFilters" style="display:none;margin-top:8px;">
+                            <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:6px;">
+                                <span style="font-size:0.66rem;color:rgba(184,216,240,0.6);">Period</span>
+                                <select id="clasatePeriodFilter" onchange="filterClasateLayer()" style="width:100%;background:rgba(184,216,240,0.06);border:1px solid rgba(184,216,240,0.18);color:var(--white);padding:5px 7px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:0.74rem;outline:none;">
+                                    <option value="">All periods</option>
+                                </select>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:6px;">
+                                <span style="font-size:0.66rem;color:rgba(184,216,240,0.6);">Culture</span>
+                                <select id="clasateCultureFilter" onchange="filterClasateLayer()" style="width:100%;background:rgba(184,216,240,0.06);border:1px solid rgba(184,216,240,0.18);color:var(--white);padding:5px 7px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:0.74rem;outline:none;">
+                                    <option value="">All cultures</option>
+                                </select>
+                            </div>
+                            <div id="clasateStatsBar" style="font-size:0.66rem;color:rgba(245,240,235,0.5);"></div>
+                        </div>
+                    </div>
+
                     <div class="transp-divider active" data-category="free"></div>
 
                     <!-- HISTORICAL MAPS layer group -->
