@@ -5,7 +5,7 @@
 -- Arheologie domain of clasate.cimec.ro, enriched with approximate
 -- coordinates derived from their finding places.
 --
--- Data is ingested by the scraper script (backend/scripts/scrapeClasate.mjs)
+-- Data has been ingested by the scraper.
 -- and served as GeoJSON by the Express API (/api/clasate/*).
 -- =====================================================================
 
