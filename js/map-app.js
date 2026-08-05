@@ -580,6 +580,10 @@
 
             var hash = new L.Hash(map);
 
+            if (typeof window._initEventsLayer === 'function') {
+                window._initEventsLayer(map);
+            }
+
             // Zoom control (top-left, styled via existing CSS)
             L.control.zoom({ position: 'topleft' }).addTo(map);
 
@@ -1236,6 +1240,10 @@
                         var descVal = descInput ? descInput.value.trim() : '';
                         saveCoordinates(Number(lat), Number(lng), titleVal, descVal, saveButton, status);
                     });
+
+                    if (typeof window._augmentCoordPopup === 'function') {
+                        window._augmentCoordPopup(content, lat, lng);
+                    }
 
                     return content;
                 }
