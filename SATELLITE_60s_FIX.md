@@ -74,3 +74,47 @@ At zoom level 8, Romania fills almost the entire viewport, and Corona satellite 
   - Initialized individual `L.tileLayer.wms` layers for each pass (with custom `EPSG:900913` CRS, `tiled: true`, and `minZoom: 8`).
 - `/home/user/DetectLab_web_deploy/SATELLITE_60s_FIX.md`
   - Updated fix documentation to reflect pass-level mapping and GWC integration.
+
+---
+
+## 2026-08 Performance / Mobile Stability Optimisation
+
+### New problem
+After the layer rendered correctly, the 16 CORONA pass sublayers each fired
+their own tile requests with **no global coordination**, causing:
+- 500+ simultaneous WMS requests (16 layers × visible + prefetch tiles)
+- tiles requested at every zoom and far outside Romania
+- no client caching, so every pan/zoom re-requested every tile from CAST
+- mobile tab crashes from memory/connection pressure
+
+### Solution: `js/corona-wms-layer.js`
+A shared `L.TileLayer.WMS` subclass (`window.createCoronaWmsLayer`) used by
+all 16 pass layers. It adds, **across every sublayer**:
+
+| Requirement | Implementation |
+|---|---|
+| Zoom threshold (Step 1) | No tiles below **z4 desktop / z5 mobile** (`minZoom`) |
+| Romania bbox filter (Step 2) | Each tile's lat/lng bounds are intersected with Romania's bbox before any request; non-overlapping tiles are never created |
+| Concurrency cap (Step 3) | One shared queue: **max 8 in-flight desktop / 4 mobile** |
+| IndexedDB cache (Step 4) | Tile blobs cached in `detectlab/corona_tiles`, TTL **30 d desktop / 60 d mobile**; in-session negative cache for 4xx/non-image responses |
+| Viewport priority / lazy load (Step 7) | Tiles nearest the viewport centre load first; off-screen tiles are **cancelled (AbortController)** and their object URLs revoked on `_removeTile`; mobile uses `keepBuffer:0` + `updateWhenIdle` (no prefetch) |
+| Backoff / circuit breaker (Step 8) | Exponential backoff (500 ms base, 3 retries) on 5xx/network errors; after 10 consecutive failures, requests pause for 30 s. 4xx (no tile at that zoom) are NOT retried |
+| Loading indicator (Step 8) | Subtle pill at the top of the map showing in-flight/queued tile count |
+| Mobile detection (Step 5) | UA + coarse-pointer + small-screen + `deviceMemory` |
+
+Console helper for on-device verification (Step 9):
+```js
+coronaWmsDebug()  // or CoronaWmsQueue.stats()
+// e.g. { isMobile:false, minZoom:4, concurrent:8, active:6, waiting:3,
+//        totals:{ cacheHits:42, fetched:18, failed:0, cancelled:7, empty:3 } }
+```
+
+Files changed:
+- **`js/corona-wms-layer.js`** (new) — optimised layer + queue + IDB cache
+- **`index.html`** — loads the new script before `map-app.js`
+- **`js/map-app.js`** — Sat60 lazy creation uses `createCoronaWmsLayer`;
+  coverage-rectangle threshold follows the layer's `minZoom`
+
+HTTP request headers like `Accept-Encoding: gzip` are negotiated
+automatically by the browser; WMS `SRS=EPSG:900913`, `BBOX`, `tiled=true`,
+`WIDTH/HEIGHT=256`, `FORMAT=image/png` and `TRANSPARET=true` are preserved.

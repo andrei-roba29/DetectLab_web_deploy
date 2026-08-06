@@ -12243,10 +12243,16 @@
                 satellite60s: {
                     // CORONA imagery covers all of Romania via multiple satellite
                     // passes dynamically discovered from the CAST GeoServer. The
-                    // bounds span the full extent of Romania.
+                    // bounds span the full extent of Romania. The optimised
+                    // CoronaWmsLayer starts fetching tiles at minZoom (z4 desktop
+                    // / z5 mobile), so the coverage rectangle is hidden once the
+                    // map reaches that zoom — see coverageMinZoom below.
                     bounds: [[43.5, 19.5], [48.5, 30.5]],
                     label: "Satellite imagery 60's",
-                    layerVar: '_sat60MapLayer'
+                    layerVar: '_sat60MapLayer',
+                    coverageMinZoom: (window.CoronaWmsQueue && window.CoronaWmsQueue.config)
+                        ? window.CoronaWmsQueue.config.minZoom
+                        : 8
                 },
 
                 banat: {
@@ -12282,9 +12288,13 @@
                     var polygon = premiumMapCoveragePolygons[mapKey];
                     var layerVar = premiumMapCoverageBounds[mapKey].layerVar;
                     var sourceLayer = window[layerVar];
-                    // Only show for maps whose sublayer is actually turned on,
-                    // and only until zoom level 8 (minZoom, where real tiles take over)
-                    var shouldShow = currentZoom < 8 && !!sourceLayer && map.hasLayer(sourceLayer);
+                    // The coverage rectangle is only shown while the sublayer is
+                    // turned on AND we are below the zoom at which its real tiles
+                    // begin. Most premium maps have minZoom 8 (default); the
+                    // optimised CORONA layer begins fetching at z4 (desktop) / z5
+                    // (mobile), so its rectangle hides accordingly.
+                    var tilesBeginZoom = premiumMapCoverageBounds[mapKey].coverageMinZoom || 8;
+                    var shouldShow = currentZoom < tilesBeginZoom && !!sourceLayer && map.hasLayer(sourceLayer);
                     if (shouldShow) {
                         if (!map.hasLayer(polygon)) {
                             polygon.addTo(map);
@@ -12884,33 +12894,62 @@
                             return;
                         }
 
-                        // LAZY CREATION: only build the actual L.tileLayer.wms instances
-                        // the first time the user turns the layer ON.
+                        // LAZY CREATION: only build the actual WMS tile layers the
+                        // first time the user turns the layer ON. We use the optimised
+                        // CoronaWmsLayer (see js/corona-wms-layer.js) instead of plain
+                        // L.tileLayer.wms. It adds, ACROSS ALL 16 PASS SUBLAYERS:
+                        //   • a single shared request queue with a hard concurrency cap
+                        //     (8 desktop / 4 mobile) — kills the 500+ parallel requests
+                        //   • per-tile Romania bbox intersection before any request
+                        //   • zoom threshold (z4 desktop / z5 mobile)
+                        //   • IndexedDB blob tile cache (30 d desktop / 60 d mobile)
+                        //   • viewport priority, request cancellation on pan/zoom,
+                        //     exponential backoff + circuit breaker
+                        //   • a subtle loading indicator and per-session negative cache
                         if (window._sat60FrameLayers.length === 0 && window._sat60LayerDefs && window._sat60LayerDefs.length > 0) {
-                            console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length, "individual WMS layers now that toggle is ON");
-                            
+                            var useOptimised = typeof window.createCoronaWmsLayer === 'function';
+                            var queueConfig = (window.CoronaWmsQueue && window.CoronaWmsQueue.config) || null;
+                            var effectiveMinZoom = queueConfig ? queueConfig.minZoom : 8;
+                            console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length,
+                                "individual WMS layers now that toggle is ON" +
+                                (useOptimised ? " (optimised: minZoom=" + effectiveMinZoom +
+                                    ", concurrent=" + queueConfig.concurrent +
+                                    ", cacheTTL=" + Math.round(queueConfig.cacheTtlMs / 86400000) + "d)" : ""));
+
+                            // Keep the EPSG:900913 CRS declaration — GWC advertises
+                            // gridsets under both EPSG:900913 and EPSG:3857 (identical
+                            // projection); this preserves the exact request format that
+                            // was already working against the CAST tile cache.
                             var EPSG900913 = L.extend({}, L.CRS.EPSG3857, {
                                 code: 'EPSG:900913'
                             });
 
+                            var commonOpts = {
+                                format: "image/png",
+                                transparent: true,
+                                version: "1.1.1",
+                                tiled: true,
+                                crs: EPSG900913,
+                                attribution: "© Corona 1960s (CAST UARK)",
+                                tileSize: 256,
+                                opacity: SAT60_INITIAL_OPACITY,
+                                pane: "pane_sat60",
+                                bounds: ROMANIA_BOUNDS,   // belt-and-braces: Leaflet also prunes outside this
+                                maxZoom: 18,
+                                maxNativeZoom: 15
+                            };
+
                             window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
-                                var lyr = L.tileLayer.wms(SAT60_GWC_URL, {
+                                var opts = L.extend({}, commonOpts, {
                                     layers: def.layerName,
-                                    format: "image/png",
-                                    transparent: true,
-                                    version: "1.1.1",
-                                    tiled: true,
-                                    crs: EPSG900913,
-                                    attribution: "© Corona 1960s (CAST UARK)",
-                                    tileSize: 256,
-                                    opacity: SAT60_INITIAL_OPACITY,
-                                    pane: "pane_sat60",
-                                    bounds: ROMANIA_BOUNDS,   // stop requesting tiles outside Romania
-                                    minZoom: 8,               // "only a certain zoom level where you can almost see the whole Romania" (zoom level 8)
-                                    maxZoom: 18,
-                                    maxNativeZoom: 15
+                                    coronaLayer: def.layerName,
+                                    minZoom: effectiveMinZoom
                                 });
-                                return lyr;
+                                if (useOptimised) {
+                                    return window.createCoronaWmsLayer(SAT60_GWC_URL, opts);
+                                }
+                                // Fallback if the optimised module failed to load.
+                                return L.tileLayer.wms(SAT60_GWC_URL, L.extend({ minZoom: 8 }, opts));
                             });
                             window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
                         }
