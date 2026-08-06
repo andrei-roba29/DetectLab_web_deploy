@@ -2,7 +2,7 @@
    DetectLab — Service Worker v1.3.3
    ============================================================ */
 
-const CACHE_NAME = 'detectlab-v26';
+const CACHE_NAME = 'detectlab-v27';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -27,7 +27,7 @@ const PRECACHE_URLS = [
   'css/MarkerCluster.css',
   'css/MarkerCluster.Default.css',
   'js/translations.js',
-  'js/translations.js?v=20260729',
+  'js/translations.js?v=2026080605',
   'js/leaflet.js',
   'js/L.Control.Layers.Tree.min.js',
   'js/L.Control.Locate.min.js',
@@ -42,7 +42,7 @@ const PRECACHE_URLS = [
   'js/auth-forms.js',
   'js/account-legacy.js',
   'js/map-app.js',
-  'js/map-app.js?v=2026080604',
+  'js/map-app.js?v=2026080605',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'images/sonar_loading_animation.webp',
