@@ -4952,22 +4952,16 @@
                 // "Clădiri dispărute" analysis below.  This router affects *only* what is
                 // drawn for the premium Josephine Map + layer.
                 //
-                // FINAL visual rule (Cloudflare is the default everywhere):
-                //   • Supabase is drawn ONLY while the sheet's own boundary is on screen —
-                //     i.e. the user can see BOTH genuine Supabase map content AND the point
-                //     where that content ends: any transparent / partially transparent /
-                //     strict opaque black exterior pixel, or a confirmed missing tile,
-                //     inside the visible area.  As long as the sheet "ends somewhere on
-                //     screen", the premium raster stays up (its black frame included).
-                //   • In every other situation the Cloudflare map stays visible:
-                //       – viewport fully inside the content (no sheet edge visible at all),
-                //       – viewport completely outside the coverage (no Supabase content on
-                //         screen — a fully-off-coverage viewport must NOT show the empty
-                //         Supabase raster; this was the original bug),
-                //       – coverage probe unavailable.
+                // FINAL visual rule:
+                //   • Supabase is drawn whenever the current map field of view intersects
+                //     the authoritative Josephine coverage polygon (the supplied GeoJSON
+                //     "Bounds" MultiPolygon).
+                //   • Cloudflare is drawn when the field of view is completely outside
+                //     that polygon.
                 //
-                // Supabase has native tiles at z10–z14.  Leaflet safely underzooms/overzooms
-                // those native levels, so the same decision works at every map zoom.
+                // This is a deterministic geometric viewport/polygon intersection test.
+                // It intentionally does not depend on opaque-black tile borders, alpha
+                // probing, or whether a sheet edge happens to be visible.
                 var JOSEPHINE_CLOUDFLARE_TILE_URL =
                     'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/Josephine/{z}/{x}/{y}.jpg';
                 var JOSEPHINE_SUPABASE_TILE_URL =
@@ -5023,308 +5017,91 @@
                 window._josephineVisualSource = _josephineVisualSource;
                 console.log('[Josephine] premium visual router created:', _jLayer, '| map:', typeof map);
 
-                // The conservative envelope only avoids needless probes far outside the
-                // raster.  It is deliberately a little larger than the known source extent;
-                // the actual decision is always made from the PNG alpha/RGB pixels below.
-                var _josephineSupabaseProbeEnvelope = L.latLngBounds(
-                    [[44.70, 21.70], [48.10, 26.95]]
-                );
-                // Tight advertised content extent of the sheet (kept in sync with
-                // premiumMapCoverageBounds.josephine below).  Only used to decide the
-                // "huge viewport" case, where per-pixel probing would need too many
-                // tiles to stay responsive.
-                var _josephineSheetContentBounds = L.latLngBounds(
-                    [[44.963611, 21.972695], [47.873181, 26.719332]]
-                );
-                // Max native tiles probed per-pixel for one viewport decision.  Beyond
-                // this (enormous screens / very low zooms) the coarse bounds test above
-                // takes over instead of firing a huge burst of tile probes.
-                var JOSEPHINE_PROBE_TILE_LIMIT = 128;
-                var _josephineMaskCache = {};
-                var _josephineMaskInflight = {};
-                var _josephineMaskClock = 0;
-                var _josephineMaskCacheLimit = 160;
-                var _josephineRouteTimer = null;
-                var _josephineRouteRevision = 0;
+                // Supabase coverage polygon (the authoritative "Bounds" MultiPolygon
+                // supplied for Josephine Map +).  Coordinates are [lng, lat] in CRS84 /
+                // WGS84, exactly as provided.  The Supabase raster must be visible whenever
+                // the current field of view intersects this polygon; otherwise Cloudflare
+                // remains visible.
+                var JOSEPHINE_SUPABASE_COVERAGE_RINGS = (function () {
+                    var ring = [
+                        [22.70430468610034,45.247334688102356],[23.638068028777383,45.367926236897077],[23.605014459125091,45.47232797441896],[24.996611657254576,45.679964670809881],[25.026897943470658,45.571036068370276],[25.262698314724439,45.596774409900036],[25.330564845692024,45.382520567740876],[25.561796886074816,45.412222000271633],[25.527958050896846,45.520993687078786],[26.012981355114398,45.607859923009656],[26.046820190292372,45.493326261660918],[26.097578443059319,45.501232627996004],[26.249853201360182,45.635471012283972],[26.47544543587998,45.668980483017073],[26.40494786259254,45.728065934757929],[26.447246406565004,45.773322499554453],[26.253057718465055,46.434888850924899],[26.024645581013768,46.401840758416128],[25.987986842904295,46.524212680241497],[26.145901407068152,46.549429795538273],[26.199479562766602,46.607578446430772],[26.185380048109113,46.659858918181207],[25.954148007726332,46.628883994561079],[25.873474999620807,46.908480614600904],[25.834302318047907,46.946379236077917],[25.641703300314504,46.926318600187962],[25.589395834608641,47.02117892481575],[25.555896545080099,47.123848337767278],[25.321401518380316,47.097249333672913],[25.287902228851774,47.184596146953574],[25.248819724401809,47.194081719453777],[25.047823987230558,47.161823856277643],[25.0087414827806,47.269905275879971],[25.215320434873266,47.385327367846287],[25.162279893119742,47.543856553077809],[25.092489706601953,47.573998389723521],[25.036657557387713,47.564580928507873],[24.863577894823589,47.589062805570386],[24.807745745609349,47.573998389723521],[24.701664662102306,47.566464556219522],[24.670956980034468,47.551393637922203],[24.626291260663084,47.590945552762719],[24.400171056345432,47.611651301824551],[24.25500746838842,47.540087604220552],[24.160092814724223,47.57776490007555],[24.026095656610057,47.668079877269442],[23.791600629910267,47.622941892758874],[23.766476162763865,47.592828232225628],[23.696685976246066,47.585297107995764],[23.461348111421387,47.664956792568333],[23.382170328792164,47.650412008614545],[23.335383457238542,47.604326794448177],[23.202220822816678,47.640713234980758],[23.141037990785009,47.626161697892023],[23.065459198275303,47.584910336841432],[23.015073336602168,47.482855721462748],[22.838722820746181,47.453660777123595],[22.788336959073042,47.519326598605439],[22.799133929431573,47.582482773066332],[22.590392502500009,47.606753345087782],[22.349260164492851,47.487719968945669],[22.403245016285499,47.404966497607148],[22.486021789034222,47.344035289823893],[22.575996542021965,47.341596577070383],[22.633580383934124,47.290357584388381],[22.583194522260989,47.236625345313243],[22.496818759392752,47.212183570432316],[22.511214719870789,47.111854460704762],[22.62998139381461,47.131445750757287],[22.662372304890201,47.050585177793295],[22.799133929431573,46.979424530028922],[22.727154127041381,46.824507345310188],[22.798367068661527,46.490617763474347],[22.681412674095011,46.465184456464293],[22.693723662996756,46.422769193484982],[22.718345640800234,46.414282178016634],[22.644479707389795,46.378197624604049],[22.539836301725018,46.401549177927421],[22.422881907158501,46.397304184051613],[22.401337676580461,46.359084377168045],[22.425959654383931,46.335714658648556],[22.385948940453286,46.282564503316486],[22.459814873863717,46.216586630317806],[22.456737126638284,46.127070643869445],[22.456737126638284,46.090796560107783],[22.502903335019806,46.005351604814493],[22.389526818458148,45.885604034745789],[22.473082250426309,45.782478004828569],[22.520828211550974,45.792466295232572],[22.51366631738227,45.76249605464524],[22.56379957656317,45.769157500175211],[22.559024980450701,45.644123019997821],[22.613932835744066,45.550581561954893],[22.492180634876174,45.528844279045181],[22.568574172675632,45.440136076125974],[22.649742306587569,45.453534944589236],[22.683164479374831,45.351288184660618],[22.70430468610034,45.247334688102356]
+                    ];
+                    return [ring];
+                })();
 
-                function _josephineSupabaseTileUrl(z, x, y) {
-                    return JOSEPHINE_SUPABASE_TILE_URL
-                        .replace('{z}', z)
-                        .replace('{x}', x)
-                        .replace('{y}', y);
-                }
-
-                function _rememberJosephineMask(key, mask) {
-                    mask.used = ++_josephineMaskClock;
-                    _josephineMaskCache[key] = mask;
-
-                    var keys = Object.keys(_josephineMaskCache);
-                    if (keys.length <= _josephineMaskCacheLimit) return;
-
-                    // Drop the least recently used decoded mask.  This keeps the precise
-                    // per-pixel cache bounded even after a long pan across the country.
-                    var oldestKey = null;
-                    var oldestUse = Infinity;
-                    keys.forEach(function (candidate) {
-                        var entry = _josephineMaskCache[candidate];
-                        if (entry.used < oldestUse) {
-                            oldestUse = entry.used;
-                            oldestKey = candidate;
-                        }
-                    });
-                    if (oldestKey) delete _josephineMaskCache[oldestKey];
-                }
-
-                function _decodeJosephineMask(blob) {
-                    return new Promise(function (resolve, reject) {
-                        var URLApi = window.URL || window.webkitURL;
-                        if (!URLApi || !URLApi.createObjectURL) {
-                            reject(new Error('Blob URL support is unavailable'));
-                            return;
-                        }
-
-                        var objectUrl = URLApi.createObjectURL(blob);
-                        var img = new Image();
-                        img.onload = function () {
-                            try {
-                                var canvas = document.createElement('canvas');
-                                canvas.width = JOSEPHINE_TILE_SIZE;
-                                canvas.height = JOSEPHINE_TILE_SIZE;
-                                var ctx = canvas.getContext('2d', { willReadFrequently: true });
-                                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                                var rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-                                var exterior = new Uint8Array(JOSEPHINE_TILE_SIZE * JOSEPHINE_TILE_SIZE);
-                                var hasExterior = false;
-
-                                // Do not use a "dark" threshold here: dark cartographic ink is
-                                // valid map content.  The supplied exterior is either alpha <
-                                // 255 or exact RGB black (the opaque black strip found in the
-                                // Supabase boundary tiles).
-                                for (var px = 0, i = 0; i < exterior.length; i++, px += 4) {
-                                    if (rgba[px + 3] < 255 ||
-                                        (rgba[px] === 0 && rgba[px + 1] === 0 && rgba[px + 2] === 0)) {
-                                        exterior[i] = 1;
-                                        hasExterior = true;
-                                    }
-                                }
-                                resolve({ kind: 'mask', exterior: exterior, hasExterior: hasExterior });
-                            } catch (err) {
-                                reject(err);
-                            } finally {
-                                URLApi.revokeObjectURL(objectUrl);
-                            }
-                        };
-                        img.onerror = function () {
-                            URLApi.revokeObjectURL(objectUrl);
-                            reject(new Error('Supabase tile image could not be decoded'));
-                        };
-                        img.src = objectUrl;
-                    });
-                }
-
-                function _getJosephineSupabaseMask(z, x, y) {
-                    var key = z + '/' + x + '/' + y;
-                    var cached = _josephineMaskCache[key];
-                    if (cached) {
-                        cached.used = ++_josephineMaskClock;
-                        return Promise.resolve(cached);
+                function _josephinePointInCoverage(lat, lng) {
+                    // Standard even-odd ray casting against the outer coverage ring.
+                    var inside = false;
+                    var ring = JOSEPHINE_SUPABASE_COVERAGE_RINGS[0];
+                    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                        var xi = ring[i][0], yi = ring[i][1];
+                        var xj = ring[j][0], yj = ring[j][1];
+                        var intersects = ((yi > lat) !== (yj > lat)) &&
+                            (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
+                        if (intersects) inside = !inside;
                     }
-                    if (_josephineMaskInflight[key]) return _josephineMaskInflight[key];
-
-                    // A missing XYZ object is an exterior area.  Other network/CORS failures
-                    // are intentionally "unknown", not exterior, so a transient failure never
-                    // replaces a known-good Cloudflare view with an empty raster.
-                    var request = fetch(_josephineSupabaseTileUrl(z, x, y), {
-                        mode: 'cors',
-                        credentials: 'omit',
-                        cache: 'force-cache'
-                    }).then(function (response) {
-                        if (response.status === 404) return { kind: 'outside' };
-                        if (!response.ok) return { kind: 'unknown' };
-                        return response.blob().then(_decodeJosephineMask);
-                    }).then(function (mask) {
-                        delete _josephineMaskInflight[key];
-                        if (mask.kind !== 'unknown') _rememberJosephineMask(key, mask);
-                        return mask;
-                    }).catch(function () {
-                        delete _josephineMaskInflight[key];
-                        return { kind: 'unknown' };
-                    });
-
-                    _josephineMaskInflight[key] = request;
-                    return request;
+                    return inside;
                 }
 
-                // Scans the VISIBLE rect of one tile and reports whether it contains
-                // genuine map content and/or exterior (transparent or strict opaque
-                // black) pixels.  The sheet's boundary is visible exactly when the
-                // on-screen tiles report BOTH content and exterior.
-                function _josephineMaskScanRect(mask, left, top, right, bottom) {
-                    if (mask.kind === 'unknown') return { unknown: true, content: false, exterior: false };
-                    if (mask.kind === 'outside') return { unknown: false, content: false, exterior: true };
-                    if (mask.kind !== 'mask') return { unknown: true, content: false, exterior: false };
+                function _josephineSegmentsIntersect(a, b, c, d) {
+                    // a,b and c,d are [lng,lat] pairs. Returns true for proper segment
+                    // intersection (touching at endpoints is enough to count the FOV as
+                    // intersecting the coverage polygon).
+                    function ccw(p, q, r) {
+                        return (r[1] - p[1]) * (q[0] - p[0]) > (q[1] - p[1]) * (r[0] - p[0]);
+                    }
+                    return ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
+                }
 
-                    // right/bottom are exclusive pixel coordinates in the source tile.
-                    var x0 = Math.max(0, Math.floor(left));
-                    var y0 = Math.max(0, Math.floor(top));
-                    var x1 = Math.min(JOSEPHINE_TILE_SIZE, Math.ceil(right));
-                    var y1 = Math.min(JOSEPHINE_TILE_SIZE, Math.ceil(bottom));
-                    if (x1 <= x0 || y1 <= y0) return { unknown: false, content: false, exterior: false };
+                function _josephineViewportIntersectsCoverage(bounds) {
+                    var west = bounds.getWest(), east = bounds.getEast();
+                    var south = bounds.getSouth(), north = bounds.getNorth();
+                    var corners = [
+                        [west, south], [east, south], [east, north], [west, north]
+                    ];
 
-                    var exteriorPx = mask.hasExterior ? mask.exterior : null;
-                    var hasContent = false;
-                    var hasExterior = false;
-                    for (var y = y0; y < y1; y++) {
-                        var offset = y * JOSEPHINE_TILE_SIZE;
-                        for (var x = x0; x < x1; x++) {
-                            if (exteriorPx && exteriorPx[offset + x]) hasExterior = true;
-                            else hasContent = true;
-                            if (hasContent && hasExterior) {
-                                return { unknown: false, content: true, exterior: true };
+                    // 1) Any viewport corner inside the coverage polygon.
+                    for (var i = 0; i < corners.length; i++) {
+                        if (_josephinePointInCoverage(corners[i][1], corners[i][0])) return true;
+                    }
+
+                    // 2) Any coverage vertex inside the viewport rectangle.
+                    var ring = JOSEPHINE_SUPABASE_COVERAGE_RINGS[0];
+                    for (var v = 0; v < ring.length; v++) {
+                        var x = ring[v][0], y = ring[v][1];
+                        if (x >= west && x <= east && y >= south && y <= north) return true;
+                    }
+
+                    // 3) Any polygon edge crosses a viewport rectangle edge.
+                    var rectEdges = [
+                        [corners[0], corners[1]],
+                        [corners[1], corners[2]],
+                        [corners[2], corners[3]],
+                        [corners[3], corners[0]]
+                    ];
+                    for (var k = 0, m = ring.length - 1; k < ring.length; m = k++) {
+                        var polyA = ring[m], polyB = ring[k];
+                        for (var e = 0; e < rectEdges.length; e++) {
+                            if (_josephineSegmentsIntersect(polyA, polyB, rectEdges[e][0], rectEdges[e][1])) {
+                                return true;
                             }
                         }
                     }
-                    return { unknown: false, content: hasContent, exterior: hasExterior };
-                }
-
-                // True when NO part of the viewport can contain Supabase content (the
-                // viewport completely misses the conservative probe envelope) → the
-                // sheet's edge cannot be on screen, so Cloudflare stays without any
-                // tile probing.  A merely partial overlap goes through the precise
-                // per-pixel probe below.
-                function _josephineViewportClearsProbeEnvelope(bounds) {
-                    return bounds.getEast() < _josephineSupabaseProbeEnvelope.getWest() ||
-                        bounds.getWest() > _josephineSupabaseProbeEnvelope.getEast() ||
-                        bounds.getNorth() < _josephineSupabaseProbeEnvelope.getSouth() ||
-                        bounds.getSouth() > _josephineSupabaseProbeEnvelope.getNorth();
-                }
-
-                function _getJosephineVisibleSupabaseTileRects() {
-                    var z = Math.max(
-                        JOSEPHINE_SUPABASE_MIN_NATIVE_Z,
-                        Math.min(JOSEPHINE_SUPABASE_MAX_NATIVE_Z, Math.round(map.getZoom()))
-                    );
-                    var bounds = map.getBounds();
-                    // Only tiles that intersect the probe envelope can contain Supabase
-                    // content; everything on screen outside it is exterior by definition.
-                    var probeArea = bounds.intersection(_josephineSupabaseProbeEnvelope);
-                    if (!probeArea.isValid()) return { tiles: [], tooMany: false };
-
-                    // The tile's visible rect is measured against the FULL viewport
-                    // (exterior pixels outside the envelope still count as on screen).
-                    var vpNw = map.project(bounds.getNorthWest(), z);
-                    var vpSe = map.project(bounds.getSouthEast(), z);
-                    var areaNw = map.project(probeArea.getNorthWest(), z);
-                    var areaSe = map.project(probeArea.getSouthEast(), z);
-
-                    var maxIndex = Math.pow(2, z) - 1;
-                    var minTileX = Math.max(0, Math.floor(areaNw.x / JOSEPHINE_TILE_SIZE));
-                    var maxTileX = Math.min(maxIndex, Math.floor((areaSe.x - 0.000001) / JOSEPHINE_TILE_SIZE));
-                    var minTileY = Math.max(0, Math.floor(areaNw.y / JOSEPHINE_TILE_SIZE));
-                    var maxTileY = Math.min(maxIndex, Math.floor((areaSe.y - 0.000001) / JOSEPHINE_TILE_SIZE));
-                    if (maxTileX < minTileX || maxTileY < minTileY) return { tiles: [], tooMany: false };
-                    var tileCount = (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
-
-                    // A screen covering more native tiles than this would need a large
-                    // probe burst (enormous screens / very low zooms).  The caller falls
-                    // back to the coarse sheet-extent bounds test for such viewports
-                    // instead of silently picking a source.
-                    if (tileCount > JOSEPHINE_PROBE_TILE_LIMIT) {
-                        return { tiles: [], tooMany: true, tileCount: tileCount };
-                    }
-
-                    var tiles = [];
-                    for (var ty = minTileY; ty <= maxTileY; ty++) {
-                        for (var tx = minTileX; tx <= maxTileX; tx++) {
-                            var tileLeft = tx * JOSEPHINE_TILE_SIZE;
-                            var tileTop = ty * JOSEPHINE_TILE_SIZE;
-                            tiles.push({
-                                z: z,
-                                x: tx,
-                                y: ty,
-                                left: Math.max(0, vpNw.x - tileLeft),
-                                top: Math.max(0, vpNw.y - tileTop),
-                                right: Math.min(JOSEPHINE_TILE_SIZE, vpSe.x - tileLeft),
-                                bottom: Math.min(JOSEPHINE_TILE_SIZE, vpSe.y - tileTop)
-                            });
-                        }
-                    }
-                    return { tooMany: false, tiles: tiles };
+                    return false;
                 }
 
                 function _doesJosephineViewportNeedSupabase() {
-                    var bounds = map.getBounds();
-                    // Fast path: no part of the sheet (or its immediate margin) is on
-                    // screen at all → the sheet edge cannot be visible → Cloudflare.
-                    // This also fixes the original bug where a viewport fully outside
-                    // the coverage (e.g. Bucharest) displayed the empty Supabase raster.
-                    if (_josephineViewportClearsProbeEnvelope(bounds)) {
-                        return Promise.resolve({ useSupabase: false, reason: 'viewport clears source envelope' });
-                    }
-
-                    var plan = _getJosephineVisibleSupabaseTileRects();
-                    if (plan.tooMany) return Promise.resolve(_decideJosephineHugeViewport(bounds, plan));
-                    if (!plan.tiles.length) return Promise.resolve({ useSupabase: false, reason: 'no sheet tiles on screen' });
-
-                    // If any part of the screen sits outside the probe envelope, exterior
-                    // area is on screen by definition (content lives inside the envelope).
-                    // Otherwise the viewport is fully inside the envelope and exterior can
-                    // only come from confirmed-missing tiles / black-transparent pixels.
-                    var exteriorOnScreen = !_josephineSupabaseProbeEnvelope.contains(bounds);
-                    var contentOnScreen = false;
-
-                    return Promise.all(plan.tiles.map(function (tile) {
-                        return _getJosephineSupabaseMask(tile.z, tile.x, tile.y)
-                            .then(function (mask) { return { tile: tile, mask: mask }; });
-                    })).then(function (results) {
-                        var unknown = false;
-                        for (var i = 0; i < results.length; i++) {
-                            var result = results[i];
-                            if (result.mask.kind === 'unknown') {
-                                unknown = true;
-                                continue;
-                            }
-                            var scan = _josephineMaskScanRect(
-                                result.mask,
-                                result.tile.left,
-                                result.tile.top,
-                                result.tile.right,
-                                result.tile.bottom
-                            );
-                            if (scan.content) contentOnScreen = true;
-                            if (scan.exterior) exteriorOnScreen = true;
-                            // The sheet's edge is visible exactly when BOTH real content
-                            // and its exterior end up on screen.  A proven boundary
-                            // stands even if other probes are still unknown.
-                            if (contentOnScreen && exteriorOnScreen) {
-                                return { useSupabase: true, reason: 'sheet edge on screen (content + exterior visible)' };
-                            }
-                        }
-                        // Unknown probes retain Cloudflare.  The next move/zoom retries them.
-                        if (unknown) return { useSupabase: false, reason: 'coverage probe unavailable' };
-                        if (!contentOnScreen) {
-                            return { useSupabase: false, reason: 'no Supabase content on screen' };
-                        }
-                        return { useSupabase: false, reason: 'viewport fully inside Supabase content (no edge visible)' };
+                    var intersects = _josephineViewportIntersectsCoverage(map.getBounds());
+                    return Promise.resolve({
+                        useSupabase: intersects,
+                        reason: intersects
+                            ? 'field of view intersects Supabase coverage polygon'
+                            : 'field of view is outside Supabase coverage polygon'
                     });
                 }
 
-                // Coarse decision for viewports spanning more native tiles than
-                // JOSEPHINE_PROBE_TILE_LIMIT (enormous screens / very low zooms): use the
-                // advertised sheet content bounds instead of probing hundreds of tiles.
-                function _decideJosephineHugeViewport(bounds) {
-                    var sheet = _josephineSheetContentBounds;
-                    if (!bounds.intersects(sheet)) {
-                        return { useSupabase: false, reason: 'viewport clears sheet extent (no content on screen)' };
-                    }
-                    if (sheet.contains(bounds)) {
-                        return { useSupabase: false, reason: 'viewport fully inside sheet extent (no edge visible)' };
-                    }
-                    // The screen crosses the advertised edge of the sheet → its limit is
-                    // visible → draw Supabase.
-                    return { useSupabase: true, reason: 'viewport crosses sheet extent edge' };
-                }
+                var _josephineRouteTimer = null;
+                var _josephineRouteRevision = 0;
 
                 // ── Visual source transition overlay ───────────────────────────────────
                 // The map source is swapped only after the Supabase coverage check above.
@@ -5440,9 +5217,9 @@
                             if (revision !== _josephineRouteRevision || !map.hasLayer(_jLayer)) return;
                             _setJosephineVisualSource(decision.useSupabase ? 'supabase' : 'cloudflare', decision.reason);
                         }).catch(function () {
-                            // Preserve the Cloudflare view if an unexpected probe issue occurs.
+                            // Preserve the Cloudflare view if an unexpected routing issue occurs.
                             if (revision === _josephineRouteRevision && map.hasLayer(_jLayer)) {
-                                _setJosephineVisualSource('cloudflare', 'coverage probe error');
+                                _setJosephineVisualSource('cloudflare', 'coverage check error');
                             }
                         });
                     }, 60);
@@ -5452,8 +5229,8 @@
                 // inspecting a source tile in DevTools; normal users never need to call it.
                 window.refreshJosephineVisualSource = _scheduleJosephineVisualSourceCheck;
                 _jLayer.on('add', function () {
-                    // Start from the established source while the exact Supabase pixel probe
-                    // runs; this avoids a blank flash and avoids loading both visual sources.
+                    // Start from Cloudflare while the coverage intersection check runs;
+                    // this avoids a blank flash and avoids loading both visual sources.
                     _setJosephineVisualSource('cloudflare', 'initial coverage check');
                     _scheduleJosephineVisualSourceCheck();
                 });
