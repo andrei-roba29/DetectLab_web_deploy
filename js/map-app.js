@@ -5088,11 +5088,16 @@
                 // "Clădiri dispărute" analysis below.  This router affects *only* what is
                 // drawn for the premium Josephine Map + layer.
                 //
-                // Rule requested for the visual layer:
-                //   • if even one exterior pixel of the Supabase raster would be on screen
-                //     (transparent, partially transparent, or strict opaque black), draw
-                //     Supabase;
-                //   • otherwise draw the existing Cloudflare map.
+                // Rule for the visual layer (Cloudflare is the default everywhere):
+                //   • Supabase is drawn ONLY while the entire viewport is covered by real
+                //     Supabase map content — i.e. not a single exterior pixel
+                //     (transparent, partially transparent, or strict opaque black) is on
+                //     screen;
+                //   • in every other case — viewport reaching outside coverage, a missing
+                //     tile, the sheet's black/transparent edge entering the screen, or a
+                //     failed coverage probe — the Cloudflare map stays visible, so the
+                //     user always sees a complete map and never the sheet's black frame
+                //     or an empty raster.
                 //
                 // Supabase has native tiles at z10–z14.  Leaflet safely underzooms/overzooms
                 // those native levels, so the same decision works at every map zoom.
@@ -5347,12 +5352,15 @@
 
                 function _doesJosephineViewportNeedSupabase() {
                     var bounds = map.getBounds();
+                    // Supabase may only appear while the ENTIRE viewport sits inside its
+                    // map content.  A viewport escaping the conservative envelope
+                    // necessarily shows exterior area → keep Cloudflare without probing.
                     if (_josephineViewportEscapesProbeEnvelope(bounds)) {
-                        return Promise.resolve({ useSupabase: true, reason: 'outside source envelope' });
+                        return Promise.resolve({ useSupabase: false, reason: 'viewport reaches outside source envelope' });
                     }
 
                     var plan = _getJosephineVisibleSupabaseTileRects();
-                    if (plan.outside) return Promise.resolve({ useSupabase: true, reason: 'outside Web-Mercator tile range' });
+                    if (plan.outside) return Promise.resolve({ useSupabase: false, reason: 'outside Web-Mercator tile range' });
                     if (!plan.tiles.length) return Promise.resolve({ useSupabase: false, reason: 'empty tile plan' });
 
                     return Promise.all(plan.tiles.map(function (tile) {
@@ -5366,6 +5374,10 @@
                                 unknown = true;
                                 continue;
                             }
+                            // A missing tile, or even a single exterior pixel (transparent,
+                            // partially transparent or strict opaque black) inside the
+                            // visible rect, means the sheet's edge/void would be on screen
+                            // → keep the Cloudflare map.
                             if (_josephineMaskHasExteriorInRect(
                                 result.mask,
                                 result.tile.left,
@@ -5373,11 +5385,15 @@
                                 result.tile.right,
                                 result.tile.bottom
                             )) {
-                                return { useSupabase: true, reason: 'visible black/transparent exterior pixel' };
+                                return { useSupabase: false, reason: 'visible black/transparent exterior pixel' };
                             }
                         }
-                        // Unknown probes retain Cloudflare.  The next move/zoom retries them.
-                        return { useSupabase: false, reason: unknown ? 'coverage probe unavailable' : 'viewport fully inside Supabase map content' };
+                        // Cloudflare only ever gives way to Supabase once EVERY visible
+                        // tile is proven fully covered.  Unknown probes retain Cloudflare;
+                        // the next move/zoom retries them.
+                        return unknown
+                            ? { useSupabase: false, reason: 'coverage probe unavailable' }
+                            : { useSupabase: true, reason: 'viewport fully covered by Supabase map content' };
                     });
                 }
 
