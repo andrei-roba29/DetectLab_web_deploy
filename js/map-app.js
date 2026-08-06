@@ -3416,9 +3416,9 @@
                 },
                 // ── POINTS & LABELS ──
                 vici_sites: {
-                    label: 'Roman Sites (Vici)', color: '#E8772A', weight: 1.5, enabled: false,
+                    label: 'Roman Sites (DARE)', color: '#E8772A', weight: 1.5, enabled: false,
                     type: 'geojson',
-                    url: 'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/vici_roman_romania.geojson'
+                    url: 'https://imperium.ahlfeldt.se/api/geojson.php'
                 },
                 walls: {
                     label: 'Walls', color: '#888888', weight: 2.0, enabled: false,
@@ -3565,13 +3565,13 @@
                 return null;
             }
 
-            // ── Load Vici Sites dynamically from vici.org based on viewport ──
+            // ── Load Roman Sites dynamically from DARE based on viewport ──
             var _viciLoading = false;
             function _loadDynamicViciSites() {
                 if (!_romanEnabled['vici_sites'] || !_romanVisible) return;
                 var zoom = map.getZoom();
                 if (zoom < 7) {
-                    console.log('[Roman] Vici dynamic fetch skipped — zoom too low (< 7)');
+                    console.log('[Roman] DARE dynamic fetch skipped — zoom too low (< 7)');
                     return;
                 }
 
@@ -3581,15 +3581,16 @@
                 var north = bounds.getNorth().toFixed(4);
                 var east = bounds.getEast().toFixed(4);
 
-                var url = 'https://vici.org/geojson.php?bounds=' + south + ',' + west + ',' + north + ',' + east + '&zoom=' + Math.min(zoom, 14);
+                // DARE API bbox is: west,south,east,north
+                var url = 'https://imperium.ahlfeldt.se/api/geojson.php?bbox=' + west + ',' + south + ',' + east + ',' + north + '&zoom=' + Math.min(zoom, 10) + '&cc=RO';
 
-                console.log('[Roman] Fetching dynamic Vici from:', url);
+                console.log('[Roman] Fetching dynamic DARE sites from:', url);
                 _viciLoading = true;
 
                 fetch(url)
                     .then(function(r) {
                         _viciLoading = false;
-                        if (!r.ok) { console.warn('[Roman] Vici HTTP error:', r.status); return null; }
+                        if (!r.ok) { console.warn('[Roman] DARE HTTP error:', r.status); return null; }
                         return r.json();
                     })
                     .then(function(data) {
@@ -3632,13 +3633,32 @@
                                 },
                                 onEachFeature: function(feature, layer) {
                                     var p = feature.properties || {};
-                                    var name = p.title || p.label || p.name || p.NAME || p.Label || p.LABEL || p.PLabel || '';
-                                    if (name) {
-                                        layer.bindTooltip(
-                                            '<span style="font-family:\'Cinzel\',serif;font-size:0.78rem;color:#E8772A;">' + name + '</span>' +
-                                            '<br><span style="font-size:0.68rem;opacity:0.6;">Roman Sites (Vici) · Roman Empire</span>',
-                                            { className: 'map-search-tooltip', sticky: true }
-                                        );
+                                    var modernName = p.name || p.NAME || '';
+                                    var ancientName = p.ancient || p.ancient_name || p.ANCIENT || '';
+                                    var type = p.type || p.type_name || p.TYPE || p.feature_type || '';
+
+                                    // Build display label
+                                    var displayName = '';
+                                    if (ancientName && modernName) {
+                                        displayName = ancientName + ' (' + modernName + ')';
+                                    } else {
+                                        displayName = ancientName || modernName || 'Unnamed Roman Site';
+                                    }
+
+                                    if (displayName) {
+                                        var tooltipHtml = '<span style="font-family:\'Cinzel\',serif;font-size:0.78rem;color:#E8772A;">' + displayName + '</span>';
+                                        if (type) {
+                                            tooltipHtml += '<br><span style="font-size:0.68rem;opacity:0.8;color:#E8772A;">Type: ' + type + '</span>';
+                                        }
+                                        tooltipHtml += '<br><span style="font-size:0.68rem;opacity:0.6;">DARE Roman Site · Roman Empire</span>';
+                                        
+                                        var dareId = feature.id || p.id;
+                                        if (dareId) {
+                                            var dareUrl = 'https://imperium.ahlfeldt.se/places/' + dareId + '.html';
+                                            tooltipHtml += '<br><a href="' + dareUrl + '" target="_blank" style="color:#E8772A;text-decoration:underline;font-size:0.68rem;pointer-events:auto;">View on DARE</a>';
+                                        }
+
+                                        layer.bindTooltip(tooltipHtml, { className: 'map-search-tooltip', sticky: true });
                                     }
                                 }
                             });
@@ -3647,11 +3667,11 @@
 
                         // Add new features to the existing layer
                         _romanLayers['vici_sites'].addData(data);
-                        console.log('[Roman] Vici dynamic OK — added new features');
+                        console.log('[Roman] DARE dynamic OK — added new features');
                     })
                     .catch(function(e) {
                         _viciLoading = false;
-                        console.error('[Roman] Vici dynamic fetch error:', e.message);
+                        console.error('[Roman] DARE dynamic fetch error:', e.message);
                     });
             }
 
