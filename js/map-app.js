@@ -3416,9 +3416,9 @@
                 },
                 // ── POINTS & LABELS ──
                 vici_sites: {
-                    label: 'Roman Sites (Vici)', color: '#E8772A', weight: 1.5, enabled: false,
+                    label: 'Roman Sites (DARE)', color: '#E8772A', weight: 1.5, enabled: false,
                     type: 'geojson',
-                    url: 'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/vici_roman_romania.geojson'
+                    url: 'https://imperium.ahlfeldt.se/api/geojson.php'
                 },
                 walls: {
                     label: 'Walls', color: '#888888', weight: 2.0, enabled: false,
@@ -3478,6 +3478,8 @@
             var _romanLayers = {};   // key → Leaflet layer
             var _romanEnabled = {};  // key → bool (from checkbox state)
             var _romanCache  = {};   // url → GeoJSON data
+            var _romanLoading = {};  // key → bool (tracks active fetches)
+            var _viciCache  = {};    // id → bool (tracks loaded vici features)
 
             // Initialise enabled state from definitions
             Object.keys(ROMAN_SUB_LAYERS).forEach(function(k) {
@@ -3563,8 +3565,122 @@
                 return null;
             }
 
+            // ── Load Roman Sites dynamically from DARE based on viewport ──
+            var _viciLoading = false;
+            function _loadDynamicViciSites() {
+                if (!_romanEnabled['vici_sites'] || !_romanVisible) return;
+                var zoom = map.getZoom();
+                if (zoom < 7) {
+                    console.log('[Roman] DARE dynamic fetch skipped — zoom too low (< 7)');
+                    return;
+                }
+
+                var bounds = map.getBounds();
+                var south = bounds.getSouth().toFixed(4);
+                var west = bounds.getWest().toFixed(4);
+                var north = bounds.getNorth().toFixed(4);
+                var east = bounds.getEast().toFixed(4);
+
+                // DARE API bbox is: west,south,east,north
+                var url = 'https://imperium.ahlfeldt.se/api/geojson.php?bbox=' + west + ',' + south + ',' + east + ',' + north + '&zoom=' + Math.min(zoom, 10) + '&cc=RO';
+
+                console.log('[Roman] Fetching dynamic DARE sites from:', url);
+                _viciLoading = true;
+
+                fetch(url)
+                    .then(function(r) {
+                        _viciLoading = false;
+                        if (!r.ok) { console.warn('[Roman] DARE HTTP error:', r.status); return null; }
+                        return r.json();
+                    })
+                    .then(function(data) {
+                        if (!data || !_romanEnabled['vici_sites'] || !_romanVisible) return;
+
+                        // Create the GeoJSON layer if it doesn't exist
+                        if (!_romanLayers['vici_sites']) {
+                            _romanLayers['vici_sites'] = L.geoJSON(null, {
+                                pane: 'pane_roman',
+                                filter: function(feature) {
+                                    // Romania-only filter for non-shading Roman layers
+                                    if (!_romanFeatureInBounds(feature)) return false;
+
+                                    var id = feature.id || (feature.properties && feature.properties.id);
+                                    if (!id) return true;
+                                    if (_viciCache[id]) return false; // skip duplicate
+                                    _viciCache[id] = true;
+                                    return true;
+                                },
+                                style: function() {
+                                    return {
+                                        color: '#E8772A',
+                                        fillColor: '#E8772A',
+                                        weight: 1.5,
+                                        opacity: _romanOpacity,
+                                        fillOpacity: _romanOpacity * 0.18,
+                                        pane: 'pane_roman'
+                                    };
+                                },
+                                pointToLayer: function(feature, latlng) {
+                                    return L.circleMarker(latlng, {
+                                        pane: 'pane_roman',
+                                        radius: 4,
+                                        color: '#E8772A',
+                                        fillColor: '#E8772A',
+                                        fillOpacity: _romanOpacity * 0.6,
+                                        opacity: _romanOpacity,
+                                        weight: 1
+                                    });
+                                },
+                                onEachFeature: function(feature, layer) {
+                                    var p = feature.properties || {};
+                                    var modernName = p.name || p.NAME || '';
+                                    var ancientName = p.ancient || p.ancient_name || p.ANCIENT || '';
+                                    var type = p.type || p.type_name || p.TYPE || p.feature_type || '';
+
+                                    // Build display label
+                                    var displayName = '';
+                                    if (ancientName && modernName) {
+                                        displayName = ancientName + ' (' + modernName + ')';
+                                    } else {
+                                        displayName = ancientName || modernName || 'Unnamed Roman Site';
+                                    }
+
+                                    if (displayName) {
+                                        var tooltipHtml = '<span style="font-family:\'Cinzel\',serif;font-size:0.78rem;color:#E8772A;">' + displayName + '</span>';
+                                        if (type) {
+                                            tooltipHtml += '<br><span style="font-size:0.68rem;opacity:0.8;color:#E8772A;">Type: ' + type + '</span>';
+                                        }
+                                        tooltipHtml += '<br><span style="font-size:0.68rem;opacity:0.6;">DARE Roman Site · Roman Empire</span>';
+                                        
+                                        var dareId = feature.id || p.id;
+                                        if (dareId) {
+                                            var dareUrl = 'https://imperium.ahlfeldt.se/places/' + dareId + '.html';
+                                            tooltipHtml += '<br><a href="' + dareUrl + '" target="_blank" style="color:#E8772A;text-decoration:underline;font-size:0.68rem;pointer-events:auto;">View on DARE</a>';
+                                        }
+
+                                        layer.bindTooltip(tooltipHtml, { className: 'map-search-tooltip', sticky: true });
+                                    }
+                                }
+                            });
+                            _romanLayers['vici_sites'].addTo(_romanGroup);
+                        }
+
+                        // Add new features to the existing layer
+                        _romanLayers['vici_sites'].addData(data);
+                        console.log('[Roman] DARE dynamic OK — added new features');
+                    })
+                    .catch(function(e) {
+                        _viciLoading = false;
+                        console.error('[Roman] DARE dynamic fetch error:', e.message);
+                    });
+            }
+
             // ── Load / toggle a single sub-layer ──
             function _loadRomanSubLayer(key) {
+                if (key === 'vici_sites') {
+                    _loadDynamicViciSites();
+                    return;
+                }
                 var cfg = ROMAN_SUB_LAYERS[key];
                 if (!cfg || !_romanEnabled[key] || !_romanVisible) return;
 
@@ -3594,12 +3710,19 @@
                     if (lyr2) { _romanLayers[key] = lyr2; lyr2.addTo(_romanGroup); }
                     return;
                 }
+                if (_romanLoading[key]) {
+                    console.log('[Roman] "' + key + '" fetch already in progress — skipping duplicate request');
+                    return;
+                }
+                _romanLoading[key] = true;
                 fetch(cfg.url)
                     .then(function(r){
+                        _romanLoading[key] = false;
                         if (!r.ok) { console.warn('[Roman] "' + key + '" HTTP ' + r.status + ' — ' + cfg.url); return null; }
                         return r.json();
                     })
                     .then(function(data) {
+                        _romanLoading[key] = false;
                         if (!data) return;
                         _romanCache[cfg.url] = data;
                         if (!_romanEnabled[key] || !_romanVisible) return;
@@ -3607,16 +3730,26 @@
                         if (lyr3) { _romanLayers[key] = lyr3; lyr3.addTo(_romanGroup); }
                         console.log('[Roman] "' + key + '" OK — ' + (data.features ? data.features.length : '?') + ' features');
                     })
-                    .catch(function(e){ console.error('[Roman] "' + key + '" fetch error:', e.message, cfg.url); });
+                    .catch(function(e){
+                        _romanLoading[key] = false;
+                        console.error('[Roman] "' + key + '" fetch error:', e.message, cfg.url);
+                    });
             }
 
             function _loadRomanData() {
                 Object.keys(ROMAN_SUB_LAYERS).forEach(function(key) {
                     if (_romanEnabled[key]) {
-                        _loadRomanSubLayer(key);
+                        if (key === 'vici_sites') {
+                            _loadDynamicViciSites();
+                        } else {
+                            _loadRomanSubLayer(key);
+                        }
                     } else {
                         // Remove from group if disabled
-                        if (_romanLayers[key] && _romanGroup.hasLayer(_romanLayers[key])) {
+                        if (key === 'vici_sites') {
+                            _viciCache = {};
+                        }
+                        if (_romanLayers[key]) {
                             _romanGroup.removeLayer(_romanLayers[key]);
                         }
                     }
@@ -3633,12 +3766,17 @@
                 }
                 if (!_romanVisible) return; // group is off, changes take effect when group is turned on
                 if (on) {
-                    _loadRomanSubLayer(key);
+                    if (key === 'vici_sites') {
+                        _loadDynamicViciSites();
+                    } else {
+                        _loadRomanSubLayer(key);
+                    }
                 } else {
+                    if (key === 'vici_sites') {
+                        _viciCache = {}; // Reset cache on toggle off
+                    }
                     if (_romanLayers[key]) {
-                        if (_romanGroup.hasLayer(_romanLayers[key])) {
-                            _romanGroup.removeLayer(_romanLayers[key]);
-                        }
+                        _romanGroup.removeLayer(_romanLayers[key]);
                         delete _romanLayers[key];
                     }
                 }
@@ -3672,6 +3810,7 @@
                         var el = document.getElementById('roman_' + key);
                         if (el) el.checked = false;
                     });
+                    _viciCache = {}; // Reset dynamic Vici cache
                 }
                 // Sync sub-layer panel visibility
                 var subPanel = document.getElementById('romanSubLayers');
