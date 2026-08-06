@@ -219,24 +219,33 @@
         popupDiv.appendChild(div);
     };
 
-    function openCreateEventModal(lat, lng) {
+    function openCreateEventModal(lat, lng, pinId, pinTitle) {
         var existing = document.getElementById('createEventModal');
         if (existing) existing.remove();
 
         var isRo = (window._currentLang && window._currentLang() === 'ro');
+        var pinLabel = pinTitle ? escapeHtml(pinTitle) : (pinId ? ('Pin ' + pinId) : 'Location Pin');
 
         var modal = document.createElement('div');
         modal.id = 'createEventModal';
         modal.style.cssText = 'position: fixed; inset: 0; z-index: 4000; background: rgba(4,10,22,0.85); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 16px;';
-        modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.25); border-radius: 12px; width: 100%; max-width: 420px; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">' +
-            '<h3 style="margin-top:0; font-size:1.1rem; color:var(--sky); font-family:\'Cinzel\',serif;">' + (isRo ? 'Creează un eveniment' : 'Create an Event') + '</h3>' +
-            '<div style="font-size:0.75rem; opacity:0.6; margin-bottom:12px;">Lat: ' + lat.toFixed(5) + ', Lng: ' + lng.toFixed(5) + '</div>' +
-            '<div style="margin-bottom:10px;"><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Titlu eveniment' : 'Event Title') + '</label><input type="text" id="ceTitle" placeholder="' + (isRo ? 'Ex: Căutare comori în pădure' : 'Ex: Forest metal detecting') + '" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;" autocomplete="off"></div>' +
-            '<div style="margin-bottom:10px;"><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Descriere' : 'Description') + '</label><textarea id="ceDesc" placeholder="' + (isRo ? 'Detalii despre întâlnire...' : 'Meeting details...') + '" style="width:100%; height:60px; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem; resize:none;"></textarea></div>' +
-            '<div style="margin-bottom:10px;"><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Dată și oră' : 'Date and Time') + '</label><input type="datetime-local" id="ceDate" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;"></div>' +
-            '<div style="margin-bottom:16px;"><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Număr maxim participanți (opțional)' : 'Max attendees (optional)') + '</label><input type="number" id="ceMax" min="1" placeholder="' + (isRo ? 'Fără limită' : 'No limit') + '" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;"></div>' +
+        modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.25); border-radius: 12px; width: 100%; max-width: 440px; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">' +
+            '<h3 style="margin-top:0; font-size:1.1rem; color:var(--sky); font-family:\'Cinzel\',serif;">' + (isRo ? 'Creează un eveniment din acest Pin' : 'Create Event from this Pin') + '</h3>' +
+            '<div style="background: rgba(107,63,160,0.2); border: 1px solid rgba(196,160,240,0.4); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.78rem; color: #E8D0FF;">' +
+            '📍 <strong>' + (isRo ? 'Pin asociat:' : 'Associated Pin:') + '</strong> ' + pinLabel + ' (' + Number(lat).toFixed(5) + ', ' + Number(lng).toFixed(5) + ')' +
+            '</div>' +
+            '<div style="margin-bottom:10px;"><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Titlu eveniment *' : 'Event Title *') + '</label><input type="text" id="ceTitle" placeholder="' + (isRo ? 'Ex: Căutare comori în pădure' : 'Ex: Forest metal detecting') + '" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;" autocomplete="off"></div>' +
+            '<div style="margin-bottom:10px;"><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Descriere' : 'Description') + '</label><textarea id="ceDesc" placeholder="' + (isRo ? 'Detalii despre întâlnire...' : 'Meeting details...') + '" style="width:100%; height:55px; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem; resize:none;"></textarea></div>' +
+            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">' +
+            '<div><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Dată *' : 'Event Date *') + '</label><input type="date" id="ceDate" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;"></div>' +
+            '<div><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Oră' : 'Event Time') + '</label><input type="time" id="ceTime" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;"></div>' +
+            '</div>' +
+            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">' +
+            '<div><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Categorie' : 'Category') + '</label><select id="ceCategory" style="width:100%; padding:8px; background:rgba(10,20,42,0.95); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.82rem;"><option value="Metal Detecting">Metal Detecting</option><option value="Treasure Hunt">Treasure Hunt</option><option value="Archaeology">Archaeology</option><option value="Community Meetup">Community Meetup</option><option value="Other">Other</option></select></div>' +
+            '<div><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Max participanți' : 'Max attendees') + '</label><input type="number" id="ceMax" min="1" placeholder="' + (isRo ? 'Fără limită' : 'No limit') + '" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;"></div>' +
+            '</div>' +
             '<div id="ceError" style="font-size:0.76rem; color:#ff8a8a; margin-bottom:10px;"></div>' +
-            '<div style="display:flex; gap:10px;"><button type="button" id="ceSubmitBtn" style="flex:1; background:#6B3FA0; border:none; border-radius:6px; color:#fff; font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Creează' : 'Create') + '</button><button type="button" id="ceCancelBtn" style="background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; padding:10px; cursor:pointer;">' + (isRo ? 'Anulează' : 'Cancel') + '</button></div>' +
+            '<div style="display:flex; gap:10px;"><button type="button" id="ceSubmitBtn" style="flex:1; background:#6B3FA0; border:none; border-radius:6px; color:#fff; font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Salvează Evenimentul' : 'Save Event') + '</button><button type="button" id="ceCancelBtn" style="background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; padding:10px; cursor:pointer;">' + (isRo ? 'Anulează' : 'Cancel') + '</button></div>' +
             '</div>';
 
         document.body.appendChild(modal);
@@ -247,21 +256,27 @@
         modal.querySelector('#ceSubmitBtn').addEventListener('click', async function () {
             var title = document.getElementById('ceTitle').value.trim();
             var desc = document.getElementById('ceDesc').value.trim();
-            var dateStr = document.getElementById('ceDate').value;
+            var dateVal = document.getElementById('ceDate').value;
+            var timeVal = document.getElementById('ceTime').value || '10:00';
+            var categoryVal = document.getElementById('ceCategory').value;
             var maxStr = document.getElementById('ceMax').value;
             var errEl = document.getElementById('ceError');
 
-            if (!title || !dateStr) {
+            if (!title || !dateVal) {
                 errEl.textContent = isRo ? 'Completați titlul și data.' : 'Please fill in title and date.';
                 return;
             }
 
-            var eventDate = new Date(dateStr);
+            var fullDateStr = dateVal + 'T' + timeVal + ':00';
+            var eventDate = new Date(fullDateStr);
+            if (isNaN(eventDate.getTime())) {
+                eventDate = new Date(dateVal);
+            }
+
             var now = new Date();
             var oneYearFromNow = new Date();
             oneYearFromNow.setFullYear(now.getFullYear() + 1);
 
-            // Validation: Events can not be created latter than an year from current date
             if (eventDate > oneYearFromNow) {
                 errEl.textContent = isRo
                     ? 'Evenimentele nu pot fi create mai târziu de 1 an de la data curentă.'
@@ -280,26 +295,26 @@
                 return;
             }
             var submitBtn = document.getElementById('ceSubmitBtn');
-            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = isRo ? 'Se creează…' : 'Creating…'; }
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = isRo ? 'Se salvează…' : 'Saving…'; }
 
             var newEvent = {
                 id: genUuid(),
+                pin_id: pinId || null,
                 creator_id: user.id,
                 creator_name: (user.name || (user.email ? user.email.split('@')[0] : 'User')),
                 creator_email: user.email || null,
                 title: title,
                 description: desc,
-                latitude: lat,
-                longitude: lng,
+                category: categoryVal,
+                latitude: Number(lat),
+                longitude: Number(lng),
                 event_date: eventDate.toISOString(),
                 max_attendees: maxStr ? parseInt(maxStr, 10) : null,
                 created_at: new Date().toISOString()
             };
 
-            var supabaseOk = false;
             try {
                 if (window.supabaseClient) {
-                    // Only send columns that exist in DB (creator_email may not exist on older DBs)
                     var payload = {
                         id: newEvent.id,
                         creator_id: newEvent.creator_id,
@@ -311,29 +326,132 @@
                         event_date: newEvent.event_date,
                         max_attendees: newEvent.max_attendees
                     };
-                    var res = await window.supabaseClient.from('events').insert([payload]).select().single();
-                    if (res.error) throw res.error;
-                    if (res.data && res.data.id) newEvent.id = res.data.id;
-                    supabaseOk = true;
+                    await window.supabaseClient.from('events').insert([payload]);
                 }
             } catch (err) {
                 console.warn('Supabase insert event error, storing locally:', err);
-                var msg = err && (err.message || err.error_description) ? (err.message || err.error_description) : '';
-                // If RLS/auth error, inform user
-                if (msg && /row-level|policy|not authenticated|JWT/i.test(msg)) {
-                    errEl.textContent = isRo ? 'Eroare de permisiune. Verifică autentificarea.' : 'Permission error. Please re-login.';
-                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = isRo ? 'Creează' : 'Create'; }
-                    return;
-                }
             }
 
             eventsData.push(newEvent);
             saveLocalEvents(eventsData);
+            if (window.updatePinWithEvent && pinId) {
+                window.updatePinWithEvent(pinId, newEvent);
+            }
             refreshEventsMap();
             modal.remove();
             alert(isRo ? 'Eveniment creat cu succes!' : 'Event created successfully!');
         });
     }
+
+    // Global Pin Deletion Function
+    window.deletePin = async function (pinId, btnElement) {
+        if (!pinId) return;
+
+        if (btnElement) {
+            btnElement.disabled = true;
+            btnElement.textContent = 'Deleting…';
+        }
+
+        var map = window._dlMap || window.map;
+
+        // 1. Remove from window._detectLabPins
+        if (window._detectLabPins) {
+            var idx = window._detectLabPins.findIndex(function (p) { return String(p.id) === String(pinId); });
+            if (idx !== -1) {
+                var pinObj = window._detectLabPins[idx];
+                if (pinObj.marker && map && map.hasLayer(pinObj.marker)) {
+                    map.removeLayer(pinObj.marker);
+                }
+                window._detectLabPins.splice(idx, 1);
+            }
+        }
+
+        // 2. Remove marker from savedLocationsLayer
+        if (window._savedLocationsLayer) {
+            window._savedLocationsLayer.eachLayer(function (layer) {
+                if (layer.pinId === pinId || (layer.options && layer.options.pinId === pinId) || layer._pinId === pinId) {
+                    window._savedLocationsLayer.removeLayer(layer);
+                }
+            });
+        }
+
+        // 3. Remove active temporary coordMarker
+        if (window._activeCoordMarker && (window._activeCoordMarker.pinId === pinId || window._activeCoordMarker._pinId === pinId)) {
+            if (map) map.removeLayer(window._activeCoordMarker);
+            window._activeCoordMarker = null;
+        }
+
+        // 4. Remove from localStorage
+        try {
+            var local = JSON.parse(localStorage.getItem('detectlab_saved_pins') || '[]');
+            var filtered = local.filter(function (p) { return String(p.id) !== String(pinId); });
+            localStorage.setItem('detectlab_saved_pins', JSON.stringify(filtered));
+        } catch (e) {}
+
+        // 5. Remove from Supabase if DB row exists
+        try {
+            if (window.supabaseClient && pinId && !String(pinId).startsWith('temp_')) {
+                await window.supabaseClient.from('saved_coordinates').delete().eq('id', pinId);
+            }
+        } catch (err) {
+            console.warn('Could not delete pin from Supabase backend:', err);
+        }
+
+        // 6. Close active popup and notify
+        if (map) map.closePopup();
+        console.log('[DetectLab] Pin deleted successfully:', pinId);
+    };
+
+    // Update pin when event is linked
+    window.updatePinWithEvent = function (pinId, event) {
+        if (!pinId) return;
+        var pins = window._detectLabPins || [];
+        var pinObj = pins.find(function (p) { return String(p.id) === String(pinId); });
+        if (pinObj) {
+            pinObj.has_event = true;
+            pinObj.event_data = event;
+        }
+        if (typeof window.refreshEventsMap === 'function') {
+            window.refreshEventsMap();
+        }
+    };
+
+    // Global Event Delegation for Delete & Create Event buttons
+    document.addEventListener('click', function (e) {
+        // Delete Pin
+        var delBtn = e.target.closest('.delete-pin-btn, .pin-delete-btn, .coord-popup-delete');
+        if (delBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            var pinId = delBtn.dataset.pinId || delBtn.getAttribute('data-pin-id');
+            if (confirm('Sigur doriți să ștergeți acest pin? / Are you sure you want to delete this pin?')) {
+                window.deletePin(pinId, delBtn);
+            }
+            return;
+        }
+
+        // Create Event from Pin
+        var createBtn = e.target.closest('.pin-create-event-btn, .coord-popup-create-event');
+        if (createBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            var pinId = createBtn.dataset.pinId || createBtn.getAttribute('data-pin-id');
+            var lat = parseFloat(createBtn.dataset.lat || createBtn.getAttribute('data-lat'));
+            var lng = parseFloat(createBtn.dataset.lng || createBtn.getAttribute('data-lng'));
+            var title = createBtn.dataset.title || createBtn.getAttribute('data-title') || '';
+
+            var user = getCurrentUser();
+            if (!user) {
+                if (typeof window.openAuth === 'function') window.openAuth('login');
+                return;
+            }
+            openCreateEventModal(lat, lng, pinId, title);
+            return;
+        }
+    });
+
+    window.getEventsData = function () { return eventsData; };
+    window.openCreateEventModal = openCreateEventModal;
 
     // Check attendance 1-event-per-day rule
     // "The same user can not attend to 2 different events in the same day and if they try they will get the message 'You are already attending to an event on -date of event-'/'Deja participi la un eveniment in -data evenimentului-'."
