@@ -4317,31 +4317,46 @@
             window.searchNearbyDetectors = async function() {
                 var status=document.getElementById('nearbyStatus'); var user=nearbyUser();
                 if(!user) { status.innerHTML='Trebuie să fii autentificat pentru această funcție.<br><small>You must be logged in to use this feature.</small>'; return; }
+                // ── Auto-enable the Detect switch on "Yes" ──
+                // Only users whose switch is ON can see / be seen by other detectorists,
+                // so confirming the nearby-detectorists prompt must turn the switch ON
+                // unconditionally (previously it only auto-enabled while waiting for a
+                // first GPS fix — i.e. only when _detLat === null — so the switch stayed
+                // OFF for returning users: that's the bug).
+                var autoEnabled = false;
+                if (typeof window.toggleDetection !== 'function') {
+                    status.innerHTML='Activează detectorul (sau partajează locația) pentru a-ți transmite poziția.<br><small>Turn on Detect (or share your location) to broadcast your position.</small>';
+                    return;
+                }
+                if (!_det.active) {
+                    status.innerHTML='Activăm detectorul și locația live…<br><small>Turning on Detect and your live location…</small>';
+                    try {
+                        window.toggleDetection(true);
+                    } catch (err) {
+                        console.warn('[Nearby] auto-enable Detect failed:', err);
+                    }
+                    if (!_det.active) {
+                        // Geolocation unsupported (toggleDetection rolled itself back)
+                        // or another failure — the switch really is still OFF.
+                        status.innerHTML='Nu am putut activa detectorul.<br><small>We could not turn on Detect.</small>';
+                        return;
+                    }
+                    // Programmatic switch-on: reflect it on every visible switch UI.
+                    if (typeof _syncDetectSwitchUI === 'function') _syncDetectSwitchUI(true);
+                    autoEnabled = true;
+                }
                 if(_detLat === null) {
-                    // The user clicked "Yes" on the nearby-detectorists prompt: instead of
-                    // showing the dead-end "turn on Detect" message and stopping, auto-enable
-                    // Detect mode (which turns on the user's live location on the map and
-                    // starts the GPS watcher), wait for the first position fix, then fall
-                    // through and run the search with the freshly acquired coordinates.
+                    // No position fix yet — wait for the GPS watcher (started above or
+                    // already running) to deliver the first coordinates, then fall
+                    // through and run the search with the freshly acquired position.
                     if (!navigator.geolocation) {
+                        if (autoEnabled && _det.active) {
+                            try { window.toggleDetection(false); if (typeof _syncDetectSwitchUI === 'function') _syncDetectSwitchUI(false); } catch (err) {}
+                        }
                         status.innerHTML='Browserul tău nu suportă geolocalizarea.<br><small>Your browser does not support geolocation.</small>';
                         return;
                     }
-                    var autoEnabled = false;
-                    if (typeof window.toggleDetection === 'function' && !_det.active) {
-                        autoEnabled = true;
-                        status.innerHTML='Activăm detectorul și locația live…<br><small>Turning on Detect and your live location…</small>';
-                        try {
-                            window.toggleDetection(true);
-                        } catch (err) {
-                            console.warn('[Nearby] auto-enable Detect failed:', err);
-                            status.innerHTML='Nu am putut activa detectorul.<br><small>We could not turn on Detect.</small>';
-                            return;
-                        }
-                    } else if (typeof window.toggleDetection !== 'function') {
-                        status.innerHTML='Activează detectorul (sau partajează locația) pentru a-ți transmite poziția.<br><small>Turn on Detect (or share your location) to broadcast your position.</small>';
-                        return;
-                    } else {
+                    if (!autoEnabled) {
                         // Detect is already on but the GPS fix hasn't arrived yet — just wait for it.
                         status.innerHTML='Așteptăm semnalul GPS pentru a-ți transmite poziția…<br><small>Waiting for your location to broadcast your position…</small>';
                     }
@@ -4349,8 +4364,11 @@
                     if (!gotFix) {
                         // Location permission was denied / unavailable / timed out:
                         // undo the automatic switch-on so the UI matches reality.
-                        if (autoEnabled && typeof window.toggleDetection === 'function' && _det.active) {
-                            try { window.toggleDetection(false); } catch (err) { console.warn('[Nearby] revert Detect failed:', err); }
+                        if (autoEnabled && _det.active) {
+                            try {
+                                window.toggleDetection(false);
+                                if (typeof _syncDetectSwitchUI === 'function') _syncDetectSwitchUI(false);
+                            } catch (err) { console.warn('[Nearby] revert Detect failed:', err); }
                         }
                         status.innerHTML='Nu am putut activa locația ta. Verifică permisiunile de localizare din browser (sau activează manual Detect) și încearcă din nou.<br><small>We could not turn on your location. Check your browser location permissions (or enable Detect manually) and try again.</small>';
                         return;
@@ -4676,7 +4694,21 @@
                             enabled: on
                         });
                     }
-                    localStorage.setItem('detection_enabled', on ? 'true' : 'false');
+                    // Persist the switch state together with the timestamp of the moment
+                    // it was turned ON.  Both live in localStorage, so they survive app
+                    // restarts, phone lock and minimization, and the timestamp drives
+                    // the 10-hour auto-OFF timer (see _detEnforceExpiry below).  The
+                    // timestamp is only (re)written when missing, so restoring the
+                    // switch after an app restart does NOT extend the original window.
+                    if (on) {
+                        localStorage.setItem('detection_enabled', 'true');
+                        if (!localStorage.getItem('detection_enabled_at')) {
+                            localStorage.setItem('detection_enabled_at', String(Date.now()));
+                        }
+                    } else {
+                        localStorage.setItem('detection_enabled', 'false');
+                        localStorage.removeItem('detection_enabled_at');
+                    }
                 } catch (e) {}
 
                 if (on) {
@@ -4772,6 +4804,120 @@
                 // alertUp stays true → won't re-fire while still inside the same radius
                 // wasInside stays true → resets only when user physically exits
             };
+
+            // ── DETECTION SWITCH — PERSISTENT STATE + 10-HOUR AUTO-OFF ──
+            // Behaviour:
+            //  • Once ON, the switch stays ON across app backgrounding, phone lock
+            //    and minimization — the state + ON-timestamp live in localStorage
+            //    ('detection_enabled' / 'detection_enabled_at'), not in memory.
+            //  • After a MAXIMUM of 10 hours the switch turns itself OFF.  The timer
+            //    is enforced from the stored timestamp (set the moment the switch was
+            //    turned ON), so it survives the app being killed/restarted — unlike
+            //    a setTimeout/setInterval, which would reset on every cold start.
+            //  • The check runs on cold start, on every return from background
+            //    (screen unlock / app switch-back / bfcache restore / refocus) and on
+            //    a 1-minute watchdog while the page stays open.
+            var DETECT_MAX_AGE_MS = 10 * 60 * 60 * 1000; // 10 hours
+
+            // Keep ALL visible detect switches in sync when the state changes
+            // programmatically (restore / auto-enable / expiry): the floating map
+            // switch (#detectSwitch) and its PWA bottom-bar twin (#pwaDetectSwitch).
+            // We set .checked directly instead of dispatching a synthetic 'change'
+            // so the inline onchange handlers don't re-enter toggleDetection().
+            function _syncDetectSwitchUI(on) {
+                try {
+                    var sw = document.getElementById('detectSwitch');
+                    if (sw) sw.checked = on;
+                    var pwa = document.getElementById('pwaDetectSwitch');
+                    if (pwa) pwa.checked = on;
+                    var pwaWrap = document.getElementById('pwaDetectWrap');
+                    if (pwaWrap) pwaWrap.classList.toggle('detect-active', on);
+                } catch (e) {}
+            }
+
+            function _detPersistedState() {
+                try {
+                    return {
+                        on: localStorage.getItem('detection_enabled') === 'true',
+                        since: parseInt(localStorage.getItem('detection_enabled_at') || '0', 10) || 0
+                    };
+                } catch (e) {
+                    return { on: false, since: 0 };
+                }
+            }
+
+            // Enforce the 10-hour expiry.  Returns true while detection is (or must
+            // stay) ON, false when it must be OFF — in which case it also clears the
+            // persisted state, stops detection if running, notifies the service worker
+            // and syncs every switch UI.
+            function _detEnforceExpiry() {
+                var st = _detPersistedState();
+                if (!st.on) return false;
+                var expired = !st.since || (Date.now() - st.since) >= DETECT_MAX_AGE_MS;
+                if (!expired) return true;
+                // ── 10 hours elapsed (or corrupt timestamp) → auto OFF ──
+                try {
+                    localStorage.setItem('detection_enabled', 'false');
+                    localStorage.removeItem('detection_enabled_at');
+                } catch (e) {}
+                if (_det.active) {
+                    // toggleDetection(false) clears the GPS watcher, hides us from
+                    // other detectorists (visible=false) and re-notifies the SW.
+                    try { window.toggleDetection(false); } catch (e) {}
+                } else {
+                    // Cold start with an expired flag — nothing running, just sync the SW.
+                    try {
+                        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                            navigator.serviceWorker.controller.postMessage({ type: 'SET_DETECTION', enabled: false });
+                        }
+                    } catch (e) {}
+                }
+                _syncDetectSwitchUI(false);
+                console.log('[DETECT] 10 hours elapsed — switch turned OFF automatically.');
+                return false;
+            }
+
+            // Restore the ON state (after app restart or on resume from background)
+            // if — and only if — the persisted state is ON and the 10h window has
+            // not elapsed.  Expired state flips the switch OFF instead.
+            window._detRestorePersistedState = function () {
+                if (!_detEnforceExpiry()) return;      // expired (or off) → stays OFF
+                if (_det.active) return;               // already running — nothing to do
+                if (!_detPersistedState().on) return;  // nothing persisted
+                _syncDetectSwitchUI(true);
+                try {
+                    // The stored timestamp is preserved by toggleDetection (set-if-
+                    // missing), so the 10-hour window keeps counting from the moment
+                    // the user originally turned the switch ON.
+                    window.toggleDetection(true);
+                } catch (e) {
+                    console.warn('[DETECT] Failed to restore persisted ON state:', e);
+                }
+            };
+
+            // 1) Cold start / app restart — after full load so every panel, the PWA
+            //    bottom bar and the service worker are wired up.  (Geolocation was
+            //    already authorised when the user first enabled the switch, so the
+            //    GPS watchers resume silently.)
+            window.addEventListener('load', function () {
+                window._detRestorePersistedState();
+            });
+
+            // 2) Returning from background: screen unlock, app switch-back, bfcache
+            //    restore, window refocus.  If >10h elapsed while the app was away,
+            //    the switch flips OFF right here; otherwise its ON state is re-asserted.
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'visible') window._detRestorePersistedState();
+            });
+            window.addEventListener('pageshow', function (e) {
+                if (e.persisted) window._detRestorePersistedState(); // bfcache restore (iOS back/forward)
+            });
+            window.addEventListener('focus', function () {
+                window._detRestorePersistedState();
+            });
+
+            // 3) Watchdog for a page that never leaves the foreground: re-check every minute.
+            setInterval(_detEnforceExpiry, 60 * 1000);
 
             // ── HISTORICAL MAPS — JOSEPHINE LAYER ──
             (function () {
