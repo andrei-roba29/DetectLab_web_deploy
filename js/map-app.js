@@ -5088,16 +5088,19 @@
                 // "Clădiri dispărute" analysis below.  This router affects *only* what is
                 // drawn for the premium Josephine Map + layer.
                 //
-                // Rule for the visual layer (Cloudflare is the default everywhere):
-                //   • Supabase is drawn ONLY while the entire viewport is covered by real
-                //     Supabase map content — i.e. not a single exterior pixel
-                //     (transparent, partially transparent, or strict opaque black) is on
-                //     screen;
-                //   • in every other case — viewport reaching outside coverage, a missing
-                //     tile, the sheet's black/transparent edge entering the screen, or a
-                //     failed coverage probe — the Cloudflare map stays visible, so the
-                //     user always sees a complete map and never the sheet's black frame
-                //     or an empty raster.
+                // FINAL visual rule (Cloudflare is the default everywhere):
+                //   • Supabase is drawn ONLY while the sheet's own boundary is on screen —
+                //     i.e. the user can see BOTH genuine Supabase map content AND the point
+                //     where that content ends: any transparent / partially transparent /
+                //     strict opaque black exterior pixel, or a confirmed missing tile,
+                //     inside the visible area.  As long as the sheet "ends somewhere on
+                //     screen", the premium raster stays up (its black frame included).
+                //   • In every other situation the Cloudflare map stays visible:
+                //       – viewport fully inside the content (no sheet edge visible at all),
+                //       – viewport completely outside the coverage (no Supabase content on
+                //         screen — a fully-off-coverage viewport must NOT show the empty
+                //         Supabase raster; this was the original bug),
+                //       – coverage probe unavailable.
                 //
                 // Supabase has native tiles at z10–z14.  Leaflet safely underzooms/overzooms
                 // those native levels, so the same decision works at every map zoom.
@@ -5162,10 +5165,21 @@
                 var _josephineSupabaseProbeEnvelope = L.latLngBounds(
                     [[44.70, 21.70], [48.10, 26.95]]
                 );
+                // Tight advertised content extent of the sheet (kept in sync with
+                // premiumMapCoverageBounds.josephine below).  Only used to decide the
+                // "huge viewport" case, where per-pixel probing would need too many
+                // tiles to stay responsive.
+                var _josephineSheetContentBounds = L.latLngBounds(
+                    [[44.963611, 21.972695], [47.873181, 26.719332]]
+                );
+                // Max native tiles probed per-pixel for one viewport decision.  Beyond
+                // this (enormous screens / very low zooms) the coarse bounds test above
+                // takes over instead of firing a huge burst of tile probes.
+                var JOSEPHINE_PROBE_TILE_LIMIT = 128;
                 var _josephineMaskCache = {};
                 var _josephineMaskInflight = {};
                 var _josephineMaskClock = 0;
-                var _josephineMaskCacheLimit = 96;
+                var _josephineMaskCacheLimit = 160;
                 var _josephineRouteTimer = null;
                 var _josephineRouteRevision = 0;
 
@@ -5278,31 +5292,48 @@
                     return request;
                 }
 
-                function _josephineMaskHasExteriorInRect(mask, left, top, right, bottom) {
-                    if (mask.kind === 'outside') return true;
-                    if (mask.kind !== 'mask' || !mask.hasExterior) return false;
+                // Scans the VISIBLE rect of one tile and reports whether it contains
+                // genuine map content and/or exterior (transparent or strict opaque
+                // black) pixels.  The sheet's boundary is visible exactly when the
+                // on-screen tiles report BOTH content and exterior.
+                function _josephineMaskScanRect(mask, left, top, right, bottom) {
+                    if (mask.kind === 'unknown') return { unknown: true, content: false, exterior: false };
+                    if (mask.kind === 'outside') return { unknown: false, content: false, exterior: true };
+                    if (mask.kind !== 'mask') return { unknown: true, content: false, exterior: false };
 
                     // right/bottom are exclusive pixel coordinates in the source tile.
                     var x0 = Math.max(0, Math.floor(left));
                     var y0 = Math.max(0, Math.floor(top));
                     var x1 = Math.min(JOSEPHINE_TILE_SIZE, Math.ceil(right));
                     var y1 = Math.min(JOSEPHINE_TILE_SIZE, Math.ceil(bottom));
-                    if (x1 <= x0 || y1 <= y0) return false;
+                    if (x1 <= x0 || y1 <= y0) return { unknown: false, content: false, exterior: false };
 
+                    var exteriorPx = mask.hasExterior ? mask.exterior : null;
+                    var hasContent = false;
+                    var hasExterior = false;
                     for (var y = y0; y < y1; y++) {
                         var offset = y * JOSEPHINE_TILE_SIZE;
                         for (var x = x0; x < x1; x++) {
-                            if (mask.exterior[offset + x]) return true;
+                            if (exteriorPx && exteriorPx[offset + x]) hasExterior = true;
+                            else hasContent = true;
+                            if (hasContent && hasExterior) {
+                                return { unknown: false, content: true, exterior: true };
+                            }
                         }
                     }
-                    return false;
+                    return { unknown: false, content: hasContent, exterior: hasExterior };
                 }
 
-                function _josephineViewportEscapesProbeEnvelope(bounds) {
-                    return bounds.getWest() < _josephineSupabaseProbeEnvelope.getWest() ||
-                        bounds.getEast() > _josephineSupabaseProbeEnvelope.getEast() ||
-                        bounds.getSouth() < _josephineSupabaseProbeEnvelope.getSouth() ||
-                        bounds.getNorth() > _josephineSupabaseProbeEnvelope.getNorth();
+                // True when NO part of the viewport can contain Supabase content (the
+                // viewport completely misses the conservative probe envelope) → the
+                // sheet's edge cannot be on screen, so Cloudflare stays without any
+                // tile probing.  A merely partial overlap goes through the precise
+                // per-pixel probe below.
+                function _josephineViewportClearsProbeEnvelope(bounds) {
+                    return bounds.getEast() < _josephineSupabaseProbeEnvelope.getWest() ||
+                        bounds.getWest() > _josephineSupabaseProbeEnvelope.getEast() ||
+                        bounds.getNorth() < _josephineSupabaseProbeEnvelope.getSouth() ||
+                        bounds.getSouth() > _josephineSupabaseProbeEnvelope.getNorth();
                 }
 
                 function _getJosephineVisibleSupabaseTileRects() {
@@ -5311,25 +5342,33 @@
                         Math.min(JOSEPHINE_SUPABASE_MAX_NATIVE_Z, Math.round(map.getZoom()))
                     );
                     var bounds = map.getBounds();
-                    var nw = map.project(bounds.getNorthWest(), z);
-                    var se = map.project(bounds.getSouthEast(), z);
-                    var worldSize = JOSEPHINE_TILE_SIZE * Math.pow(2, z);
+                    // Only tiles that intersect the probe envelope can contain Supabase
+                    // content; everything on screen outside it is exterior by definition.
+                    var probeArea = bounds.intersection(_josephineSupabaseProbeEnvelope);
+                    if (!probeArea.isValid()) return { tiles: [], tooMany: false };
 
-                    // The source is non-wrapping.  If any part of the screen reaches past
-                    // Web-Mercator's world, that part cannot contain Josephine map content.
-                    if (nw.x < 0 || nw.y < 0 || se.x > worldSize || se.y > worldSize) {
-                        return { outside: true, tiles: [] };
-                    }
+                    // The tile's visible rect is measured against the FULL viewport
+                    // (exterior pixels outside the envelope still count as on screen).
+                    var vpNw = map.project(bounds.getNorthWest(), z);
+                    var vpSe = map.project(bounds.getSouthEast(), z);
+                    var areaNw = map.project(probeArea.getNorthWest(), z);
+                    var areaSe = map.project(probeArea.getSouthEast(), z);
 
-                    var minTileX = Math.floor(nw.x / JOSEPHINE_TILE_SIZE);
-                    var maxTileX = Math.floor((se.x - 0.000001) / JOSEPHINE_TILE_SIZE);
-                    var minTileY = Math.floor(nw.y / JOSEPHINE_TILE_SIZE);
-                    var maxTileY = Math.floor((se.y - 0.000001) / JOSEPHINE_TILE_SIZE);
+                    var maxIndex = Math.pow(2, z) - 1;
+                    var minTileX = Math.max(0, Math.floor(areaNw.x / JOSEPHINE_TILE_SIZE));
+                    var maxTileX = Math.min(maxIndex, Math.floor((areaSe.x - 0.000001) / JOSEPHINE_TILE_SIZE));
+                    var minTileY = Math.max(0, Math.floor(areaNw.y / JOSEPHINE_TILE_SIZE));
+                    var maxTileY = Math.min(maxIndex, Math.floor((areaSe.y - 0.000001) / JOSEPHINE_TILE_SIZE));
+                    if (maxTileX < minTileX || maxTileY < minTileY) return { tiles: [], tooMany: false };
                     var tileCount = (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
 
-                    // A screen that covers this many native tiles is necessarily broader than
-                    // the small Josephine sheet.  Avoid a large probe burst at very low zoom.
-                    if (tileCount > 64) return { outside: true, tiles: [] };
+                    // A screen covering more native tiles than this would need a large
+                    // probe burst (enormous screens / very low zooms).  The caller falls
+                    // back to the coarse sheet-extent bounds test for such viewports
+                    // instead of silently picking a source.
+                    if (tileCount > JOSEPHINE_PROBE_TILE_LIMIT) {
+                        return { tiles: [], tooMany: true, tileCount: tileCount };
+                    }
 
                     var tiles = [];
                     for (var ty = minTileY; ty <= maxTileY; ty++) {
@@ -5340,28 +5379,36 @@
                                 z: z,
                                 x: tx,
                                 y: ty,
-                                left: Math.max(0, nw.x - tileLeft),
-                                top: Math.max(0, nw.y - tileTop),
-                                right: Math.min(JOSEPHINE_TILE_SIZE, se.x - tileLeft),
-                                bottom: Math.min(JOSEPHINE_TILE_SIZE, se.y - tileTop)
+                                left: Math.max(0, vpNw.x - tileLeft),
+                                top: Math.max(0, vpNw.y - tileTop),
+                                right: Math.min(JOSEPHINE_TILE_SIZE, vpSe.x - tileLeft),
+                                bottom: Math.min(JOSEPHINE_TILE_SIZE, vpSe.y - tileTop)
                             });
                         }
                     }
-                    return { outside: false, tiles: tiles };
+                    return { tooMany: false, tiles: tiles };
                 }
 
                 function _doesJosephineViewportNeedSupabase() {
                     var bounds = map.getBounds();
-                    // Supabase may only appear while the ENTIRE viewport sits inside its
-                    // map content.  A viewport escaping the conservative envelope
-                    // necessarily shows exterior area → keep Cloudflare without probing.
-                    if (_josephineViewportEscapesProbeEnvelope(bounds)) {
-                        return Promise.resolve({ useSupabase: false, reason: 'viewport reaches outside source envelope' });
+                    // Fast path: no part of the sheet (or its immediate margin) is on
+                    // screen at all → the sheet edge cannot be visible → Cloudflare.
+                    // This also fixes the original bug where a viewport fully outside
+                    // the coverage (e.g. Bucharest) displayed the empty Supabase raster.
+                    if (_josephineViewportClearsProbeEnvelope(bounds)) {
+                        return Promise.resolve({ useSupabase: false, reason: 'viewport clears source envelope' });
                     }
 
                     var plan = _getJosephineVisibleSupabaseTileRects();
-                    if (plan.outside) return Promise.resolve({ useSupabase: false, reason: 'outside Web-Mercator tile range' });
-                    if (!plan.tiles.length) return Promise.resolve({ useSupabase: false, reason: 'empty tile plan' });
+                    if (plan.tooMany) return Promise.resolve(_decideJosephineHugeViewport(bounds, plan));
+                    if (!plan.tiles.length) return Promise.resolve({ useSupabase: false, reason: 'no sheet tiles on screen' });
+
+                    // If any part of the screen sits outside the probe envelope, exterior
+                    // area is on screen by definition (content lives inside the envelope).
+                    // Otherwise the viewport is fully inside the envelope and exterior can
+                    // only come from confirmed-missing tiles / black-transparent pixels.
+                    var exteriorOnScreen = !_josephineSupabaseProbeEnvelope.contains(bounds);
+                    var contentOnScreen = false;
 
                     return Promise.all(plan.tiles.map(function (tile) {
                         return _getJosephineSupabaseMask(tile.z, tile.x, tile.y)
@@ -5374,27 +5421,45 @@
                                 unknown = true;
                                 continue;
                             }
-                            // A missing tile, or even a single exterior pixel (transparent,
-                            // partially transparent or strict opaque black) inside the
-                            // visible rect, means the sheet's edge/void would be on screen
-                            // → keep the Cloudflare map.
-                            if (_josephineMaskHasExteriorInRect(
+                            var scan = _josephineMaskScanRect(
                                 result.mask,
                                 result.tile.left,
                                 result.tile.top,
                                 result.tile.right,
                                 result.tile.bottom
-                            )) {
-                                return { useSupabase: false, reason: 'visible black/transparent exterior pixel' };
+                            );
+                            if (scan.content) contentOnScreen = true;
+                            if (scan.exterior) exteriorOnScreen = true;
+                            // The sheet's edge is visible exactly when BOTH real content
+                            // and its exterior end up on screen.  A proven boundary
+                            // stands even if other probes are still unknown.
+                            if (contentOnScreen && exteriorOnScreen) {
+                                return { useSupabase: true, reason: 'sheet edge on screen (content + exterior visible)' };
                             }
                         }
-                        // Cloudflare only ever gives way to Supabase once EVERY visible
-                        // tile is proven fully covered.  Unknown probes retain Cloudflare;
-                        // the next move/zoom retries them.
-                        return unknown
-                            ? { useSupabase: false, reason: 'coverage probe unavailable' }
-                            : { useSupabase: true, reason: 'viewport fully covered by Supabase map content' };
+                        // Unknown probes retain Cloudflare.  The next move/zoom retries them.
+                        if (unknown) return { useSupabase: false, reason: 'coverage probe unavailable' };
+                        if (!contentOnScreen) {
+                            return { useSupabase: false, reason: 'no Supabase content on screen' };
+                        }
+                        return { useSupabase: false, reason: 'viewport fully inside Supabase content (no edge visible)' };
                     });
+                }
+
+                // Coarse decision for viewports spanning more native tiles than
+                // JOSEPHINE_PROBE_TILE_LIMIT (enormous screens / very low zooms): use the
+                // advertised sheet content bounds instead of probing hundreds of tiles.
+                function _decideJosephineHugeViewport(bounds) {
+                    var sheet = _josephineSheetContentBounds;
+                    if (!bounds.intersects(sheet)) {
+                        return { useSupabase: false, reason: 'viewport clears sheet extent (no content on screen)' };
+                    }
+                    if (sheet.contains(bounds)) {
+                        return { useSupabase: false, reason: 'viewport fully inside sheet extent (no edge visible)' };
+                    }
+                    // The screen crosses the advertised edge of the sheet → its limit is
+                    // visible → draw Supabase.
+                    return { useSupabase: true, reason: 'viewport crosses sheet extent edge' };
                 }
 
                 // ── Visual source transition overlay ───────────────────────────────────
