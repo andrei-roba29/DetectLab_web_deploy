@@ -9248,26 +9248,19 @@
                 map.getPane("pane_sat60").style.pointerEvents = "none";
 
                 var SAT60_GWC_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
-                var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/wms";
                 var SAT60_INITIAL_OPACITY = 0.85;
 
-                // Curated list of verified Corona frame layer names from CAST GeoServer
+                // Curated list of verified Corona pass layer names (mosaics) from CAST GeoServer
                 // whose geographic bounding boxes cover Romanian territory.
                 var FALLBACK_ROMANIA_LAYERS = [
-                    "corona:1105-2235df064", "corona:1105-2235df065", "corona:1105-2235df066", "corona:1105-2235df067",
-                    "corona:1105-2235df075", "corona:1105-2235df076", "corona:1105-2235df077", "corona:1105-2235df078", "corona:1105-2235df079",
-                    "corona:1105-2235df080", "corona:1105-2235df081", "corona:1105-2235df082", "corona:1105-2235df083", "corona:1105-2235df084",
-                    "corona:1103-2167df101", "corona:1103-2167df103",
-                    "corona:1105-2235df050", "corona:1105-2235df051", "corona:1105-2235df052", "corona:1105-2235df053", "corona:1105-2235df054",
-                    "corona:1105-2235df056", "corona:1105-2235df057", "corona:1105-2235df058", "corona:1105-2235df059", "corona:1105-2235df060",
-                    "corona:1105-2235df061", "corona:1105-2235df062", "corona:1105-2235df063",
-                    "corona:1105-2235df042", "corona:1105-2235df043", "corona:1105-2235df044", "corona:1105-2235df045", "corona:1105-2235df046",
-                    "corona:1105-2235df047", "corona:1105-2235df048", "corona:1105-2235df049",
-                    "corona:1110-2289df053", "corona:1110-2289df054", "corona:1110-2289df055",
-                    "corona:1110-2289df036", "corona:1110-2289df037", "corona:1110-2289df038", "corona:1110-2289df039",
-                    "corona:1105-2235df103", "corona:1105-2235df104",
-                    "corona:1105-2235df110", "corona:1105-2235df112", "corona:1105-2235df113", "corona:1105-2235df114", "corona:1105-2235df115",
-                    "corona:1105-2235df117", "corona:1105-2235df118", "corona:1105-2235df119"
+                    "corona:1022-2104Aft", "corona:1022-2104Fore",
+                    "corona:1103-2139Aft", "corona:1103-2139Fore",
+                    "corona:1103-2155Aft", "corona:1103-2155Fore",
+                    "corona:1103-2167Aft", "corona:1103-2167Fore",
+                    "corona:1105-2235Aft", "corona:1105-2235Fore",
+                    "corona:1106-1042Aft", "corona:1106-1042Fore",
+                    "corona:1107-1074Aft", "corona:1107-1074Fore",
+                    "corona:1110-2289Aft", "corona:1110-2289Fore"
                 ];
 
                 // Romania bounds — defined at outer initMap scope so it is available both
@@ -9284,8 +9277,10 @@
                                 var doc = parser.parseFromString(xml, "text/xml");
                                 var layerNodes = doc.getElementsByTagName("Layer");
                                 // Romania geographic bounds (Lon: 19.5 to 30.5, Lat: 43.5 to 48.5)
-                                var RO_MIN_X = 19.5, RO_MAX_X = 30.5;
-                                var RO_MIN_Y = 43.5, RO_MAX_Y = 48.5;
+                                var RO_MIN_X = 19.0, RO_MAX_X = 31.0;
+                                var RO_MIN_Y = 43.0, RO_MAX_Y = 49.0;
+
+                                var knownRomaniaMissions = ["1022", "1103", "1105", "1106", "1107", "1110"];
 
                                 for (var i = 0; i < layerNodes.length; i++) {
                                     var node = layerNodes[i];
@@ -9294,6 +9289,18 @@
                                     var name = nameEl.textContent.trim();
                                     if (name.indexOf("corona:") !== 0) continue;
                                     if (name.indexOf("footprints") !== -1) continue;
+
+                                    // Check if it is a pass/mosaic layer (contains Aft or Fore)
+                                    var isPass = (name.indexOf("Aft") !== -1 || name.indexOf("Fore") !== -1);
+                                    if (!isPass) continue;
+
+                                    var isKnownRomaniaPass = false;
+                                    for (var k = 0; k < knownRomaniaMissions.length; k++) {
+                                        if (name.indexOf(knownRomaniaMissions[k]) !== -1) {
+                                            isKnownRomaniaPass = true;
+                                            break;
+                                        }
+                                    }
 
                                     var minx = NaN, miny = NaN, maxx = NaN, maxy = NaN;
                                     var bboxEl = node.getElementsByTagName("LatLonBoundingBox")[0];
@@ -9315,10 +9322,16 @@
                                             }
                                         }
                                     }
-                                    if (isNaN(minx) || isNaN(miny) || isNaN(maxx) || isNaN(maxy)) continue;
+
+                                    if (isNaN(minx) || isNaN(miny) || isNaN(maxx) || isNaN(maxy)) {
+                                        if (isKnownRomaniaPass) {
+                                            discovered.push(name);
+                                        }
+                                        continue;
+                                    }
 
                                     // Intersection check: layer must overlap Romania
-                                    if (maxx >= RO_MIN_X && minx <= RO_MAX_X && maxy >= RO_MIN_Y && miny <= RO_MAX_Y) {
+                                    if ((maxx >= RO_MIN_X && minx <= RO_MAX_X && maxy >= RO_MIN_Y && miny <= RO_MAX_Y) || isKnownRomaniaPass) {
                                         discovered.push(name);
                                     }
                                 }
@@ -9345,24 +9358,24 @@
                 window._sat60Ready = false;
 
                 discoverCoronaLayers(function (layerNames) {
-                    // We combine the Romania layers into groups of 40 layers each.
-                    // This creates at most 3 WMS layer instances, keeping requests tiny while
-                    // keeping each URL well under safe server limits (~1,000 characters).
-                    var MAX_COMBINED_WMS_LAYERS = 4;
-                    var CHUNK_SIZE = 12;
-
                     var effectiveLayers = (layerNames && layerNames.length > 0) ? layerNames : FALLBACK_ROMANIA_LAYERS;
 
-                    var chunks = [];
-                    for (var i = 0; i < effectiveLayers.length && chunks.length < MAX_COMBINED_WMS_LAYERS; i += CHUNK_SIZE) {
-                        chunks.push(effectiveLayers.slice(i, i + CHUNK_SIZE));
+                    // Remove duplicates
+                    var uniqueLayers = [];
+                    var seen = {};
+                    for (var j = 0; j < effectiveLayers.length; j++) {
+                        var ly = effectiveLayers[j];
+                        if (!seen[ly]) {
+                            seen[ly] = true;
+                            uniqueLayers.push(ly);
+                        }
                     }
 
-                    console.log("[Sat60] Will create", chunks.length, "combined WMS layers. Total Romania layers considered:", effectiveLayers.length);
+                    console.log("[Sat60] Selected", uniqueLayers.length, "pass layers covering Romania for WMS rendering.");
 
-                    window._sat60LayerDefs = chunks.map(function (chunk) {
+                    window._sat60LayerDefs = uniqueLayers.map(function (name) {
                         return {
-                            layers: chunk.join(',')
+                            layerName: name
                         };
                     });
 
@@ -9393,19 +9406,26 @@
                         // LAZY CREATION: only build the actual L.tileLayer.wms instances
                         // the first time the user turns the layer ON.
                         if (window._sat60FrameLayers.length === 0 && window._sat60LayerDefs && window._sat60LayerDefs.length > 0) {
-                            console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length, "WMS layers now that toggle is ON");
+                            console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length, "individual WMS layers now that toggle is ON");
+                            
+                            var EPSG900913 = L.extend({}, L.CRS.EPSG3857, {
+                                code: 'EPSG:900913'
+                            });
+
                             window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
-                                var lyr = L.tileLayer.wms(SAT60_WMS_URL, {
-                                    layers: def.layers,
+                                var lyr = L.tileLayer.wms(SAT60_GWC_URL, {
+                                    layers: def.layerName,
                                     format: "image/png",
                                     transparent: true,
                                     version: "1.1.1",
+                                    tiled: true,
+                                    crs: EPSG900913,
                                     attribution: "© Corona 1960s (CAST UARK)",
                                     tileSize: 256,
                                     opacity: SAT60_INITIAL_OPACITY,
                                     pane: "pane_sat60",
                                     bounds: ROMANIA_BOUNDS,   // stop requesting tiles outside Romania
-                                    minZoom: 5,               // fetch tiles starting from zoom 5 (Romania overview)
+                                    minZoom: 8,               // "only a certain zoom level where you can almost see the whole Romania" (zoom level 8)
                                     maxZoom: 18,
                                     maxNativeZoom: 15
                                 });
@@ -9420,7 +9440,7 @@
                             try {
                                 var firstLayer = window._sat60FrameLayers[0];
                                 if (firstLayer && firstLayer._url) {
-                                    var sampleUrl = firstLayer.getTileUrl({ x: 72, y: 45, z: 7 }); // Romania tile at zoom 7
+                                    var sampleUrl = firstLayer.getTileUrl({ x: 147, y: 93, z: 8 }); // Romania tile at zoom 8
                                     console.log("[Sat60] Sample tile URL (paste in new tab to test):", sampleUrl);
                                 }
                             } catch (e) {}
