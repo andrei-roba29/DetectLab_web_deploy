@@ -83,22 +83,43 @@
         try { localStorage.setItem('detectlab_notifications', JSON.stringify(arr)); } catch (e) {}
     }
 
-    // Load all events from Supabase or fallback
+    function genUuid() {
+        try { if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID(); } catch (e) {}
+        // fallback uuid v4
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random()*16|0, v = c === 'x' ? r : (r&0x3|0x8);
+            return v.toString(16);
+        });
+    }
+
+    // Load all events from Supabase or fallback – merges remote + local so that
+    // locally-created events are not wiped when the remote query returns empty.
     async function fetchEvents() {
+        var remote = null;
         try {
             if (window.supabaseClient) {
                 var res = await window.supabaseClient.from('events').select('*').order('event_date', { ascending: true });
-                if (!res.error && res.data) {
-                    eventsData = res.data;
-                    saveLocalEvents(eventsData);
-                    refreshEventsMap();
-                    return eventsData;
+                if (!res.error && Array.isArray(res.data)) {
+                    remote = res.data;
+                } else if (res && res.error) {
+                    console.warn('Supabase fetchEvents error:', res.error);
                 }
             }
         } catch (err) {
             console.warn('Supabase fetchEvents error, using local:', err);
         }
-        eventsData = getLocalEvents();
+        var local = getLocalEvents();
+        if (remote !== null) {
+            // Merge: remote is authoritative, but keep local events that are not yet on server
+            var remoteIds = {};
+            remote.forEach(function(e){ remoteIds[e.id]=true; });
+            var merged = remote.slice();
+            local.forEach(function(e){ if (!remoteIds[e.id]) merged.push(e); });
+            eventsData = merged;
+            saveLocalEvents(eventsData);
+        } else {
+            eventsData = local;
+        }
         refreshEventsMap();
         return eventsData;
     }
@@ -183,14 +204,13 @@
 
     // Hook into coordinate popup in map-app.js to add "Create Event" button
     window._augmentCoordPopup = function (popupDiv, lat, lng) {
-        var user = getCurrentUser();
         var div = document.createElement('div');
         div.style.cssText = 'margin-top: 6px;';
         div.innerHTML = '<button type="button" class="coord-popup-create-event" style="width: 100%; background: rgba(107,63,160,0.35); border: 1px solid rgba(196,160,240,0.6); border-radius: 4px; color: #c4a0f0; font-size: 0.76rem; font-family: \'Outfit\', sans-serif; padding: 5px 0; cursor: pointer; font-weight: 600;">Creează un eveniment</button>';
-        
         var btn = div.querySelector('button');
         btn.addEventListener('click', function () {
-            if (!user) {
+            var curUser = getCurrentUser();
+            if (!curUser) {
                 if (typeof window.openAuth === 'function') window.openAuth('login');
                 return;
             }
@@ -255,10 +275,18 @@
             }
 
             var user = getCurrentUser();
+            if (!user || !user.id) {
+                errEl.textContent = isRo ? 'Trebuie să fii autentificat.' : 'You must be logged in.';
+                return;
+            }
+            var submitBtn = document.getElementById('ceSubmitBtn');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = isRo ? 'Se creează…' : 'Creating…'; }
+
             var newEvent = {
-                id: 'evt_' + Math.random().toString(36).substring(2, 9),
+                id: genUuid(),
                 creator_id: user.id,
-                creator_name: user.name || user.email.split('@')[0],
+                creator_name: (user.name || (user.email ? user.email.split('@')[0] : 'User')),
+                creator_email: user.email || null,
                 title: title,
                 description: desc,
                 latitude: lat,
@@ -268,20 +296,41 @@
                 created_at: new Date().toISOString()
             };
 
+            var supabaseOk = false;
             try {
                 if (window.supabaseClient) {
-                    var res = await window.supabaseClient.from('events').insert([newEvent]);
+                    // Only send columns that exist in DB (creator_email may not exist on older DBs)
+                    var payload = {
+                        id: newEvent.id,
+                        creator_id: newEvent.creator_id,
+                        creator_name: newEvent.creator_name,
+                        title: newEvent.title,
+                        description: newEvent.description,
+                        latitude: newEvent.latitude,
+                        longitude: newEvent.longitude,
+                        event_date: newEvent.event_date,
+                        max_attendees: newEvent.max_attendees
+                    };
+                    var res = await window.supabaseClient.from('events').insert([payload]).select().single();
                     if (res.error) throw res.error;
+                    if (res.data && res.data.id) newEvent.id = res.data.id;
+                    supabaseOk = true;
                 }
             } catch (err) {
                 console.warn('Supabase insert event error, storing locally:', err);
+                var msg = err && (err.message || err.error_description) ? (err.message || err.error_description) : '';
+                // If RLS/auth error, inform user
+                if (msg && /row-level|policy|not authenticated|JWT/i.test(msg)) {
+                    errEl.textContent = isRo ? 'Eroare de permisiune. Verifică autentificarea.' : 'Permission error. Please re-login.';
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = isRo ? 'Creează' : 'Create'; }
+                    return;
+                }
             }
 
             eventsData.push(newEvent);
             saveLocalEvents(eventsData);
             refreshEventsMap();
             modal.remove();
-
             alert(isRo ? 'Eveniment creat cu succes!' : 'Event created successfully!');
         });
     }
