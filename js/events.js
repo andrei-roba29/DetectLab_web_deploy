@@ -181,6 +181,16 @@
         var color = getEventColor(ev.event_date);
         var dateStr = formatDate(ev.event_date);
 
+        // Check if user already has an inquiry or is an attendee for this event (local check)
+        var alreadyInquired = false;
+        var alreadyAttending = false;
+        if (user && !isCreator) {
+            var localInqs = getLocalInquiries();
+            alreadyInquired = localInqs.some(function(i) { return i.event_id === ev.id && i.user_id === user.id; });
+            var localAtts = getLocalAttendees();
+            alreadyAttending = localAtts.some(function(a) { return a.event_id === ev.id && a.user_id === user.id; });
+        }
+
         var html = '<div style="min-width: 220px; font-family: \'Outfit\', sans-serif;">' +
             '<div style="font-weight: 700; font-size: 0.95rem; color: #F5F0EB; margin-bottom: 4px;">' + escapeHtml(ev.title) + '</div>' +
             '<div style="font-size: 0.76rem; color: rgba(184,216,240,0.8); margin-bottom: 6px;">' + escapeHtml(ev.description || '') + '</div>' +
@@ -190,7 +200,13 @@
         if (isCreator) {
             html += '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="width: 100%; background: #6B3FA0; border: none; border-radius: 4px; color: #fff; font-size: 0.75rem; padding: 5px; cursor: pointer; font-weight: 600;">Gestionează Evenimentul</button>';
         } else if (user) {
-            html += '<button type="button" onclick="window._openInquiryModal(\'' + ev.id + '\')" style="width: 100%; background: #E8772A; border: none; border-radius: 4px; color: #fff; font-size: 0.75rem; padding: 5px; cursor: pointer; font-weight: 600;">Trimite Cerere Participare</button>';
+            if (alreadyAttending) {
+                html += '<div style="width: 100%; background: rgba(46,158,79,0.2); border: 1px solid rgba(46,158,79,0.5); border-radius: 4px; color: #2E9E4F; font-size: 0.75rem; padding: 5px; text-align: center; font-weight: 600;">✓ Deja participant / Already attending</div>';
+            } else if (alreadyInquired) {
+                html += '<div style="width: 100%; background: rgba(232,119,42,0.15); border: 1px solid rgba(232,119,42,0.4); border-radius: 4px; color: #E8772A; font-size: 0.75rem; padding: 5px; text-align: center; font-weight: 600;">⏳ Cerere trimisă / Request pending</div>';
+            } else {
+                html += '<button type="button" onclick="window._openInquiryModal(\'' + ev.id + '\')" style="width: 100%; background: #E8772A; border: none; border-radius: 4px; color: #fff; font-size: 0.75rem; padding: 5px; cursor: pointer; font-weight: 600;">Trimite Cerere Participare</button>';
+            }
         } else {
             html += '<div style="font-size: 0.7rem; color: #ff8a8a;">Autentifică-te pentru a participa.</div>';
         }
@@ -337,7 +353,10 @@
                         event_date: newEvent.event_date,
                         max_attendees: newEvent.max_attendees
                     };
-                    await window.supabaseClient.from('events').insert([payload]);
+                    var evInsertRes = await window.supabaseClient.from('events').insert([payload]);
+                    if (evInsertRes && evInsertRes.error) {
+                        console.error('Supabase insert event failed:', evInsertRes.error);
+                    }
                 }
             } catch (err) {
                 console.warn('Supabase insert event error, storing locally:', err);
@@ -571,6 +590,41 @@
                 return;
             }
 
+            // ── Duplicate inquiry check: one request per user per event ──
+            var alreadyRequested = false;
+            try {
+                if (window.supabaseClient) {
+                    var dupRes = await window.supabaseClient.from('event_inquiries').select('id,status').eq('event_id', ev.id).eq('user_id', user.id);
+                    if (!dupRes.error && dupRes.data && dupRes.data.length > 0) {
+                        alreadyRequested = true;
+                    }
+                }
+            } catch (e) {}
+            if (!alreadyRequested) {
+                var localDup = getLocalInquiries().filter(function(i) { return i.event_id === ev.id && i.user_id === user.id; });
+                if (localDup.length > 0) alreadyRequested = true;
+            }
+            // Also check if already an accepted attendee
+            var alreadyAttendee = false;
+            try {
+                if (window.supabaseClient) {
+                    var attRes = await window.supabaseClient.from('event_attendees').select('id').eq('event_id', ev.id).eq('user_id', user.id);
+                    if (!attRes.error && attRes.data && attRes.data.length > 0) alreadyAttendee = true;
+                }
+            } catch (e) {}
+            if (!alreadyAttendee) {
+                var localAttDup = getLocalAttendees().filter(function(a) { return a.event_id === ev.id && a.user_id === user.id; });
+                if (localAttDup.length > 0) alreadyAttendee = true;
+            }
+            if (alreadyAttendee) {
+                errEl.textContent = isRo ? 'Deja ești participant la acest eveniment.' : 'You are already an attendee of this event.';
+                return;
+            }
+            if (alreadyRequested) {
+                errEl.textContent = isRo ? 'Ai deja o cerere trimisă pentru acest eveniment.' : 'You have already sent a request for this event.';
+                return;
+            }
+
             // Check 1-event-per-day rule
             var conflictMsg = await checkAttendanceConflict(user.id, ev.event_date);
             if (conflictMsg) {
@@ -578,7 +632,7 @@
                 return;
             }
 
-            var inquiryId = 'inq_' + Math.random().toString(36).substring(2, 9);
+            var inquiryId = genUuid();
             var inquiry = {
                 id: inquiryId,
                 event_id: ev.id,
@@ -590,7 +644,7 @@
             };
 
             var notification = {
-                id: 'notif_' + Math.random().toString(36).substring(2, 9),
+                id: genUuid(),
                 user_id: ev.creator_id,
                 event_id: ev.id,
                 inquiry_id: inquiryId,
@@ -603,8 +657,14 @@
 
             try {
                 if (window.supabaseClient) {
-                    await window.supabaseClient.from('event_inquiries').insert([inquiry]);
-                    await window.supabaseClient.from('event_notifications').insert([notification]);
+                    var inqRes = await window.supabaseClient.from('event_inquiries').insert([inquiry]);
+                    if (inqRes && inqRes.error) {
+                        console.error('Supabase insert inquiry failed:', inqRes.error);
+                    }
+                    var notifRes = await window.supabaseClient.from('event_notifications').insert([notification]);
+                    if (notifRes && notifRes.error) {
+                        console.error('Supabase insert notification failed:', notifRes.error);
+                    }
                 }
             } catch (err) {
                 console.warn('Supabase inquiry error, storing locally:', err);
@@ -620,6 +680,7 @@
 
             modal.remove();
             alert(isRo ? 'Cererea a fost trimisă cu succes!' : 'Inquiry sent successfully!');
+            refreshEventsMap();
         });
     };
 
@@ -753,7 +814,7 @@
 
         inq.status = 'accepted';
         var attendee = {
-            id: 'att_' + Math.random().toString(36).substring(2, 9),
+            id: genUuid(),
             event_id: eventId,
             user_id: inq.user_id,
             user_name: inq.user_name,
@@ -762,10 +823,14 @@
 
         try {
             if (window.supabaseClient) {
-                await window.supabaseClient.from('event_inquiries').update({ status: 'accepted' }).eq('id', inquiryId);
-                await window.supabaseClient.from('event_attendees').insert([attendee]);
+                var updRes = await window.supabaseClient.from('event_inquiries').update({ status: 'accepted' }).eq('id', inquiryId);
+                if (updRes && updRes.error) console.error('Supabase update inquiry status failed:', updRes.error);
+                var attInsRes = await window.supabaseClient.from('event_attendees').insert([attendee]);
+                if (attInsRes && attInsRes.error) console.error('Supabase insert attendee failed:', attInsRes.error);
             }
-        } catch (err) {}
+        } catch (err) {
+            console.error('Supabase accept inquiry error:', err);
+        }
 
         saveLocalInquiries(inquiries);
         var atts = getLocalAttendees();
@@ -921,12 +986,47 @@
         await fetchEvents();
 
         if (tab === 'all') {
+            // Pre-fetch user's inquiries and attendances for accurate button state
+            var userInquiries = [];
+            var userAttendances = [];
+            try {
+                if (window.supabaseClient && user) {
+                    var resUserInq = await window.supabaseClient.from('event_inquiries').select('event_id,status').eq('user_id', user.id);
+                    if (!resUserInq.error && resUserInq.data) userInquiries = resUserInq.data;
+                    var resUserAtt = await window.supabaseClient.from('event_attendees').select('event_id').eq('user_id', user.id);
+                    if (!resUserAtt.error && resUserAtt.data) userAttendances = resUserAtt.data;
+                }
+            } catch (e) {}
+            if (userInquiries.length === 0 && user) {
+                userInquiries = getLocalInquiries().filter(function(i) { return i.user_id === user.id; });
+            }
+            if (userAttendances.length === 0 && user) {
+                userAttendances = getLocalAttendees().filter(function(a) { return a.user_id === user.id; });
+            }
+            var userInqEventIds = {};
+            userInquiries.forEach(function(i) { userInqEventIds[i.event_id] = i.status; });
+            var userAttEventIds = {};
+            userAttendances.forEach(function(a) { userAttEventIds[a.event_id] = true; });
+
             var html = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">';
             if (eventsData.length === 0) {
                 html += '<div style="opacity:0.6;">' + (isRo ? 'Nu există evenimente active.' : 'No active events.') + '</div>';
             } else {
                 eventsData.forEach(function (ev) {
                     var color = getEventColor(ev.event_date);
+                    var isCreator = user && (user.id === ev.creator_id);
+                    var isAttending = userAttEventIds[ev.id];
+                    var hasInquiry = userInqEventIds[ev.id];
+                    var actionBtn = '';
+                    if (isCreator) {
+                        actionBtn = '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="background:#6B3FA0; border:none; border-radius:6px; color:#fff; font-weight:600; padding:8px; cursor:pointer; font-size:0.78rem;">' + (isRo ? 'Gestionează' : 'Manage') + '</button>';
+                    } else if (isAttending) {
+                        actionBtn = '<div style="background:rgba(46,158,79,0.2); border:1px solid rgba(46,158,79,0.5); border-radius:6px; color:#2E9E4F; padding:8px; text-align:center; font-weight:600; font-size:0.78rem;">✓ ' + (isRo ? 'Deja participant' : 'Already attending') + '</div>';
+                    } else if (hasInquiry) {
+                        actionBtn = '<div style="background:rgba(232,119,42,0.15); border:1px solid rgba(232,119,42,0.4); border-radius:6px; color:#E8772A; padding:8px; text-align:center; font-weight:600; font-size:0.78rem;">⏳ ' + (isRo ? 'Cerere trimisă' : 'Request pending') + '</div>';
+                    } else {
+                        actionBtn = '<button type="button" onclick="window._openInquiryModal(\'' + ev.id + '\')" style="background:#E8772A; border:none; border-radius:6px; color:#fff; font-weight:600; padding:8px; cursor:pointer; font-size:0.78rem;">' + (isRo ? 'Trimite Cerere' : 'Send Inquiry') + '</button>';
+                    }
                     html += '<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(184,216,240,0.18); border-radius:10px; padding:16px; display:flex; flex-direction:column; justify-content:space-between;">' +
                         '<div>' +
                         '<div style="font-size:0.7rem; color:' + color + '; font-weight:700; margin-bottom:4px;">● ' + formatDate(ev.event_date) + '</div>' +
@@ -934,7 +1034,7 @@
                         '<p style="margin:0 0 10px 0; font-size:0.78rem; opacity:0.8; line-height:1.4;">' + escapeHtml(ev.description || '') + '</p>' +
                         '<div style="font-size:0.72rem; opacity:0.6; margin-bottom:12px;">👤 ' + escapeHtml(ev.creator_name || 'User') + '</div>' +
                         '</div>' +
-                        '<button type="button" onclick="window._openInquiryModal(\'' + ev.id + '\')" style="background:#E8772A; border:none; border-radius:6px; color:#fff; font-weight:600; padding:8px; cursor:pointer; font-size:0.78rem;">' + (isRo ? 'Trimite Cerere' : 'Send Inquiry') + '</button>' +
+                        actionBtn +
                         '</div>';
                 });
             }
@@ -1095,7 +1195,7 @@
 
         var user = getCurrentUser();
         var msg = {
-            id: 'msg_' + Math.random().toString(36).substring(2, 9),
+            id: genUuid(),
             event_id: activeChatEventId,
             user_id: user.id,
             user_name: user.name || user.email.split('@')[0],
@@ -1107,7 +1207,10 @@
 
         try {
             if (window.supabaseClient) {
-                await window.supabaseClient.from('event_chat_messages').insert([msg]);
+                var chatInsertRes = await window.supabaseClient.from('event_chat_messages').insert([msg]);
+                if (chatInsertRes && chatInsertRes.error) {
+                    console.error('Supabase insert chat message failed:', chatInsertRes.error);
+                }
             }
         } catch (e) {}
 
@@ -1130,7 +1233,7 @@
             var user = getCurrentUser();
 
             var msg = {
-                id: 'msg_' + Math.random().toString(36).substring(2, 9),
+                id: genUuid(),
                 event_id: activeChatEventId,
                 user_id: user.id,
                 user_name: user.name || user.email.split('@')[0],

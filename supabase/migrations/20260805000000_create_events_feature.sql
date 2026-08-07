@@ -54,6 +54,9 @@ create table if not exists public.event_notifications (
     created_at timestamptz not null default now()
 );
 
+-- Add unique constraint: one inquiry per user per event
+create unique index if not exists event_inquiries_user_event_uniq on public.event_inquiries (user_id, event_id);
+
 -- Enable RLS
 alter table public.events enable row level security;
 alter table public.event_inquiries enable row level security;
