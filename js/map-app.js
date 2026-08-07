@@ -5122,6 +5122,26 @@
                 window._jCloudflareLayer = _jCloudflareLayer;
                 window._jSupabaseLayer = _jSupabaseLayer;
                 window._josephineVisualSource = _josephineVisualSource;
+                window._debugJosephineLayers = function() {
+                    var layers = _jLayer.getLayers();
+                    console.log('[Josephine] Layers:', layers.length, '| Active:', _jActiveVisualLayer === _jCloudflareLayer ? 'Cloudflare' : 'Supabase');
+                    console.log('[Josephine] LayerGroup contents:', layers.map(function(l) { return l === _jCloudflareLayer ? 'Cloudflare' : 'Supabase'; }));
+                    console.log('[Josephine] Visual source:', _josephineVisualSource);
+                    console.log('[Josephine] Map has _jLayer:', map.hasLayer(_jLayer));
+                    console.log('[Josephine] Viewport:', map.getBounds().toBBoxString());
+                };
+                window._forceJosephineCloudflare = function() {
+                    console.log('[Josephine] FORCING Cloudflare');
+                    if (_josephineRouteTimer) { clearTimeout(_josephineRouteTimer); _josephineRouteTimer = null; }
+                    _josephineRouteRevision++;
+                    _setJosephineVisualSource('cloudflare', 'manual force');
+                };
+                window._forceJosephineSupabase = function() {
+                    console.log('[Josephine] FORCING Supabase');
+                    if (_josephineRouteTimer) { clearTimeout(_josephineRouteTimer); _josephineRouteTimer = null; }
+                    _josephineRouteRevision++;
+                    _setJosephineVisualSource('supabase', 'manual force');
+                };
                 console.log('[Josephine] premium visual router created:', _jLayer, '| map:', typeof map);
 
                 // Supabase coverage polygon (the authoritative "Bounds" MultiPolygon
@@ -5166,34 +5186,63 @@
                     var corners = [
                         [west, south], [east, south], [east, north], [west, north]
                     ];
+                    
+                    var covRing = JOSEPHINE_SUPABASE_COVERAGE_RINGS[0];
+                    var covMinX = Infinity, covMaxX = -Infinity, covMinY = Infinity, covMaxY = -Infinity;
+                    for (var ci = 0; ci < covRing.length; ci++) {
+                        covMinX = Math.min(covMinX, covRing[ci][0]);
+                        covMaxX = Math.max(covMaxX, covRing[ci][0]);
+                        covMinY = Math.min(covMinY, covRing[ci][1]);
+                        covMaxY = Math.max(covMaxY, covRing[ci][1]);
+                    }
+                    
+                    // Check 1: Bounding box overlap
+                    var bboxOverlap = !(east < covMinX || west > covMaxX || north < covMinY || south > covMaxY);
+                    if (!bboxOverlap) {
+                        console.log('[Josephine] viewport outside coverage bbox - Cloudflare');
+                        return false;
+                    }
 
-                    // 1) Any viewport corner inside the coverage polygon.
+                    // Check 2: All corners inside = viewport contained
+                    var cornersInside = 0;
                     for (var i = 0; i < corners.length; i++) {
-                        if (_josephinePointInCoverage(corners[i][1], corners[i][0])) return true;
+                        if (_josephinePointInCoverage(corners[i][1], corners[i][0])) {
+                            cornersInside++;
+                        }
+                    }
+                    if (cornersInside === 4) {
+                        console.log('[Josephine] viewport fully inside coverage - Cloudflare');
+                        return false;
                     }
 
-                    // 2) Any coverage vertex inside the viewport rectangle.
-                    var ring = JOSEPHINE_SUPABASE_COVERAGE_RINGS[0];
-                    for (var v = 0; v < ring.length; v++) {
-                        var x = ring[v][0], y = ring[v][1];
-                        if (x >= west && x <= east && y >= south && y <= north) return true;
+                    // Check 3: Coverage vertices inside viewport
+                    for (var v = 0; v < covRing.length; v++) {
+                        var x = covRing[v][0], y = covRing[v][1];
+                        if (x >= west && x <= east && y >= south && y <= north) {
+                            console.log('[Josephine] coverage vertex inside viewport - Supabase');
+                            return true;
+                        }
                     }
 
-                    // 3) Any polygon edge crosses a viewport rectangle edge.
+                    // Check 4: Edge crossing
                     var rectEdges = [
                         [corners[0], corners[1]],
                         [corners[1], corners[2]],
                         [corners[2], corners[3]],
                         [corners[3], corners[0]]
                     ];
-                    for (var k = 0, m = ring.length - 1; k < ring.length; m = k++) {
-                        var polyA = ring[m], polyB = ring[k];
+                    for (var k = 0, m = covRing.length - 1; k < covRing.length; m = k++) {
+                        var polyA = covRing[m], polyB = covRing[k];
                         for (var e = 0; e < rectEdges.length; e++) {
                             if (_josephineSegmentsIntersect(polyA, polyB, rectEdges[e][0], rectEdges[e][1])) {
+                                console.log('[Josephine] coverage edge crosses viewport - Supabase');
                                 return true;
                             }
                         }
                     }
+                    
+                    // No intersection found - this shouldn't happen if bbox overlaps
+                    console.log('[Josephine] bbox overlaps but no intersection found - Cloudflare');
                     return false;
                 }
 
@@ -5202,8 +5251,8 @@
                     return Promise.resolve({
                         useSupabase: intersects,
                         reason: intersects
-                            ? 'field of view intersects Supabase coverage polygon'
-                            : 'field of view is outside Supabase coverage polygon'
+                            ? 'viewport intersects coverage boundary'
+                            : 'no intersection'
                     });
                 }
 
@@ -5299,19 +5348,28 @@
 
                 function _setJosephineVisualSource(source, reason) {
                     var nextLayer = source === 'supabase' ? _jSupabaseLayer : _jCloudflareLayer;
-                    if (_jActiveVisualLayer === nextLayer) return;
+                    var currentSource = _jActiveVisualLayer === _jCloudflareLayer ? 'cloudflare' : 'supabase';
+                    
+                    console.log('[Josephine] setVisualSource:', currentSource, '->', source, '| reason:', reason);
+                    
+                    if (_jActiveVisualLayer === nextLayer) {
+                        return;
+                    }
 
-                    // Source changes that happen while the premium group is not on the map
-                    // need no visual transition.  Actual Cloudflare ↔ Supabase swaps do.
                     var transitionId = map.hasLayer(_jLayer) ? _beginJosephineTransition() : 0;
                     if (transitionId) _waitForJosephineVisualLayer(nextLayer, transitionId);
 
-                    if (_jLayer.hasLayer(_jActiveVisualLayer)) _jLayer.removeLayer(_jActiveVisualLayer);
-                    if (!_jLayer.hasLayer(nextLayer)) _jLayer.addLayer(nextLayer);
+                    if (_jLayer.hasLayer(_jActiveVisualLayer)) {
+                        _jLayer.removeLayer(_jActiveVisualLayer);
+                    }
+                    if (!_jLayer.hasLayer(nextLayer)) {
+                        _jLayer.addLayer(nextLayer);
+                    }
+                    
                     _jActiveVisualLayer = nextLayer;
                     _josephineVisualSource = source;
                     window._josephineVisualSource = source;
-                    console.info('[Josephine] visual source → ' + source + ' (' + reason + ')');
+                    console.log('[Josephine] visual source now:', source);
                 }
 
                 function _scheduleJosephineVisualSourceCheck() {
@@ -5336,10 +5394,16 @@
                 // inspecting a source tile in DevTools; normal users never need to call it.
                 window.refreshJosephineVisualSource = _scheduleJosephineVisualSourceCheck;
                 _jLayer.on('add', function () {
+                    console.log('[Josephine] layer added to map');
                     // Start from Cloudflare while the coverage intersection check runs;
                     // this avoids a blank flash and avoids loading both visual sources.
                     _setJosephineVisualSource('cloudflare', 'initial coverage check');
-                    _scheduleJosephineVisualSourceCheck();
+                    // Delay the coverage check slightly to ensure map is ready
+                    setTimeout(function() {
+                        if (map.hasLayer(_jLayer)) {
+                            _scheduleJosephineVisualSourceCheck();
+                        }
+                    }, 100);
                 });
                 _jLayer.on('remove', function () {
                     _josephineRouteRevision++;
