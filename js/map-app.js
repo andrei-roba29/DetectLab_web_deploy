@@ -3654,10 +3654,119 @@
                         console.error('[Roman] DARE dynamic fetch error:', e.message);
                     });
             }
-            window.uatHasBuildingNear = uatHasBuildingNear;
+            // ── ROMAN: load helpers & public toggles ──
+            function _loadSingleRomanLayer(key) {
+                var cfg = ROMAN_SUB_LAYERS[key];
+                if (!cfg) return;
+                if (_romanLayers[key]) {
+                    if (_romanEnabled[key] && _romanVisible && !_romanGroup.hasLayer(_romanLayers[key])) {
+                        _romanGroup.addLayer(_romanLayers[key]);
+                    }
+                    return;
+                }
+                if (cfg.dare) {
+                    _loadDynamicDareSites();
+                    return;
+                }
+                if (!cfg.url) return;
+                if (_romanLoading[key]) return;
+                if (_romanCache[cfg.url]) {
+                    var cached = _romanCache[cfg.url];
+                    var lyrCached = _buildRomanLeafletLayer(key, cfg, cached);
+                    if (lyrCached) {
+                        _romanLayers[key] = lyrCached;
+                        if (_romanEnabled[key] && _romanVisible) _romanGroup.addLayer(lyrCached);
+                    }
+                    return;
+                }
+                _romanLoading[key] = true;
+                fetch(cfg.url)
+                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                    .then(function(data) {
+                        _romanCache[cfg.url] = data;
+                        if (!_romanVisible || !_romanEnabled[key]) return;
+                        var lyr2 = _buildRomanLeafletLayer(key, cfg, data);
+                        if (lyr2) {
+                            _romanLayers[key] = lyr2;
+                            _romanGroup.addLayer(lyr2);
+                        }
+                    })
+                    .catch(function(e){ console.warn('[Roman] Failed to load ' + key + ':', e.message); })
+                    .finally(function(){ _romanLoading[key]=false; });
+            }
 
-            // Funcția principală de search
-            
+            function _loadRomanData() {
+                if (!_romanVisible) return;
+                Object.keys(ROMAN_SUB_LAYERS).forEach(function(key){
+                    if (!_romanEnabled[key]) return;
+                    _loadSingleRomanLayer(key);
+                });
+            }
+
+            window.toggleRomanLayer = function(on) {
+                _romanVisible = !!on;
+                var toggleEl = document.getElementById('romanToggle');
+                if (toggleEl) toggleEl.checked = _romanVisible;
+                if (_romanVisible) {
+                    _romanGroup.addTo(map);
+                    var anyEnabled = Object.keys(_romanEnabled).some(function(k){ return _romanEnabled[k]; });
+                    if (!anyEnabled) {
+                        // Enable a sensible default so the master toggle shows something
+                        _romanEnabled['roads'] = true;
+                        var roadsCb = document.getElementById('roman_roads');
+                        if (roadsCb) roadsCb.checked = true;
+                    }
+                    _loadRomanData();
+                } else {
+                    map.removeLayer(_romanGroup);
+                }
+            };
+
+            window.toggleRomanSub = function(key, on) {
+                if (!(key in ROMAN_SUB_LAYERS)) {
+                    console.warn('[Roman] Unknown sub-layer key:', key);
+                    return;
+                }
+                _romanEnabled[key] = !!on;
+                var cbId = 'roman_' + key;
+                var cb = document.getElementById(cbId);
+                if (cb) cb.checked = !!on;
+                if (!on) {
+                    var lyr = _romanLayers[key];
+                    if (lyr && _romanGroup.hasLayer(lyr)) {
+                        _romanGroup.removeLayer(lyr);
+                    }
+                    return;
+                }
+                if (!_romanVisible) {
+                    var masterToggle = document.getElementById('romanToggle');
+                    if (masterToggle) masterToggle.checked = true;
+                    window.toggleRomanLayer(true);
+                    return;
+                }
+                _loadSingleRomanLayer(key);
+            };
+
+            window.toggleRomanSubLayers = function() {
+                var container = document.getElementById('romanSubLayers');
+                var icon = document.getElementById('romanExpandIcon');
+                var btn = document.getElementById('romanExpandBtn');
+                if (!container) return;
+                window._romanSubExpanded = !window._romanSubExpanded;
+                if (window._romanSubExpanded) {
+                    container.style.maxHeight = '1200px';
+                    container.style.opacity = '1';
+                    container.style.marginTop = '10px';
+                    if (icon) icon.style.transform = 'rotate(0deg)';
+                    if (btn) btn.style.color = '#E8772A';
+                } else {
+                    container.style.maxHeight = '0';
+                    container.style.opacity = '0';
+                    container.style.marginTop = '0';
+                    if (icon) icon.style.transform = 'rotate(-90deg)';
+                    if (btn) btn.style.color = 'rgba(232,119,42,0.8)';
+                }
+            };
 
             window.setRomanOpacity = function(val) {
                 _romanOpacity = val / 100;
