@@ -3604,17 +3604,15 @@
     // The map module exposes window.toggleRomanLayer / window.toggleRomanSub / window.toggleRomanSubLayers.
     // These shims keep the inline onchange="toggleRomanLayer(...)" from throwing before the map initializes,
     // and delegate to the real implementations once they exist without overwriting them.
-    function toggleRomanSubLayers() {
-        if (typeof window.toggleRomanSubLayers === 'function') {
-            return window.toggleRomanSubLayers();
-        }
-        console.warn('toggleRomanSubLayers called before map init');
+    if (typeof window.toggleRomanSubLayers !== 'function') {
+        window.toggleRomanSubLayers = function() {
+            console.warn('toggleRomanSubLayers called before map init');
+        };
     }
-    function toggleRomanSub(key, checked) {
-        if (typeof window.toggleRomanSub === 'function') {
-            return window.toggleRomanSub(key, checked);
-        }
-        console.log('Roman sub-layer', key, checked ? 'ON' : 'OFF');
+    if (typeof window.toggleRomanSub !== 'function') {
+        window.toggleRomanSub = function(key, checked) {
+            console.log('Roman sub-layer', key, checked ? 'ON' : 'OFF');
+        };
     }
     if (typeof window.toggleRomanLayer !== 'function') {
         window.toggleRomanLayer = function(on) {
