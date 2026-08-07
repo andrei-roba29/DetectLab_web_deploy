@@ -3544,7 +3544,7 @@
                 return L.geoJSON(null, {
                     pane: 'pane_roman',
                     pointToLayer: function(feature, latlng) {
-                        var type = feature.properties.type || feature.properties.sympl || '';
+                        var type = feature.properties.numType || feature.properties.type || feature.properties.sympl || '';
                         return L.marker(latlng, {
                             pane: 'pane_roman',
                             icon: getDareIcon(type),
@@ -3626,7 +3626,7 @@
                                 _dareFeaturesRaw[id] = f;
                             }
 
-                            var type = String(f.properties.type || f.properties.sympl || '');
+                            var type = String(f.properties.numType || f.properties.type || f.properties.sympl || '');
                             var dareKey = 'dare_' + type;
 
                             // Add to layer if enabled and layer exists, but avoid duplicates
