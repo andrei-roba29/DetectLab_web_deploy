@@ -2304,6 +2304,33 @@
                                 <input type="range" class="transp-slider" id="satellite60sMapOpacitySlider"
                                        min="0" max="100" value="85"
                                        oninput="setSatellite60sMapOpacity(this.value)">
+
+                                <!-- "Load images here" — Încarcă imagini aici.
+                                     Available ONLY from zoom level 11 (JS hides it below
+                                     and shows the hint instead). Loads the 60s imagery
+                                     tiles for the current viewport only; if none exist
+                                     the map reports "No images here" / "Nu există imagini aici". -->
+                                <div id="satellite60sLoadHint" style="display:none;margin-top:8px;font-size:0.72rem;color:rgba(184,216,240,0.55);line-height:1.4;align-items:center;gap:6px;">
+                                    <span style="font-size:0.9rem;flex-shrink:0;">🔍</span>
+                                    <span class="t" data-key="sat60_load_hint">Zoom in to level 11 or more to load images here</span>
+                                </div>
+                                <button id="satellite60sLoadBtn" type="button" onclick="window.loadSatellite60sHere()"
+                                        style="display:none;width:100%;margin-top:8px;padding:7px 10px;background:linear-gradient(135deg,rgba(107,63,160,0.38),rgba(74,40,128,0.25));border:1px solid rgba(163,112,232,0.5);border-radius:6px;color:rgba(245,240,235,0.95);font-family:'Outfit',sans-serif;font-size:0.78rem;font-weight:600;cursor:pointer;align-items:center;justify-content:center;gap:7px;transition:background 0.2s,border-color 0.2s,opacity 0.2s;"
+                                        onmouseover="this.style.background='linear-gradient(135deg,rgba(107,63,160,0.6),rgba(74,40,128,0.4))';this.style.borderColor='rgba(196,160,240,0.8)'"
+                                        onmouseout="this.style.background='linear-gradient(135deg,rgba(107,63,160,0.38),rgba(74,40,128,0.25))';this.style.borderColor='rgba(163,112,232,0.5)'"
+                                        title="Load 1960s imagery for the visible area only">
+                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0" aria-hidden="true">
+                                        <path d="M1.5 2.5h10M1.5 6.5h10M1.5 10.5h10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+                                        <circle cx="6.5" cy="6.5" r="1.4" fill="currentColor"/>
+                                    </svg>
+                                    <span class="t" data-key="sat60_load_here">Load images here</span>
+                                </button>
+                                <div id="satellite60sLoadMsg" style="display:none;margin-top:7px;font-size:0.72rem;color:rgba(184,216,240,0.8);line-height:1.4;"></div>
+                                <style>
+                                    #satellite60sLoadBtn:disabled { opacity: 0.55; cursor: wait; }
+                                    #satellite60sLoadBtn.loading svg { animation: sat60LoadSpin 0.9s linear infinite; }
+                                    @keyframes sat60LoadSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                                </style>
                             </div>
 
                         </div><!-- /histPremiumSubLayers -->
@@ -2764,7 +2791,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=2026080605"></script>
+    <script src="js/translations.js?v=2026080701"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -2784,8 +2811,8 @@
     <!-- Optimised CORONA (Satellite imagery 60's) WMS tile layer: shared
          throttled request queue, Romania bbox filtering, zoom threshold,
          IndexedDB tile cache, mobile tuning. Must load before map-app.js. -->
-    <script src="js/corona-wms-layer.js?v=20260806"></script>
-    <script src="js/map-app.js?v=2026080702"></script>
+    <script src="js/corona-wms-layer.js?v=2026080701"></script>
+    <script src="js/map-app.js?v=2026080703"></script>
     <script src="js/archeo-potential.js?v=20260803"></script>
 
     <!-- AUTH MODAL -->
