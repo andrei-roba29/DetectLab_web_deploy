@@ -9423,6 +9423,117 @@
                     }
                 }
 
+                // Custom Leaflet map control for "Load map here" button on the map
+                var Sat60LoadControl = null;
+                if (L.Control && L.DomEvent) {
+                    Sat60LoadControl = L.Control.extend({
+                        options: {
+                            position: 'topleft'
+                        },
+                        onAdd: function (map) {
+                            var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control sat60-load-control');
+                            container.style.display = 'none'; // hidden by default
+
+                            var button = L.DomUtil.create('button', 'sat60-map-load-btn', container);
+                            button.type = 'button';
+                            button.style.cssText = 'background: rgba(10,25,48,0.88); border: 1px solid rgba(184,216,240,0.18); border-radius: 10px; backdrop-filter: blur(6px); color: #B8D8F0; font-family: "Outfit", sans-serif; font-size: 0.78rem; font-weight: 600; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); transition: background 0.2s, border-color 0.2s, color 0.2s; white-space: nowrap;';
+
+                            button.innerHTML =
+                                '<svg class="sat60-map-load-svg" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0" aria-hidden="true">' +
+                                    '<path d="M1.5 2.5h10M1.5 6.5h10M1.5 10.5h10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>' +
+                                    '<circle cx="6.5" cy="6.5" r="1.4" fill="currentColor"/>' +
+                                '</svg>' +
+                                '<span class="t" data-key="sat60_zoom_more">Zoom in more</span>';
+
+                            L.DomEvent.on(button, 'click', function (e) {
+                                L.DomEvent.stopPropagation(e);
+                                if (typeof window.loadSatellite60sHere === 'function') {
+                                    window.loadSatellite60sHere();
+                                }
+                            });
+
+                            L.DomEvent.on(button, 'mouseover', function () {
+                                if (!button.disabled) {
+                                    button.style.background = 'rgba(107,63,160,0.82)';
+                                    button.style.borderColor = 'rgba(107,63,160,0.6)';
+                                    button.style.color = '#fff';
+                                }
+                            });
+                            L.DomEvent.on(button, 'mouseout', function () {
+                                if (!button.disabled) {
+                                    button.style.background = 'rgba(10,25,48,0.88)';
+                                    button.style.borderColor = 'rgba(184,216,240,0.18)';
+                                    button.style.color = '#B8D8F0';
+                                }
+                            });
+
+                            this._button = button;
+                            this._container = container;
+                            return container;
+                        },
+                        updateState: function () {
+                            if (!this._container || !this._button) return;
+                            var toggle = document.getElementById('satellite60sToggle');
+                            var layerOn = !!(toggle && toggle.checked);
+
+                            if (!layerOn) {
+                                this._container.style.display = 'none';
+                                return;
+                            }
+
+                            this._container.style.display = 'block';
+
+                            if (_sat60LoadingHere) {
+                                this._button.disabled = true;
+                                this._button.style.opacity = '0.55';
+                                this._button.style.cursor = 'not-allowed';
+                                this._button.classList.add('loading');
+                                var label = this._button.querySelector('.t');
+                                if (label) {
+                                    label.textContent = _sat60T('sat60_loading', 'Loading…');
+                                }
+                                return;
+                            }
+
+                            var canLoad = map.getZoom() >= SAT60_LOAD_MIN_ZOOM;
+                            this._button.disabled = !canLoad;
+                            this._button.classList.remove('loading');
+
+                            if (this._button.disabled) {
+                                this._button.style.opacity = '0.55';
+                                this._button.style.cursor = 'not-allowed';
+                                this._button.style.background = 'rgba(10,25,48,0.88)';
+                                this._button.style.borderColor = 'rgba(184,216,240,0.18)';
+                                this._button.style.color = '#B8D8F0';
+                            } else {
+                                this._button.style.opacity = '1';
+                                this._button.style.cursor = 'pointer';
+                            }
+
+                            var key = canLoad ? 'sat60_load_here' : 'sat60_zoom_more';
+                            var label = this._button.querySelector('.t');
+                            if (label) {
+                                label.setAttribute('data-key', key);
+                                label.textContent = _sat60T(key, canLoad ? 'Load images here' : 'Zoom in more');
+                            }
+                            this._button.title = _sat60T(canLoad ? 'sat60_load_title' : 'sat60_zoom_hint',
+                                canLoad ? 'Load 1960s imagery for the visible area only'
+                                        : 'Zoom in to level 11 or more to load images here.');
+                        }
+                    });
+
+                    window._sat60LoadControl = new Sat60LoadControl().addTo(map);
+
+                    // Inject styles once
+                    var styleId = 'sat60-map-btn-style';
+                    if (!document.getElementById(styleId)) {
+                        var s = document.createElement('style');
+                        s.id = styleId;
+                        s.textContent = '.sat60-map-load-btn.loading svg { animation: sat60LoadSpin 0.9s linear infinite; }';
+                        document.head.appendChild(s);
+                    }
+                }
+
                 // The "Load images here" button is visible ONLY while the
                 // layer is switched on. Below zoom 11 it stays visible but is
                 // DISABLED and its label reads "Zoom in more" /
@@ -9432,28 +9543,32 @@
                 // later language switch re-translates the label correctly.)
                 function _sat60UpdateLoadBtn() {
                     var btn = document.getElementById('satellite60sLoadBtn');
-                    if (!btn) return;
-                    var toggle = document.getElementById('satellite60sToggle');
-                    var layerOn = !!(toggle && toggle.checked);
-                    btn.style.display = layerOn ? 'flex' : 'none';
-                    if (!layerOn) {
-                        // Switching the layer off also clears any status line.
-                        var msgEl = document.getElementById('satellite60sLoadMsg');
-                        if (msgEl) msgEl.style.display = 'none';
-                        return;
+                    if (btn) {
+                        var toggle = document.getElementById('satellite60sToggle');
+                        var layerOn = !!(toggle && toggle.checked);
+                        btn.style.display = layerOn ? 'flex' : 'none';
+                        if (!layerOn) {
+                            // Switching the layer off also clears any status line.
+                            var msgEl = document.getElementById('satellite60sLoadMsg');
+                            if (msgEl) msgEl.style.display = 'none';
+                        } else if (!_sat60LoadingHere) {
+                            var canLoad = map.getZoom() >= SAT60_LOAD_MIN_ZOOM;
+                            btn.disabled = !canLoad;
+                            var key = canLoad ? 'sat60_load_here' : 'sat60_zoom_more';
+                            var label = btn.querySelector('.t');
+                            if (label) {
+                                label.setAttribute('data-key', key);
+                                label.textContent = _sat60T(key, canLoad ? 'Load images here' : 'Zoom in more');
+                            }
+                            btn.title = _sat60T(canLoad ? 'sat60_load_title' : 'sat60_zoom_hint',
+                                canLoad ? 'Load 1960s imagery for the visible area only'
+                                        : 'Zoom in to level 11 or more to load images here.');
+                        }
                     }
-                    if (_sat60LoadingHere) return; // keep the spinner + disabled state
-                    var canLoad = map.getZoom() >= SAT60_LOAD_MIN_ZOOM;
-                    btn.disabled = !canLoad;
-                    var key = canLoad ? 'sat60_load_here' : 'sat60_zoom_more';
-                    var label = btn.querySelector('.t');
-                    if (label) {
-                        label.setAttribute('data-key', key);
-                        label.textContent = _sat60T(key, canLoad ? 'Load images here' : 'Zoom in more');
+
+                    if (window._sat60LoadControl && typeof window._sat60LoadControl.updateState === 'function') {
+                        window._sat60LoadControl.updateState();
                     }
-                    btn.title = _sat60T(canLoad ? 'sat60_load_title' : 'sat60_zoom_hint',
-                        canLoad ? 'Load 1960s imagery for the visible area only'
-                                : 'Zoom in to level 11 or more to load images here.');
                 }
                 map.on('zoomend moveend', _sat60UpdateLoadBtn);
 
@@ -9568,6 +9683,7 @@
                     if (window._sat60FrameLayers.length === 0) return;
 
                     _sat60LoadingHere = true;
+                    _sat60UpdateLoadBtn();
                     var btn = document.getElementById('satellite60sLoadBtn');
                     if (btn) { btn.disabled = true; btn.classList.add('loading'); }
                     _sat60SetLoadMsg(_sat60T('sat60_loading', 'Loading 1960s imagery for the visible area…'), false);
