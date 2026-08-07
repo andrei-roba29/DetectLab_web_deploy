@@ -1001,7 +1001,7 @@
                         btn.classList.remove('active');
                         btn.title = 'Afișează coordonatele unui punct';
                     }
-                    if (coordMarker) { map.removeLayer(coordMarker); coordMarker = null; }
+                    if (coordMarker) { map.removeLayer(coordMarker); coordMarker = null; window._activeCoordMarker = null; }
                     if (coordPopup) { map.closePopup(coordPopup); coordPopup = null; }
                 }
 
@@ -1010,7 +1010,7 @@
                     var lat = e.latlng.lat.toFixed(6);
                     var lng = e.latlng.lng.toFixed(6);
 
-                    if (coordMarker) { map.removeLayer(coordMarker); }
+                    if (coordMarker) { map.removeLayer(coordMarker); window._activeCoordMarker = null; }
                     coordMarker = L.marker(e.latlng, {
                         icon: L.divIcon({
                             className: '',
@@ -1019,6 +1019,7 @@
                         }),
                         zIndexOffset: 900
                     }).addTo(map);
+                    window._activeCoordMarker = coordMarker;
 
                     var popupContent = createCoordPopupContent(lat, lng);
 
@@ -1219,6 +1220,7 @@
 
                 function createCoordPopupContent(lat, lng) {
                     var pinId = 'pin_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+                    if (window._activeCoordMarker) { window._activeCoordMarker.pinId = pinId; window._activeCoordMarker._pinId = pinId; }
                     var content = document.createElement('div');
                     content.className = 'coord-popup-container pin-popup';
                     content.setAttribute('data-pin-id', pinId);
@@ -1399,6 +1401,7 @@
             // saved pin from the map.
             (function () {
                 var savedLocationsLayer = L.layerGroup();
+                window._savedLocationsLayer = savedLocationsLayer;
                 var savedPathsLayer = L.layerGroup();
 
                 // Master button state (memory-card button). Pins and paths are
@@ -1529,9 +1532,9 @@
                     }
 
                     var popupContainer = document.createElement('div');
-                    popupContainer.className = 'map-place-popup pin-popup';
+                    popupContainer.className = 'coord-popup-container pin-popup';
                     popupContainer.setAttribute('data-pin-id', pinId);
-                    popupContainer.style.cssText = 'min-width: 200px;';
+                    popupContainer.style.cssText = 'min-width: 220px; pointer-events: all;';
 
                     var html = '<strong style="font-size:0.86rem; color:#F5F0EB;">' + title + '</strong>';
                     if (desc) {
@@ -1582,7 +1585,7 @@
                             });
                         }
                     })();
-                    marker.bindPopup(popupContainer);
+                    marker.bindPopup(popupContainer, { className: 'coord-popup' });
                     // Also handle popupopen case where Leaflet may have moved content into popup wrapper
                     // Ensure handlers are re-attached after Leaflet re-creates popup DOM (some Leaflet versions clone content)
                     marker.on('popupopen', function(e) {
