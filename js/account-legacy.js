@@ -377,7 +377,8 @@
 
 
     function openEvents() {
-
-        alert("Events");
+        if (typeof window.openEvents === 'function') {
+            window.openEvents();
+        }
     }
 
