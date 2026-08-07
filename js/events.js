@@ -170,7 +170,12 @@
             });
 
             var marker = L.marker([ev.latitude, ev.longitude], { icon: icon });
-            marker.bindPopup(createEventPopupHtml(ev));
+            // Use a function so the popup HTML is generated fresh each time
+            // the popup opens — this ensures getCurrentUser() is evaluated
+            // with the current auth state, not a stale one from when the
+            // marker was first created (fixes "Autentifică-te" shown to
+            // logged-in users when auth loaded after map markers).
+            marker.bindPopup(function () { return createEventPopupHtml(ev); });
             eventsLayer.addLayer(marker);
         });
     }
@@ -1295,6 +1300,14 @@
     document.addEventListener('DOMContentLoaded', function () {
         setTimeout(checkNotifications, 2000);
         setInterval(checkNotifications, 30000);
+    });
+
+    // Rebuild event markers when auth state changes (login / logout / token
+    // refresh) so that popup buttons reflect the current user instead of
+    // showing stale "Autentifică-te pentru a participa." to logged-in users.
+    // auth.js dispatches this via _dispatchAuthChange() on window.
+    window.addEventListener('detectlab:authchange', function () {
+        refreshEventsMap();
     });
 
     // Expose init
