@@ -8591,16 +8591,17 @@
                 satellite60s: {
                     // CORONA imagery covers all of Romania via multiple satellite
                     // passes dynamically discovered from the CAST GeoServer. The
-                    // bounds span the full extent of Romania. The optimised
-                    // CoronaWmsLayer starts fetching tiles at minZoom (z4 desktop
-                    // / z5 mobile), so the coverage rectangle is hidden once the
-                    // map reaches that zoom — see coverageMinZoom below.
+                    // bounds span the full extent of Romania. The layer NEVER
+                    // fetches tiles by itself — imagery is loaded on demand,
+                    // per viewport, via the "Load images here" /
+                    // "Încarcă imagini aici" button, which only works from
+                    // zoom level 11. The red coverage rectangle is therefore
+                    // shown up to (but not including) z11, after which it hides
+                    // so the loaded imagery stays unobstructed.
                     bounds: [[43.5, 19.5], [48.5, 30.5]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer',
-                    coverageMinZoom: (window.CoronaWmsQueue && window.CoronaWmsQueue.config)
-                        ? window.CoronaWmsQueue.config.minZoom
-                        : 8
+                    coverageMinZoom: 11
                 },
 
                 banat: {
@@ -8639,8 +8640,8 @@
                     // The coverage rectangle is only shown while the sublayer is
                     // turned on AND we are below the zoom at which its real tiles
                     // begin. Most premium maps have minZoom 8 (default); the
-                    // optimised CORONA layer begins fetching at z4 (desktop) / z5
-                    // (mobile), so its rectangle hides accordingly.
+                    // CORONA 60's layer only loads imagery on demand from z11
+                    // (the "Load images here" button), so its rectangle hides at 11.
                     var tilesBeginZoom = premiumMapCoverageBounds[mapKey].coverageMinZoom || 8;
                     var shouldShow = currentZoom < tilesBeginZoom && !!sourceLayer && map.hasLayer(sourceLayer);
                     if (shouldShow) {
@@ -9197,10 +9198,19 @@
                 window._sat60Ready = false;
 
                 // ── "Load images here" (Încarcă imagini aici) ────────────────
-                // The button of the Satellite imagery 60's layer is available
-                // ONLY from zoom level 11. It probes the WMS tiles of ALL Corona
-                // passes for the CURRENT VIEWPORT ONLY and reports whether any
-                // imagery exists there ("no images here" / "nu există imagini aici").
+                // The Satellite imagery 60's layer NEVER fetches tiles on its
+                // own (the CoronaWmsLayer sublayers run with manualOnly=true —
+                // they render exclusively what is already in the IndexedDB
+                // cache). The ONLY network trigger is this button, and only
+                // from zoom level 11:
+                //   • the button is VISIBLE only while the layer is switched on;
+                //   • below z11 it is DISABLED and reads "Zoom in more" /
+                //     "Mărește mai mult";
+                //   • from z11 it reads "Load images here" /
+                //     "Încarcă imagini aici" and, when pressed, probes the WMS
+                //     tiles of ALL Corona passes for the CURRENT VIEWPORT ONLY,
+                //     reporting "No images here" / "Nu există imagini aici"
+                //     when there aren't any.
                 var SAT60_LOAD_MIN_ZOOM = 11;
                 var SAT60_LOAD_NATIVE_MAX = 15;  // tiles are cached up to maxNativeZoom
                 var SAT60_LOAD_MAX_JOBS = 2000;  // safety cap for very large viewports
@@ -9240,26 +9250,51 @@
                     }
                 }
 
-                // The "load images here" button is hidden below zoom 11 and a
-                // zoom hint is shown instead — the feature is only available
-                // from zoom level 11 upward.
+                // The "Load images here" button is visible ONLY while the
+                // layer is switched on. Below zoom 11 it stays visible but is
+                // DISABLED and its label reads "Zoom in more" /
+                // "Mărește mai mult"; from zoom 11 it becomes enabled and reads
+                // "Load images here" / "Încarcă imagini aici".
+                // (The inner <span class="t"> keeps its data-key in sync so a
+                // later language switch re-translates the label correctly.)
                 function _sat60UpdateLoadBtn() {
                     var btn = document.getElementById('satellite60sLoadBtn');
-                    var hint = document.getElementById('satellite60sLoadHint');
-                    if (!btn && !hint) return;
-                    var show = map.getZoom() >= SAT60_LOAD_MIN_ZOOM;
-                    if (btn) btn.style.display = show ? 'flex' : 'none';
-                    if (hint) hint.style.display = show ? 'none' : 'flex';
+                    if (!btn) return;
+                    var toggle = document.getElementById('satellite60sToggle');
+                    var layerOn = !!(toggle && toggle.checked);
+                    btn.style.display = layerOn ? 'flex' : 'none';
+                    if (!layerOn) {
+                        // Switching the layer off also clears any status line.
+                        var msgEl = document.getElementById('satellite60sLoadMsg');
+                        if (msgEl) msgEl.style.display = 'none';
+                        return;
+                    }
+                    if (_sat60LoadingHere) return; // keep the spinner + disabled state
+                    var canLoad = map.getZoom() >= SAT60_LOAD_MIN_ZOOM;
+                    btn.disabled = !canLoad;
+                    var key = canLoad ? 'sat60_load_here' : 'sat60_zoom_more';
+                    var label = btn.querySelector('.t');
+                    if (label) {
+                        label.setAttribute('data-key', key);
+                        label.textContent = _sat60T(key, canLoad ? 'Load images here' : 'Zoom in more');
+                    }
+                    btn.title = _sat60T(canLoad ? 'sat60_load_title' : 'sat60_zoom_hint',
+                        canLoad ? 'Load 1960s imagery for the visible area only'
+                                : 'Zoom in to level 11 or more to load images here.');
                 }
                 map.on('zoomend moveend', _sat60UpdateLoadBtn);
 
                 // Lazy creation of the actual WMS tile layers — shared by the
                 // toggle and the "load images here" button. Only builds the
                 // optimised CoronaWmsLayer sublayers the first time they are
-                // needed (see js/corona-wms-layer.js): shared request queue with
-                // concurrency cap, per-tile Romania bbox filter, zoom threshold,
-                // IndexedDB blob cache, viewport priority, backoff + circuit
-                // breaker and a subtle loading indicator.
+                // needed (see js/corona-wms-layer.js). They are created with
+                // manualOnly=true: adding them to the map triggers ZERO tile
+                // requests — they render exclusively tiles already stored in
+                // the IndexedDB cache by the "Load images here" probe. The
+                // probe itself goes through the shared request queue
+                // (concurrency cap, per-session negative cache, backoff +
+                // circuit breaker) so even manual loads stay friendly to the
+                // CAST server and to mobile connections.
                 function ensureSat60Layers() {
                     if (window._sat60FrameLayers.length > 0) return true;
                     if (!window._sat60LayerDefs || window._sat60LayerDefs.length === 0) return false;
@@ -9268,9 +9303,9 @@
                     var queueConfig = (window.CoronaWmsQueue && window.CoronaWmsQueue.config) || null;
                     var effectiveMinZoom = queueConfig ? queueConfig.minZoom : 8;
                     console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length,
-                        "individual WMS layers now that toggle is ON" +
-                        (useOptimised ? " (optimised: minZoom=" + effectiveMinZoom +
-                            ", concurrent=" + queueConfig.concurrent +
+                        "individual WMS layers (on-demand mode: tiles render from" +
+                        " cache only — the 'Load images here' button is the only fetch trigger)" +
+                        (useOptimised ? " (optimised queue: concurrent=" + queueConfig.concurrent +
                             ", cacheTTL=" + Math.round(queueConfig.cacheTtlMs / 86400000) + "d)" : ""));
 
                     // Keep the EPSG:900913 CRS declaration — GWC advertises
@@ -9303,18 +9338,29 @@
                             minZoom: effectiveMinZoom
                         });
                         if (useOptimised) {
+                            // ON-DEMAND MODE: these sublayers NEVER fetch
+                            // tiles on their own — they only render what the
+                            // "Load images here" probe put in the cache.
+                            opts.manualOnly = true;
                             return window.createCoronaWmsLayer(SAT60_GWC_URL, opts);
                         }
-                        // Fallback if the optimised module failed to load.
+                        // Fallback if the optimised module failed to load
+                        // (degraded mode: plain Leaflet WMS layers that DO
+                        // auto-fetch at z>=8 — only hit when the local
+                        // corona-wms-layer.js asset is missing).
+                        console.warn("[Sat60] corona-wms-layer.js not available — falling back to plain auto-fetching WMS layers (on-demand mode disabled).");
                         return L.tileLayer.wms(SAT60_GWC_URL, L.extend({ minZoom: 8 }, opts));
                     });
                     window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
                     return true;
                 }
 
+                // ── The button handler ─────────────────────────────────────
+                // THE ONLY FETCH TRIGGER of the Satellite imagery 60's layer.
                 // Loads the 60s imagery tiles ONLY for the current viewport
                 // (all Corona passes × visible tiles inside Romania) and tells
-                // the user whether any imagery exists there.
+                // the user whether any imagery exists there ("No images here"
+                // / "Nu există imagini aici" when there aren't any).
                 window.loadSatellite60sHere = function () {
                     var msgEl = document.getElementById('satellite60sLoadMsg');
                     if (!msgEl) return;
@@ -9373,7 +9419,8 @@
 
                     if (jobs.length === 0) {
                         _sat60LoadingHere = false;
-                        if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+                        if (btn) btn.classList.remove('loading');
+                        _sat60UpdateLoadBtn();
                         _sat60SetLoadMsg(_sat60T('sat60_no_images', 'No images here'), true);
                         return;
                     }
@@ -9391,10 +9438,13 @@
 
                     function finishLoad(res) {
                         _sat60LoadingHere = false;
-                        if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+                        if (btn) btn.classList.remove('loading');
+                        _sat60UpdateLoadBtn();
                         // Re-request the layer's own viewport tiles — the probe
                         // already filled the IndexedDB cache, so the imagery now
-                        // renders on the map without fetching it again.
+                        // renders on the map WITHOUT any additional fetch (the
+                        // sublayers are manualOnly: cache hit → show, cache
+                        // miss → empty; no network either way).
                         window._sat60FrameLayers.forEach(function (layer) {
                             if (layer && typeof layer.redraw === 'function') {
                                 try { layer.redraw(); } catch (e) {}
@@ -9481,13 +9531,15 @@
 
                         if (!window._sat60Ready) {
                             console.log("[Sat60] Layers still being discovered, will add when ready");
+                            _sat60UpdateLoadBtn();
                             return;
                         }
 
                         // LAZY CREATION (shared with the "load images here"
                         // button): only build the actual WMS tile layers the
                         // first time they are needed — see ensureSat60Layers()
-                        // above for the full list of optimisations.
+                        // above. They run in on-demand mode (manualOnly), so
+                        // adding them here triggers ZERO tile requests.
                         ensureSat60Layers();
 
                         if (window._sat60MapLayer) {
@@ -9507,6 +9559,9 @@
                         }
                     }
                     window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                    // Reflect the toggle on the "Load images here" button
+                    // (visible only while the layer is switched on).
+                    _sat60UpdateLoadBtn();
                 };
 
                 window.setSatellite60sMapOpacity = function (val) {
@@ -9520,8 +9575,9 @@
                     }
                 };
 
-                // Initial state of the "load images here" button (visible only
-                // from zoom level 11) and refresh it whenever the layer toggle
+                // Initial state of the "Load images here" button (visible only
+                // while the layer is on; disabled — labelled "Zoom in more" —
+                // below zoom 11) and refresh it whenever the layer toggle
                 // changes.
                 setTimeout(_sat60UpdateLoadBtn, 500);
                 document.addEventListener('change', function (e) {
