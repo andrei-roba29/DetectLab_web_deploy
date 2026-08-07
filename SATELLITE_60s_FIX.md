@@ -123,37 +123,69 @@ automatically by the browser; WMS `SRS=EPSG:900913`, `BBOX`, `tiled=true`,
 
 ## 2026-08 "Load images here" (Încarcă imagini aici) — on-demand viewport loading
 
-### What was added
-The Satellite imagery 60's row in the layer panel now has a **"Load images
-here" / "Încarcă imagini aici"** button that:
+### Behaviour (final semantics)
+The Satellite imagery 60's layer **never fetches tiles on its own**. Switching
+the layer on renders it only from already-cached tiles and reveals a
+**"Load images here" / "Încarcă imagini aici"** button in the layer row:
 
-- is **available only from zoom level 11** — below z11 the button is hidden
-  and a "zoom in" hint is shown instead (`SAT60_LOAD_MIN_ZOOM = 11`);
-- loads the CORONA WMS tiles **only for the user's current viewport** — the
-  tile range is computed from `map.getBounds()` at the current zoom (capped at
-  `maxNativeZoom` 15), restricted to tiles intersecting Romania's bbox, and
-  probed across every discovered pass layer;
+- the button is **visible only while the layer is switched on**;
+- **below zoom level 11 the button can not be pressed** — it is disabled and
+  labelled **"Zoom in more" / "Mărește mai mult"**
+  (`SAT60_LOAD_MIN_ZOOM = 11`, state refreshed on every
+  `zoomend`/`moveend`/toggle);
+- **from zoom level 11** it becomes enabled and, when pressed, loads the
+  CORONA WMS tiles **only for the user's current viewport** — the tile range
+  is computed from `map.getBounds()` at the current zoom (clamped at
+  `maxNativeZoom` 15, which is also the zoom the overzoomed layer tiles use,
+  so probe and layer cache keys always agree), restricted to tiles
+  intersecting Romania's bbox, across every discovered pass layer;
 - replies **"No images here" / "Nu există imagini aici"** when every probed
   tile comes back as HTTP 4xx, non-image, or a fully transparent PNG (WMS
   `TRANSPARENT=true` returns 200 + empty PNG for areas a pass does not cover);
 - shows "Loaded N tile(s) — 1960s imagery is available here" when imagery
-  exists (successful tiles are also stored in the IndexedDB cache, so the
-  layer's own tiles render instantly afterwards).
+  exists (successful tiles are stored in the IndexedDB cache, so the layer's
+  own tiles render instantly afterwards, and stay available on later visits).
+- Panning into never-probed areas shows nothing until the button is pressed
+  again there — by design; probed areas keep rendering from cache.
 
 ### Implementation
-- **`js/corona-wms-layer.js`** — new public `coronaProbeTiles(jobs)` API:
-  probes jobs `{ url, layerLabel, z, x, y }` through the **same shared queue**
-  as the map tiles (concurrency cap, backoff, negative cache, IDB cache),
-  decodes each response and detects fully transparent tiles via canvas
-  (`tileHasVisibleContent`). Resolves `{ total, found, empty, failed }`.
-- **`js/map-app.js`** — `window.loadSatellite60sHere()` builds the viewport
-  job list (all passes × visible tiles ∩ Romania, safety-capped at
-  `SAT60_LOAD_MAX_JOBS = 2000` closest to the viewport centre), switches the
-  layer on if needed, runs the probe, then `redraw()`s the pass layers so the
-  imagery renders from cache. `_sat60UpdateLoadBtn()` hides/shows the button
-  by zoom (11) on every `zoomend`/`moveend`. Lazy layer creation was factored
-  into `ensureSat60Layers()` so the toggle and the button share it.
-- **`index.html`** — button + zoom hint + status message inside
-  `#satellite60sRow`.
-- **`js/translations.js`** — `sat60_*` keys (EN + RO).
+- **`js/corona-wms-layer.js`**
+  - layer option **`manualOnly: true`** — on-demand mode: jobs created by the
+    layer's `createTile` carry `noFetch`, so the shared queue resolves them
+    from the **IndexedDB cache only** (cache hit → render; miss → empty,
+    **zero network**). Only `coronaProbeTiles()` jobs may fetch.
+  - public `coronaProbeTiles(jobs)` API (the button): probes jobs
+    `{ url, layerLabel, z, x, y }` through the **same shared queue** as the
+    map tiles (concurrency cap, backoff, negative cache, IDB cache), decodes
+    each response and detects fully transparent tiles via canvas
+    (`tileHasVisibleContent`). Resolves `{ total, found, empty, failed }`.
+- **`js/map-app.js`**
+  - `ensureSat60Layers()` creates the 16 pass sublayers with
+    `manualOnly: true`; toggling the layer on adds them with **zero tile
+    requests** (plain-`L.tileLayer.wms` fallback, used only if the local
+    `corona-wms-layer.js` asset failed to load, keeps the old auto-fetch
+    behaviour as a degraded mode and logs a warning).
+  - `window.loadSatellite60sHere()` builds the viewport job list (all passes
+    × visible tiles ∩ Romania, safety-capped at `SAT60_LOAD_MAX_JOBS = 2000`
+    closest to the viewport centre), switches the layer on if needed, runs
+    the probe, then `redraw()`s the pass layers so the imagery renders from
+    cache without any extra fetch.
+  - `_sat60UpdateLoadBtn()` shows the button only when the layer toggle is
+    on, swaps its label/`data-key` + disabled state between
+    "Zoom in more" (`sat60_zoom_more`, below z11) and "Load images here"
+    (`sat60_load_here`, z11+), and is called on `zoomend`/`moveend` and on
+    every toggle change (including the parent "Historical maps" group switch).
+  - the red coverage rectangle now hides at z11 (`coverageMinZoom: 11`)
+    instead of the layer's old auto-fetch threshold.
+- **`index.html`** — a single button + status message inside
+  `#satellite60sRow` (the old separate zoom-hint line was removed; the
+  disabled button itself carries that message).
+- **`js/translations.js`** — `sat60_*` keys (EN + RO), including
+  `sat60_zoom_more` ("Zoom in more" / "Mărește mai mult") and
+  `sat60_load_title` (tooltip for the enabled button).
+- **`test-sat60-ondemand.js`** — Node harness (stubbed DOM/IDB/fetch) that
+  verifies: layer tiles never fetch; the probe fetches and reports
+  found/empty; probed tiles render from cache with no extra fetch; 4xx tiles
+  count as "no imagery" and are negatively cached for the session. Run with
+  `node test-sat60-ondemand.js`.
 

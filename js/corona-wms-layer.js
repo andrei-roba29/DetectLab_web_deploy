@@ -20,6 +20,13 @@
  *   • Viewport priority (center tiles first), cancellation of stale/aborted
  *     tiles, exponential backoff, and a circuit breaker after repeated fails.
  *   • A small, unobtrusive loading indicator.
+ *   • ON-DEMAND MODE (option `manualOnly: true`, used by the Satellite
+ *     imagery 60's layer): map tiles NEVER trigger a network request — they
+ *     render only tiles that are already present in the IndexedDB cache.
+ *     The `coronaProbeTiles()` API (the "Load images here" /
+ *     "Încarcă imagini aici" button) is the ONLY thing allowed to hit the
+ *     network; every image it downloads lands in the same cache, so the layer
+ *     renders the probed viewport instantly without fetching anything itself.
  *
  * Leaflet must be loaded BEFORE this file. It exposes:
  *     window.CoronaWmsLayer   → L.TileLayer.WMS subclass (factory: new CoronaWmsLayer(url, opts))
@@ -234,16 +241,42 @@
                         job.onBlobUrl && job.onBlobUrl(url, true /*fromCache*/);
                         loadIntoImage(job, url, true, function (fromCacheOk) {
                             if (!fromCacheOk) {
-                                // Cached blob failed to decode (corrupt/quota) — refetch.
+                                // Cached blob failed to decode (corrupt/quota).
                                 root.URL.revokeObjectURL(url);
+                                if (job.noFetch) {
+                                    // On-demand mode: never hit the network
+                                    // from a map tile — just render it empty.
+                                    stats.empty++;
+                                    job.onEmpty && job.onEmpty();
+                                    finish(job, 'empty');
+                                    return;
+                                }
+                                // Refetch from the server.
                                 fetchAndCache(job, controller);
                             } else {
                                 finish(job, 'ok');
                             }
                         });
                     } catch (e) {
+                        if (job.noFetch) {
+                            stats.empty++;
+                            job.onEmpty && job.onEmpty();
+                            finish(job, 'empty');
+                            return;
+                        }
                         fetchAndCache(job, controller);
                     }
+                    return;
+                }
+                // ON-DEMAND MODE: this is a map tile of a `manualOnly` layer.
+                // It is NOT allowed to fetch — if the tile is not in the
+                // IndexedDB cache yet (i.e. the user hasn't pressed
+                // "Load images here" / "Încarcă imagini aici" for this area)
+                // it renders as nothing and NO network request is made.
+                if (job.noFetch) {
+                    stats.empty++;
+                    job.onEmpty && job.onEmpty();
+                    finish(job, 'empty');
                     return;
                 }
                 fetchAndCache(job, controller);
@@ -386,7 +419,11 @@
         /* ── Public API ───────────────────────────────────────────────────── */
         return {
             config: CONFIG,
-            // job: { key, cacheKey, url, tileEl, priority, onLoad, onError, onBlobUrl }
+            // job: { key, cacheKey, url, tileEl, priority, onLoad, onError,
+            //        onBlobUrl, onEmpty, noFetch }
+            // noFetch=true (on-demand map tiles): IndexedDB cache ONLY — the
+            // job never produces a network request; a cache miss is reported
+            // via onEmpty(). Probes (coronaProbeTiles) use noFetch=false.
             enqueue: function (job) {
                 if (Date.now() < circuitOpenUntil) {
                     // Queue it; pump() will resume when the cooldown ends.
@@ -646,7 +683,14 @@
                 updateWhenZooming: CONFIG.updateWhenZooming,
                 updateWhenIdle: CONFIG.updateWhenIdle,
                 // Custom option: used to group/debug per pass.
-                coronaLayer: ''
+                coronaLayer: '',
+                // ON-DEMAND MODE: when true, the layer NEVER fetches tiles
+                // from the network on its own ("niciun fetch până nu se
+                // apasă butonul"). Its tiles only render blobs that are
+                // already in the IndexedDB cache — populated exclusively by
+                // the "Load images here" / "Încarcă imagini aici" button
+                // (see coronaProbeTiles below).
+                manualOnly: false
             }, options || {});
 
             L.TileLayer.WMS.prototype.initialize.call(this, url, options);
@@ -701,6 +745,7 @@
             var priority = computePriority(map, coords, z);
 
             var self = this;
+            var noFetch = this.options.manualOnly === true;
             var job = {
                 key: jobKey,
                 cacheKey: cacheKey,
@@ -708,6 +753,9 @@
                 tileEl: tile,
                 priority: priority,
                 attempts: 0,
+                // On-demand mode: this map tile must NEVER cause a network
+                // request — it renders from the IndexedDB cache or not at all.
+                noFetch: noFetch,
                 onBlobUrl: function (blobUrl /*, fromCache */) {
                     // Revoke any previous blob URL we handed to this tile.
                     if (self._blobUrls[jobKey]) {
