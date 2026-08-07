@@ -118,3 +118,42 @@ Files changed:
 HTTP request headers like `Accept-Encoding: gzip` are negotiated
 automatically by the browser; WMS `SRS=EPSG:900913`, `BBOX`, `tiled=true`,
 `WIDTH/HEIGHT=256`, `FORMAT=image/png` and `TRANSPARET=true` are preserved.
+
+---
+
+## 2026-08 "Load images here" (Încarcă imagini aici) — on-demand viewport loading
+
+### What was added
+The Satellite imagery 60's row in the layer panel now has a **"Load images
+here" / "Încarcă imagini aici"** button that:
+
+- is **available only from zoom level 11** — below z11 the button is hidden
+  and a "zoom in" hint is shown instead (`SAT60_LOAD_MIN_ZOOM = 11`);
+- loads the CORONA WMS tiles **only for the user's current viewport** — the
+  tile range is computed from `map.getBounds()` at the current zoom (capped at
+  `maxNativeZoom` 15), restricted to tiles intersecting Romania's bbox, and
+  probed across every discovered pass layer;
+- replies **"No images here" / "Nu există imagini aici"** when every probed
+  tile comes back as HTTP 4xx, non-image, or a fully transparent PNG (WMS
+  `TRANSPARENT=true` returns 200 + empty PNG for areas a pass does not cover);
+- shows "Loaded N tile(s) — 1960s imagery is available here" when imagery
+  exists (successful tiles are also stored in the IndexedDB cache, so the
+  layer's own tiles render instantly afterwards).
+
+### Implementation
+- **`js/corona-wms-layer.js`** — new public `coronaProbeTiles(jobs)` API:
+  probes jobs `{ url, layerLabel, z, x, y }` through the **same shared queue**
+  as the map tiles (concurrency cap, backoff, negative cache, IDB cache),
+  decodes each response and detects fully transparent tiles via canvas
+  (`tileHasVisibleContent`). Resolves `{ total, found, empty, failed }`.
+- **`js/map-app.js`** — `window.loadSatellite60sHere()` builds the viewport
+  job list (all passes × visible tiles ∩ Romania, safety-capped at
+  `SAT60_LOAD_MAX_JOBS = 2000` closest to the viewport centre), switches the
+  layer on if needed, runs the probe, then `redraw()`s the pass layers so the
+  imagery renders from cache. `_sat60UpdateLoadBtn()` hides/shows the button
+  by zoom (11) on every `zoomend`/`moveend`. Lazy layer creation was factored
+  into `ensureSat60Layers()` so the toggle and the button share it.
+- **`index.html`** — button + zoom hint + status message inside
+  `#satellite60sRow`.
+- **`js/translations.js`** — `sat60_*` keys (EN + RO).
+

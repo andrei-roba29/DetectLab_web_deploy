@@ -489,6 +489,121 @@
     })();
 
     /* ───────────────────────────────────────────────────────────────────────
+     * 5b. Probe helper — decide whether a decoded tile image actually has
+     *     visible (non-transparent) content. WMS TRANSPARENT=true tiles for
+     *     areas a pass does NOT cover come back as a fully transparent PNG
+     *     with HTTP 200, so a successful decode alone is NOT proof of imagery.
+     * ───────────────────────────────────────────────────────────────────── */
+    function tileHasVisibleContent(img, cb) {
+        try {
+            var c = root.document.createElement('canvas');
+            var w = img.naturalWidth || img.width || 256;
+            var h = img.naturalHeight || img.height || 256;
+            c.width = w;
+            c.height = h;
+            var ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            var d = ctx.getImageData(0, 0, w, h).data;
+            var opaque = 0;
+            for (var i = 3; i < d.length; i += 4) {
+                if (d[i] > 8) {
+                    opaque++;
+                    if (opaque >= 4) break;
+                }
+            }
+            cb(opaque >= 4);
+        } catch (e) {
+            // Tainted canvas (CORS-less <img> fallback) — assume it has content.
+            cb(true);
+        }
+    }
+
+    /* ───────────────────────────────────────────────────────────────────────
+     * 5c. Probe / on-demand loader — backs the "Load images here" (Încarcă
+     *     imagini aici) button of the Satellite imagery 60's layer.
+     *
+     *     Requests WMS tiles ONLY for the current viewport (the caller builds
+     *     the job list from the visible bounds), through the SAME shared queue
+     *     as the map tiles, so it respects the concurrency cap, backoff,
+     *     per-session negative cache and the IndexedDB blob cache. Every tile
+     *     that actually contains imagery is stored in IndexedDB, which means
+     *     the layer's own tiles render from cache right after the probe.
+     *
+     *     job: { url, layerLabel, z, x, y }
+     *     resolves: { total, found, empty, failed, foundTiles: ["z/x/y", …] }
+     * ───────────────────────────────────────────────────────────────────── */
+    function coronaProbeTiles(jobs) {
+        return new Promise(function (resolve) {
+            var results = {
+                total: jobs.length,
+                found: 0,
+                empty: 0,
+                failed: 0,
+                foundTiles: []
+            };
+            var pending = jobs.length;
+            if (pending === 0) { resolve(results); return; }
+
+            function oneDone() {
+                pending--;
+                if (pending <= 0) resolve(results);
+            }
+
+            jobs.forEach(function (job, idx) {
+                var cacheKey = makeCacheKey(job.layerLabel, job.z, job.x, job.y);
+                var key = cacheKey + '::probe' + idx;
+                var imgEl = new root.Image();
+                var blobUrl = null;
+
+                Queue.enqueue({
+                    key: key,
+                    cacheKey: cacheKey,
+                    url: job.url,
+                    tileEl: imgEl,
+                    priority: 0,
+                    onBlobUrl: function (url) { blobUrl = url; },
+                    onLoad: function () {
+                        // Synchronous decode inspection, then release the blob URL.
+                        tileHasVisibleContent(imgEl, function (hasContent) {
+                            if (blobUrl) {
+                                try { root.URL.revokeObjectURL(blobUrl); } catch (e) {}
+                                blobUrl = null;
+                            }
+                            if (hasContent) {
+                                results.found++;
+                                var tileKey = job.z + '/' + job.x + '/' + job.y;
+                                if (results.foundTiles.indexOf(tileKey) === -1) {
+                                    results.foundTiles.push(tileKey);
+                                }
+                            } else {
+                                // Image decoded but fully transparent → no imagery there.
+                                results.empty++;
+                            }
+                            oneDone();
+                        });
+                    },
+                    onEmpty: function () {
+                        if (blobUrl) {
+                            try { root.URL.revokeObjectURL(blobUrl); } catch (e) {}
+                            blobUrl = null;
+                        }
+                        results.empty++;
+                        oneDone();
+                    },
+                    onError: function () {
+                        if (blobUrl) {
+                            try { root.URL.revokeObjectURL(blobUrl); } catch (e) {}
+                            blobUrl = null;
+                        }
+                        results.failed++;
+                        oneDone();
+                    }
+                });
+            });
+        });
+    }
+
+    /* ───────────────────────────────────────────────────────────────────────
      * 5. Helper: tile coords → LatLngBounds and Romania intersection
      * ───────────────────────────────────────────────────────────────────── */
     function tileBounds(map, coords) {
@@ -681,6 +796,7 @@
     root.CoronaWmsLayer = CoronaWmsLayer;
     root.CoronaWmsQueue = Queue;
     root.createCoronaWmsLayer = coronaWmsLayer;
+    root.coronaProbeTiles = coronaProbeTiles;
 
     // Console helper for on-device verification (Step 9 of the brief).
     root.coronaWmsDebug = function () {

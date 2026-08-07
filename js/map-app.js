@@ -9196,6 +9196,248 @@
                 window._sat60MapLayer = L.layerGroup([]);
                 window._sat60Ready = false;
 
+                // ── "Load images here" (Încarcă imagini aici) ────────────────
+                // The button of the Satellite imagery 60's layer is available
+                // ONLY from zoom level 11. It probes the WMS tiles of ALL Corona
+                // passes for the CURRENT VIEWPORT ONLY and reports whether any
+                // imagery exists there ("no images here" / "nu există imagini aici").
+                var SAT60_LOAD_MIN_ZOOM = 11;
+                var SAT60_LOAD_NATIVE_MAX = 15;  // tiles are cached up to maxNativeZoom
+                var SAT60_LOAD_MAX_JOBS = 2000;  // safety cap for very large viewports
+                var _sat60LoadingHere = false;
+
+                function _sat60Lang() {
+                    var lang = 'ro';
+                    if (typeof window._currentLang === 'function') lang = window._currentLang() || 'ro';
+                    if (typeof currentLang !== 'undefined' && currentLang) lang = currentLang;
+                    return (typeof translations !== 'undefined' && translations[lang]) ? lang : 'ro';
+                }
+                function _sat60T(key, fallback) {
+                    var T = (typeof translations !== 'undefined') ? (translations[_sat60Lang()] || {}) : {};
+                    return T[key] || fallback;
+                }
+
+                function _sat60SetLoadMsg(text, isError) {
+                    var el = document.getElementById('satellite60sLoadMsg');
+                    if (!el) return;
+                    el.style.display = 'block';
+                    el.textContent = text;
+                    el.style.color = isError ? '#FFB09F' : 'rgba(184,216,240,0.8)';
+                }
+
+                function _sat60LatToTileY(lat, z) {
+                    var rad = lat * Math.PI / 180;
+                    return (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * Math.pow(2, z);
+                }
+
+                function _sat60TileInRomania(coords) {
+                    try {
+                        var nw = map.unproject([coords.x * 256, coords.y * 256], coords.z);
+                        var se = map.unproject([(coords.x + 1) * 256, (coords.y + 1) * 256], coords.z);
+                        return L.latLngBounds(nw, se).intersects(ROMANIA_BOUNDS);
+                    } catch (e) {
+                        return true; // never block on a geometry error
+                    }
+                }
+
+                // The "load images here" button is hidden below zoom 11 and a
+                // zoom hint is shown instead — the feature is only available
+                // from zoom level 11 upward.
+                function _sat60UpdateLoadBtn() {
+                    var btn = document.getElementById('satellite60sLoadBtn');
+                    var hint = document.getElementById('satellite60sLoadHint');
+                    if (!btn && !hint) return;
+                    var show = map.getZoom() >= SAT60_LOAD_MIN_ZOOM;
+                    if (btn) btn.style.display = show ? 'flex' : 'none';
+                    if (hint) hint.style.display = show ? 'none' : 'flex';
+                }
+                map.on('zoomend moveend', _sat60UpdateLoadBtn);
+
+                // Lazy creation of the actual WMS tile layers — shared by the
+                // toggle and the "load images here" button. Only builds the
+                // optimised CoronaWmsLayer sublayers the first time they are
+                // needed (see js/corona-wms-layer.js): shared request queue with
+                // concurrency cap, per-tile Romania bbox filter, zoom threshold,
+                // IndexedDB blob cache, viewport priority, backoff + circuit
+                // breaker and a subtle loading indicator.
+                function ensureSat60Layers() {
+                    if (window._sat60FrameLayers.length > 0) return true;
+                    if (!window._sat60LayerDefs || window._sat60LayerDefs.length === 0) return false;
+
+                    var useOptimised = typeof window.createCoronaWmsLayer === 'function';
+                    var queueConfig = (window.CoronaWmsQueue && window.CoronaWmsQueue.config) || null;
+                    var effectiveMinZoom = queueConfig ? queueConfig.minZoom : 8;
+                    console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length,
+                        "individual WMS layers now that toggle is ON" +
+                        (useOptimised ? " (optimised: minZoom=" + effectiveMinZoom +
+                            ", concurrent=" + queueConfig.concurrent +
+                            ", cacheTTL=" + Math.round(queueConfig.cacheTtlMs / 86400000) + "d)" : ""));
+
+                    // Keep the EPSG:900913 CRS declaration — GWC advertises
+                    // gridsets under both EPSG:900913 and EPSG:3857 (identical
+                    // projection); this preserves the exact request format that
+                    // was already working against the CAST tile cache.
+                    var EPSG900913 = L.extend({}, L.CRS.EPSG3857, {
+                        code: 'EPSG:900913'
+                    });
+
+                    var commonOpts = {
+                        format: "image/png",
+                        transparent: true,
+                        version: "1.1.1",
+                        tiled: true,
+                        crs: EPSG900913,
+                        attribution: "© Corona 1960s (CAST UARK)",
+                        tileSize: 256,
+                        opacity: SAT60_INITIAL_OPACITY,
+                        pane: "pane_sat60",
+                        bounds: ROMANIA_BOUNDS,   // belt-and-braces: Leaflet also prunes outside this
+                        maxZoom: 18,
+                        maxNativeZoom: 15
+                    };
+
+                    window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
+                        var opts = L.extend({}, commonOpts, {
+                            layers: def.layerName,
+                            coronaLayer: def.layerName,
+                            minZoom: effectiveMinZoom
+                        });
+                        if (useOptimised) {
+                            return window.createCoronaWmsLayer(SAT60_GWC_URL, opts);
+                        }
+                        // Fallback if the optimised module failed to load.
+                        return L.tileLayer.wms(SAT60_GWC_URL, L.extend({ minZoom: 8 }, opts));
+                    });
+                    window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
+                    return true;
+                }
+
+                // Loads the 60s imagery tiles ONLY for the current viewport
+                // (all Corona passes × visible tiles inside Romania) and tells
+                // the user whether any imagery exists there.
+                window.loadSatellite60sHere = function () {
+                    var msgEl = document.getElementById('satellite60sLoadMsg');
+                    if (!msgEl) return;
+
+                    var z = map.getZoom();
+                    if (z < SAT60_LOAD_MIN_ZOOM) {
+                        _sat60SetLoadMsg(_sat60T('sat60_zoom_hint', 'Zoom in to level 11 or more to load images here.'), true);
+                        return;
+                    }
+                    if (!window._sat60Ready || !window._sat60LayerDefs || !window._sat60LayerDefs.length) {
+                        _sat60SetLoadMsg(_sat60T('sat60_not_ready', 'The satellite layer is still loading… please try again in a few seconds.'), true);
+                        return;
+                    }
+                    if (_sat60LoadingHere) return;
+
+                    // The layer must be switched on so the tiles render on the map.
+                    var satToggle = document.getElementById('satellite60sToggle');
+                    if (satToggle && !satToggle.checked) {
+                        satToggle.checked = true;
+                        window.toggleSatellite60sMap(true);
+                    } else if (window._sat60MapLayer && !map.hasLayer(window._sat60MapLayer)) {
+                        window._sat60MapLayer.addTo(map);
+                    }
+                    if (window._sat60FrameLayers.length === 0) ensureSat60Layers();
+                    if (window._sat60FrameLayers.length === 0) return;
+
+                    _sat60LoadingHere = true;
+                    var btn = document.getElementById('satellite60sLoadBtn');
+                    if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+                    _sat60SetLoadMsg(_sat60T('sat60_loading', 'Loading 1960s imagery for the visible area…'), false);
+
+                    // Tile range covering ONLY the user's current viewport.
+                    var zoom = Math.min(Math.round(z), SAT60_LOAD_NATIVE_MAX);
+                    var maxTile = Math.pow(2, zoom);
+                    var b = map.getBounds();
+                    var minX = Math.max(0, Math.floor((b.getWest() + 180) / 360 * maxTile));
+                    var maxX = Math.min(maxTile - 1, Math.floor((b.getEast() + 180) / 360 * maxTile));
+                    var minY = Math.max(0, Math.floor(_sat60LatToTileY(b.getNorth(), zoom)));
+                    var maxY = Math.min(maxTile - 1, Math.floor(_sat60LatToTileY(b.getSouth(), zoom)));
+
+                    // Jobs: every pass layer × every visible tile inside Romania.
+                    var jobs = [];
+                    window._sat60FrameLayers.forEach(function (layer) {
+                        if (!layer || typeof layer.getTileUrl !== 'function') return;
+                        var layerName = (layer.options && (layer.options.coronaLayer || layer.options.layers)) || 'corona';
+                        for (var tx = minX; tx <= maxX; tx++) {
+                            for (var ty = minY; ty <= maxY; ty++) {
+                                var coords = { x: tx, y: ty, z: zoom };
+                                if (!_sat60TileInRomania(coords)) continue;
+                                var url;
+                                try { url = layer.getTileUrl(coords); } catch (e) { continue; }
+                                jobs.push({ url: url, layerLabel: layerName, z: zoom, x: tx, y: ty });
+                            }
+                        }
+                    });
+
+                    if (jobs.length === 0) {
+                        _sat60LoadingHere = false;
+                        if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+                        _sat60SetLoadMsg(_sat60T('sat60_no_images', 'No images here'), true);
+                        return;
+                    }
+
+                    // Safety cap: keep only the jobs closest to the viewport centre.
+                    if (jobs.length > SAT60_LOAD_MAX_JOBS) {
+                        var centerPt = map.project(map.getCenter(), zoom);
+                        jobs = jobs.map(function (j) {
+                            var d = Math.abs((j.x + 0.5) * 256 - centerPt.x) + Math.abs((j.y + 0.5) * 256 - centerPt.y);
+                            return { job: j, d: d };
+                        }).sort(function (a, b2) { return a.d - b2.d; })
+                          .slice(0, SAT60_LOAD_MAX_JOBS)
+                          .map(function (e) { return e.job; });
+                    }
+
+                    function finishLoad(res) {
+                        _sat60LoadingHere = false;
+                        if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+                        // Re-request the layer's own viewport tiles — the probe
+                        // already filled the IndexedDB cache, so the imagery now
+                        // renders on the map without fetching it again.
+                        window._sat60FrameLayers.forEach(function (layer) {
+                            if (layer && typeof layer.redraw === 'function') {
+                                try { layer.redraw(); } catch (e) {}
+                            }
+                        });
+                        if (res.found > 0) {
+                            _sat60SetLoadMsg(
+                                _sat60T('sat60_found', 'Loaded {n} tile(s) — 1960s imagery is available here')
+                                    .replace('{n}', res.found),
+                                false
+                            );
+                        } else if (res.failed > 0 && res.empty === 0) {
+                            _sat60SetLoadMsg(_sat60T('sat60_error', 'Could not load the imagery, please try again.'), true);
+                        } else {
+                            _sat60SetLoadMsg(_sat60T('sat60_no_images', 'No images here'), true);
+                        }
+                    }
+
+                    if (typeof window.coronaProbeTiles === 'function') {
+                        window.coronaProbeTiles(jobs).then(finishLoad);
+                    } else {
+                        // Fallback if the optimised module failed to load:
+                        // plain fetches with a small concurrency pool.
+                        var results = { total: jobs.length, found: 0, empty: 0, failed: 0, foundTiles: [] };
+                        var pending = jobs.length;
+                        var cursor = 0;
+                        function fetchNext() {
+                            if (cursor >= jobs.length) return;
+                            var job = jobs[cursor++];
+                            fetch(job.url, { mode: 'cors', credentials: 'omit' }).then(function (res) {
+                                if (!res.ok) results.empty++;
+                                else if ((res.headers.get('content-type') || '').indexOf('image/') === -1) results.empty++;
+                                else results.found++;
+                            }).catch(function () { results.failed++; }).then(function () {
+                                pending--;
+                                if (pending === 0) finishLoad(results);
+                                else fetchNext();
+                            });
+                        }
+                        for (var i = 0; i < 6 && i < jobs.length; i++) fetchNext();
+                    }
+                };
+
                 discoverCoronaLayers(function (layerNames) {
                     var effectiveLayers = (layerNames && layerNames.length > 0) ? layerNames : FALLBACK_ROMANIA_LAYERS;
 
@@ -9242,65 +9484,11 @@
                             return;
                         }
 
-                        // LAZY CREATION: only build the actual WMS tile layers the
-                        // first time the user turns the layer ON. We use the optimised
-                        // CoronaWmsLayer (see js/corona-wms-layer.js) instead of plain
-                        // L.tileLayer.wms. It adds, ACROSS ALL 16 PASS SUBLAYERS:
-                        //   • a single shared request queue with a hard concurrency cap
-                        //     (8 desktop / 4 mobile) — kills the 500+ parallel requests
-                        //   • per-tile Romania bbox intersection before any request
-                        //   • zoom threshold (z4 desktop / z5 mobile)
-                        //   • IndexedDB blob tile cache (30 d desktop / 60 d mobile)
-                        //   • viewport priority, request cancellation on pan/zoom,
-                        //     exponential backoff + circuit breaker
-                        //   • a subtle loading indicator and per-session negative cache
-                        if (window._sat60FrameLayers.length === 0 && window._sat60LayerDefs && window._sat60LayerDefs.length > 0) {
-                            var useOptimised = typeof window.createCoronaWmsLayer === 'function';
-                            var queueConfig = (window.CoronaWmsQueue && window.CoronaWmsQueue.config) || null;
-                            var effectiveMinZoom = queueConfig ? queueConfig.minZoom : 8;
-                            console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length,
-                                "individual WMS layers now that toggle is ON" +
-                                (useOptimised ? " (optimised: minZoom=" + effectiveMinZoom +
-                                    ", concurrent=" + queueConfig.concurrent +
-                                    ", cacheTTL=" + Math.round(queueConfig.cacheTtlMs / 86400000) + "d)" : ""));
-
-                            // Keep the EPSG:900913 CRS declaration — GWC advertises
-                            // gridsets under both EPSG:900913 and EPSG:3857 (identical
-                            // projection); this preserves the exact request format that
-                            // was already working against the CAST tile cache.
-                            var EPSG900913 = L.extend({}, L.CRS.EPSG3857, {
-                                code: 'EPSG:900913'
-                            });
-
-                            var commonOpts = {
-                                format: "image/png",
-                                transparent: true,
-                                version: "1.1.1",
-                                tiled: true,
-                                crs: EPSG900913,
-                                attribution: "© Corona 1960s (CAST UARK)",
-                                tileSize: 256,
-                                opacity: SAT60_INITIAL_OPACITY,
-                                pane: "pane_sat60",
-                                bounds: ROMANIA_BOUNDS,   // belt-and-braces: Leaflet also prunes outside this
-                                maxZoom: 18,
-                                maxNativeZoom: 15
-                            };
-
-                            window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
-                                var opts = L.extend({}, commonOpts, {
-                                    layers: def.layerName,
-                                    coronaLayer: def.layerName,
-                                    minZoom: effectiveMinZoom
-                                });
-                                if (useOptimised) {
-                                    return window.createCoronaWmsLayer(SAT60_GWC_URL, opts);
-                                }
-                                // Fallback if the optimised module failed to load.
-                                return L.tileLayer.wms(SAT60_GWC_URL, L.extend({ minZoom: 8 }, opts));
-                            });
-                            window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
-                        }
+                        // LAZY CREATION (shared with the "load images here"
+                        // button): only build the actual WMS tile layers the
+                        // first time they are needed — see ensureSat60Layers()
+                        // above for the full list of optimisations.
+                        ensureSat60Layers();
 
                         if (window._sat60MapLayer) {
                             window._sat60MapLayer.addTo(map);
@@ -9331,6 +9519,14 @@
                         });
                     }
                 };
+
+                // Initial state of the "load images here" button (visible only
+                // from zoom level 11) and refresh it whenever the layer toggle
+                // changes.
+                setTimeout(_sat60UpdateLoadBtn, 500);
+                document.addEventListener('change', function (e) {
+                    if (e.target && e.target.id === 'satellite60sToggle') _sat60UpdateLoadBtn();
+                });
             })();
 
             // ── HARTI ISTORICE PREMIUM — PARENT GROUP FUNCTIONS ──
