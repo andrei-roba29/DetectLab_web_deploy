@@ -1269,6 +1269,41 @@
                         saveCoordinates(Number(lat), Number(lng), titleVal, descVal, saveButton, status);
                     });
 
+                    // ── FIX: Direct handlers for pin actions (bypass Leaflet's disableClickPropagation
+                    // which blocks document-level delegation) and avoid duplicate Create Event handling.
+                    // The hardcoded .pin-create-event-btn now handles everything directly, so the
+                    // augmented button will early-return if it detects this one.
+                    var createEventBtnDirect = content.querySelector('.pin-create-event-btn');
+                    if (createEventBtnDirect) {
+                        createEventBtnDirect.addEventListener('click', function(ev) {
+                            if (ev) { ev.preventDefault(); if (ev.stopPropagation) ev.stopPropagation(); if (window.L && L.DomEvent) try { L.DomEvent.stop(ev); } catch(_){} }
+                            var b = ev.currentTarget || createEventBtnDirect;
+                            var pId = b.getAttribute('data-pin-id') || '';
+                            var pLat = parseFloat(b.getAttribute('data-lat'));
+                            var pLng = parseFloat(b.getAttribute('data-lng'));
+                            if (!isFinite(pLat)) pLat = Number(lat);
+                            if (!isFinite(pLng)) pLng = Number(lng);
+                            var pTitleEl = content.querySelector('#coordTitleInput');
+                            var pTitle = pTitleEl ? pTitleEl.value.trim() : '';
+                            var user = window._authUser ? window._authUser() : null;
+                            if (!user) { if (typeof window.openAuth === 'function') window.openAuth('login'); return; }
+                            if (typeof window.openCreateEventModal === 'function') window.openCreateEventModal(pLat, pLng, pId, pTitle);
+                            var m = window._dlMap || window.map;
+                            if (m) m.closePopup();
+                        });
+                    }
+                    var deleteBtnDirect = content.querySelector('.delete-pin-btn, .pin-delete-btn, .coord-popup-delete');
+                    if (deleteBtnDirect) {
+                        deleteBtnDirect.addEventListener('click', function(ev) {
+                            if (ev) { ev.preventDefault(); if (ev.stopPropagation) ev.stopPropagation(); if (window.L && L.DomEvent) try { L.DomEvent.stop(ev); } catch(_){} }
+                            var b = ev.currentTarget || deleteBtnDirect;
+                            var pId = b.getAttribute('data-pin-id') || '';
+                            if (confirm('Sigur doriți să ștergeți acest pin? / Are you sure you want to delete this pin?')) {
+                                window.deletePin(pId, b);
+                            }
+                        });
+                    }
+
                     if (typeof window._augmentCoordPopup === 'function') {
                         window._augmentCoordPopup(content, lat, lng);
                     }
@@ -1515,7 +1550,76 @@
                         '</div>';
 
                     popupContainer.innerHTML = html;
+                    // ── FIX: Direct handlers for saved pin popup (same reason as coord popup)
+                    (function() {
+                        var ceBtn = popupContainer.querySelector('.pin-create-event-btn');
+                        if (ceBtn) {
+                            ceBtn.addEventListener('click', function(ev) {
+                                if (ev) { ev.preventDefault(); if (ev.stopPropagation) ev.stopPropagation(); if (window.L && L.DomEvent) try { L.DomEvent.stop(ev); } catch(_){} }
+                                var b = ev.currentTarget || ceBtn;
+                                var pId = b.getAttribute('data-pin-id') || '';
+                                var pLat = parseFloat(b.getAttribute('data-lat'));
+                                var pLng = parseFloat(b.getAttribute('data-lng'));
+                                var pTitle = b.getAttribute('data-title') || '';
+                                if (!isFinite(pLat)) pLat = Number(lat);
+                                if (!isFinite(pLng)) pLng = Number(lng);
+                                var user = window._authUser ? window._authUser() : null;
+                                if (!user) { if (typeof window.openAuth === 'function') window.openAuth('login'); return; }
+                                if (typeof window.openCreateEventModal === 'function') window.openCreateEventModal(pLat, pLng, pId, pTitle);
+                                var m = window._dlMap || window.map;
+                                if (m) m.closePopup();
+                            });
+                        }
+                        var delBtn2 = popupContainer.querySelector('.delete-pin-btn, .pin-delete-btn, .coord-popup-delete');
+                        if (delBtn2) {
+                            delBtn2.addEventListener('click', function(ev) {
+                                if (ev) { ev.preventDefault(); if (ev.stopPropagation) ev.stopPropagation(); if (window.L && L.DomEvent) try { L.DomEvent.stop(ev); } catch(_){} }
+                                var b = ev.currentTarget || delBtn2;
+                                var pId2 = b.getAttribute('data-pin-id') || '';
+                                if (confirm('Sigur doriți să ștergeți acest pin? / Are you sure you want to delete this pin?')) {
+                                    window.deletePin(pId2, b);
+                                }
+                            });
+                        }
+                    })();
                     marker.bindPopup(popupContainer);
+                    // Also handle popupopen case where Leaflet may have moved content into popup wrapper
+                    // Ensure handlers are re-attached after Leaflet re-creates popup DOM (some Leaflet versions clone content)
+                    marker.on('popupopen', function(e) {
+                        var popupEl = e.popup && e.popup.getElement ? e.popup.getElement() : null;
+                        if (!popupEl) return;
+                        var btn = popupEl.querySelector('.pin-create-event-btn');
+                        if (btn && !btn._dlHasCreateHandler) {
+                            btn._dlHasCreateHandler = true;
+                            btn.addEventListener('click', function(ev) {
+                                if (ev) { ev.preventDefault(); if (ev.stopPropagation) ev.stopPropagation(); if (window.L && L.DomEvent) try { L.DomEvent.stop(ev); } catch(_){} }
+                                var b = ev.currentTarget;
+                                var pId = b.getAttribute('data-pin-id') || '';
+                                var pLat = parseFloat(b.getAttribute('data-lat'));
+                                var pLng = parseFloat(b.getAttribute('data-lng'));
+                                var pTitle = b.getAttribute('data-title') || '';
+                                if (!isFinite(pLat)) pLat = Number(lat);
+                                if (!isFinite(pLng)) pLng = Number(lng);
+                                var user = window._authUser ? window._authUser() : null;
+                                if (!user) { if (typeof window.openAuth === 'function') window.openAuth('login'); return; }
+                                if (typeof window.openCreateEventModal === 'function') window.openCreateEventModal(pLat, pLng, pId, pTitle);
+                                var m = window._dlMap || window.map;
+                                if (m) m.closePopup();
+                            });
+                        }
+                        var dBtn = popupEl.querySelector('.delete-pin-btn, .pin-delete-btn, .coord-popup-delete');
+                        if (dBtn && !dBtn._dlHasDeleteHandler) {
+                            dBtn._dlHasDeleteHandler = true;
+                            dBtn.addEventListener('click', function(ev) {
+                                if (ev) { ev.preventDefault(); if (ev.stopPropagation) ev.stopPropagation(); if (window.L && L.DomEvent) try { L.DomEvent.stop(ev); } catch(_){} }
+                                var b = ev.currentTarget;
+                                var pId2 = b.getAttribute('data-pin-id') || '';
+                                if (confirm('Sigur doriți să ștergeți acest pin? / Are you sure you want to delete this pin?')) {
+                                    window.deletePin(pId2, b);
+                                }
+                            });
+                        }
+                    });
                     return marker;
                 }
 

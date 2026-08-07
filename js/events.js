@@ -203,18 +203,29 @@
     }
 
     // Hook into coordinate popup in map-app.js to add "Create Event" button
+    // FIX: avoid duplicate "Create Event" button — coord popup in map-app.js
+    // already contains .pin-create-event-btn, so augmenting would create a
+    // second identical button. Duplicate was the reported "2 buttons" bug and
+    // its click was also broken by Leaflet's disableClickPropagation which
+    // stops bubble to the document-level delegation.
     window._augmentCoordPopup = function (popupDiv, lat, lng) {
+        if (!popupDiv) return;
+        if (popupDiv.querySelector && popupDiv.querySelector('.pin-create-event-btn')) return;
+        var pinId = popupDiv.getAttribute ? (popupDiv.getAttribute('data-pin-id') || '') : '';
         var div = document.createElement('div');
         div.style.cssText = 'margin-top: 6px;';
-        div.innerHTML = '<button type="button" class="coord-popup-create-event" style="width: 100%; background: rgba(107,63,160,0.35); border: 1px solid rgba(196,160,240,0.6); border-radius: 4px; color: #c4a0f0; font-size: 0.76rem; font-family: \'Outfit\', sans-serif; padding: 5px 0; cursor: pointer; font-weight: 600;">Creează un eveniment</button>';
+        div.innerHTML = '<button type="button" class="coord-popup-create-event" data-pin-id="' + String(pinId).replace(/"/g,'&quot;') + '" data-lat="' + lat + '" data-lng="' + lng + '" style="width: 100%; background: rgba(107,63,160,0.35); border: 1px solid rgba(196,160,240,0.6); border-radius: 4px; color: #c4a0f0; font-size: 0.76rem; font-family: \'Outfit\', sans-serif; padding: 5px 0; cursor: pointer; font-weight: 600;">Creează un eveniment</button>';
         var btn = div.querySelector('button');
-        btn.addEventListener('click', function () {
+        btn.addEventListener('click', function (e) {
+            if (e) { e.preventDefault(); if (e.stopPropagation) e.stopPropagation(); if (window.L && L.DomEvent) try { L.DomEvent.stop(e); } catch(_){} }
             var curUser = getCurrentUser();
             if (!curUser) {
                 if (typeof window.openAuth === 'function') window.openAuth('login');
                 return;
             }
-            openCreateEventModal(lat, lng);
+            openCreateEventModal(lat, lng, pinId || null, '');
+            var m = window._dlMap || window.map;
+            if (m) m.closePopup();
         });
         popupDiv.appendChild(div);
     };
@@ -417,13 +428,22 @@
     };
 
     // Global Event Delegation for Delete & Create Event buttons
-    document.addEventListener('click', function (e) {
+    // FIX: use capture phase so Leaflet's disableClickPropagation (which
+    // stops bubble at the popup container) doesn't swallow pin popup clicks,
+    // and handle missing lat/lng gracefully by falling back to the popup's
+    // stored pin data.
+    function _handlePinDelegation(e) {
         // Delete Pin
-        var delBtn = e.target.closest('.delete-pin-btn, .pin-delete-btn, .coord-popup-delete');
+        var delBtn = e.target && e.target.closest ? e.target.closest('.delete-pin-btn, .pin-delete-btn, .coord-popup-delete') : null;
         if (delBtn) {
             e.preventDefault();
             e.stopPropagation();
-            var pinId = delBtn.dataset.pinId || delBtn.getAttribute('data-pin-id');
+            if (window.L && L.DomEvent) try { L.DomEvent.stop(e); } catch(_){}
+            var pinId = (delBtn.getAttribute('data-pin-id') || delBtn.dataset.pinId || '').trim();
+            if (!pinId) {
+                var pinWrap = delBtn.closest ? delBtn.closest('[data-pin-id]') : null;
+                if (pinWrap) pinId = pinWrap.getAttribute('data-pin-id') || '';
+            }
             if (confirm('Sigur doriți să ștergeți acest pin? / Are you sure you want to delete this pin?')) {
                 window.deletePin(pinId, delBtn);
             }
@@ -431,24 +451,44 @@
         }
 
         // Create Event from Pin
-        var createBtn = e.target.closest('.pin-create-event-btn, .coord-popup-create-event');
+        var createBtn = e.target && e.target.closest ? e.target.closest('.pin-create-event-btn, .coord-popup-create-event') : null;
         if (createBtn) {
             e.preventDefault();
             e.stopPropagation();
-            var pinId = createBtn.dataset.pinId || createBtn.getAttribute('data-pin-id');
-            var lat = parseFloat(createBtn.dataset.lat || createBtn.getAttribute('data-lat'));
-            var lng = parseFloat(createBtn.dataset.lng || createBtn.getAttribute('data-lng'));
-            var title = createBtn.dataset.title || createBtn.getAttribute('data-title') || '';
-
-            var user = getCurrentUser();
-            if (!user) {
+            if (window.L && L.DomEvent) try { L.DomEvent.stop(e); } catch(_){}
+            var pinId2 = (createBtn.getAttribute('data-pin-id') || createBtn.dataset.pinId || '').trim();
+            if (!pinId2) {
+                var pinWrap2 = createBtn.closest ? createBtn.closest('[data-pin-id]') : null;
+                if (pinWrap2) pinId2 = pinWrap2.getAttribute('data-pin-id') || '';
+            }
+            var lat2 = parseFloat(createBtn.getAttribute('data-lat') || createBtn.dataset.lat || '');
+            var lng2 = parseFloat(createBtn.getAttribute('data-lng') || createBtn.dataset.lng || '');
+            var title2 = createBtn.getAttribute('data-title') || createBtn.dataset.title || '';
+            // Fallback: try to read coords from the surrounding pin popup or global pin store
+            if (!isFinite(lat2) || !isFinite(lng2)) {
+                var pinWrap3 = createBtn.closest ? createBtn.closest('.pin-popup, .map-place-popup, .coord-popup-container') : null;
+                if (pinWrap3) {
+                    var fallbackId = pinWrap3.getAttribute('data-pin-id') || pinId2;
+                    if (fallbackId && window._detectLabPins) {
+                        var found = window._detectLabPins.find(function(p){ return String(p.id)===String(fallbackId); });
+                        if (found) { lat2 = Number(found.lat); lng2 = Number(found.lng); if (!title2 && found.title) title2 = found.title; pinId2 = found.id; }
+                    }
+                }
+            }
+            if (!isFinite(lat2) || !isFinite(lng2)) return;
+            var user2 = getCurrentUser();
+            if (!user2) {
                 if (typeof window.openAuth === 'function') window.openAuth('login');
                 return;
             }
-            openCreateEventModal(lat, lng, pinId, title);
+            openCreateEventModal(lat2, lng2, pinId2 || null, title2 || '');
+            var m2 = window._dlMap || window.map;
+            if (m2) m2.closePopup();
             return;
         }
-    });
+    }
+    document.addEventListener('click', _handlePinDelegation, true);
+    document.addEventListener('click', _handlePinDelegation, false);
 
     window.getEventsData = function () { return eventsData; };
     window.openCreateEventModal = openCreateEventModal;
