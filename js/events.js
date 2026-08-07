@@ -13,9 +13,6 @@
 (function () {
     let eventsLayer = null;
     let eventsData = [];
-    let myInquiries = [];
-    let myAttendances = [];
-    let myNotifications = [];
     let activeChatEventId = null;
 
     // Helper: get current user
@@ -92,6 +89,34 @@
         });
     }
 
+    // Ensure an event exists on Supabase so foreign key constraints in event_inquiries don't fail
+    async function ensureEventOnServer(ev) {
+        if (!window.supabaseClient || !ev || !ev.id) return;
+        try {
+            var payload = {
+                id: ev.id,
+                pin_id: ev.pin_id || null,
+                creator_id: ev.creator_id,
+                creator_name: ev.creator_name || 'User',
+                creator_email: ev.creator_email || null,
+                title: ev.title,
+                description: ev.description || '',
+                category: ev.category || 'Other',
+                latitude: Number(ev.latitude),
+                longitude: Number(ev.longitude),
+                event_date: ev.event_date,
+                max_attendees: ev.max_attendees || null,
+                created_at: ev.created_at || new Date().toISOString()
+            };
+            var res = await window.supabaseClient.from('events').upsert([payload], { onConflict: 'id' });
+            if (res && res.error) {
+                console.warn('Supabase upsert event warning:', res.error);
+            }
+        } catch (e) {
+            console.warn('ensureEventOnServer error:', e);
+        }
+    }
+
     // Load all events from Supabase or fallback – merges remote + local so that
     // locally-created events are not wiped when the remote query returns empty.
     async function fetchEvents() {
@@ -112,9 +137,15 @@
         if (remote !== null) {
             // Merge: remote is authoritative, but keep local events that are not yet on server
             var remoteIds = {};
-            remote.forEach(function(e){ remoteIds[e.id]=true; });
+            remote.forEach(function(e){ remoteIds[e.id] = true; });
             var merged = remote.slice();
-            local.forEach(function(e){ if (!remoteIds[e.id]) merged.push(e); });
+            local.forEach(function(e){
+                if (!remoteIds[e.id]) {
+                    merged.push(e);
+                    // Proactively sync local events to server if user is logged in
+                    ensureEventOnServer(e);
+                }
+            });
             eventsData = merged;
             saveLocalEvents(eventsData);
         } else {
@@ -170,11 +201,7 @@
             });
 
             var marker = L.marker([ev.latitude, ev.longitude], { icon: icon });
-            // Use a function so the popup HTML is generated fresh each time
-            // the popup opens — this ensures getCurrentUser() is evaluated
-            // with the current auth state, not a stale one from when the
-            // marker was first created (fixes "Autentifică-te" shown to
-            // logged-in users when auth loaded after map markers).
+            // Fresh popup HTML evaluated on open
             marker.bindPopup(function () { return createEventPopupHtml(ev); });
             eventsLayer.addLayer(marker);
         });
@@ -182,16 +209,15 @@
 
     function createEventPopupHtml(ev) {
         var user = getCurrentUser();
-        var isCreator = user && (user.id === ev.creator_id || user.email === ev.creator_email);
+        var isCreator = user && (user.id === ev.creator_id || (user.email && ev.creator_email && user.email === ev.creator_email));
         var color = getEventColor(ev.event_date);
         var dateStr = formatDate(ev.event_date);
 
-        // Check if user already has an inquiry or is an attendee for this event (local check)
         var alreadyInquired = false;
         var alreadyAttending = false;
         if (user && !isCreator) {
             var localInqs = getLocalInquiries();
-            alreadyInquired = localInqs.some(function(i) { return i.event_id === ev.id && i.user_id === user.id; });
+            alreadyInquired = localInqs.some(function(i) { return i.event_id === ev.id && i.user_id === user.id && i.status !== 'declined'; });
             var localAtts = getLocalAttendees();
             alreadyAttending = localAtts.some(function(a) { return a.event_id === ev.id && a.user_id === user.id; });
         }
@@ -203,17 +229,17 @@
             '<div style="font-size: 0.7rem; color: rgba(245,240,235,0.6); margin-bottom: 8px;">👤 Creator: ' + escapeHtml(ev.creator_name || 'User') + (ev.max_attendees ? ' | Max: ' + ev.max_attendees : '') + '</div>';
 
         if (isCreator) {
-            html += '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="width: 100%; background: #6B3FA0; border: none; border-radius: 4px; color: #fff; font-size: 0.75rem; padding: 5px; cursor: pointer; font-weight: 600;">Gestionează Evenimentul</button>';
+            html += '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="width: 100%; background: #6B3FA0; border: none; border-radius: 4px; color: #fff; font-size: 0.75rem; padding: 6px; cursor: pointer; font-weight: 600;">Gestionează Evenimentul / Manage Event</button>';
         } else if (user) {
             if (alreadyAttending) {
                 html += '<div style="width: 100%; background: rgba(46,158,79,0.2); border: 1px solid rgba(46,158,79,0.5); border-radius: 4px; color: #2E9E4F; font-size: 0.75rem; padding: 5px; text-align: center; font-weight: 600;">✓ Deja participant / Already attending</div>';
             } else if (alreadyInquired) {
                 html += '<div style="width: 100%; background: rgba(232,119,42,0.15); border: 1px solid rgba(232,119,42,0.4); border-radius: 4px; color: #E8772A; font-size: 0.75rem; padding: 5px; text-align: center; font-weight: 600;">⏳ Cerere trimisă / Request pending</div>';
             } else {
-                html += '<button type="button" onclick="window._openInquiryModal(\'' + ev.id + '\')" style="width: 100%; background: #E8772A; border: none; border-radius: 4px; color: #fff; font-size: 0.75rem; padding: 5px; cursor: pointer; font-weight: 600;">Trimite Cerere Participare</button>';
+                html += '<button type="button" onclick="window._openInquiryModal(\'' + ev.id + '\')" style="width: 100%; background: #E8772A; border: none; border-radius: 4px; color: #fff; font-size: 0.75rem; padding: 6px; cursor: pointer; font-weight: 600;">Trimite Cerere Participare / Send Inquiry</button>';
             }
         } else {
-            html += '<div style="font-size: 0.7rem; color: #ff8a8a;">Autentifică-te pentru a participa.</div>';
+            html += '<div style="font-size: 0.7rem; color: #ff8a8a;">Autentifică-te pentru a participa. / Log in to attend.</div>';
         }
         html += '</div>';
         return html;
@@ -224,11 +250,6 @@
     }
 
     // Hook into coordinate popup in map-app.js to add "Create Event" button
-    // FIX: avoid duplicate "Create Event" button — coord popup in map-app.js
-    // already contains .pin-create-event-btn, so augmenting would create a
-    // second identical button. Duplicate was the reported "2 buttons" bug and
-    // its click was also broken by Leaflet's disableClickPropagation which
-    // stops bubble to the document-level delegation.
     window._augmentCoordPopup = function (popupDiv, lat, lng) {
         if (!popupDiv) return;
         if (popupDiv.querySelector && popupDiv.querySelector('.pin-create-event-btn')) return;
@@ -345,27 +366,7 @@
                 created_at: new Date().toISOString()
             };
 
-            try {
-                if (window.supabaseClient) {
-                    var payload = {
-                        id: newEvent.id,
-                        creator_id: newEvent.creator_id,
-                        creator_name: newEvent.creator_name,
-                        title: newEvent.title,
-                        description: newEvent.description,
-                        latitude: newEvent.latitude,
-                        longitude: newEvent.longitude,
-                        event_date: newEvent.event_date,
-                        max_attendees: newEvent.max_attendees
-                    };
-                    var evInsertRes = await window.supabaseClient.from('events').insert([payload]);
-                    if (evInsertRes && evInsertRes.error) {
-                        console.error('Supabase insert event failed:', evInsertRes.error);
-                    }
-                }
-            } catch (err) {
-                console.warn('Supabase insert event error, storing locally:', err);
-            }
+            await ensureEventOnServer(newEvent);
 
             eventsData.push(newEvent);
             saveLocalEvents(eventsData);
@@ -452,10 +453,6 @@
     };
 
     // Global Event Delegation for Delete & Create Event buttons
-    // FIX: use capture phase so Leaflet's disableClickPropagation (which
-    // stops bubble at the popup container) doesn't swallow pin popup clicks,
-    // and handle missing lat/lng gracefully by falling back to the popup's
-    // stored pin data.
     function _handlePinDelegation(e) {
         // Delete Pin
         var delBtn = e.target && e.target.closest ? e.target.closest('.delete-pin-btn, .pin-delete-btn, .coord-popup-delete') : null;
@@ -488,7 +485,6 @@
             var lat2 = parseFloat(createBtn.getAttribute('data-lat') || createBtn.dataset.lat || '');
             var lng2 = parseFloat(createBtn.getAttribute('data-lng') || createBtn.dataset.lng || '');
             var title2 = createBtn.getAttribute('data-title') || createBtn.dataset.title || '';
-            // Fallback: try to read coords from the surrounding pin popup or global pin store
             if (!isFinite(lat2) || !isFinite(lng2)) {
                 var pinWrap3 = createBtn.closest ? createBtn.closest('.pin-popup, .map-place-popup, .coord-popup-container') : null;
                 if (pinWrap3) {
@@ -518,12 +514,10 @@
     window.openCreateEventModal = openCreateEventModal;
 
     // Check attendance 1-event-per-day rule
-    // "The same user can not attend to 2 different events in the same day and if they try they will get the message 'You are already attending to an event on -date of event-'/'Deja participi la un eveniment in -data evenimentului-'."
     async function checkAttendanceConflict(userId, eventDateIso) {
         var targetDateStr = getDateString(eventDateIso);
         var isRo = (window._currentLang && window._currentLang() === 'ro');
 
-        // Check local or Supabase attendances
         var attendances = [];
         try {
             if (window.supabaseClient) {
@@ -588,11 +582,17 @@
         modal.querySelector('#inqSubmitBtn').addEventListener('click', async function () {
             var msgText = document.getElementById('inqMessage').value.trim();
             var errEl = document.getElementById('inqError');
+            var submitBtn = document.getElementById('inqSubmitBtn');
 
             var words = msgText.split(/\s+/).filter(Boolean);
             if (words.length > 100) {
                 errEl.textContent = isRo ? 'Mesajul nu poate depăși 100 de cuvinte.' : 'Message cannot exceed 100 words.';
                 return;
+            }
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = isRo ? 'Se trimite…' : 'Sending…';
             }
 
             // ── Duplicate inquiry check: one request per user per event ──
@@ -601,15 +601,17 @@
                 if (window.supabaseClient) {
                     var dupRes = await window.supabaseClient.from('event_inquiries').select('id,status').eq('event_id', ev.id).eq('user_id', user.id);
                     if (!dupRes.error && dupRes.data && dupRes.data.length > 0) {
-                        alreadyRequested = true;
+                        var activeInq = dupRes.data.some(function(d){ return d.status !== 'declined'; });
+                        if (activeInq) alreadyRequested = true;
                     }
                 }
             } catch (e) {}
             if (!alreadyRequested) {
-                var localDup = getLocalInquiries().filter(function(i) { return i.event_id === ev.id && i.user_id === user.id; });
+                var localDup = getLocalInquiries().filter(function(i) { return i.event_id === ev.id && i.user_id === user.id && i.status !== 'declined'; });
                 if (localDup.length > 0) alreadyRequested = true;
             }
-            // Also check if already an accepted attendee
+
+            // Check if already an accepted attendee
             var alreadyAttendee = false;
             try {
                 if (window.supabaseClient) {
@@ -623,10 +625,12 @@
             }
             if (alreadyAttendee) {
                 errEl.textContent = isRo ? 'Deja ești participant la acest eveniment.' : 'You are already an attendee of this event.';
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = isRo ? 'Trimite Cererea' : 'Send Inquiry'; }
                 return;
             }
             if (alreadyRequested) {
                 errEl.textContent = isRo ? 'Ai deja o cerere trimisă pentru acest eveniment.' : 'You have already sent a request for this event.';
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = isRo ? 'Trimite Cererea' : 'Send Inquiry'; }
                 return;
             }
 
@@ -634,15 +638,19 @@
             var conflictMsg = await checkAttendanceConflict(user.id, ev.event_date);
             if (conflictMsg) {
                 errEl.textContent = conflictMsg;
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = isRo ? 'Trimite Cererea' : 'Send Inquiry'; }
                 return;
             }
+
+            // Ensure parent event exists on Supabase so foreign key constraints in event_inquiries don't fail
+            await ensureEventOnServer(ev);
 
             var inquiryId = genUuid();
             var inquiry = {
                 id: inquiryId,
                 event_id: ev.id,
                 user_id: user.id,
-                user_name: user.name || user.email.split('@')[0],
+                user_name: user.name || (user.email ? user.email.split('@')[0] : 'User'),
                 message: msgText,
                 status: 'pending',
                 created_at: new Date().toISOString()
@@ -700,6 +708,7 @@
 
         var modal = document.createElement('div');
         modal.id = 'manageEventModal';
+        modal.setAttribute('data-event-id', eventId);
         modal.style.cssText = 'position: fixed; inset: 0; z-index: 4000; background: rgba(4,10,22,0.85); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 16px;';
         
         var modalBox = document.createElement('div');
@@ -746,14 +755,34 @@
         try {
             if (window.supabaseClient) {
                 var resInq = await window.supabaseClient.from('event_inquiries').select('*').eq('event_id', eventId);
-                if (!resInq.error) inquiries = resInq.data || [];
+                if (!resInq.error && Array.isArray(resInq.data)) inquiries = resInq.data;
                 var resAtt = await window.supabaseClient.from('event_attendees').select('*').eq('event_id', eventId);
-                if (!resAtt.error) attendees = resAtt.data || [];
+                if (!resAtt.error && Array.isArray(resAtt.data)) attendees = resAtt.data;
             }
-        } catch (e) {}
+        } catch (e) {
+            console.warn('loadManageEventDetails remote fetch error:', e);
+        }
 
-        if (inquiries.length === 0) inquiries = getLocalInquiries().filter(function(i) { return i.event_id === eventId; });
-        if (attendees.length === 0) attendees = getLocalAttendees().filter(function(a) { return a.event_id === eventId; });
+        // Merge remote + local so nothing is lost
+        var inqMap = {};
+        inquiries.forEach(function(i) { inqMap[i.id] = i; });
+        var localInqs = getLocalInquiries().filter(function(i) { return i.event_id === eventId; });
+        localInqs.forEach(function(i) {
+            if (!inqMap[i.id]) {
+                inquiries.push(i);
+                inqMap[i.id] = i;
+            }
+        });
+
+        var attMap = {};
+        attendees.forEach(function(a) { attMap[a.id] = a; });
+        var localAtts = getLocalAttendees().filter(function(a) { return a.event_id === eventId; });
+        localAtts.forEach(function(a) {
+            if (!attMap[a.id]) {
+                attendees.push(a);
+                attMap[a.id] = a;
+            }
+        });
 
         var html = '';
         if (inquiries.length === 0 && attendees.length === 0) {
@@ -805,7 +834,21 @@
             }
         } catch (e) {}
 
-        if (!inq) return;
+        if (!inq) {
+            try {
+                if (window.supabaseClient) {
+                    var resList = await window.supabaseClient.from('event_inquiries').select('*').eq('event_id', eventId);
+                    if (!resList.error && resList.data) {
+                        inq = resList.data.find(function(i) { return i.id === inquiryId; });
+                    }
+                }
+            } catch (e) {}
+        }
+
+        if (!inq) {
+            alert(isRo ? 'Cererea nu a fost găsită.' : 'Inquiry not found.');
+            return;
+        }
 
         // Check 1-event-per-day rule for the attendee
         var ev = eventsData.find(function(e) { return e.id === eventId; });
@@ -837,10 +880,21 @@
             console.error('Supabase accept inquiry error:', err);
         }
 
-        saveLocalInquiries(inquiries);
+        // Update local storage
+        var localInqs = getLocalInquiries();
+        var inqIdx = localInqs.findIndex(function(i) { return i.id === inquiryId; });
+        if (inqIdx !== -1) {
+            localInqs[inqIdx].status = 'accepted';
+        } else {
+            localInqs.push(inq);
+        }
+        saveLocalInquiries(localInqs);
+
         var atts = getLocalAttendees();
-        atts.push(attendee);
-        saveLocalAttendees(atts);
+        if (!atts.some(function(a) { return a.id === attendee.id; })) {
+            atts.push(attendee);
+            saveLocalAttendees(atts);
+        }
 
         loadManageEventDetails(eventId);
         alert(isRo ? 'Cerere acceptată! S-a creat chat-ul pentru eveniment.' : 'Inquiry accepted! Event chat created.');
@@ -852,10 +906,27 @@
             if (window.supabaseClient) {
                 await window.supabaseClient.from('event_inquiries').update({ status: 'declined' }).eq('id', inquiryId);
             }
-        } catch (err) {}
+        } catch (err) {
+            console.error('Supabase decline inquiry error:', err);
+        }
         var inquiries = getLocalInquiries();
-        inquiries.forEach(function(i) { if (i.id === inquiryId) i.status = 'declined'; });
+        var found = false;
+        inquiries.forEach(function(i) {
+            if (i.id === inquiryId) {
+                i.status = 'declined';
+                found = true;
+            }
+        });
+        if (!found) {
+            inquiries.push({ id: inquiryId, status: 'declined' });
+        }
         saveLocalInquiries(inquiries);
+
+        var manageModal = document.getElementById('manageEventModal');
+        if (manageModal) {
+            var activeEventId = manageModal.getAttribute('data-event-id');
+            if (activeEventId) loadManageEventDetails(activeEventId);
+        }
     };
 
     // Kick Attendee
@@ -875,22 +946,22 @@
     // ── NOTIFICATIONS & WINDOWS NOTIFICATION SYSTEM ──
     async function checkNotifications() {
         var user = getCurrentUser();
-        if (!user) return;
+        if (!user || !user.id) return;
 
         var notifs = [];
         try {
             if (window.supabaseClient) {
-                var res = await window.supabaseClient.from('event_notifications').select('*').eq('user_id', user.id).eq('read', false);
-                if (!res.error && res.data) notifs = res.data;
+                var res = await window.supabaseClient.from('event_notifications').select('*').eq('user_id', user.id).eq('read', false).order('created_at', { ascending: false });
+                if (!res.error && Array.isArray(res.data)) notifs = res.data;
             }
         } catch (e) {}
 
-        if (notifs.length === 0) {
-            notifs = getLocalNotifications().filter(function(n) { return n.user_id === user.id && !n.read; });
-        }
+        var localUnread = getLocalNotifications().filter(function(n) { return n.user_id === user.id && !n.read; });
+        var remoteIds = {};
+        notifs.forEach(function(n) { remoteIds[n.id] = true; });
+        localUnread.forEach(function(n) { if (!remoteIds[n.id]) notifs.push(n); });
 
         if (notifs.length > 0) {
-            // Show windows / in-app notification popup
             showNotificationModal(notifs[0]);
         }
     }
@@ -914,18 +985,22 @@
         document.body.appendChild(modal);
 
         modal.querySelector('#notifAcceptBtn').addEventListener('click', async function () {
+            var btn = modal.querySelector('#notifAcceptBtn');
+            if (btn) btn.disabled = true;
             if (notif.inquiry_id) {
                 await window._acceptInquiry(notif.inquiry_id, notif.event_id);
             }
-            markNotifRead(notif.id);
+            await markNotifRead(notif.id);
             modal.remove();
         });
 
         modal.querySelector('#notifDeclineBtn').addEventListener('click', async function () {
+            var btn = modal.querySelector('#notifDeclineBtn');
+            if (btn) btn.disabled = true;
             if (notif.inquiry_id) {
                 await window._declineInquiry(notif.inquiry_id);
             }
-            markNotifRead(notif.id);
+            await markNotifRead(notif.id);
             modal.remove();
         });
     }
@@ -1019,7 +1094,7 @@
             } else {
                 eventsData.forEach(function (ev) {
                     var color = getEventColor(ev.event_date);
-                    var isCreator = user && (user.id === ev.creator_id);
+                    var isCreator = user && (user.id === ev.creator_id || (user.email && ev.creator_email && user.email === ev.creator_email));
                     var isAttending = userAttEventIds[ev.id];
                     var hasInquiry = userInqEventIds[ev.id];
                     var actionBtn = '';
@@ -1027,7 +1102,7 @@
                         actionBtn = '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="background:#6B3FA0; border:none; border-radius:6px; color:#fff; font-weight:600; padding:8px; cursor:pointer; font-size:0.78rem;">' + (isRo ? 'Gestionează' : 'Manage') + '</button>';
                     } else if (isAttending) {
                         actionBtn = '<div style="background:rgba(46,158,79,0.2); border:1px solid rgba(46,158,79,0.5); border-radius:6px; color:#2E9E4F; padding:8px; text-align:center; font-weight:600; font-size:0.78rem;">✓ ' + (isRo ? 'Deja participant' : 'Already attending') + '</div>';
-                    } else if (hasInquiry) {
+                    } else if (hasInquiry && hasInquiry !== 'declined') {
                         actionBtn = '<div style="background:rgba(232,119,42,0.15); border:1px solid rgba(232,119,42,0.4); border-radius:6px; color:#E8772A; padding:8px; text-align:center; font-weight:600; font-size:0.78rem;">⏳ ' + (isRo ? 'Cerere trimisă' : 'Request pending') + '</div>';
                     } else {
                         actionBtn = '<button type="button" onclick="window._openInquiryModal(\'' + ev.id + '\')" style="background:#E8772A; border:none; border-radius:6px; color:#fff; font-weight:600; padding:8px; cursor:pointer; font-size:0.78rem;">' + (isRo ? 'Trimite Cerere' : 'Send Inquiry') + '</button>';
@@ -1047,7 +1122,9 @@
             contentEl.innerHTML = html;
         } else {
             // My events & chats
-            var myEvs = eventsData.filter(function (e) { return e.creator_id === user.id; });
+            var myEvs = eventsData.filter(function (e) {
+                return e.creator_id === user.id || (user.email && e.creator_email && user.email === e.creator_email);
+            });
             
             // Also find events where user is an accepted attendee
             var attEvents = [];
@@ -1199,11 +1276,13 @@
         if (!text || !activeChatEventId) return;
 
         var user = getCurrentUser();
+        if (!user || !user.id) return;
+
         var msg = {
             id: genUuid(),
             event_id: activeChatEventId,
             user_id: user.id,
-            user_name: user.name || user.email.split('@')[0],
+            user_name: user.name || (user.email ? user.email.split('@')[0] : 'User'),
             message: text,
             media_url: null,
             media_type: 'none',
@@ -1236,12 +1315,13 @@
             var dataUrl = e.target.result;
             var isVideo = file.type.startsWith('video');
             var user = getCurrentUser();
+            if (!user || !user.id) return;
 
             var msg = {
                 id: genUuid(),
                 event_id: activeChatEventId,
                 user_id: user.id,
-                user_name: user.name || user.email.split('@')[0],
+                user_name: user.name || (user.email ? user.email.split('@')[0] : 'User'),
                 message: '',
                 media_url: dataUrl,
                 media_type: isVideo ? 'video' : 'image',
@@ -1299,17 +1379,18 @@
     // Periodic check for notifications on app load / login
     document.addEventListener('DOMContentLoaded', function () {
         setTimeout(checkNotifications, 2000);
-        setInterval(checkNotifications, 30000);
+        setInterval(checkNotifications, 15000);
     });
 
-    // Rebuild event markers when auth state changes (login / logout / token
-    // refresh) so that popup buttons reflect the current user instead of
-    // showing stale "Autentifică-te pentru a participa." to logged-in users.
-    // auth.js dispatches this via _dispatchAuthChange() on window.
-    window.addEventListener('detectlab:authchange', function () {
+    // Rebuild event markers and check notifications when auth state changes (login / logout / token refresh)
+    window.addEventListener('detectlab:authchange', async function () {
+        await fetchEvents();
         refreshEventsMap();
+        checkNotifications();
     });
 
-    // Expose init
+    // Expose init and methods
     window._initEventsLayer = initEventsLayer;
+    window._checkEventNotifications = checkNotifications;
+    window._fetchEvents = fetchEvents;
 })();
