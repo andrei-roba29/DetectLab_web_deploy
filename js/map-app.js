@@ -9473,13 +9473,20 @@
                     if (!window._sat60LayerDefs || window._sat60LayerDefs.length === 0) return false;
 
                     var useOptimised = typeof window.createCoronaWmsLayer === 'function';
-                    var queueConfig = (window.CoronaWmsQueue && window.CoronaWmsQueue.config) || null;
-                    var effectiveMinZoom = queueConfig ? queueConfig.minZoom : 8;
+                    // CRITICAL: every CoronaWmsLayer sublayer must use minZoom: 11.
+                    // Below that zoom the layer group is NEVER added to the map
+                    // (see toggleSatellite60sMap), so no tile elements are ever
+                    // created. The default queueConfig.minZoom (which was 4-5)
+                    // is ignored on purpose: the layer simply has no business
+                    // existing below z11, and allowing it would flood the DOM
+                    // with thousands of empty <img> elements when the user is
+                    // viewing all of Romania at a low zoom.
+                    var effectiveMinZoom = SAT60_LOAD_MIN_ZOOM;
                     console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length,
                         "individual WMS layers (on-demand mode: tiles render from" +
                         " cache only — the 'Load images here' button is the only fetch trigger)" +
-                        (useOptimised ? " (optimised queue: concurrent=" + queueConfig.concurrent +
-                            ", cacheTTL=" + Math.round(queueConfig.cacheTtlMs / 86400000) + "d)" : ""));
+                        (useOptimised ? " (optimised queue: concurrent=" + (window.CoronaWmsQueue.config.concurrent) +
+                            ", cacheTTL=" + Math.round((window.CoronaWmsQueue.config.cacheTtlMs || 0) / 86400000) + "d)" : ""));
 
                     // Keep the EPSG:900913 CRS declaration — GWC advertises
                     // gridsets under both EPSG:900913 and EPSG:3857 (identical
@@ -9501,14 +9508,14 @@
                         pane: "pane_sat60",
                         bounds: ROMANIA_BOUNDS,   // belt-and-braces: Leaflet also prunes outside this
                         maxZoom: 18,
-                        maxNativeZoom: 15
+                        maxNativeZoom: 15,
+                        minZoom: effectiveMinZoom
                     };
 
                     window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
                         var opts = L.extend({}, commonOpts, {
                             layers: def.layerName,
-                            coronaLayer: def.layerName,
-                            minZoom: effectiveMinZoom
+                            coronaLayer: def.layerName
                         });
                         if (useOptimised) {
                             // ON-DEMAND MODE: these sublayers NEVER fetch
@@ -9694,6 +9701,46 @@
                     }
                 });
 
+                // ── CRITICAL FIX (2026-08): DOM-flooding guard ───────────────
+                // The Satellite imagery 60's layer has 16 WMS sublayers (one per
+                // Corona pass). When the layer group is on the map at a low zoom
+                // covering all of Romania, Leaflet still calls createTile() on
+                // every sublayer for the visible viewport (even though
+                // manualOnly prevents the network request), and that creates
+                // thousands of empty <img class="leaflet-tile"> elements. The
+                // browser tab crashes long before the user has a chance to zoom
+                // in. The user has reported this multiple times.
+                //
+                // The fix: when the user toggles the layer ON, only add
+                // _sat60MapLayer to the map if the current zoom is >= 11 (the
+                // "Load images here" minimum). Below z11 the toggle is honoured
+                // (the checkbox stays checked, the load button stays visible —
+                // showing "Zoom in more" as a hint) but no layer group is on the
+                // map, so zero tile elements are ever created. A map.on('zoomend')
+                // handler re-evaluates this on every zoom change, so the layer
+                // group is added/removed automatically as the user zooms across
+                // the z11 threshold — they don't have to toggle the layer twice.
+                function _sat60SyncOnZoom() {
+                    var toggle = document.getElementById('satellite60sToggle');
+                    var layerOn = !!(toggle && toggle.checked);
+                    var z = map.getZoom();
+                    if (!layerOn || !window._sat60MapLayer) return;
+                    if (z >= SAT60_LOAD_MIN_ZOOM) {
+                        if (!map.hasLayer(window._sat60MapLayer)) {
+                            window._sat60MapLayer.addTo(map);
+                        }
+                    } else {
+                        if (map.hasLayer(window._sat60MapLayer)) {
+                            map.removeLayer(window._sat60MapLayer);
+                        }
+                    }
+                }
+                // Single shared handler so we don't double-add on every call.
+                // (toggleSatellite60sMap also calls _sat60SyncOnZoom() so the
+                // initial toggle, page-load toggle and zoom crossings all
+                // converge on the same add/remove decision.)
+                map.on('zoomend', _sat60SyncOnZoom);
+
                 window.toggleSatellite60sMap = function (on) {
                     if (on) {
                         var histPremToggle = document.getElementById("histPremiumToggle");
@@ -9712,12 +9759,25 @@
                         // button): only build the actual WMS tile layers the
                         // first time they are needed — see ensureSat60Layers()
                         // above. They run in on-demand mode (manualOnly), so
-                        // adding them here triggers ZERO tile requests.
+                        // building them here triggers ZERO tile requests — but
+                        // we still must NOT add them to the map below z11
+                        // (see _sat60SyncOnZoom below for the DOM-flooding
+                        // guard). Building them lazily is fine: the WMS
+                        // sublayers exist in memory but aren't attached to the
+                        // map, so Leaflet doesn't iterate the viewport and
+                        // createTile() is never called.
                         ensureSat60Layers();
 
-                        if (window._sat60MapLayer) {
-                            window._sat60MapLayer.addTo(map);
+                        // Only add the layer group to the map at the zoom at
+                        // which tile creation is safe. Below z11 the toggle is
+                        // still ON (the checkbox stays checked), but the
+                        // layer group is detached until the user zooms in.
+                        // _sat60SyncOnZoom() re-evaluates this on every
+                        // 'zoomend' so the layer appears automatically when the
+                        // user crosses z11.
+                        _sat60SyncOnZoom();
 
+                        if (window._sat60MapLayer && map.hasLayer(window._sat60MapLayer)) {
                             try {
                                 var firstLayer = window._sat60FrameLayers[0];
                                 if (firstLayer && firstLayer._url) {
@@ -9727,6 +9787,8 @@
                             } catch (e) {}
                         }
                     } else {
+                        // Layer off: just detach — tile elements are removed
+                        // by Leaflet as part of removeLayer().
                         if (window._sat60MapLayer) {
                             map.hasLayer(window._sat60MapLayer) && map.removeLayer(window._sat60MapLayer);
                         }

@@ -189,3 +189,104 @@ the layer on renders it only from already-cached tiles and reveals a
   count as "no imagery" and are negatively cached for the session. Run with
   `node test-sat60-ondemand.js`.
 
+
+---
+
+## 2026-08 DOM-flooding fix — "the layer crashed my site on toggle"
+
+### Recurring user report
+
+> "satellite imagery 60's layer when switched on causes my site to crash
+> sometimes because of the big number of requests. I told you that it
+> shouldnt fetch or request anything when switched on, only when
+> 'load images here'/'incarca imagini aici' button is pressed at a
+> minimum zoom of 11"
+
+The user reported this multiple times. After adding the on-demand mode
+(`manualOnly: true`) the network requests had been eliminated, but the
+crash persisted.
+
+### Actual root cause: DOM flooding, not network requests
+
+The `manualOnly` flag already prevented the network request. **The
+crash was from Leaflet still calling `createTile()` for every visible
+tile of every sublayer**, even though no fetch was made — each call
+still created an empty `<img class="leaflet-tile">` DOM element. With
+**16 CORONA pass sublayers** × the visible tile count at low zoom, the
+total DOM count blew past the browser's rendering budget.
+
+| Zoom | Tiles/sublayer (Romania bbox) | Total DOM elements (16 sublayers) |
+|------|-------------------------------|-----------------------------------|
+| 4    | 2                             | 32                                |
+| 7    | 12                            | 192                               |
+| 9    | 140                           | 2,240                             |
+| 10   | 540                           | 8,640                             |
+| 11   | 2,067                         | **33,072**                        |
+| 12   | 8,162                         | **130,592**                       |
+
+At the default Romania-overview zoom (z=6-7) the count was moderate,
+but as soon as the user zoomed in past z10 the count crossed the
+~30,000 element threshold where browsers start dropping frames
+aggressively, and at z12 the tab is unusable. The user's report of
+"crash on toggle" was almost always paired with the user having
+panned/zoomed into a denser area first.
+
+### Fix: don't add the Sat60 layer group to the map below z=11
+
+The "Load images here" button already requires zoom ≥ 11, so the layer
+group has no business existing on the map at lower zoom. Two changes
+that work together:
+
+1. **`js/corona-wms-layer.js`** — `CONFIG.minZoom` bumped from
+   `IS_MOBILE ? 5 : 4` to a hard-coded `11`, with a new
+   `CONFIG.minLoadZoom = 11` constant. The WMS sublayer is also
+   constructed with `minZoom: 11` so Leaflet does not call
+   `createTile()` for it below z11 (belt-and-braces: the existing
+   zoom/Romania check in `createTile()` is kept as a second line of
+   defence).
+
+2. **`js/map-app.js` Sat60 IIFE** — `toggleSatellite60sMap(on)` no
+   longer calls `_sat60MapLayer.addTo(map)` blindly. A new helper
+   `_sat60SyncOnZoom()` (also bound to `map.on('zoomend', ...)`) makes
+   the add/remove decision based on the **current zoom**:
+     - toggle ON, z<11 → layer group is **not added** to the map; toggle
+       stays checked, "Load images here" button stays visible showing
+       "Zoom in more" / "Mărește mai mult";
+     - toggle ON, z≥11 → layer group is added (manualOnly: zero
+       network; renders what is already in the cache);
+     - toggle OFF → layer group is removed (works at any zoom);
+     - zoom crossing z11 while the toggle is on → layer group is
+       added/removed automatically. The user does not have to toggle
+       the layer twice to see their imagery.
+
+   A long comment block in the IIFE documents the rationale so future
+   readers don't undo it.
+
+### Regression test
+
+`test-sat60-zoom-guard.js` (Node harness, stubbed Leaflet) loads the
+Sat60 IIFE from `map-app.js` in a sandboxed VM, drives the public
+toggle/zoom API, and asserts:
+
+- toggle ON at z=10 → layer group is **not** added to the map
+- toggle ON at z=12 → layer group **is** added
+- zoom out from z=12 to z=10 → layer group removed
+- zoom in from z=10 to z=12 → layer group re-added
+- toggle OFF at any zoom → layer group removed
+- full cycle (toggle ON, zoom out, zoom in) → layer tracks zoom
+  automatically
+
+12 assertions, all pass. Run with
+`node test-sat60-zoom-guard.js`.
+
+### Why the network-request count is still 0 on toggle
+
+The 16 sublayers are created in on-demand mode
+(`manualOnly: true`, set inside `ensureSat60Layers()`). Adding them
+to the map triggers zero network requests — `manualOnly` skips the
+fetch in `createTile()` and the tile element shows only when the tile
+key is in the IndexedDB cache. So even with the new zoom-gated
+`addTo` call, the network profile at z<11 is identical to before the
+fix (and the user's "no requests on toggle" guarantee is preserved).
+The user only ever fetches when they press "Load images here" at
+zoom ≥ 11.

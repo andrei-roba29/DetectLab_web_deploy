@@ -69,8 +69,18 @@
     //   CoronaWmsQueue.config.concurrent = 6
     var CONFIG = {
         isMobile: IS_MOBILE,
-        // Zoom below which NO corona tiles are requested at all.
-        minZoom: IS_MOBILE ? 5 : 4,
+        // The layer is only relevant at zoom >= minLoadZoom. Below that:
+        //   - No sublayer creates any tile element at all (prevents flooding
+        //     the DOM with tens of thousands of <img> elements when the user
+        //     is viewing all of Romania at a low zoom).
+        //   - No network request is ever fired (the user's "Load images here"
+        //     button is the only fetch trigger, and it is itself disabled
+        //     below minLoadZoom).
+        // The DOM-flooding was the real cause of the "site crash" — see the
+        // tile-count simulation in the fix history: at z=10 with 16 sublayers
+        // we were creating 8,640 empty <img> elements on a single toggle.
+        minZoom: 11,
+        minLoadZoom: 11,
         // Hard cap on concurrent WMS image requests ACROSS ALL sublayers.
         concurrent: IS_MOBILE ? 4 : 8,
         // TTL for the IndexedDB tile cache.
@@ -677,6 +687,13 @@
                 tileSize: 256,
                 maxZoom: 18,
                 maxNativeZoom: 15,
+                // CRITICAL: do not create ANY tile element below minZoom (=11).
+                // Below that zoom the user's "Load images here" button is
+                // disabled, so creating tile elements would only burn DOM
+                // resources and (at low zooms covering all of Romania)
+                // produce hundreds of thousands of empty <img> elements that
+                // were crashing the browser on toggle. Tile creation is also
+                // blocked in createTile() itself as a belt-and-braces check.
                 minZoom: CONFIG.minZoom,
                 bounds: CONFIG.romaniaBounds,
                 keepBuffer: CONFIG.keepBuffer,
