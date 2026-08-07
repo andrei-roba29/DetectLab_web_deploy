@@ -3600,18 +3600,27 @@
         });
     }
 
-    // === ROMAN EMPIRE SUBLAYERS (missing implementation) ===
+    // Roman Empire – shims for inline handlers (real logic lives in js/map-app.js)
+    // The map module exposes window.toggleRomanLayer / window.toggleRomanSub / window.toggleRomanSubLayers.
+    // These shims keep the inline onchange="toggleRomanLayer(...)" from throwing before the map initializes,
+    // and delegate to the real implementations once they exist without overwriting them.
     let romanExpanded = false;
-
+    // Capture the real implementations if they were already defined by map-app.js
+    const __realToggleRomanSubLayers = window.toggleRomanSubLayers;
+    const __realToggleRomanSub = window.toggleRomanSub;
+    const __realToggleRomanLayer = window.toggleRomanLayer;
     function toggleRomanSubLayers() {
+        if (typeof __realToggleRomanSubLayers === 'function') {
+            return __realToggleRomanSubLayers();
+        }
+        if (typeof window.toggleRomanSubLayers === 'function' && window.toggleRomanSubLayers !== toggleRomanSubLayers) {
+            return window.toggleRomanSubLayers();
+        }
         const container = document.getElementById('romanSubLayers');
         const btn = document.getElementById('romanExpandBtn');
         const icon = document.getElementById('romanExpandIcon');
-
         if (!container) return;
-
         romanExpanded = !romanExpanded;
-
         if (romanExpanded) {
             container.style.maxHeight = '600px';
             container.style.opacity = '1';
@@ -3626,10 +3635,19 @@
             if (btn) btn.style.color = 'rgba(232,119,42,0.8)';
         }
     }
-
-    // Called by the individual Roman sub-layer checkboxes
     function toggleRomanSub(key, checked) {
-        // Placeholder – extend with actual layer logic if needed
+        if (typeof __realToggleRomanSub === 'function') {
+            return __realToggleRomanSub(key, checked);
+        }
+        if (typeof window.toggleRomanSub === 'function' && window.toggleRomanSub !== toggleRomanSub) {
+            return window.toggleRomanSub(key, checked);
+        }
         console.log('Roman sub-layer', key, checked ? 'ON' : 'OFF');
+    }
+    if (typeof window.toggleRomanLayer !== 'function') {
+        window.toggleRomanLayer = function(on) {
+            if (typeof __realToggleRomanLayer === 'function') return __realToggleRomanLayer(on);
+            console.warn('toggleRomanLayer called before map init', on);
+        };
     }
 </script>
