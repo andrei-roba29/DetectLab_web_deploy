@@ -3571,4 +3571,37 @@
             });
         });
     }
+
+    // === ROMAN EMPIRE SUBLAYERS (missing implementation) ===
+    let romanExpanded = false;
+
+    function toggleRomanSubLayers() {
+        const container = document.getElementById('romanSubLayers');
+        const btn = document.getElementById('romanExpandBtn');
+        const icon = document.getElementById('romanExpandIcon');
+
+        if (!container) return;
+
+        romanExpanded = !romanExpanded;
+
+        if (romanExpanded) {
+            container.style.maxHeight = '600px';
+            container.style.opacity = '1';
+            container.style.marginTop = '8px';
+            if (icon) icon.style.transform = 'rotate(0deg)';
+            if (btn) btn.style.color = '#E8772A';
+        } else {
+            container.style.maxHeight = '0';
+            container.style.opacity = '0';
+            container.style.marginTop = '0';
+            if (icon) icon.style.transform = 'rotate(-90deg)';
+            if (btn) btn.style.color = 'rgba(232,119,42,0.8)';
+        }
+    }
+
+    // Called by the individual Roman sub-layer checkboxes
+    function toggleRomanSub(key, checked) {
+        // Placeholder – extend with actual layer logic if needed
+        console.log('Roman sub-layer', key, checked ? 'ON' : 'OFF');
+    }
 </script>
