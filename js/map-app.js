@@ -9279,12 +9279,23 @@
                 // Romania bounds — defined at outer initMap scope so it is available both
                 // during discovery and later during lazy layer creation.
 
-                // Discover all Corona layers dynamically from the GeoServer
+                // Discover all Corona layers dynamically from the GeoServer.
+                // Collects BOTH naming conventions the CAST server has used
+                // over time so a discovery result can never silently select
+                // layer names that don't exist (a past cause of the false
+                // "No images here" reports):
+                //   • pass / mosaic layers — "corona:1105-2235Aft" style;
+                //   • individual frame layers — "corona:1105-2235df064" style.
+                // Pass mosaics are preferred; if the server exposes only
+                // frames, up to MAX_EXTRA_FRAMES Romania-intersecting frames
+                // are used instead of the curated fallback list.
                 function discoverCoronaLayers(callback) {
                     fetch(SAT60_GWC_URL + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities")
                         .then(function (r) { return r.text(); })
                         .then(function (xml) {
-                            var discovered = [];
+                            var passes = [];
+                            var frames = [];
+                            var MAX_EXTRA_FRAMES = 16;
                             try {
                                 var parser = new DOMParser();
                                 var doc = parser.parseFromString(xml, "text/xml");
@@ -9295,6 +9306,31 @@
 
                                 var knownRomaniaMissions = ["1022", "1103", "1105", "1106", "1107", "1110"];
 
+                                function parseBBox(node) {
+                                    var bboxEl = node.getElementsByTagName("LatLonBoundingBox")[0];
+                                    if (bboxEl) {
+                                        return {
+                                            minx: parseFloat(bboxEl.getAttribute("minx")),
+                                            miny: parseFloat(bboxEl.getAttribute("miny")),
+                                            maxx: parseFloat(bboxEl.getAttribute("maxx")),
+                                            maxy: parseFloat(bboxEl.getAttribute("maxy"))
+                                        };
+                                    }
+                                    var bboxes = node.getElementsByTagName("BoundingBox");
+                                    for (var b = 0; b < bboxes.length; b++) {
+                                        var srs = (bboxes[b].getAttribute("SRS") || bboxes[b].getAttribute("CRS") || "").toUpperCase();
+                                        if (srs.indexOf("4326") !== -1 || srs.indexOf("84") !== -1) {
+                                            return {
+                                                minx: parseFloat(bboxes[b].getAttribute("minx")),
+                                                miny: parseFloat(bboxes[b].getAttribute("miny")),
+                                                maxx: parseFloat(bboxes[b].getAttribute("maxx")),
+                                                maxy: parseFloat(bboxes[b].getAttribute("maxy"))
+                                            };
+                                        }
+                                    }
+                                    return null;
+                                }
+
                                 for (var i = 0; i < layerNodes.length; i++) {
                                     var node = layerNodes[i];
                                     var nameEl = node.getElementsByTagName("Name")[0];
@@ -9303,57 +9339,51 @@
                                     if (name.indexOf("corona:") !== 0) continue;
                                     if (name.indexOf("footprints") !== -1) continue;
 
-                                    // Check if it is a pass/mosaic layer (contains Aft or Fore)
+                                    // Pass/mosaic layer (contains Aft or Fore)?
                                     var isPass = (name.indexOf("Aft") !== -1 || name.indexOf("Fore") !== -1);
-                                    if (!isPass) continue;
 
-                                    var isKnownRomaniaPass = false;
+                                    var isKnownRomaniaLayer = false;
                                     for (var k = 0; k < knownRomaniaMissions.length; k++) {
                                         if (name.indexOf(knownRomaniaMissions[k]) !== -1) {
-                                            isKnownRomaniaPass = true;
+                                            isKnownRomaniaLayer = true;
                                             break;
                                         }
                                     }
 
-                                    var minx = NaN, miny = NaN, maxx = NaN, maxy = NaN;
-                                    var bboxEl = node.getElementsByTagName("LatLonBoundingBox")[0];
-                                    if (bboxEl) {
-                                        minx = parseFloat(bboxEl.getAttribute("minx"));
-                                        miny = parseFloat(bboxEl.getAttribute("miny"));
-                                        maxx = parseFloat(bboxEl.getAttribute("maxx"));
-                                        maxy = parseFloat(bboxEl.getAttribute("maxy"));
-                                    } else {
-                                        var bboxes = node.getElementsByTagName("BoundingBox");
-                                        for (var b = 0; b < bboxes.length; b++) {
-                                            var srs = (bboxes[b].getAttribute("SRS") || bboxes[b].getAttribute("CRS") || "").toUpperCase();
-                                            if (srs.indexOf("4326") !== -1 || srs.indexOf("84") !== -1) {
-                                                minx = parseFloat(bboxes[b].getAttribute("minx"));
-                                                miny = parseFloat(bboxes[b].getAttribute("miny"));
-                                                maxx = parseFloat(bboxes[b].getAttribute("maxx"));
-                                                maxy = parseFloat(bboxes[b].getAttribute("maxy"));
-                                                break;
-                                            }
-                                        }
+                                    var bb = parseBBox(node);
+                                    var overlapsRomania = false;
+                                    if (bb && !isNaN(bb.minx) && !isNaN(bb.miny) && !isNaN(bb.maxx) && !isNaN(bb.maxy)) {
+                                        overlapsRomania = (bb.maxx >= RO_MIN_X && bb.minx <= RO_MAX_X &&
+                                                           bb.maxy >= RO_MIN_Y && bb.miny <= RO_MAX_Y);
                                     }
 
-                                    if (isNaN(minx) || isNaN(miny) || isNaN(maxx) || isNaN(maxy)) {
-                                        if (isKnownRomaniaPass) {
-                                            discovered.push(name);
-                                        }
-                                        continue;
-                                    }
-
-                                    // Intersection check: layer must overlap Romania
-                                    if ((maxx >= RO_MIN_X && minx <= RO_MAX_X && maxy >= RO_MIN_Y && miny <= RO_MAX_Y) || isKnownRomaniaPass) {
-                                        discovered.push(name);
+                                    if (isPass && (overlapsRomania || isKnownRomaniaLayer)) {
+                                        passes.push(name);
+                                    } else if (!isPass && (overlapsRomania || isKnownRomaniaLayer)) {
+                                        // Individual frame layer intersecting Romania —
+                                        // used only when no pass mosaics exist.
+                                        frames.push({ name: name, known: isKnownRomaniaLayer });
                                     }
                                 }
                             } catch (e) {
                                 console.warn("[Sat60] Error parsing GetCapabilities XML:", e);
                             }
 
-                            if (discovered.length > 0) {
-                                console.log("[Sat60] Discovered", discovered.length, "Corona WMS layers intersecting Romania from CAST GeoServer");
+                            var discovered = null;
+                            if (passes.length > 0) {
+                                discovered = passes;
+                                console.log("[Sat60] Discovered", passes.length, "Corona pass (mosaic) layers intersecting Romania from CAST GeoServer");
+                            } else if (frames.length > 0) {
+                                // Prefer frames whose name matches a known
+                                // Romania mission, then cap the count.
+                                frames.sort(function (a, b) {
+                                    return (b.known ? 1 : 0) - (a.known ? 1 : 0);
+                                });
+                                discovered = frames.slice(0, MAX_EXTRA_FRAMES).map(function (f) { return f.name; });
+                                console.warn("[Sat60] No pass mosaics found — using", discovered.length, "individual frame layers intersecting Romania");
+                            }
+
+                            if (discovered && discovered.length > 0) {
                                 callback(discovered);
                             } else {
                                 console.warn("[Sat60] No layers matched Romania bbox in GetCapabilities, using curated Romania list");
@@ -9401,11 +9431,12 @@
                 }
 
                 function _sat60SetLoadMsg(text, isError) {
+                    _sat60EnsureUi();
                     var el = document.getElementById('satellite60sLoadMsg');
                     if (!el) return;
                     el.style.display = 'block';
                     el.textContent = text;
-                    el.style.color = isError ? '#FFB09F' : 'rgba(184,216,240,0.8)';
+                    el.className = 'sat60-msg' + (isError ? ' sat60-msg-error' : '');
                 }
 
                 function _sat60LatToTileY(lat, z) {
@@ -9423,125 +9454,108 @@
                     }
                 }
 
-                // Custom Leaflet map control for "Load map here" button on the map
-                var Sat60LoadControl = null;
-                if (L.Control && L.DomEvent) {
-                    Sat60LoadControl = L.Control.extend({
-                        options: {
-                            position: 'topleft'
-                        },
-                        onAdd: function (map) {
-                            var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control sat60-load-control');
-                            container.style.display = 'none'; // hidden by default
+                // Hand-built EPSG:900913 (Web Mercator) WMS URL for a tile —
+                // the same request format Leaflet's own WMS getTileUrl()
+                // produces. Used as a fallback so the "Load images here" probe
+                // never silently skips tiles just because a sublayer was
+                // created but not yet attached to the map (Leaflet only sets
+                // `_crs` in onAdd).
+                function _sat60BuildWmsUrl(layerName, coords) {
+                    var n = Math.pow(2, coords.z);
+                    var world = 40075016.68557849; // 2 * PI * 6378137 (EPSG:900913 / 3857)
+                    var size = world / n;
+                    var minx = coords.x * size - world / 2;
+                    var maxx = (coords.x + 1) * size - world / 2;
+                    var maxy = world / 2 - coords.y * size;
+                    var miny = world / 2 - (coords.y + 1) * size;
+                    function fmt(v) { return Math.round(v * 1000) / 1000; }
+                    return SAT60_GWC_URL +
+                        '?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap' +
+                        '&FORMAT=image%2Fpng&TRANSPARENT=true' +
+                        '&LAYERS=' + encodeURIComponent(layerName) +
+                        '&STYLES=' +
+                        '&SRS=EPSG%3A900913' +
+                        '&WIDTH=256&HEIGHT=256&TILED=true' +
+                        '&bbox=' + [fmt(minx), fmt(miny), fmt(maxx), fmt(maxy)].join(',');
+                }
 
-                            var button = L.DomUtil.create('button', 'sat60-map-load-btn', container);
-                            button.type = 'button';
-                            button.style.cssText = 'background: rgba(10,25,48,0.88); border: 1px solid rgba(184,216,240,0.18); border-radius: 10px; backdrop-filter: blur(6px); color: #B8D8F0; font-family: "Outfit", sans-serif; font-size: 0.78rem; font-weight: 600; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); transition: background 0.2s, border-color 0.2s, color 0.2s; white-space: nowrap;';
+                // ── Bottom-center "Load images here" bar (2026-08) ────────────
+                // The user asked that the load button and its result message
+                // ("No images here") live at the BOTTOM CENTER of the screen,
+                // on the map — NOT inside the sidebar layer row. A floating
+                // bar (button + message pill) is created once, appended to the
+                // map wrapper, and positioned with CSS (.sat60-bottom-ui).
+                // It is shown/hidden by _sat60UpdateLoadBtn() and
+                // _sat60SetLoadMsg() below. All element lookups keep the
+                // null/append guards so the zoom-guard test harness (stubbed
+                // DOM, no real layout) can still run the IIFE.
+                function _sat60EnsureUi() {
+                    if (window._sat60UiEl) return window._sat60UiEl;
+                    try {
+                        var container = document.createElement('div');
+                        container.id = 'satellite60sUi';
+                        container.className = 'sat60-bottom-ui';
 
-                            button.innerHTML =
-                                '<svg class="sat60-map-load-svg" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0" aria-hidden="true">' +
-                                    '<path d="M1.5 2.5h10M1.5 6.5h10M1.5 10.5h10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>' +
-                                    '<circle cx="6.5" cy="6.5" r="1.4" fill="currentColor"/>' +
-                                '</svg>' +
-                                '<span class="t" data-key="sat60_zoom_more">Zoom in more</span>';
-
-                            L.DomEvent.on(button, 'click', function (e) {
-                                L.DomEvent.stopPropagation(e);
+                        var button = document.createElement('button');
+                        button.id = 'satellite60sLoadBtn';
+                        button.type = 'button';
+                        button.className = 'sat60-map-load-btn';
+                        button.innerHTML =
+                            '<svg class="sat60-map-load-svg" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0" aria-hidden="true">' +
+                                '<path d="M1.5 2.5h10M1.5 6.5h10M1.5 10.5h10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>' +
+                                '<circle cx="6.5" cy="6.5" r="1.4" fill="currentColor"/>' +
+                            '</svg>' +
+                            '<span class="t" data-key="sat60_zoom_more">Zoom in more</span>';
+                        button.style.display = 'none'; // shown by _sat60UpdateLoadBtn
+                        if (typeof button.addEventListener === 'function') {
+                            button.addEventListener('click', function (e) {
+                                if (e && e.stopPropagation) e.stopPropagation();
                                 if (typeof window.loadSatellite60sHere === 'function') {
                                     window.loadSatellite60sHere();
                                 }
                             });
-
-                            L.DomEvent.on(button, 'mouseover', function () {
-                                if (!button.disabled) {
-                                    button.style.background = 'rgba(107,63,160,0.82)';
-                                    button.style.borderColor = 'rgba(107,63,160,0.6)';
-                                    button.style.color = '#fff';
-                                }
-                            });
-                            L.DomEvent.on(button, 'mouseout', function () {
-                                if (!button.disabled) {
-                                    button.style.background = 'rgba(10,25,48,0.88)';
-                                    button.style.borderColor = 'rgba(184,216,240,0.18)';
-                                    button.style.color = '#B8D8F0';
-                                }
-                            });
-
-                            this._button = button;
-                            this._container = container;
-                            return container;
-                        },
-                        updateState: function () {
-                            if (!this._container || !this._button) return;
-                            var toggle = document.getElementById('satellite60sToggle');
-                            var layerOn = !!(toggle && toggle.checked);
-
-                            if (!layerOn) {
-                                this._container.style.display = 'none';
-                                return;
-                            }
-
-                            this._container.style.display = 'block';
-
-                            if (_sat60LoadingHere) {
-                                this._button.disabled = true;
-                                this._button.style.opacity = '0.55';
-                                this._button.style.cursor = 'not-allowed';
-                                this._button.classList.add('loading');
-                                var label = this._button.querySelector('.t');
-                                if (label) {
-                                    label.textContent = _sat60T('sat60_loading', 'Loading…');
-                                }
-                                return;
-                            }
-
-                            var canLoad = map.getZoom() >= SAT60_LOAD_MIN_ZOOM;
-                            this._button.disabled = !canLoad;
-                            this._button.classList.remove('loading');
-
-                            if (this._button.disabled) {
-                                this._button.style.opacity = '0.55';
-                                this._button.style.cursor = 'not-allowed';
-                                this._button.style.background = 'rgba(10,25,48,0.88)';
-                                this._button.style.borderColor = 'rgba(184,216,240,0.18)';
-                                this._button.style.color = '#B8D8F0';
-                            } else {
-                                this._button.style.opacity = '1';
-                                this._button.style.cursor = 'pointer';
-                            }
-
-                            var key = canLoad ? 'sat60_load_here' : 'sat60_zoom_more';
-                            var label = this._button.querySelector('.t');
-                            if (label) {
-                                label.setAttribute('data-key', key);
-                                label.textContent = _sat60T(key, canLoad ? 'Load images here' : 'Zoom in more');
-                            }
-                            this._button.title = _sat60T(canLoad ? 'sat60_load_title' : 'sat60_zoom_hint',
-                                canLoad ? 'Load 1960s imagery for the visible area only'
-                                        : 'Zoom in to level 11 or more to load images here.');
                         }
-                    });
 
-                    window._sat60LoadControl = new Sat60LoadControl().addTo(map);
+                        var msg = document.createElement('div');
+                        msg.id = 'satellite60sLoadMsg';
+                        msg.className = 'sat60-msg';
+                        msg.style.display = 'none';
 
-                    // Inject styles once
-                    var styleId = 'sat60-map-btn-style';
-                    if (!document.getElementById(styleId)) {
-                        var s = document.createElement('style');
-                        s.id = styleId;
-                        s.textContent = '.sat60-map-load-btn.loading svg { animation: sat60LoadSpin 0.9s linear infinite; }';
-                        document.head.appendChild(s);
+                        if (typeof container.appendChild === 'function') {
+                            container.appendChild(button);
+                            container.appendChild(msg);
+                        }
+
+                        // Anchor the bar to the map wrapper (same stacking
+                        // context as the other floating map overlays), falling
+                        // back to the map container / body in odd layouts.
+                        var host = null;
+                        if (typeof document.querySelector === 'function') {
+                            try { host = document.querySelector('.map-wrapper'); } catch (e2) {}
+                        }
+                        if (!host) host = document.getElementById('detectlab-map');
+                        if (!host) host = document.body;
+                        if (host && typeof host.appendChild === 'function') {
+                            host.appendChild(container);
+                        }
+                        window._sat60UiEl = container;
+                    } catch (e) {
+                        window._sat60UiEl = null;
                     }
+                    return window._sat60UiEl;
                 }
 
                 // The "Load images here" button is visible ONLY while the
                 // layer is switched on. Below zoom 11 it stays visible but is
                 // DISABLED and its label reads "Zoom in more" /
                 // "Mărește mai mult"; from zoom 11 it becomes enabled and reads
-                // "Load images here" / "Încarcă imagini aici".
+                // "Load images here" / "Încarcă imagini aici". The button and
+                // its message pill live at the BOTTOM CENTER of the map
+                // (.sat60-bottom-ui) — they no longer sit in the sidebar.
                 // (The inner <span class="t"> keeps its data-key in sync so a
                 // later language switch re-translates the label correctly.)
                 function _sat60UpdateLoadBtn() {
+                    _sat60EnsureUi();
                     var btn = document.getElementById('satellite60sLoadBtn');
                     if (btn) {
                         var toggle = document.getElementById('satellite60sToggle');
@@ -9564,10 +9578,6 @@
                                 canLoad ? 'Load 1960s imagery for the visible area only'
                                         : 'Zoom in to level 11 or more to load images here.');
                         }
-                    }
-
-                    if (window._sat60LoadControl && typeof window._sat60LoadControl.updateState === 'function') {
-                        window._sat60LoadControl.updateState();
                     }
                 }
                 map.on('zoomend moveend', _sat60UpdateLoadBtn);
@@ -9657,6 +9667,7 @@
                 // the user whether any imagery exists there ("No images here"
                 // / "Nu există imagini aici" when there aren't any).
                 window.loadSatellite60sHere = function () {
+                    _sat60EnsureUi();
                     var msgEl = document.getElementById('satellite60sLoadMsg');
                     if (!msgEl) return;
 
@@ -9676,16 +9687,29 @@
                     if (satToggle && !satToggle.checked) {
                         satToggle.checked = true;
                         window.toggleSatellite60sMap(true);
-                    } else if (window._sat60MapLayer && !map.hasLayer(window._sat60MapLayer)) {
-                        window._sat60MapLayer.addTo(map);
                     }
                     if (window._sat60FrameLayers.length === 0) ensureSat60Layers();
                     if (window._sat60FrameLayers.length === 0) return;
+                    // Re-sync the layer group so the REAL (populated) group is
+                    // attached to the map at zoom >= 11. Attaching it runs
+                    // Leaflet's onAdd(), which is what sets each sublayer's
+                    // `_crs` — without it layer.getTileUrl() would throw and
+                    // every job would be skipped ("No images here" with zero
+                    // requests made).
+                    _sat60SyncOnZoom();
+                    if (window._sat60MapLayer && !map.hasLayer(window._sat60MapLayer)) {
+                        window._sat60MapLayer.addTo(map);
+                    }
 
                     _sat60LoadingHere = true;
                     _sat60UpdateLoadBtn();
                     var btn = document.getElementById('satellite60sLoadBtn');
-                    if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.classList.add('loading');
+                        var lblEl = btn.querySelector('.t');
+                        if (lblEl) lblEl.textContent = _sat60T('sat60_loading', 'Loading…');
+                    }
                     _sat60SetLoadMsg(_sat60T('sat60_loading', 'Loading 1960s imagery for the visible area…'), false);
 
                     // Tile range covering ONLY the user's current viewport.
@@ -9697,17 +9721,33 @@
                     var minY = Math.max(0, Math.floor(_sat60LatToTileY(b.getNorth(), zoom)));
                     var maxY = Math.min(maxTile - 1, Math.floor(_sat60LatToTileY(b.getSouth(), zoom)));
 
+                    // Build the WMS URL for one tile. Prefers the layer's own
+                    // getTileUrl (which carries Leaflet's exact SRS/BBOX
+                    // format), but falls back to a hand-built EPSG:900913 URL
+                    // if the sublayer was never attached to the map and its
+                    // `_crs` is not set yet — so the probe never silently
+                    // skips a tile (skipping everything was a past cause of
+                    // "No images here").
+                    function _sat60TileUrl(layer, coords) {
+                        try {
+                            var u = layer.getTileUrl(coords);
+                            if (u) return u;
+                        } catch (e) {}
+                        var layerName = (layer.options && (layer.options.coronaLayer || layer.options.layers)) || 'corona';
+                        return _sat60BuildWmsUrl(layerName, coords);
+                    }
+
                     // Jobs: every pass layer × every visible tile inside Romania.
                     var jobs = [];
                     window._sat60FrameLayers.forEach(function (layer) {
-                        if (!layer || typeof layer.getTileUrl !== 'function') return;
+                        if (!layer) return;
                         var layerName = (layer.options && (layer.options.coronaLayer || layer.options.layers)) || 'corona';
                         for (var tx = minX; tx <= maxX; tx++) {
                             for (var ty = minY; ty <= maxY; ty++) {
                                 var coords = { x: tx, y: ty, z: zoom };
                                 if (!_sat60TileInRomania(coords)) continue;
-                                var url;
-                                try { url = layer.getTileUrl(coords); } catch (e) { continue; }
+                                var url = _sat60TileUrl(layer, coords);
+                                if (!url) continue;
                                 jobs.push({ url: url, layerLabel: layerName, z: zoom, x: tx, y: ty });
                             }
                         }
@@ -9752,7 +9792,11 @@
                                     .replace('{n}', res.found),
                                 false
                             );
-                        } else if (res.failed > 0 && res.empty === 0) {
+                        } else if (res.empty === 0) {
+                            // Nothing came back as a definitive "no imagery"
+                            // answer — every request failed (network/CORS/
+                            // server). Telling the user "No images here" would
+                            // be a lie; the honest message is the error one.
                             _sat60SetLoadMsg(_sat60T('sat60_error', 'Could not load the imagery, please try again.'), true);
                         } else {
                             _sat60SetLoadMsg(_sat60T('sat60_no_images', 'No images here'), true);

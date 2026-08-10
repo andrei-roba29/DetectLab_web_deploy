@@ -241,7 +241,22 @@
 
             job._cancelled = false;
 
-            // 1) IndexedDB cache check
+            // 1) IndexedDB cache check. Skipped entirely for `forceFetch`
+            //    retries (e.g. a probe re-asking the plain WMS endpoint for a
+            //    tile whose GWC tile-cache blob is already stored as a fully
+            //    transparent image — reading the transparent blob again would
+            //    just reproduce the same false "no imagery" answer).
+            if (job.forceFetch) {
+                // ON-DEMAND MODE is still honoured even on a forced retry.
+                if (job.noFetch) {
+                    stats.empty++;
+                    job.onEmpty && job.onEmpty();
+                    finish(job, 'empty');
+                    return;
+                }
+                fetchAndCache(job, controller);
+                return;
+            }
             IDB.get(job.cacheKey).then(function (blob) {
                 if (job._cancelled) { finish(job, 'cancelled'); return; }
                 if (blob) {
@@ -306,27 +321,51 @@
             var fetchOpts = { mode: 'cors', credentials: 'omit' };
             if (controller) fetchOpts.signal = controller.signal;
 
+            // If the first endpoint (the GWC tile cache) cannot serve this tile
+            // (HTTP 4xx / 5xx, or a non-image 200), retry ONCE on the plain WMS
+            // rendering endpoint before treating the tile as missing. GWC only
+            // serves the zoom levels/grids it has pre-cached for a layer — at
+            // other zooms it answers 400/404 or an empty placeholder even when
+            // the imagery really exists on the backend WMS.
+            function tryFallback() {
+                if (!job.fallbackUrl || job._fallbackTried) return false;
+                job._fallbackTried = true;
+                job.url = job.fallbackUrl;
+                stats.requested++;
+                var c2 = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+                if (c2) inFlight[job.key].controller = c2;
+                fetchAndCache(job, c2);
+                return true;
+            }
+
             root.fetch(job.url, fetchOpts).then(function (res) {
                 if (job._cancelled) { finish(job, 'cancelled'); return; }
                 if (!res.ok) {
                     // 4xx = "no such tile / out of grid range" for this pass.
                     // These are EXPECTED once we request zoom levels a given
-                    // pass doesn't cover — do NOT retry, do NOT count toward
-                    // the circuit breaker. Remember it for the session and
-                    // render an empty tile. 5xx = genuine server trouble.
+                    // pass (or the GWC cache) doesn't cover — do NOT retry
+                    // with backoff, do NOT count toward the circuit breaker.
+                    // 5xx = genuine server trouble, still worth one try on the
+                    // fallback endpoint before the regular retry path.
                     if (res.status >= 400 && res.status < 500) {
+                        if (tryFallback()) return;
+                        // Definitive miss on BOTH endpoints — remember it for
+                        // the session and render an empty tile.
                         missing[job.cacheKey] = true;
                         stats.empty++;
                         job.onEmpty && job.onEmpty();
                         finish(job, 'empty');
                         return;
                     }
+                    if (tryFallback()) return;
                     throw new Error('HTTP ' + res.status);
                 }
                 var ct = res.headers.get('content-type') || '';
                 if (ct.indexOf('image/') === -1) {
                     // GWC sometimes returns a text/XML 200 for a missing tile.
-                    // Treat it as a permanent miss for this session.
+                    // Try the WMS endpoint once before declaring a permanent
+                    // miss for this session.
+                    if (tryFallback()) return;
                     missing[job.cacheKey] = true;
                     stats.empty++;
                     job.onEmpty && job.onEmpty();
@@ -578,7 +617,35 @@
      *
      *     job: { url, layerLabel, z, x, y }
      *     resolves: { total, found, empty, failed, foundTiles: ["z/x/y", …] }
+     *
+     *     GWC → WMS fallback: the tile-cache endpoint (/gwc/service/wms) only
+     *     serves zooms/grids it has pre-cached per layer, and can answer
+     *     HTTP 400/404 or a fully transparent placeholder for zooms it has no
+     *     cache for — even when the imagery really exists. To avoid false
+     *     "No images here" results, every probe tile that came back
+     *     missing/empty from the cache is retried ONCE on the plain WMS
+     *     rendering endpoint (/geoserver/wms), which renders any valid
+     *     layer+bbox on the fly.
      * ───────────────────────────────────────────────────────────────────── */
+    // Derive the plain WMS rendering URL from a GeoWebCache WMS-C URL by
+    // swapping the /gwc/service/wms path segment for /wms. Returns null when
+    // the URL does not go through the GWC cache (nothing to fall back to).
+    function fallbackWmsUrl(url) {
+        if (!url) return null;
+        var u = String(url);
+        var marker = '/geoserver/gwc/service/wms';
+        var i = u.indexOf(marker);
+        if (i !== -1) {
+            return u.slice(0, i) + '/geoserver/wms' + u.slice(i + marker.length);
+        }
+        marker = '/gwc/service/wms';
+        i = u.indexOf(marker);
+        if (i !== -1) {
+            return u.slice(0, i) + '/wms' + u.slice(i + marker.length);
+        }
+        return null;
+    }
+
     function coronaProbeTiles(jobs) {
         return new Promise(function (resolve) {
             var results = {
@@ -596,51 +663,98 @@
                 if (pending <= 0) resolve(results);
             }
 
+            // Inspect a fetched tile for visible content. A transparent PNG
+            // (or a canvas that is tainted by a CORS-less <img> fallback,
+            // which the helper reports as "has content") decides found/empty.
+            // When the tile came from the GWC tile cache and looks empty, it
+            // is re-requested ONCE from the plain WMS endpoint before we give
+            // up — this is what eliminates the false "no imagery here"
+            // reports at zooms/areas the cache cannot serve.
+            function decide(job, imgEl, allowFallback, blobRef) {
+                tileHasVisibleContent(imgEl, function (hasContent) {
+                    if (blobRef.v) {
+                        try { root.URL.revokeObjectURL(blobRef.v); } catch (e) {}
+                        blobRef.v = null;
+                    }
+                    if (hasContent) {
+                        results.found++;
+                        var tileKey = job.z + '/' + job.x + '/' + job.y;
+                        if (results.foundTiles.indexOf(tileKey) === -1) {
+                            results.foundTiles.push(tileKey);
+                        }
+                        oneDone();
+                        return;
+                    }
+                    if (allowFallback && job.fallbackUrl && !job._fbProbeTried) {
+                        job._fbProbeTried = true;
+                        // forceFetch: skip the IndexedDB read — the cache may
+                        // already hold the transparent GWC blob for this tile.
+                        Queue.enqueue({
+                            key: job.key + '::fb',
+                            cacheKey: job.cacheKey,
+                            url: job.fallbackUrl,
+                            tileEl: imgEl,
+                            priority: 0,
+                            forceFetch: true,
+                            onBlobUrl: function (url) { blobRef.v = url; },
+                            onLoad: function () { decide(job, imgEl, false, blobRef); },
+                            onEmpty: function () {
+                                if (blobRef.v) {
+                                    try { root.URL.revokeObjectURL(blobRef.v); } catch (e) {}
+                                    blobRef.v = null;
+                                }
+                                results.empty++;
+                                oneDone();
+                            },
+                            onError: function () {
+                                if (blobRef.v) {
+                                    try { root.URL.revokeObjectURL(blobRef.v); } catch (e) {}
+                                    blobRef.v = null;
+                                }
+                                results.failed++;
+                                oneDone();
+                            }
+                        });
+                        return;
+                    }
+                    results.empty++;
+                    oneDone();
+                });
+            }
+
             jobs.forEach(function (job, idx) {
                 var cacheKey = makeCacheKey(job.layerLabel, job.z, job.x, job.y);
                 var key = cacheKey + '::probe' + idx;
                 var imgEl = new root.Image();
-                var blobUrl = null;
+                var blobUrl = { v: null };
+                if (!job.fallbackUrl) {
+                    job.fallbackUrl = fallbackWmsUrl(job.url);
+                }
 
                 Queue.enqueue({
                     key: key,
                     cacheKey: cacheKey,
                     url: job.url,
+                    fallbackUrl: job.fallbackUrl,
                     tileEl: imgEl,
                     priority: 0,
-                    onBlobUrl: function (url) { blobUrl = url; },
+                    onBlobUrl: function (url) { blobUrl.v = url; },
                     onLoad: function () {
                         // Synchronous decode inspection, then release the blob URL.
-                        tileHasVisibleContent(imgEl, function (hasContent) {
-                            if (blobUrl) {
-                                try { root.URL.revokeObjectURL(blobUrl); } catch (e) {}
-                                blobUrl = null;
-                            }
-                            if (hasContent) {
-                                results.found++;
-                                var tileKey = job.z + '/' + job.x + '/' + job.y;
-                                if (results.foundTiles.indexOf(tileKey) === -1) {
-                                    results.foundTiles.push(tileKey);
-                                }
-                            } else {
-                                // Image decoded but fully transparent → no imagery there.
-                                results.empty++;
-                            }
-                            oneDone();
-                        });
+                        decide(job, imgEl, true, blobUrl);
                     },
                     onEmpty: function () {
-                        if (blobUrl) {
-                            try { root.URL.revokeObjectURL(blobUrl); } catch (e) {}
-                            blobUrl = null;
+                        if (blobUrl.v) {
+                            try { root.URL.revokeObjectURL(blobUrl.v); } catch (e) {}
+                            blobUrl.v = null;
                         }
                         results.empty++;
                         oneDone();
                     },
                     onError: function () {
-                        if (blobUrl) {
-                            try { root.URL.revokeObjectURL(blobUrl); } catch (e) {}
-                            blobUrl = null;
+                        if (blobUrl.v) {
+                            try { root.URL.revokeObjectURL(blobUrl.v); } catch (e) {}
+                            blobUrl.v = null;
                         }
                         results.failed++;
                         oneDone();
