@@ -1,6 +1,14 @@
 /* DetectLab — premium LIDAR Scanner
- * Reads data/lidar_scanner_points.csv as EPSG:4326 WGS 84 (X/Y/Z), then transforms
- * the complete file to WGS84 once before coordinate searches.
+ * Reads data/lidar_scanner_points.csv. Accepted coordinate columns (header match
+ * is case-insensitive):
+ *   1. latitude / longitude  — EPSG:4326 geographic degrees (see
+ *      data/lidar_scanner_points.csv.example). Used as-is.
+ *   2. X / Y / Z             — EPSG:4936 geocentric ECEF metres; transformed to
+ *      WGS84 once at load time. (An X/Y/Z export whose X/Y values are plain
+ *      degrees — e.g. QGIS "add X/Y fields" in EPSG:4326 — is auto-detected and
+ *      read as X=longitude, Y=latitude instead of failing.)
+ * Every loaded point is normalised to carry .lat, .lon and .lng so both
+ * LidarGeo.scan() (.lon) and the Leaflet rendering code (.lng) work.
  */
 (function () {
     'use strict';
@@ -32,7 +40,28 @@
         var sep=(lines[0].match(/;/g)||[]).length>(lines[0].match(/,/g)||[]).length?';':',';
         function row(line){var out=[],cur='',quote=false;for(var i=0;i<line.length;i++){var c=line[i];if(c==='"'){if(quote&&line[i+1]==='"'){cur+='"';i++;}else quote=!quote;}else if(c===sep&&!quote){out.push(cur.trim());cur='';}else cur+=c;}out.push(cur.trim());return out;}
         var headers=row(lines[0]);
-        return lines.slice(1).map(function(line,idx){var vals=row(line), r={};headers.forEach(function(h,i){r[h]=vals[i]||'';});r.category=r.category||r.categoria||'Uncategorized';r.name=r.name||r.denumire||'';r.id=r.id||r.fid||String(idx+1);['X','Y','Z'].forEach(function(k){if(r[k]!==undefined)r[k]=parseFloat(String(r[k]).replace(',','.'));});return r;}).filter(function(r){return isFinite(r.X)&&isFinite(r.Y)&&isFinite(r.Z);});
+        var catH=findHeader(headers,['category','categoria']), nameH=findHeader(headers,['name','denumire']), idH=findHeader(headers,['id','fid']);
+        var rows=lines.slice(1).map(function(line,idx){var vals=row(line), r={};headers.forEach(function(h,i){r[h]=vals[i]||'';});r.category=(catH?r[catH]:'')||'Uncategorized';r.name=nameH?r[nameH]:'';r.id=(idH&&r[idH])?r[idH]:String(idx+1);return r;});
+        rows.headers=headers;
+        return rows;
+    }
+    function findHeader(headers,names){for(var i=0;i<names.length;i++)for(var j=0;j<headers.length;j++)if(String(headers[j]).trim().toLowerCase()===names[i])return headers[j];return null;}
+    function num(v){return parseFloat(String(v==null?'':v).trim().replace(',','.'));}
+    function toPoints(rows) {
+        var headers=rows.headers||[];
+        var hx=findHeader(headers,['x']), hy=findHeader(headers,['y']), hz=findHeader(headers,['z']);
+        var hlat=findHeader(headers,['latitude','lat']), hlon=findHeader(headers,['longitude','lng','lon']);
+        var geo=function(r,latV,lonV){r.lat=latV;r.lon=lonV;r.lng=lonV;return r;};
+        if(hx&&hy&&hz){
+            rows=rows.map(function(r){r[hx]=num(r[hx]);r[hy]=num(r[hy]);r[hz]=num(r[hz]);return r;}).filter(function(r){return isFinite(r[hx])&&isFinite(r[hy])&&isFinite(r[hz]);});
+            if(!rows.length) return [];
+            if(!LidarGeo.looks_like_ecef(rows,hx,hy,hz)&&rows.every(function(r){return Math.abs(r[hx])<=180&&Math.abs(r[hy])<=90;}))
+                return rows.map(function(r){return geo(r,r[hy],r[hx]);}); // QGIS-style export: X/Y are degrees, not ECEF
+            return LidarGeo.load_points(rows,hx,hy,hz).map(function(p){p.lng=p.lon;return p;});
+        }
+        if(hlat&&hlon)
+            return rows.map(function(r){return geo(r,num(r[hlat]),num(r[hlon]));}).filter(function(r){return isFinite(r.lat)&&isFinite(r.lon)&&Math.abs(r.lat)<=90&&Math.abs(r.lon)<=180;});
+        throw new Error('CSV must contain latitude/longitude (EPSG:4326) or X/Y/Z (EPSG:4936 ECEF) columns — found: '+(headers.join(', ')||'none'));
     }
     function heritageRecords() {
         var data=window._localLayerData||{}, out=[];
@@ -100,7 +129,7 @@
     }
     function setActive(on) { active=on; if(!map)return; var row=document.getElementById('lidarScannerRow'); if(row)row.classList.toggle('is-on',on); if(!on){ if(selectedMarker)map.removeLayer(selectedMarker);if(selectionCircle)map.removeLayer(selectionCircle);if(resultsLayer)resultsLayer.clearLayers();selected=null;map.off('click',onMapClick);setStatus('Choose a point on the map / Alege un punct pe harta'); } else {map.on('click',onMapClick); load();} }
     function onMapClick(e){ if(active&&!scanning)drawSelection(e.latlng); }
-    function load(){if(pointsPromise)return pointsPromise;pointsPromise=fetch(DATA_URL).then(function(r){if(!r.ok)throw Error('CSV '+r.status);return r.text();}).then(function(t){points=LidarGeo.load_points(parseCsv(t),'X','Y','Z');setStatus(points.length+' points loaded / puncte încărcate — choose a point on the map');return points;}).catch(function(e){pointsPromise=null;console.warn('[LIDAR Scanner]',e);setStatus('Invalid EPSG:4936 CSV / CSV geocentric invalid');throw e;});return pointsPromise;}
+    function load(){if(pointsPromise)return pointsPromise;pointsPromise=fetch(DATA_URL).then(function(r){if(!r.ok)throw Error('CSV '+r.status);return r.text();}).then(function(t){points=toPoints(parseCsv(t));setStatus(points.length+' points loaded / puncte încărcate — choose a point on the map');return points;}).catch(function(e){pointsPromise=null;console.warn('[LIDAR Scanner]',e);setStatus('Invalid CSV / CSV invalid — need latitude,longitude or X,Y,Z columns');throw e;});return pointsPromise;}
     function wire(){ map=window._dlMap; if(!map){setTimeout(wire,200);return;} document.getElementById('lidarScannerToggle').addEventListener('change',function(){setActive(this.checked);}); document.getElementById('lidarScannerDistance').addEventListener('input',function(){document.getElementById('lidarScannerDistanceValue').textContent=this.value+' km';if(selected)selectionCircle.setRadius(+this.value*1000);}); document.getElementById('lidarScannerRun').addEventListener('click',run); setStatus('Choose a point on the map / Alege un punct pe harta'); }
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
     window.toggleLidarScannerLayer=setActive;
