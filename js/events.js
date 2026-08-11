@@ -424,7 +424,10 @@
 
     // Ensure an event exists on Supabase so foreign key constraints in event_inquiries don't fail
     async function ensureEventOnServer(ev) {
-        if (!window.supabaseClient || !ev || !ev.id) return;
+        if (!window.supabaseClient || !ev || !ev.id) {
+            console.warn('[Events] Supabase client not available - event saved locally only');
+            return false;
+        }
         try {
             var payload = {
                 id: ev.id,
@@ -443,10 +446,13 @@
             };
             var res = await window.supabaseClient.from('events').upsert([payload], { onConflict: 'id' });
             if (res && res.error) {
-                console.warn('Supabase upsert event warning:', res.error);
+                console.error('[Events] Failed to save event to Supabase:', res.error);
+                return false;
             }
+            return true;
         } catch (e) {
-            console.warn('ensureEventOnServer error:', e);
+            console.error('[Events] ensureEventOnServer error:', e);
+            return false;
         }
     }
 
@@ -699,7 +705,7 @@
                 created_at: new Date().toISOString()
             };
 
-            await ensureEventOnServer(newEvent);
+            var savedToServer = await ensureEventOnServer(newEvent);
 
             eventsData.push(newEvent);
             saveLocalEvents(eventsData);
@@ -708,7 +714,14 @@
             }
             refreshEventsMap();
             modal.remove();
-            alert(isRo ? 'Eveniment creat cu succes!' : 'Event created successfully!');
+
+            if (savedToServer) {
+                alert(isRo ? 'Eveniment creat cu succes!' : 'Event created successfully!');
+            } else {
+                alert(isRo
+                    ? 'Eveniment creat local. Alți utilizatori nu îl vor vedea până când conexiunea la server nu este restabilită.'
+                    : 'Event created locally. Other users will not see it until server connection is restored.');
+            }
         });
     }
 
@@ -1398,8 +1411,15 @@
 
     // ── EVENTS PANEL (Manage Account -> Events or navbar Events) ──
     window.openEvents = function () {
+        // Close desktop user menu
         var menu = document.getElementById('userMenu');
         if (menu) menu.classList.add('hidden');
+
+        // Close PWA dropdowns
+        var pwaDropdowns = document.querySelectorAll('#pwaBottomBar .pwa-dropdown');
+        pwaDropdowns.forEach(function(dd) { dd.classList.remove('open'); });
+        var pwaTriggers = document.querySelectorAll('#pwaBottomBar .pwa-bar-trigger');
+        pwaTriggers.forEach(function(tr) { tr.classList.remove('active'); });
 
         var user = getCurrentUser();
         if (!user) {
