@@ -3845,7 +3845,7 @@
                     leafletLayer: null
                 },
                 ro2m: {
-                    label: 'Alte zone / Other areas',
+                    label: 'Romania 2-5m/pixel',
                     enabled: false,
                     opacity: 0,
                     type: 'xyz',
@@ -4136,7 +4136,7 @@
                 if (masterToggle && val > 0 && !_lidarVisible) { masterToggle.checked = true; window.toggleLidarLayer(true); }
             };
 
-            // ── Public: Ro2m (Alte zone / Other areas) opacity slider ──
+            // ── Public: Romania 2-5m/pixel opacity slider ──
             window.setLidarRo2mOpacity = function(val) {
                 var opacity = val / 100;
                 var cfg = LIDAR_SUB_LAYERS['ro2m'];
