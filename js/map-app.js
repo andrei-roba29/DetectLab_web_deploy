@@ -9442,8 +9442,11 @@
                 //     when there aren't any.
                 var SAT60_LOAD_MIN_ZOOM = 11;
                 var SAT60_LOAD_NATIVE_MAX = 15;  // tiles are cached up to maxNativeZoom
-                var SAT60_LOAD_MAX_JOBS = 2000;  // safety cap for very large viewports
+                var SAT60_LOAD_MAX_JOBS = 2000;  // per-zoom-level job budget for a press
                 var _sat60LoadingHere = false;
+                // Monotonic token so a finished load can never clobber the
+                // state of a newer load that started after it.
+                var _sat60LoadSeq = 0;
 
                 function _sat60Lang() {
                     var lang = 'ro';
@@ -9686,13 +9689,98 @@
                     return true;
                 }
 
-                // ── The button handler ─────────────────────────────────────
-                // THE ONLY FETCH TRIGGER of the Satellite imagery 60's layer.
-                // Loads the 60s imagery tiles ONLY for the current viewport
-                // (all Corona passes × visible tiles inside Romania) and tells
-                // the user whether any imagery exists there ("No images here"
-                // / "Nu există imagini aici" when there aren't any).
-                window.loadSatellite60sHere = function () {
+                // ── Progress + incremental-render helpers ───────────────────
+                // The pill at the bottom of the map shows a live counter while
+                // the probe runs ("… zoom 12 (412/1200)"), so a big viewport no
+                // longer feels like a silent 10-minute freeze.
+                function _sat60Progress(p, loadToken, zoom) {
+                    if (!p || !p.total || loadToken !== _sat60LoadSeq) return;
+                    var msgEl = document.getElementById('satellite60sLoadMsg');
+                    if (!msgEl) return;
+                    msgEl.style.display = 'block';
+                    msgEl.textContent = _sat60T('sat60_progress_zoom', 'Loading 1960s imagery… zoom {z} ({done}/{total})')
+                        .replace('{z}', String(zoom))
+                        .replace('{done}', String(p.done))
+                        .replace('{total}', String(p.total));
+                    msgEl.className = 'sat60-msg';
+                }
+
+                function _sat60LayerByLabel(label) {
+                    var layers = window._sat60FrameLayers || [];
+                    for (var i = 0; i < layers.length; i++) {
+                        var lyr = layers[i];
+                        if (!lyr || !lyr.options) continue;
+                        var ln = lyr.options.coronaLayer || lyr.options.layers || '';
+                        if (ln === label) return lyr;
+                    }
+                    return null;
+                }
+
+                // Build the WMS URL for one tile. Prefers the layer's own
+                // getTileUrl (which carries Leaflet's exact SRS/BBOX format),
+                // but falls back to a hand-built EPSG:900913 URL if the
+                // sublayer was never attached to the map and its `_crs` is not
+                // set yet — so the probe never silently skips a tile.
+                function _sat60TileUrl(layer, coords) {
+                    try {
+                        var u = layer.getTileUrl(coords);
+                        if (u) return u;
+                    } catch (e) {}
+                    var layerName = (layer.options && (layer.options.coronaLayer || layer.options.layers)) || 'corona';
+                    return _sat60BuildWmsUrl(layerName, coords);
+                }
+
+                // Called by coronaProbeTiles for EVERY tile that turns out to
+                // contain imagery. If the corresponding sublayer already has a
+                // (hidden, empty) <img> element for that tile, inject the blob
+                // URL straight into it — the imagery appears tile-by-tile as
+                // the probe runs instead of only after the whole load finishes
+                // (which is what produced the "10 minutes of blank map, then
+                // everything pops in" experience). Returns true when the URL
+                // was handed to a map tile (ownership transferred), false when
+                // the probe should revoke it.
+                function _sat60InjectTile(layerName, z, x, y, blobUrl) {
+                    try {
+                        var layer = _sat60LayerByLabel(layerName);
+                        if (!layer || !layer._map || !layer._tiles) return false;
+                        var t = layer._tiles[x + ':' + y + ':' + z];
+                        if (!t || !t.el) return false;
+                        var el = t.el;
+                        var jk = el._coronaJobKey;
+                        if (jk && layer._blobUrls && layer._blobUrls[jk]) {
+                            try { URL.revokeObjectURL(layer._blobUrls[jk]); } catch (e2) {}
+                        }
+                        el.src = blobUrl;
+                        el.style.display = '';
+                        if (jk && layer._blobUrls) layer._blobUrls[jk] = blobUrl;
+                        return true;
+                    } catch (e) {
+                        return false;
+                    }
+                }
+
+                // ── The load runner (2026-08) ────────────────────────────────
+                // Pressing "Load images here" / "Încarcă imagini aici" fetches
+                // ALL tiles for the viewport visible AT PRESS TIME, at the
+                // current zoom level AND every deeper zoom level up to
+                // maxNativeZoom (15). Deeper levels are expanded only from the
+                // tiles that actually had imagery one level up (2×2 children),
+                // so a single press covers the whole area for zooming in
+                // without exploding into hundreds of thousands of requests on
+                // areas that have no imagery.
+                //
+                // While the load runs:
+                //   • moving/zooming the map does NOT cancel the load and does
+                //     NOT start fetching for the new viewport — the original
+                //     press keeps running to completion (user requirement:
+                //     "if user moves on the screen while tiles are fetched, it
+                //     doesnt stop the initial process and starts fetching for
+                //     new viewport");
+                //   • the button stays disabled ("Loading…") until every zoom
+                //     level finishes; a NEW viewport always needs a NEW button
+                //     press, and a press always fetches exactly the viewport
+                //     that was visible when it was pressed.
+                function _sat60RunLoad() {
                     _sat60EnsureUi();
                     var msgEl = document.getElementById('satellite60sLoadMsg');
                     if (!msgEl) return;
@@ -9728,6 +9816,7 @@
                     }
 
                     _sat60LoadingHere = true;
+                    var loadToken = ++_sat60LoadSeq;
                     _sat60UpdateLoadBtn();
                     var btn = document.getElementById('satellite60sLoadBtn');
                     if (btn) {
@@ -9736,75 +9825,185 @@
                         var lblEl = btn.querySelector('.t');
                         if (lblEl) lblEl.textContent = _sat60T('sat60_loading', 'Loading…');
                     }
-                    _sat60SetLoadMsg(_sat60T('sat60_loading', 'Loading 1960s imagery for the visible area…'), false);
 
-                    // Tile range covering ONLY the user's current viewport.
-                    var zoom = Math.min(Math.round(z), SAT60_LOAD_NATIVE_MAX);
-                    var maxTile = Math.pow(2, zoom);
-                    var b = map.getBounds();
-                    var minX = Math.max(0, Math.floor((b.getWest() + 180) / 360 * maxTile));
-                    var maxX = Math.min(maxTile - 1, Math.floor((b.getEast() + 180) / 360 * maxTile));
-                    var minY = Math.max(0, Math.floor(_sat60LatToTileY(b.getNorth(), zoom)));
-                    var maxY = Math.min(maxTile - 1, Math.floor(_sat60LatToTileY(b.getSouth(), zoom)));
+                    // The viewport visible WHEN THE BUTTON WAS PRESSED — this is
+                    // the area the whole load (every zoom level) covers, even if
+                    // the user pans/zooms away while it runs.
+                    var pressZoom = Math.min(Math.round(z), SAT60_LOAD_NATIVE_MAX);
+                    var pressBounds = map.getBounds();
 
-                    // Build the WMS URL for one tile. Prefers the layer's own
-                    // getTileUrl (which carries Leaflet's exact SRS/BBOX
-                    // format), but falls back to a hand-built EPSG:900913 URL
-                    // if the sublayer was never attached to the map and its
-                    // `_crs` is not set yet — so the probe never silently
-                    // skips a tile (skipping everything was a past cause of
-                    // "No images here").
-                    function _sat60TileUrl(layer, coords) {
-                        try {
-                            var u = layer.getTileUrl(coords);
-                            if (u) return u;
-                        } catch (e) {}
-                        var layerName = (layer.options && (layer.options.coronaLayer || layer.options.layers)) || 'corona';
-                        return _sat60BuildWmsUrl(layerName, coords);
+                    // Job budget per zoom level: the current zoom gets the full
+                    // budget (it is what is on screen), deeper levels get a
+                    // decreasing share (2000 → 1000 → 500 → 250 → 125) so a
+                    // whole-viewport press stays feasible.
+                    function stageCap(depth) {
+                        var c = Math.floor(SAT60_LOAD_MAX_JOBS / Math.pow(2, depth));
+                        return Math.max(150, c);
                     }
 
-                    // Jobs: every pass layer × every visible tile inside Romania.
-                    var jobs = [];
-                    window._sat60FrameLayers.forEach(function (layer) {
-                        if (!layer) return;
-                        var layerName = (layer.options && (layer.options.coronaLayer || layer.options.layers)) || 'corona';
-                        for (var tx = minX; tx <= maxX; tx++) {
-                            for (var ty = minY; ty <= maxY; ty++) {
-                                var coords = { x: tx, y: ty, z: zoom };
-                                if (!_sat60TileInRomania(coords)) continue;
-                                var url = _sat60TileUrl(layer, coords);
-                                if (!url) continue;
-                                jobs.push({ url: url, layerLabel: layerName, z: zoom, x: tx, y: ty });
+                    // Tile range of the PRESSED viewport at `zoom`, clipped to
+                    // Romania, one job per pass layer, centre-first priority.
+                    function buildViewportJobs(zoom) {
+                        var maxTile = Math.pow(2, zoom);
+                        var b = pressBounds;
+                        var minX = Math.max(0, Math.floor((b.getWest() + 180) / 360 * maxTile));
+                        var maxX = Math.min(maxTile - 1, Math.floor((b.getEast() + 180) / 360 * maxTile));
+                        var minY = Math.max(0, Math.floor(_sat60LatToTileY(b.getNorth(), zoom)));
+                        var maxY = Math.min(maxTile - 1, Math.floor(_sat60LatToTileY(b.getSouth(), zoom)));
+                        var jobs = [];
+                        var centerPt = null;
+                        try { centerPt = map.project(map.getCenter(), zoom); } catch (e) {}
+                        window._sat60FrameLayers.forEach(function (layer) {
+                            if (!layer) return;
+                            var layerName = (layer.options && (layer.options.coronaLayer || layer.options.layers)) || 'corona';
+                            for (var tx = minX; tx <= maxX; tx++) {
+                                for (var ty = minY; ty <= maxY; ty++) {
+                                    var coords = { x: tx, y: ty, z: zoom };
+                                    if (!_sat60TileInRomania(coords)) continue;
+                                    var url = _sat60TileUrl(layer, coords);
+                                    if (!url) continue;
+                                    var priority = 0;
+                                    if (centerPt) {
+                                        priority = -Math.round(Math.abs((tx + 0.5) * 256 - centerPt.x) +
+                                                               Math.abs((ty + 0.5) * 256 - centerPt.y));
+                                    }
+                                    jobs.push({ url: url, layerLabel: layerName, z: zoom, x: tx, y: ty, priority: priority });
+                                }
+                            }
+                        });
+                        return jobs;
+                    }
+
+                    // Children (2×2 per tile) of the tiles that HAD imagery at
+                    // zoom-1, clipped to Romania. Only these are worth fetching
+                    // at deeper zooms — a child of an empty tile is empty too.
+                    function buildChildJobs(zoom, parentFound) {
+                        var jobs = [];
+                        var seen = {};
+                        var centerPt = null;
+                        try { centerPt = map.project(map.getCenter(), zoom); } catch (e) {}
+                        for (var layerName in parentFound) {
+                            var tiles = parentFound[layerName];
+                            if (!tiles) continue;
+                            var layer = _sat60LayerByLabel(layerName);
+                            if (!layer) continue;
+                            for (var key in tiles) {
+                                var xy = key.split(',');
+                                var px = parseInt(xy[0], 10);
+                                var py = parseInt(xy[1], 10);
+                                for (var dy = 0; dy < 2; dy++) {
+                                    for (var dx = 0; dx < 2; dx++) {
+                                        var coords = { x: px * 2 + dx, y: py * 2 + dy, z: zoom };
+                                        if (!_sat60TileInRomania(coords)) continue;
+                                        var dk = layerName + '|' + coords.x + ',' + coords.y;
+                                        if (seen[dk]) continue;
+                                        seen[dk] = true;
+                                        var url = _sat60TileUrl(layer, coords);
+                                        if (!url) continue;
+                                        var priority = 0;
+                                        if (centerPt) {
+                                            priority = -Math.round(Math.abs((coords.x + 0.5) * 256 - centerPt.x) +
+                                                                   Math.abs((coords.y + 0.5) * 256 - centerPt.y));
+                                        }
+                                        jobs.push({ url: url, layerLabel: layerName, z: zoom, x: coords.x, y: coords.y, priority: priority });
+                                    }
+                                }
                             }
                         }
-                    });
+                        return jobs;
+                    }
 
-                    if (jobs.length === 0) {
+                    var totals = { total: 0, found: 0, empty: 0, failed: 0, cancelled: 0 };
+
+                    // One zoom level of the pyramid. depth 0 = the pressed
+                    // viewport at the current zoom; depth n = children of the
+                    // imagery found at depth n-1.
+                    function runStage(zoom, depth, parentFound, cb) {
+                        var jobs = (depth === 0) ? buildViewportJobs(zoom) : buildChildJobs(zoom, parentFound);
+                        if (jobs.length === 0) { cb(); return; }
+                        var cap = stageCap(depth);
+                        if (jobs.length > cap) {
+                            jobs = jobs.sort(function (a, b2) { return b2.priority - a.priority; }).slice(0, cap);
+                        }
+
+                        // Tiles that turn out to contain imagery at THIS zoom —
+                        // they seed the next (deeper) stage's job list.
+                        var foundHere = {};
+
+                        _sat60SetLoadMsg(
+                            _sat60T('sat60_progress_zoom', 'Loading 1960s imagery… zoom {z} ({done}/{total})')
+                                .replace('{z}', String(zoom))
+                                .replace('{done}', '0')
+                                .replace('{total}', String(jobs.length)),
+                            false
+                        );
+
+                        if (typeof window.coronaProbeTiles === 'function') {
+                            window.coronaProbeTiles(jobs, {
+                                onProgress: function (p) { _sat60Progress(p, loadToken, zoom); },
+                                onTileFound: function (job, blobUrl) {
+                                    var m = foundHere[job.layerLabel] || (foundHere[job.layerLabel] = {});
+                                    m[job.x + ',' + job.y] = true;
+                                    return _sat60InjectTile(job.layerLabel, job.z, job.x, job.y, blobUrl);
+                                }
+                            }).then(function (res) {
+                                if (loadToken !== _sat60LoadSeq) { cb(); return; }
+                                totals.total += res.total;
+                                totals.found += res.found;
+                                totals.empty += res.empty;
+                                totals.failed += res.failed;
+                                totals.cancelled += res.cancelled;
+                                var foundCount = 0;
+                                for (var l in foundHere) foundCount += Object.keys(foundHere[l]).length;
+                                // No deeper zoom if we reached max, or if
+                                // nothing had imagery here to expand.
+                                if (zoom >= SAT60_LOAD_NATIVE_MAX || res.found === 0 || foundCount === 0) {
+                                    cb();
+                                    return;
+                                }
+                                runStage(zoom + 1, depth + 1, foundHere, cb);
+                            });
+                        } else {
+                            // Degraded fallback if the optimised module failed
+                            // to load: plain fetches with a small pool, single
+                            // zoom level (no pyramid).
+                            var results = { total: jobs.length, found: 0, empty: 0, failed: 0, cancelled: 0, foundTiles: [] };
+                            var pending = jobs.length;
+                            var cursor = 0;
+                            function fetchNext() {
+                                if (cursor >= jobs.length) return;
+                                var job = jobs[cursor++];
+                                fetch(job.url, { mode: 'cors', credentials: 'omit' }).then(function (res) {
+                                    if (!res.ok) results.empty++;
+                                    else if ((res.headers.get('content-type') || '').indexOf('image/') === -1) results.empty++;
+                                    else results.found++;
+                                }).catch(function () { results.failed++; }).then(function () {
+                                    pending--;
+                                    if (pending === 0) {
+                                        totals.total += results.total;
+                                        totals.found += results.found;
+                                        totals.empty += results.empty;
+                                        totals.failed += results.failed;
+                                        cb();
+                                    } else {
+                                        fetchNext();
+                                    }
+                                });
+                            }
+                            for (var i = 0; i < 6 && i < jobs.length; i++) fetchNext();
+                        }
+                    }
+
+                    runStage(pressZoom, 0, null, function () {
+                        if (loadToken !== _sat60LoadSeq) return;
                         _sat60LoadingHere = false;
                         if (btn) btn.classList.remove('loading');
                         _sat60UpdateLoadBtn();
-                        _sat60SetLoadMsg(_sat60T('sat60_no_images', 'No images here'), true);
-                        return;
-                    }
 
-                    // Safety cap: keep only the jobs closest to the viewport centre.
-                    if (jobs.length > SAT60_LOAD_MAX_JOBS) {
-                        var centerPt = map.project(map.getCenter(), zoom);
-                        jobs = jobs.map(function (j) {
-                            var d = Math.abs((j.x + 0.5) * 256 - centerPt.x) + Math.abs((j.y + 0.5) * 256 - centerPt.y);
-                            return { job: j, d: d };
-                        }).sort(function (a, b2) { return a.d - b2.d; })
-                          .slice(0, SAT60_LOAD_MAX_JOBS)
-                          .map(function (e) { return e.job; });
-                    }
-
-                    function finishLoad(res) {
-                        _sat60LoadingHere = false;
-                        if (btn) btn.classList.remove('loading');
-                        _sat60UpdateLoadBtn();
-                        // Re-request the layer's own viewport tiles — the probe
-                        // already filled the IndexedDB cache, so the imagery now
-                        // renders on the map WITHOUT any additional fetch (the
+                        // Safety net: re-request the layer's own viewport tiles
+                        // — the probe already filled the IndexedDB cache, so
+                        // tiles whose <img> elements appeared after a stage
+                        // finished now render WITHOUT any additional fetch (the
                         // sublayers are manualOnly: cache hit → show, cache
                         // miss → empty; no network either way).
                         window._sat60FrameLayers.forEach(function (layer) {
@@ -9812,13 +10011,14 @@
                                 try { layer.redraw(); } catch (e) {}
                             }
                         });
-                        if (res.found > 0) {
+
+                        if (totals.found > 0) {
                             _sat60SetLoadMsg(
                                 _sat60T('sat60_found', 'Loaded {n} tile(s) — 1960s imagery is available here')
-                                    .replace('{n}', res.found),
+                                    .replace('{n}', totals.found),
                                 false
                             );
-                        } else if (res.empty === 0) {
+                        } else if (totals.empty === 0) {
                             // Nothing came back as a definitive "no imagery"
                             // answer — every request failed (network/CORS/
                             // server). Telling the user "No images here" would
@@ -9827,31 +10027,14 @@
                         } else {
                             _sat60SetLoadMsg(_sat60T('sat60_no_images', 'No images here'), true);
                         }
-                    }
+                    });
+                }
 
-                    if (typeof window.coronaProbeTiles === 'function') {
-                        window.coronaProbeTiles(jobs).then(finishLoad);
-                    } else {
-                        // Fallback if the optimised module failed to load:
-                        // plain fetches with a small concurrency pool.
-                        var results = { total: jobs.length, found: 0, empty: 0, failed: 0, foundTiles: [] };
-                        var pending = jobs.length;
-                        var cursor = 0;
-                        function fetchNext() {
-                            if (cursor >= jobs.length) return;
-                            var job = jobs[cursor++];
-                            fetch(job.url, { mode: 'cors', credentials: 'omit' }).then(function (res) {
-                                if (!res.ok) results.empty++;
-                                else if ((res.headers.get('content-type') || '').indexOf('image/') === -1) results.empty++;
-                                else results.found++;
-                            }).catch(function () { results.failed++; }).then(function () {
-                                pending--;
-                                if (pending === 0) finishLoad(results);
-                                else fetchNext();
-                            });
-                        }
-                        for (var i = 0; i < 6 && i < jobs.length; i++) fetchNext();
-                    }
+                // The button — the ONLY fetch trigger of the Satellite 60's
+                // layer. It always loads the viewport visible when it is
+                // pressed, at the current zoom and every deeper zoom level.
+                window.loadSatellite60sHere = function () {
+                    _sat60RunLoad();
                 };
 
                 discoverCoronaLayers(function (layerNames) {
@@ -9925,6 +10108,11 @@
                 // (toggleSatellite60sMap also calls _sat60SyncOnZoom() so the
                 // initial toggle, page-load toggle and zoom crossings all
                 // converge on the same add/remove decision.)
+                // NOTE (2026-08): zooming deliberately does NOT touch an
+                // in-flight "Load images here" run — per the user, moving the
+                // map must neither cancel the current load nor start a new one;
+                // a new viewport is only ever fetched by pressing the button
+                // again (which loads the viewport visible at that press).
                 map.on('zoomend', _sat60SyncOnZoom);
 
                 window.toggleSatellite60sMap = function (on) {
@@ -9973,8 +10161,13 @@
                             } catch (e) {}
                         }
                     } else {
-                        // Layer off: just detach — tile elements are removed
-                        // by Leaflet as part of removeLayer().
+                        // Layer off: detach the group — tile elements are
+                        // removed by Leaflet as part of removeLayer(). An
+                        // in-flight "Load images here" run is deliberately left
+                        // running (its results land in the IndexedDB cache and
+                        // render the next time the layer is switched on); the
+                        // user asked that moving/toggling never stop the
+                        // initial process.
                         if (window._sat60MapLayer) {
                             map.hasLayer(window._sat60MapLayer) && map.removeLayer(window._sat60MapLayer);
                         }

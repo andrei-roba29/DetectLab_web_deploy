@@ -348,3 +348,103 @@ the same imagery is served fine by the plain WMS rendering endpoint
 - `test-sat60-zoom-guard.js` — unchanged and still green (DOM-flooding guard).
 
 Run: `node test-sat60-ondemand.js && node test-sat60-discovery.js && node test-sat60-bottom-ui.js && node test-sat60-zoom-guard.js`
+
+---
+
+## 2026-08-11 Fix round — "10 minutes for 2000 tiles + imagery vanishes on zoom-in"
+
+### User report
+
+> "it took almost 10 min to load 'satellite imagery 1960's' layer at a higher
+> zoom level. 2000 tiles. After zooming in they glitched and disappeared and
+> the layer starting fetching new tiles for a different zoom level."
+
+and the clarified requirement (2026-08-11, same day):
+
+> "when 'load tiles here' is pressed, it should load all the tiles for the
+> viewport at zoom levels >= current zoom level when button is pressed. Also,
+> if user moves on the screen while tiles are fetched, it doesnt stop the
+> initial process and starts fetching for new viewport, for new fetch button
+> always need to be pressed and it will always fetch tiles for the specific
+> viewport visible when button is pressed."
+
+### Problems
+
+1. **A "Load images here" run of 2000 tiles (the `SAT60_LOAD_MAX_JOBS` cap)
+   took ~10 minutes.** Every probe tile went through the shared map-tile queue
+   capped at **8 concurrent** (4 mobile), each tile could cost **2 HTTP
+   requests** (GWC tile-cache miss → plain-WMS retry), every tile did a full
+   256×256 `getImageData()` scan **on the main thread**, definitively-empty
+   (fully transparent) tiles were **re-fetched on every re-probe**, and stale
+   probes were **never cancelled** when the user moved away.
+2. **After zooming in the imagery vanished and "the layer started fetching new
+   tiles for a different zoom level".** Tiles are cached per zoom level, so the
+   new zoom's tiles were cache misses → `manualOnly` renders them empty → blank
+   map. Found tiles only appeared after the WHOLE probe finished (one `redraw()`
+   at the end), so the map stayed blank for the entire ~10-minute load.
+
+### Final behaviour (matches the user's clarified spec)
+
+- **One press = the whole area, all zooms.** Pressing "Load images here" at
+  zoom Z loads the viewport visible AT PRESS TIME at Z **and** at every deeper
+  zoom up to `maxNativeZoom` (15) — so zooming in afterwards shows imagery
+  instead of a blank map, without pressing again.
+  - Deeper levels are **expanded from found tiles only** (the 2×2 children of
+    the tiles that had imagery one level up), so a press never explodes into
+    hundreds of thousands of requests on areas with no imagery.
+  - The current zoom gets the full job budget (2000); deeper levels get a
+    decreasing share (1000 → 500 → 250 → 125), centre-first, so a big-viewport
+    press stays feasible.
+- **Moving never stops or restarts the load.** Panning/zooming while tiles are
+  being fetched does NOT cancel the initial process and does NOT start fetching
+  for the new viewport. The button stays disabled ("Loading…") until every zoom
+  level finishes; a NEW viewport always needs a NEW button press, and a press
+  always fetches exactly the viewport visible when it was pressed. (Earlier in
+  the day this repo had an auto-continue/cancel-on-zoom design; it was removed
+  after the user clarified that moving must not trigger anything.)
+
+### Fixes — `js/corona-wms-layer.js`
+
+| # | Change | Effect |
+|---|--------|--------|
+| 1 | **Separate probe pool**: `CONFIG.probeConcurrent` (12 desktop / 6 mobile) vs. the map-tile pool (8/4). Both draw from the same priority-ordered queue, so probes never starve map tiles. | 2000-tile loads: ~2–3 min worst case instead of ~10 (halved again by #4). |
+| 2 | **Cheap transparency check**: one reusable 256×256 scratch canvas; `getImageData` scan samples every 4th pixel (16× less main-thread work per tile). | Probe decode no longer freezes the UI; 2000 tiles ≈ 4× faster decode. |
+| 3 | **Persisted "empty" marker** (`IDB.setEmpty`, record `state:'empty'`): a tile that is definitively empty (4xx on both endpoints, non-image, or fully transparent on both GWC+WMS) is remembered in IndexedDB (TTL'd) **and** in the session negative cache. | Re-probing the same area = **zero** network requests for the empty tiles; the old behaviour re-fetched every transparent tile on every re-probe. |
+| 4 | **GWC→WMS fallback that learns**: after `CONFIG.gwcMissSkipAfter` (6) tile-cache misses for one layer+zoom (each served fine by plain WMS), later probes of that layer+zoom skip GWC entirely and go straight to `/geoserver/wms`. | Halves the request count on zooms the tile cache cannot serve (the common "400/404/transparent placeholder" case). |
+| 5 | **Probe cancellation API**: `CoronaWmsQueue.cancelProbes()` drops every queued probe job and aborts in-flight fetches (AbortController); cancelled jobs resolve the probe promise with a `cancelled` count. Map-tile jobs are never touched. (Exposed for console/troubleshooting use; the map UI deliberately never calls it — see "Moving never stops the load".) | A stuck/hung load can be stopped from the console. |
+| 6 | **Progress + incremental rendering**: `coronaProbeTiles(jobs, { onProgress, onTileFound })`. `onProgress` fires ~every 15 settled tiles; `onTileFound(job, blobUrl)` hands each found tile's blob URL to the caller (which may take ownership and return `true`). | The bottom pill shows "… zoom 12 (412/1200)"; the map fills **tile-by-tile as they arrive** instead of after the whole probe. |
+
+### Fixes — `js/map-app.js` (Sat60 IIFE)
+
+| # | Change | Effect |
+|---|--------|--------|
+| 1 | `loadSatellite60sHere` → `_sat60RunLoad()`: builds the **zoom pyramid** — stage 0 = the pressed viewport at the current zoom (all passes × visible tiles ∩ Romania, centre-first, capped at `SAT60_LOAD_MAX_JOBS`); stage n = the 2×2 children of the tiles that **had imagery** at stage n−1 (∩ Romania, capped 2000→1000→500→250→125); stops at `maxNativeZoom` 15 or when a stage finds no imagery. The pressed viewport (`pressBounds`) is captured at press time and used for every stage. | One press covers the area at the current zoom AND all deeper zooms → zooming in shows imagery, no vanish, no re-fetch storm. |
+| 2 | Every stage reports progress (`onProgress` → bottom pill "… zoom {z} ({done}/{total})", new `sat60_progress_zoom` translation) and injects found tiles instantly (`onTileFound` → `_sat60InjectTile`, which sets the matching sublayer `<img>`'s `src` when it exists). | The map fills while loading; the pill shows exactly which zoom level is being filled. |
+| 3 | **No cancellation and no auto-continue**: the `zoomend` handler only re-runs the z≥11 attach/detach guard (`_sat60SyncOnZoom`); toggle-off only detaches the layer group. A load runs to completion even if the user pans/zooms away; a new viewport is fetched only by pressing the button again. | Matches the user's spec: moving never stops the initial process and never starts fetching for the new viewport. |
+| 4 | A load token (`_sat60LoadSeq`) guards the final state update so an older load can never clobber a newer one. | No UI state races. |
+
+### Notes on behaviour kept intact
+
+- **Zero requests on toggle** (unchanged): sublayers remain `manualOnly`; the
+  button (zoom ≥ 11) is still the only manual fetch trigger.
+- **Zoom ≥ 11 gate / DOM-flooding guard** (unchanged): the layer group is only
+  attached to the map at z ≥ 11.
+- **GWC→WMS fallback correctness** (unchanged): a tile that misses on GWC is
+  still retried once on plain WMS before being declared empty — the learning
+  only kicks in after 6 misses per layer+zoom.
+
+### Regression tests
+
+- `test-sat60-ondemand.js` — extended: probe pool concurrency (12) vs. the
+  map-tile pool (8); `cancelProbes()` drops queued + aborts in-flight probe
+  jobs and resolves with the cancelled count; persisted-empty re-probe issues
+  zero fetches; `onProgress` + `onTileFound` callbacks fire. (The fake canvas
+  now returns a full 256×256 buffer and the fetch stub gained a hold/abort
+  mode to observe in-flight counts.)
+- `test-sat60-zoom-guard.js` — section 7 rewritten for the clarified spec:
+  pressing at z12 first probes z12, the same press auto-expands to z13/z14/z15
+  (pyramid), moving after the load starts NO new fetch, moving mid-load does
+  NOT stop/restart the initial process (exactly one z12 stage), and toggle-off
+  + zoom does not auto-fetch.
+
+Run: `node test-sat60-ondemand.js && node test-sat60-discovery.js && node test-sat60-bottom-ui.js && node test-sat60-zoom-guard.js`
