@@ -1,13 +1,13 @@
 /* DetectLab — premium LIDAR Scanner
- * Reads data/lidar_scanner_points.csv. Expected columns: latitude/lat, longitude/lng/lon,
- * and category/categoria. Optional name/denumire and id columns are preserved in popups.
+ * Reads data/lidar_scanner_points.csv as EPSG:4936 ECEF (X/Y/Z), then transforms
+ * the complete file to WGS84 once before coordinate searches.
  */
 (function () {
     'use strict';
     var DATA_URL = 'data/lidar_scanner_points.csv';
     var HERITAGE_RADIUS_M = 600;
     var map = null, resultsLayer = null, selectedMarker = null, selectionCircle = null;
-    var points = [], selected = null, active = false, scanning = false;
+    var points = [], selected = null, active = false, scanning = false, pointsPromise = null;
     var lidarBounds = {
         // County datasets already present in the LIDAR group.
         hd: [[45.20, 22.30], [46.15, 23.25]], ar: [[45.80, 20.85], [46.65, 22.70]],
@@ -27,13 +27,12 @@
     function inAnyLidar(ll) { return Object.keys(lidarBounds).some(function (k) { return inBounds(ll, lidarBounds[k]); }); }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
     function parseCsv(text) {
-        var lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(function (x) { return x.trim(); });
-        if (!lines.length) return [];
-        var sep = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
-        function row(line) { var out=[], cur='', quote=false; for (var i=0;i<line.length;i++) { var c=line[i]; if(c==='"'){ if(quote && line[i+1]==='"'){cur+='"';i++;} else quote=!quote; } else if(c===sep&&!quote){out.push(cur.trim());cur='';} else cur+=c; } out.push(cur.trim()); return out; }
-        var head=row(lines[0]).map(function (h) { return h.toLowerCase().replace(/\s+/g,'_'); });
-        function val(r, names) { for(var i=0;i<names.length;i++){var j=head.indexOf(names[i]);if(j>=0&&r[j]!==undefined&&r[j]!=='')return r[j];} return ''; }
-        return lines.slice(1).map(function(line, idx){ var r=row(line), lat=parseFloat(String(val(r,['latitude','lat','y'])).replace(',','.')), lng=parseFloat(String(val(r,['longitude','lng','lon','long','x'])).replace(',','.')); if(!isFinite(lat)||!isFinite(lng))return null; return {lat:lat,lng:lng,category:val(r,['category','categoria','type','categorie'])||'Uncategorized',name:val(r,['name','denumire','title']),id:val(r,['id','fid'])||String(idx+1),raw:r}; }).filter(Boolean);
+        var lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(function(x){return x.trim();});
+        if(!lines.length)return [];
+        var sep=(lines[0].match(/;/g)||[]).length>(lines[0].match(/,/g)||[]).length?';':',';
+        function row(line){var out=[],cur='',quote=false;for(var i=0;i<line.length;i++){var c=line[i];if(c==='"'){if(quote&&line[i+1]==='"'){cur+='"';i++;}else quote=!quote;}else if(c===sep&&!quote){out.push(cur.trim());cur='';}else cur+=c;}out.push(cur.trim());return out;}
+        var headers=row(lines[0]);
+        return lines.slice(1).map(function(line,idx){var vals=row(line), r={};headers.forEach(function(h,i){r[h]=vals[i]||'';});r.category=r.category||r.categoria||'Uncategorized';r.name=r.name||r.denumire||'';r.id=r.id||r.fid||String(idx+1);['X','Y','Z'].forEach(function(k){if(r[k]!==undefined)r[k]=parseFloat(String(r[k]).replace(',','.'));});return r;}).filter(function(r){return isFinite(r.X)&&isFinite(r.Y)&&isFinite(r.Z);});
     }
     function heritageRecords() {
         var data=window._localLayerData||{}, out=[];
@@ -62,7 +61,7 @@
         if(!selected||scanning)return; scanning=true; var overlay=document.getElementById('lidarScannerLoading'); if(overlay)overlay.classList.add('visible');
         var radius=+document.getElementById('lidarScannerDistance').value*1000;
         setTimeout(function(){
-            var out=points.filter(function(p){return distance(selected,p)<=radius && inAnyLidar(p) && !isNearHeritage(p);});
+            var out=LidarGeo.scan(points, selected.lat, selected.lng, radius).filter(function(p){return inAnyLidar(p) && !isNearHeritage(p);});
             if(resultsLayer)resultsLayer.clearLayers(); else resultsLayer=L.layerGroup(); out.forEach(function(p){resultsLayer.addLayer(makeResult(p));}); resultsLayer.addTo(map);
             if(out.length){var b=L.latLngBounds(out.map(function(p){return [p.lat,p.lng];}));map.fitBounds(b.pad(.18),{maxZoom:14});setStatus(out.length+' result'+(out.length===1?'':'s')+' / rezultate');} else setStatus('No results / Niciun rezultat');
             if(overlay)overlay.classList.remove('visible'); scanning=false;
@@ -70,7 +69,7 @@
     }
     function setActive(on) { active=on; if(!map)return; var row=document.getElementById('lidarScannerRow'); if(row)row.classList.toggle('is-on',on); if(!on){ if(selectedMarker)map.removeLayer(selectedMarker);if(selectionCircle)map.removeLayer(selectionCircle);if(resultsLayer)resultsLayer.clearLayers();selected=null;map.off('click',onMapClick);setStatus('Choose a point on the map / Alege un punct pe harta'); } else {map.on('click',onMapClick); load();} }
     function onMapClick(e){ if(active&&!scanning)drawSelection(e.latlng); }
-    function load(){if(points.length)return;fetch(DATA_URL).then(function(r){if(!r.ok)throw Error('CSV '+r.status);return r.text();}).then(function(t){points=parseCsv(t);setStatus(points.length+' points loaded / puncte încărcate — choose a point on the map');}).catch(function(e){console.warn('[LIDAR Scanner]',e);setStatus('CSV unavailable / CSV indisponibil');});}
+    function load(){if(pointsPromise)return pointsPromise;pointsPromise=fetch(DATA_URL).then(function(r){if(!r.ok)throw Error('CSV '+r.status);return r.text();}).then(function(t){points=LidarGeo.load_points(parseCsv(t),'X','Y','Z');setStatus(points.length+' points loaded / puncte încărcate — choose a point on the map');return points;}).catch(function(e){pointsPromise=null;console.warn('[LIDAR Scanner]',e);setStatus('Invalid EPSG:4936 CSV / CSV geocentric invalid');throw e;});return pointsPromise;}
     function wire(){ map=window._dlMap; if(!map){setTimeout(wire,200);return;} document.getElementById('lidarScannerToggle').addEventListener('change',function(){setActive(this.checked);}); document.getElementById('lidarScannerDistance').addEventListener('input',function(){document.getElementById('lidarScannerDistanceValue').textContent=this.value+' km';if(selected)selectionCircle.setRadius(+this.value*1000);}); document.getElementById('lidarScannerRun').addEventListener('click',run); setStatus('Choose a point on the map / Alege un punct pe harta'); }
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
     window.toggleLidarScannerLayer=setActive;
