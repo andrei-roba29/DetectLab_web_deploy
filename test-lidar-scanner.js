@@ -240,10 +240,33 @@ async function main() {
         console.log('  ✅ B: latitude/longitude CSV loads + scans end-to-end');
     }
 
-    // ── Scenario C: header-only stub CSV (what the repo ships) is not an error ──
+    // ── Scenario C: shipped data/lidar_scanner_points.csv loads (guards the real artifact) ──
     {
-        const stubCsv = fs.readFileSync(path.join(__dirname, 'data/lidar_scanner_points.csv'), 'utf8');
-        const { sandbox, state, domElements } = makeSandbox({ csv: stubCsv, realLidarGeo: true });
+        const shippedCsv = fs.readFileSync(path.join(__dirname, 'data/lidar_scanner_points.csv'), 'utf8');
+        const { sandbox, state, domElements } = makeSandbox({ csv: shippedCsv, realLidarGeo: true, immediateTimeouts: true });
+
+        sandbox.window.toggleLidarScannerLayer(true);
+        await flushMicrotasks();
+
+        assert(domElements.lidarScannerStatus.textContent.startsWith('5 points loaded'),
+            'shipped CSV should load 5 points, got status: ' + domElements.lidarScannerStatus.textContent);
+        assert.strictEqual(state.warnings.length, 0, 'shipped CSV must not log CSV errors: ' + state.warnings.join(' | '));
+
+        // Scan next to the first shipped point (44.680496658, 22.532812357) — Caraș-Severin area.
+        state.mapEventListeners['click']({ latlng: { lat: 44.6805, lng: 22.5328 } });
+        domElements.lidarScannerRun.listeners['click']();
+        assert(domElements.lidarScannerStatus.textContent.startsWith('1 result'),
+            'scan in the Caraș-Severin area should find the shipped fortificație point, got: ' + domElements.lidarScannerStatus.textContent);
+        const c = state.createdCircles.find(x => x.options.radius === 100);
+        assert(c && Math.abs(c.latlng[0] - 44.680496658) < 1e-9 && Math.abs(c.latlng[1] - 22.532812357) < 1e-9,
+            'result circle should sit at the shipped coordinate, got ' + (c && JSON.stringify(c.latlng)));
+        assert(c._popup.includes('fortificație'), 'popup should carry the Romanian category: ' + c._popup);
+        console.log('  ✅ C: shipped CSV loads + scans (5 real points)');
+    }
+
+    // ── Scenario D: header-only CSV (no data rows yet) loads quietly ──
+    {
+        const { sandbox, state, domElements } = makeSandbox({ csv: 'id,latitude,longitude,category,name\n', realLidarGeo: true });
 
         sandbox.window.toggleLidarScannerLayer(true);
         await flushMicrotasks();
@@ -251,10 +274,36 @@ async function main() {
         assert(domElements.lidarScannerStatus.textContent.startsWith('0 points loaded'),
             'header-only CSV should load 0 points quietly, got status: ' + domElements.lidarScannerStatus.textContent);
         assert.strictEqual(state.warnings.length, 0, 'header-only CSV must not log CSV errors: ' + state.warnings.join(' | '));
-        console.log('  ✅ C: header-only CSV loads quietly');
+        console.log('  ✅ D: header-only CSV loads quietly');
     }
 
-    // ── Scenario D: CSV with unknown columns fails gracefully with a clear status ──
+    // ── Scenario E: Romanian headers (Latitudine,Longitudine,Categorie) — the user's actual file ──
+    {
+        const csvRo = 'Latitudine,Longitudine,Categorie\n' +
+                      '44.680496658,22.532812357,fortificație\n' +
+                      '44.746747673,22.418674167,burgus\n' +
+                      '46.936926644,21.671022392,tumul\n';
+        const { sandbox, state, domElements } = makeSandbox({ csv: csvRo, realLidarGeo: true, immediateTimeouts: true });
+
+        sandbox.window.toggleLidarScannerLayer(true);
+        await flushMicrotasks();
+
+        assert(domElements.lidarScannerStatus.textContent.startsWith('3 points loaded'),
+            'Romanian-header CSV should load 3 points, got status: ' + domElements.lidarScannerStatus.textContent);
+        assert.strictEqual(state.warnings.length, 0, 'Romanian-header CSV must not log CSV errors: ' + state.warnings.join(' | '));
+
+        state.mapEventListeners['click']({ latlng: { lat: 44.7467, lng: 22.4187 } });
+        domElements.lidarScannerRun.listeners['click']();
+        assert(domElements.lidarScannerStatus.textContent.startsWith('1 result'),
+            'scan should find the burgus point, got status: ' + domElements.lidarScannerStatus.textContent);
+        const c = state.createdCircles.find(x => x.options.radius === 100);
+        assert(c && Math.abs(c.latlng[0] - 44.746747673) < 1e-9 && Math.abs(c.latlng[1] - 22.418674167) < 1e-9,
+            'result circle should sit at the CSV coordinate, got ' + (c && JSON.stringify(c.latlng)));
+        assert(c._popup.includes('burgus'), 'popup should carry the Categorie value: ' + c._popup);
+        console.log('  ✅ E: Romanian headers (Latitudine/Longitudine/Categorie) load + scan');
+    }
+
+    // ── Scenario F: CSV with unknown columns fails gracefully with a clear status ──
     {
         const { sandbox, state, domElements } = makeSandbox({ csv: 'id,foo,bar\n1,2,3\n', realLidarGeo: true });
 
@@ -267,7 +316,7 @@ async function main() {
         assert.strictEqual(state.warnings.length, 1, 'unknown columns should log exactly one warning');
         assert(state.warnings[0].includes('found: id, foo, bar'), 'warning should list the columns it actually found: ' + state.warnings[0]);
         assert(unhandledRejections.length >= 1, 'rethrown load error should surface (as in the browser console)');
-        console.log('  ✅ D: unknown columns fail with a clear message');
+        console.log('  ✅ F: unknown columns fail with a clear message');
     }
 
     console.log('✅ ALL LIDAR SCANNER TESTS PASSED');

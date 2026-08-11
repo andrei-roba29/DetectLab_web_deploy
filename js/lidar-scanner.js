@@ -1,12 +1,14 @@
 /* DetectLab — premium LIDAR Scanner
  * Reads data/lidar_scanner_points.csv. Accepted coordinate columns (header match
- * is case-insensitive):
+ * is case-insensitive; Romanian aliases accepted: latitudine / longitudine):
  *   1. latitude / longitude  — EPSG:4326 geographic degrees (see
  *      data/lidar_scanner_points.csv.example). Used as-is.
  *   2. X / Y / Z             — EPSG:4936 geocentric ECEF metres; transformed to
  *      WGS84 once at load time. (An X/Y/Z export whose X/Y values are plain
  *      degrees — e.g. QGIS "add X/Y fields" in EPSG:4326 — is auto-detected and
  *      read as X=longitude, Y=latitude instead of failing.)
+ * Category/name/id columns accept category|categorie|categoria, name|nume|
+ * denumire and id|fid respectively.
  * Every loaded point is normalised to carry .lat, .lon and .lng so both
  * LidarGeo.scan() (.lon) and the Leaflet rendering code (.lng) work.
  */
@@ -40,7 +42,7 @@
         var sep=(lines[0].match(/;/g)||[]).length>(lines[0].match(/,/g)||[]).length?';':',';
         function row(line){var out=[],cur='',quote=false;for(var i=0;i<line.length;i++){var c=line[i];if(c==='"'){if(quote&&line[i+1]==='"'){cur+='"';i++;}else quote=!quote;}else if(c===sep&&!quote){out.push(cur.trim());cur='';}else cur+=c;}out.push(cur.trim());return out;}
         var headers=row(lines[0]);
-        var catH=findHeader(headers,['category','categoria']), nameH=findHeader(headers,['name','denumire']), idH=findHeader(headers,['id','fid']);
+        var catH=findHeader(headers,['category','categorie','categoria']), nameH=findHeader(headers,['name','nume','denumire']), idH=findHeader(headers,['id','fid']);
         var rows=lines.slice(1).map(function(line,idx){var vals=row(line), r={};headers.forEach(function(h,i){r[h]=vals[i]||'';});r.category=(catH?r[catH]:'')||'Uncategorized';r.name=nameH?r[nameH]:'';r.id=(idH&&r[idH])?r[idH]:String(idx+1);return r;});
         rows.headers=headers;
         return rows;
@@ -50,7 +52,7 @@
     function toPoints(rows) {
         var headers=rows.headers||[];
         var hx=findHeader(headers,['x']), hy=findHeader(headers,['y']), hz=findHeader(headers,['z']);
-        var hlat=findHeader(headers,['latitude','lat']), hlon=findHeader(headers,['longitude','lng','lon']);
+        var hlat=findHeader(headers,['latitude','latitudine','lat']), hlon=findHeader(headers,['longitude','longitudine','lng','lon']);
         var geo=function(r,latV,lonV){r.lat=latV;r.lon=lonV;r.lng=lonV;return r;};
         if(hx&&hy&&hz){
             rows=rows.map(function(r){r[hx]=num(r[hx]);r[hy]=num(r[hy]);r[hz]=num(r[hz]);return r;}).filter(function(r){return isFinite(r[hx])&&isFinite(r[hy])&&isFinite(r[hz]);});
