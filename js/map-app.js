@@ -9273,14 +9273,11 @@
             })();
 
             // ── SATELIT 60s (WMS Corona via CAST UARK GeoServer) ──
-            // FIX (2026-07): The old code hardcoded 2 passes (1106-1042, 1104-2155)
-            // and dynamically generated frame names df012-df026/da012-da026 which
-            // mostly don't exist on the server. Only 3 frames (da023-025 of pass
-            // 1106-1042) actually existed - that's why users only saw 3 sheets.
-            // The coverage polygon was also wrong (17E-21E instead of all Romania).
-            // New approach: dynamically discover ALL Corona layers from the CAST
-            // GeoServer GetCapabilities at page load. This loads every available
-            // Corona frame across all passes, providing full coverage of Romania.
+            // Uses the 16 verified Corona pass layers (mosaics) covering Romania.
+            // On-demand mode: the layer NEVER fetches anything when turned on
+            // or during pan/zoom. Tile fetching starts ONLY when the search
+            // button ("Caută imagini aici" / "Search images here") is pressed
+            // at zoom level >= 11 for the current visible viewport.
             (function () {
                 map.createPane("pane_sat60");
                 map.getPane("pane_sat60").style.zIndex = 648;
@@ -9302,19 +9299,7 @@
                     "corona:1110-2289Aft", "corona:1110-2289Fore"
                 ];
 
-                // Romania bounds — defined at outer initMap scope so it is available both
-                // during discovery and later during lazy layer creation.
-
-                // Discover all Corona layers dynamically from the GeoServer.
-                // Collects BOTH naming conventions the CAST server has used
-                // over time so a discovery result can never silently select
-                // layer names that don't exist (a past cause of the false
-                // "No images here" reports):
-                //   • pass / mosaic layers — "corona:1105-2235Aft" style;
-                //   • individual frame layers — "corona:1105-2235df064" style.
-                // Pass mosaics are preferred; if the server exposes only
-                // frames, up to MAX_EXTRA_FRAMES Romania-intersecting frames
-                // are used instead of the curated fallback list.
+                // Discover Corona layers dynamically from GeoServer if requested
                 function discoverCoronaLayers(callback) {
                     fetch(SAT60_GWC_URL + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities")
                         .then(function (r) { return r.text(); })
@@ -9326,10 +9311,8 @@
                                 var parser = new DOMParser();
                                 var doc = parser.parseFromString(xml, "text/xml");
                                 var layerNodes = doc.getElementsByTagName("Layer");
-                                // Romania geographic bounds (Lon: 19.5 to 30.5, Lat: 43.5 to 48.5)
                                 var RO_MIN_X = 19.0, RO_MAX_X = 31.0;
                                 var RO_MIN_Y = 43.0, RO_MAX_Y = 49.0;
-
                                 var knownRomaniaMissions = ["1022", "1103", "1105", "1106", "1107", "1110"];
 
                                 function parseBBox(node) {
@@ -9365,9 +9348,7 @@
                                     if (name.indexOf("corona:") !== 0) continue;
                                     if (name.indexOf("footprints") !== -1) continue;
 
-                                    // Pass/mosaic layer (contains Aft or Fore)?
                                     var isPass = (name.indexOf("Aft") !== -1 || name.indexOf("Fore") !== -1);
-
                                     var isKnownRomaniaLayer = false;
                                     for (var k = 0; k < knownRomaniaMissions.length; k++) {
                                         if (name.indexOf(knownRomaniaMissions[k]) !== -1) {
@@ -9386,8 +9367,6 @@
                                     if (isPass && (overlapsRomania || isKnownRomaniaLayer)) {
                                         passes.push(name);
                                     } else if (!isPass && (overlapsRomania || isKnownRomaniaLayer)) {
-                                        // Individual frame layer intersecting Romania —
-                                        // used only when no pass mosaics exist.
                                         frames.push({ name: name, known: isKnownRomaniaLayer });
                                     }
                                 }
@@ -9400,8 +9379,6 @@
                                 discovered = passes;
                                 console.log("[Sat60] Discovered", passes.length, "Corona pass (mosaic) layers intersecting Romania from CAST GeoServer");
                             } else if (frames.length > 0) {
-                                // Prefer frames whose name matches a known
-                                // Romania mission, then cap the count.
                                 frames.sort(function (a, b) {
                                     return (b.known ? 1 : 0) - (a.known ? 1 : 0);
                                 });
@@ -9422,30 +9399,42 @@
                         });
                 }
 
+                // Initialize immediately with the curated 16 Romania pass layers
+                window._sat60LayerDefs = FALLBACK_ROMANIA_LAYERS.map(function (name) {
+                    return { layerName: name };
+                });
                 window._sat60FrameLayers = [];
                 window._sat60MapLayer = L.layerGroup([]);
-                window._sat60Ready = false;
+                window._sat60Ready = true;
 
-                // ── "Load images here" (Încarcă imagini aici) ────────────────
+                // Discover Corona layers if available (updates definitions when found)
+                discoverCoronaLayers(function (layerNames) {
+                    var effectiveLayers = (layerNames && layerNames.length > 0) ? layerNames : FALLBACK_ROMANIA_LAYERS;
+                    var uniqueLayers = [];
+                    var seen = {};
+                    for (var j = 0; j < effectiveLayers.length; j++) {
+                        var ly = effectiveLayers[j];
+                        if (!seen[ly]) {
+                            seen[ly] = true;
+                            uniqueLayers.push(ly);
+                        }
+                    }
+                    window._sat60LayerDefs = uniqueLayers.map(function (name) {
+                        return { layerName: name };
+                    });
+                    window._sat60FrameLayers = [];
+                    window._sat60MapLayer = L.layerGroup([]);
+                    window._sat60Ready = true;
+                });
+
+                // ── "Search images here" / "Caută imagini aici" ──────────────
                 // The Satellite imagery 60's layer NEVER fetches tiles on its
-                // own (the CoronaWmsLayer sublayers run with manualOnly=true —
-                // they render exclusively what is already in the IndexedDB
-                // cache). The ONLY network trigger is this button, and only
-                // from zoom level 11:
-                //   • the button is VISIBLE only while the layer is switched on;
-                //   • below z11 it is DISABLED and reads "Zoom in more" /
-                //     "Mărește mai mult";
-                //   • from z11 it reads "Load images here" /
-                //     "Încarcă imagini aici" and, when pressed, probes the WMS
-                //     tiles of ALL Corona passes for the CURRENT VIEWPORT ONLY,
-                //     reporting "No images here" / "Nu există imagini aici"
-                //     when there aren't any.
+                // own when turned on or during pan/zoom. Tile requests start
+                // ONLY when the search button is pressed at zoom level >= 11.
                 var SAT60_LOAD_MIN_ZOOM = 11;
-                var SAT60_LOAD_NATIVE_MAX = 15;  // tiles are cached up to maxNativeZoom
-                var SAT60_LOAD_MAX_JOBS = 2000;  // per-zoom-level job budget for a press
+                var SAT60_LOAD_NATIVE_MAX = 15;
+                var SAT60_LOAD_MAX_JOBS = 600;
                 var _sat60LoadingHere = false;
-                // Monotonic token so a finished load can never clobber the
-                // state of a newer load that started after it.
                 var _sat60LoadSeq = 0;
 
                 function _sat60Lang() {
@@ -9479,19 +9468,13 @@
                         var se = map.unproject([(coords.x + 1) * 256, (coords.y + 1) * 256], coords.z);
                         return L.latLngBounds(nw, se).intersects(ROMANIA_BOUNDS);
                     } catch (e) {
-                        return true; // never block on a geometry error
+                        return true;
                     }
                 }
 
-                // Hand-built EPSG:900913 (Web Mercator) WMS URL for a tile —
-                // the same request format Leaflet's own WMS getTileUrl()
-                // produces. Used as a fallback so the "Load images here" probe
-                // never silently skips tiles just because a sublayer was
-                // created but not yet attached to the map (Leaflet only sets
-                // `_crs` in onAdd).
                 function _sat60BuildWmsUrl(layerName, coords) {
                     var n = Math.pow(2, coords.z);
-                    var world = 40075016.68557849; // 2 * PI * 6378137 (EPSG:900913 / 3857)
+                    var world = 40075016.68557849;
                     var size = world / n;
                     var minx = coords.x * size - world / 2;
                     var maxx = (coords.x + 1) * size - world / 2;
@@ -9508,16 +9491,7 @@
                         '&bbox=' + [fmt(minx), fmt(miny), fmt(maxx), fmt(maxy)].join(',');
                 }
 
-                // ── Bottom-center "Load images here" bar (2026-08) ────────────
-                // The user asked that the load button and its result message
-                // ("No images here") live at the BOTTOM CENTER of the screen,
-                // on the map — NOT inside the sidebar layer row. A floating
-                // bar (button + message pill) is created once, appended to the
-                // map wrapper, and positioned with CSS (.sat60-bottom-ui).
-                // It is shown/hidden by _sat60UpdateLoadBtn() and
-                // _sat60SetLoadMsg() below. All element lookups keep the
-                // null/append guards so the zoom-guard test harness (stubbed
-                // DOM, no real layout) can still run the IIFE.
+                // ── Bottom-center search button & status bar ────────────────
                 function _sat60EnsureUi() {
                     if (window._sat60UiEl) return window._sat60UiEl;
                     try {
@@ -9530,12 +9504,12 @@
                         button.type = 'button';
                         button.className = 'sat60-map-load-btn';
                         button.innerHTML =
-                            '<svg class="sat60-map-load-svg" width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0" aria-hidden="true">' +
-                                '<path d="M1.5 2.5h10M1.5 6.5h10M1.5 10.5h10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>' +
-                                '<circle cx="6.5" cy="6.5" r="1.4" fill="currentColor"/>' +
+                            '<svg class="sat60-map-load-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0" aria-hidden="true">' +
+                                '<circle cx="11" cy="11" r="7"></circle>' +
+                                '<line x1="21" y1="21" x2="16.5" y2="16.5"></line>' +
                             '</svg>' +
                             '<span class="t" data-key="sat60_zoom_more">Zoom in more</span>';
-                        button.style.display = 'none'; // shown by _sat60UpdateLoadBtn
+                        button.style.display = 'none';
                         if (typeof button.addEventListener === 'function') {
                             button.addEventListener('click', function (e) {
                                 if (e && e.stopPropagation) e.stopPropagation();
@@ -9555,9 +9529,6 @@
                             container.appendChild(msg);
                         }
 
-                        // Anchor the bar to the map wrapper (same stacking
-                        // context as the other floating map overlays), falling
-                        // back to the map container / body in odd layouts.
                         var host = null;
                         if (typeof document.querySelector === 'function') {
                             try { host = document.querySelector('.map-wrapper'); } catch (e2) {}
@@ -9574,15 +9545,6 @@
                     return window._sat60UiEl;
                 }
 
-                // The "Load images here" button is visible ONLY while the
-                // layer is switched on. Below zoom 11 it stays visible but is
-                // DISABLED and its label reads "Zoom in more" /
-                // "Mărește mai mult"; from zoom 11 it becomes enabled and reads
-                // "Load images here" / "Încarcă imagini aici". The button and
-                // its message pill live at the BOTTOM CENTER of the map
-                // (.sat60-bottom-ui) — they no longer sit in the sidebar.
-                // (The inner <span class="t"> keeps its data-key in sync so a
-                // later language switch re-translates the label correctly.)
                 function _sat60UpdateLoadBtn() {
                     _sat60EnsureUi();
                     var btn = document.getElementById('satellite60sLoadBtn');
@@ -9591,7 +9553,6 @@
                         var layerOn = !!(toggle && toggle.checked);
                         btn.style.display = layerOn ? 'flex' : 'none';
                         if (!layerOn) {
-                            // Switching the layer off also clears any status line.
                             var msgEl = document.getElementById('satellite60sLoadMsg');
                             if (msgEl) msgEl.style.display = 'none';
                         } else if (!_sat60LoadingHere) {
@@ -9601,51 +9562,27 @@
                             var label = btn.querySelector('.t');
                             if (label) {
                                 label.setAttribute('data-key', key);
-                                label.textContent = _sat60T(key, canLoad ? 'Load images here' : 'Zoom in more');
+                                label.textContent = _sat60T(key, canLoad ? 'Search images here' : 'Zoom in more');
                             }
                             btn.title = _sat60T(canLoad ? 'sat60_load_title' : 'sat60_zoom_hint',
-                                canLoad ? 'Load 1960s imagery for the visible area only'
-                                        : 'Zoom in to level 11 or more to load images here.');
+                                canLoad ? 'Search 1960s imagery for the visible area (zoom ≥ 11)'
+                                        : 'Zoom in to level 11 or more to search images here.');
                         }
                     }
                 }
                 map.on('zoomend moveend', _sat60UpdateLoadBtn);
 
-                // Lazy creation of the actual WMS tile layers — shared by the
-                // toggle and the "load images here" button. Only builds the
-                // optimised CoronaWmsLayer sublayers the first time they are
-                // needed (see js/corona-wms-layer.js). They are created with
-                // manualOnly=true: adding them to the map triggers ZERO tile
-                // requests — they render exclusively tiles already stored in
-                // the IndexedDB cache by the "Load images here" probe. The
-                // probe itself goes through the shared request queue
-                // (concurrency cap, per-session negative cache, backoff +
-                // circuit breaker) so even manual loads stay friendly to the
-                // CAST server and to mobile connections.
                 function ensureSat60Layers() {
                     if (window._sat60FrameLayers.length > 0) return true;
-                    if (!window._sat60LayerDefs || window._sat60LayerDefs.length === 0) return false;
+                    if (!window._sat60LayerDefs || window._sat60LayerDefs.length === 0) {
+                        window._sat60LayerDefs = FALLBACK_ROMANIA_LAYERS.map(function (name) {
+                            return { layerName: name };
+                        });
+                    }
 
                     var useOptimised = typeof window.createCoronaWmsLayer === 'function';
-                    // CRITICAL: every CoronaWmsLayer sublayer must use minZoom: 11.
-                    // Below that zoom the layer group is NEVER added to the map
-                    // (see toggleSatellite60sMap), so no tile elements are ever
-                    // created. The default queueConfig.minZoom (which was 4-5)
-                    // is ignored on purpose: the layer simply has no business
-                    // existing below z11, and allowing it would flood the DOM
-                    // with thousands of empty <img> elements when the user is
-                    // viewing all of Romania at a low zoom.
                     var effectiveMinZoom = SAT60_LOAD_MIN_ZOOM;
-                    console.log("[Sat60] Lazy-creating", window._sat60LayerDefs.length,
-                        "individual WMS layers (on-demand mode: tiles render from" +
-                        " cache only — the 'Load images here' button is the only fetch trigger)" +
-                        (useOptimised ? " (optimised queue: concurrent=" + (window.CoronaWmsQueue.config.concurrent) +
-                            ", cacheTTL=" + Math.round((window.CoronaWmsQueue.config.cacheTtlMs || 0) / 86400000) + "d)" : ""));
 
-                    // Keep the EPSG:900913 CRS declaration — GWC advertises
-                    // gridsets under both EPSG:900913 and EPSG:3857 (identical
-                    // projection); this preserves the exact request format that
-                    // was already working against the CAST tile cache.
                     var EPSG900913 = L.extend({}, L.CRS.EPSG3857, {
                         code: 'EPSG:900913'
                     });
@@ -9660,10 +9597,11 @@
                         tileSize: 256,
                         opacity: SAT60_INITIAL_OPACITY,
                         pane: "pane_sat60",
-                        bounds: ROMANIA_BOUNDS,   // belt-and-braces: Leaflet also prunes outside this
+                        bounds: ROMANIA_BOUNDS,
                         maxZoom: 18,
                         maxNativeZoom: 15,
-                        minZoom: effectiveMinZoom
+                        minZoom: effectiveMinZoom,
+                        manualOnly: true
                     };
 
                     window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
@@ -9672,37 +9610,12 @@
                             coronaLayer: def.layerName
                         });
                         if (useOptimised) {
-                            // ON-DEMAND MODE: these sublayers NEVER fetch
-                            // tiles on their own — they only render what the
-                            // "Load images here" probe put in the cache.
-                            opts.manualOnly = true;
                             return window.createCoronaWmsLayer(SAT60_GWC_URL, opts);
                         }
-                        // Fallback if the optimised module failed to load
-                        // (degraded mode: plain Leaflet WMS layers that DO
-                        // auto-fetch at z>=8 — only hit when the local
-                        // corona-wms-layer.js asset is missing).
-                        console.warn("[Sat60] corona-wms-layer.js not available — falling back to plain auto-fetching WMS layers (on-demand mode disabled).");
-                        return L.tileLayer.wms(SAT60_GWC_URL, L.extend({ minZoom: 8 }, opts));
+                        return L.tileLayer.wms(SAT60_GWC_URL, opts);
                     });
                     window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
                     return true;
-                }
-
-                // ── Progress + incremental-render helpers ───────────────────
-                // The pill at the bottom of the map shows a live counter while
-                // the probe runs ("… zoom 12 (412/1200)"), so a big viewport no
-                // longer feels like a silent 10-minute freeze.
-                function _sat60Progress(p, loadToken, zoom) {
-                    if (!p || !p.total || loadToken !== _sat60LoadSeq) return;
-                    var msgEl = document.getElementById('satellite60sLoadMsg');
-                    if (!msgEl) return;
-                    msgEl.style.display = 'block';
-                    msgEl.textContent = _sat60T('sat60_progress_zoom', 'Loading 1960s imagery… zoom {z} ({done}/{total})')
-                        .replace('{z}', String(zoom))
-                        .replace('{done}', String(p.done))
-                        .replace('{total}', String(p.total));
-                    msgEl.className = 'sat60-msg';
                 }
 
                 function _sat60LayerByLabel(label) {
@@ -9716,11 +9629,6 @@
                     return null;
                 }
 
-                // Build the WMS URL for one tile. Prefers the layer's own
-                // getTileUrl (which carries Leaflet's exact SRS/BBOX format),
-                // but falls back to a hand-built EPSG:900913 URL if the
-                // sublayer was never attached to the map and its `_crs` is not
-                // set yet — so the probe never silently skips a tile.
                 function _sat60TileUrl(layer, coords) {
                     try {
                         var u = layer.getTileUrl(coords);
@@ -9730,15 +9638,6 @@
                     return _sat60BuildWmsUrl(layerName, coords);
                 }
 
-                // Called by coronaProbeTiles for EVERY tile that turns out to
-                // contain imagery. If the corresponding sublayer already has a
-                // (hidden, empty) <img> element for that tile, inject the blob
-                // URL straight into it — the imagery appears tile-by-tile as
-                // the probe runs instead of only after the whole load finishes
-                // (which is what produced the "10 minutes of blank map, then
-                // everything pops in" experience). Returns true when the URL
-                // was handed to a map tile (ownership transferred), false when
-                // the probe should revoke it.
                 function _sat60InjectTile(layerName, z, x, y, blobUrl) {
                     try {
                         var layer = _sat60LayerByLabel(layerName);
@@ -9759,35 +9658,17 @@
                     }
                 }
 
-                // ── The load runner (2026-08) ────────────────────────────────
-                // Pressing "Load images here" / "Încarcă imagini aici" fetches
-                // ALL tiles for the viewport visible AT PRESS TIME, at the
-                // current zoom level AND every deeper zoom level up to
-                // maxNativeZoom (15). Deeper levels are expanded only from the
-                // tiles that actually had imagery one level up (2×2 children),
-                // so a single press covers the whole area for zooming in
-                // without exploding into hundreds of thousands of requests on
-                // areas that have no imagery.
-                //
-                // While the load runs:
-                //   • moving/zooming the map does NOT cancel the load and does
-                //     NOT start fetching for the new viewport — the original
-                //     press keeps running to completion (user requirement:
-                //     "if user moves on the screen while tiles are fetched, it
-                //     doesnt stop the initial process and starts fetching for
-                //     new viewport");
-                //   • the button stays disabled ("Loading…") until every zoom
-                //     level finishes; a NEW viewport always needs a NEW button
-                //     press, and a press always fetches exactly the viewport
-                //     that was visible when it was pressed.
+                // ── The search runner ─────────────────────────────────────────
+                // Triggered ONLY when the user clicks "Caută imagini aici" / "Search images here".
+                // Fetches tiles ONLY for the current visible viewport at the current zoom level (z >= 11).
                 function _sat60RunLoad() {
                     _sat60EnsureUi();
                     var msgEl = document.getElementById('satellite60sLoadMsg');
                     if (!msgEl) return;
 
-                    var z = map.getZoom();
+                    var z = Math.round(map.getZoom());
                     if (z < SAT60_LOAD_MIN_ZOOM) {
-                        _sat60SetLoadMsg(_sat60T('sat60_zoom_hint', 'Zoom in to level 11 or more to load images here.'), true);
+                        _sat60SetLoadMsg(_sat60T('sat60_zoom_hint', 'Zoom in to level 11 or more to search images here.'), true);
                         return;
                     }
                     if (!window._sat60Ready || !window._sat60LayerDefs || !window._sat60LayerDefs.length) {
@@ -9796,7 +9677,6 @@
                     }
                     if (_sat60LoadingHere) return;
 
-                    // The layer must be switched on so the tiles render on the map.
                     var satToggle = document.getElementById('satellite60sToggle');
                     if (satToggle && !satToggle.checked) {
                         satToggle.checked = true;
@@ -9804,12 +9684,7 @@
                     }
                     if (window._sat60FrameLayers.length === 0) ensureSat60Layers();
                     if (window._sat60FrameLayers.length === 0) return;
-                    // Re-sync the layer group so the REAL (populated) group is
-                    // attached to the map at zoom >= 11. Attaching it runs
-                    // Leaflet's onAdd(), which is what sets each sublayer's
-                    // `_crs` — without it layer.getTileUrl() would throw and
-                    // every job would be skipped ("No images here" with zero
-                    // requests made).
+
                     _sat60SyncOnZoom();
                     if (window._sat60MapLayer && !map.hasLayer(window._sat60MapLayer)) {
                         window._sat60MapLayer.addTo(map);
@@ -9823,272 +9698,118 @@
                         btn.disabled = true;
                         btn.classList.add('loading');
                         var lblEl = btn.querySelector('.t');
-                        if (lblEl) lblEl.textContent = _sat60T('sat60_loading', 'Loading…');
+                        if (lblEl) lblEl.textContent = _sat60T('sat60_loading', 'Searching…');
                     }
 
-                    // The viewport visible WHEN THE BUTTON WAS PRESSED — this is
-                    // the area the whole load (every zoom level) covers, even if
-                    // the user pans/zooms away while it runs.
-                    var pressZoom = Math.min(Math.round(z), SAT60_LOAD_NATIVE_MAX);
+                    var pressZoom = Math.min(z, SAT60_LOAD_NATIVE_MAX);
                     var pressBounds = map.getBounds();
 
-                    // Job budget per zoom level: the current zoom gets the full
-                    // budget (it is what is on screen), deeper levels get a
-                    // decreasing share (2000 → 1000 → 500 → 250 → 125) so a
-                    // whole-viewport press stays feasible.
-                    function stageCap(depth) {
-                        var c = Math.floor(SAT60_LOAD_MAX_JOBS / Math.pow(2, depth));
-                        return Math.max(150, c);
-                    }
+                    // Calculate viewport tile coordinates for the CURRENT viewport at pressZoom
+                    var maxTile = Math.pow(2, pressZoom);
+                    var b = pressBounds;
+                    var minX = Math.max(0, Math.floor((b.getWest() + 180) / 360 * maxTile));
+                    var maxX = Math.min(maxTile - 1, Math.floor((b.getEast() + 180) / 360 * maxTile));
+                    var minY = Math.max(0, Math.floor(_sat60LatToTileY(b.getNorth(), pressZoom)));
+                    var maxY = Math.min(maxTile - 1, Math.floor(_sat60LatToTileY(b.getSouth(), pressZoom)));
+                    var jobs = [];
+                    var centerPt = null;
+                    try { centerPt = map.project(map.getCenter(), pressZoom); } catch (e) {}
 
-                    // Tile range of the PRESSED viewport at `zoom`, clipped to
-                    // Romania, one job per pass layer, centre-first priority.
-                    function buildViewportJobs(zoom) {
-                        var maxTile = Math.pow(2, zoom);
-                        var b = pressBounds;
-                        var minX = Math.max(0, Math.floor((b.getWest() + 180) / 360 * maxTile));
-                        var maxX = Math.min(maxTile - 1, Math.floor((b.getEast() + 180) / 360 * maxTile));
-                        var minY = Math.max(0, Math.floor(_sat60LatToTileY(b.getNorth(), zoom)));
-                        var maxY = Math.min(maxTile - 1, Math.floor(_sat60LatToTileY(b.getSouth(), zoom)));
-                        var jobs = [];
-                        var centerPt = null;
-                        try { centerPt = map.project(map.getCenter(), zoom); } catch (e) {}
-                        window._sat60FrameLayers.forEach(function (layer) {
-                            if (!layer) return;
-                            var layerName = (layer.options && (layer.options.coronaLayer || layer.options.layers)) || 'corona';
-                            for (var tx = minX; tx <= maxX; tx++) {
-                                for (var ty = minY; ty <= maxY; ty++) {
-                                    var coords = { x: tx, y: ty, z: zoom };
-                                    if (!_sat60TileInRomania(coords)) continue;
-                                    var url = _sat60TileUrl(layer, coords);
-                                    if (!url) continue;
-                                    var priority = 0;
-                                    if (centerPt) {
-                                        priority = -Math.round(Math.abs((tx + 0.5) * 256 - centerPt.x) +
-                                                               Math.abs((ty + 0.5) * 256 - centerPt.y));
-                                    }
-                                    jobs.push({ url: url, layerLabel: layerName, z: zoom, x: tx, y: ty, priority: priority });
+                    window._sat60FrameLayers.forEach(function (layer) {
+                        if (!layer) return;
+                        var layerName = (layer.options && (layer.options.coronaLayer || layer.options.layers)) || 'corona';
+                        for (var tx = minX; tx <= maxX; tx++) {
+                            for (var ty = minY; ty <= maxY; ty++) {
+                                var coords = { x: tx, y: ty, z: pressZoom };
+                                if (!_sat60TileInRomania(coords)) continue;
+                                var url = _sat60TileUrl(layer, coords);
+                                if (!url) continue;
+                                var priority = 0;
+                                if (centerPt) {
+                                    priority = -Math.round(Math.abs((tx + 0.5) * 256 - centerPt.x) +
+                                                           Math.abs((ty + 0.5) * 256 - centerPt.y));
                                 }
-                            }
-                        });
-                        return jobs;
-                    }
-
-                    // Children (2×2 per tile) of the tiles that HAD imagery at
-                    // zoom-1, clipped to Romania. Only these are worth fetching
-                    // at deeper zooms — a child of an empty tile is empty too.
-                    function buildChildJobs(zoom, parentFound) {
-                        var jobs = [];
-                        var seen = {};
-                        var centerPt = null;
-                        try { centerPt = map.project(map.getCenter(), zoom); } catch (e) {}
-                        for (var layerName in parentFound) {
-                            var tiles = parentFound[layerName];
-                            if (!tiles) continue;
-                            var layer = _sat60LayerByLabel(layerName);
-                            if (!layer) continue;
-                            for (var key in tiles) {
-                                var xy = key.split(',');
-                                var px = parseInt(xy[0], 10);
-                                var py = parseInt(xy[1], 10);
-                                for (var dy = 0; dy < 2; dy++) {
-                                    for (var dx = 0; dx < 2; dx++) {
-                                        var coords = { x: px * 2 + dx, y: py * 2 + dy, z: zoom };
-                                        if (!_sat60TileInRomania(coords)) continue;
-                                        var dk = layerName + '|' + coords.x + ',' + coords.y;
-                                        if (seen[dk]) continue;
-                                        seen[dk] = true;
-                                        var url = _sat60TileUrl(layer, coords);
-                                        if (!url) continue;
-                                        var priority = 0;
-                                        if (centerPt) {
-                                            priority = -Math.round(Math.abs((coords.x + 0.5) * 256 - centerPt.x) +
-                                                                   Math.abs((coords.y + 0.5) * 256 - centerPt.y));
-                                        }
-                                        jobs.push({ url: url, layerLabel: layerName, z: zoom, x: coords.x, y: coords.y, priority: priority });
-                                    }
-                                }
+                                jobs.push({ url: url, layerLabel: layerName, z: pressZoom, x: tx, y: ty, priority: priority });
                             }
                         }
-                        return jobs;
-                    }
+                    });
 
-                    var totals = { total: 0, found: 0, empty: 0, failed: 0, cancelled: 0 };
-
-                    // One zoom level of the pyramid. depth 0 = the pressed
-                    // viewport at the current zoom; depth n = children of the
-                    // imagery found at depth n-1.
-                    function runStage(zoom, depth, parentFound, cb) {
-                        var jobs = (depth === 0) ? buildViewportJobs(zoom) : buildChildJobs(zoom, parentFound);
-                        if (jobs.length === 0) { cb(); return; }
-                        var cap = stageCap(depth);
-                        if (jobs.length > cap) {
-                            jobs = jobs.sort(function (a, b2) { return b2.priority - a.priority; }).slice(0, cap);
-                        }
-
-                        // Tiles that turn out to contain imagery at THIS zoom —
-                        // they seed the next (deeper) stage's job list.
-                        var foundHere = {};
-
-                        _sat60SetLoadMsg(
-                            _sat60T('sat60_progress_zoom', 'Loading 1960s imagery… zoom {z} ({done}/{total})')
-                                .replace('{z}', String(zoom))
-                                .replace('{done}', '0')
-                                .replace('{total}', String(jobs.length)),
-                            false
-                        );
-
-                        if (typeof window.coronaProbeTiles === 'function') {
-                            window.coronaProbeTiles(jobs, {
-                                onProgress: function (p) { _sat60Progress(p, loadToken, zoom); },
-                                onTileFound: function (job, blobUrl) {
-                                    var m = foundHere[job.layerLabel] || (foundHere[job.layerLabel] = {});
-                                    m[job.x + ',' + job.y] = true;
-                                    return _sat60InjectTile(job.layerLabel, job.z, job.x, job.y, blobUrl);
-                                }
-                            }).then(function (res) {
-                                if (loadToken !== _sat60LoadSeq) { cb(); return; }
-                                totals.total += res.total;
-                                totals.found += res.found;
-                                totals.empty += res.empty;
-                                totals.failed += res.failed;
-                                totals.cancelled += res.cancelled;
-                                var foundCount = 0;
-                                for (var l in foundHere) foundCount += Object.keys(foundHere[l]).length;
-                                // No deeper zoom if we reached max, or if
-                                // nothing had imagery here to expand.
-                                if (zoom >= SAT60_LOAD_NATIVE_MAX || res.found === 0 || foundCount === 0) {
-                                    cb();
-                                    return;
-                                }
-                                runStage(zoom + 1, depth + 1, foundHere, cb);
-                            });
-                        } else {
-                            // Degraded fallback if the optimised module failed
-                            // to load: plain fetches with a small pool, single
-                            // zoom level (no pyramid).
-                            var results = { total: jobs.length, found: 0, empty: 0, failed: 0, cancelled: 0, foundTiles: [] };
-                            var pending = jobs.length;
-                            var cursor = 0;
-                            function fetchNext() {
-                                if (cursor >= jobs.length) return;
-                                var job = jobs[cursor++];
-                                fetch(job.url, { mode: 'cors', credentials: 'omit' }).then(function (res) {
-                                    if (!res.ok) results.empty++;
-                                    else if ((res.headers.get('content-type') || '').indexOf('image/') === -1) results.empty++;
-                                    else results.found++;
-                                }).catch(function () { results.failed++; }).then(function () {
-                                    pending--;
-                                    if (pending === 0) {
-                                        totals.total += results.total;
-                                        totals.found += results.found;
-                                        totals.empty += results.empty;
-                                        totals.failed += results.failed;
-                                        cb();
-                                    } else {
-                                        fetchNext();
-                                    }
-                                });
-                            }
-                            for (var i = 0; i < 6 && i < jobs.length; i++) fetchNext();
-                        }
-                    }
-
-                    runStage(pressZoom, 0, null, function () {
-                        if (loadToken !== _sat60LoadSeq) return;
+                    if (jobs.length === 0) {
                         _sat60LoadingHere = false;
                         if (btn) btn.classList.remove('loading');
                         _sat60UpdateLoadBtn();
+                        _sat60SetLoadMsg(_sat60T('sat60_no_images', 'No images here'), true);
+                        return;
+                    }
 
-                        // Safety net: re-request the layer's own viewport tiles
-                        // — the probe already filled the IndexedDB cache, so
-                        // tiles whose <img> elements appeared after a stage
-                        // finished now render WITHOUT any additional fetch (the
-                        // sublayers are manualOnly: cache hit → show, cache
-                        // miss → empty; no network either way).
-                        window._sat60FrameLayers.forEach(function (layer) {
-                            if (layer && typeof layer.redraw === 'function') {
-                                try { layer.redraw(); } catch (e) {}
+                    // Sort jobs centre-first
+                    jobs.sort(function (a, b2) { return b2.priority - a.priority; });
+
+                    // Safety cap for single press: max 600 tile jobs
+                    if (jobs.length > SAT60_LOAD_MAX_JOBS) {
+                        jobs = jobs.slice(0, SAT60_LOAD_MAX_JOBS);
+                    }
+
+                    _sat60SetLoadMsg(
+                        _sat60T('sat60_progress', 'Searching 1960s imagery… ({done}/{total})')
+                            .replace('{done}', '0')
+                            .replace('{total}', String(jobs.length)),
+                        false
+                    );
+
+                    if (typeof window.coronaProbeTiles === 'function') {
+                        window.coronaProbeTiles(jobs, {
+                            onProgress: function (p) {
+                                if (loadToken !== _sat60LoadSeq) return;
+                                var el = document.getElementById('satellite60sLoadMsg');
+                                if (!el) return;
+                                el.style.display = 'block';
+                                el.textContent = _sat60T('sat60_progress', 'Searching 1960s imagery… ({done}/{total})')
+                                    .replace('{done}', String(p.done))
+                                    .replace('{total}', String(p.total));
+                                el.className = 'sat60-msg';
+                            },
+                            onTileFound: function (job, blobUrl) {
+                                return _sat60InjectTile(job.layerLabel, job.z, job.x, job.y, blobUrl);
+                            }
+                        }).then(function (res) {
+                            if (loadToken !== _sat60LoadSeq) return;
+                            _sat60LoadingHere = false;
+                            if (btn) btn.classList.remove('loading');
+                            _sat60UpdateLoadBtn();
+
+                            window._sat60FrameLayers.forEach(function (layer) {
+                                if (layer && typeof layer.redraw === 'function') {
+                                    try { layer.redraw(); } catch (e) {}
+                                }
+                            });
+
+                            if (res.found > 0) {
+                                _sat60SetLoadMsg(
+                                    _sat60T('sat60_found', 'Loaded {n} tile(s) — 1960s imagery is available here')
+                                        .replace('{n}', String(res.found)),
+                                    false
+                                );
+                            } else if (res.empty === 0 && res.failed > 0) {
+                                _sat60SetLoadMsg(_sat60T('sat60_error', 'Could not load the imagery, please try again.'), true);
+                            } else {
+                                _sat60SetLoadMsg(_sat60T('sat60_no_images', 'No images here'), true);
                             }
                         });
-
-                        if (totals.found > 0) {
-                            _sat60SetLoadMsg(
-                                _sat60T('sat60_found', 'Loaded {n} tile(s) — 1960s imagery is available here')
-                                    .replace('{n}', totals.found),
-                                false
-                            );
-                        } else if (totals.empty === 0) {
-                            // Nothing came back as a definitive "no imagery"
-                            // answer — every request failed (network/CORS/
-                            // server). Telling the user "No images here" would
-                            // be a lie; the honest message is the error one.
-                            _sat60SetLoadMsg(_sat60T('sat60_error', 'Could not load the imagery, please try again.'), true);
-                        } else {
-                            _sat60SetLoadMsg(_sat60T('sat60_no_images', 'No images here'), true);
-                        }
-                    });
+                    } else {
+                        _sat60LoadingHere = false;
+                        if (btn) btn.classList.remove('loading');
+                        _sat60UpdateLoadBtn();
+                        _sat60SetLoadMsg(_sat60T('sat60_error', 'Could not load the imagery, please try again.'), true);
+                    }
                 }
 
-                // The button — the ONLY fetch trigger of the Satellite 60's
-                // layer. It always loads the viewport visible when it is
-                // pressed, at the current zoom and every deeper zoom level.
+                // Public trigger function for the search button
                 window.loadSatellite60sHere = function () {
                     _sat60RunLoad();
                 };
 
-                discoverCoronaLayers(function (layerNames) {
-                    var effectiveLayers = (layerNames && layerNames.length > 0) ? layerNames : FALLBACK_ROMANIA_LAYERS;
-
-                    // Remove duplicates
-                    var uniqueLayers = [];
-                    var seen = {};
-                    for (var j = 0; j < effectiveLayers.length; j++) {
-                        var ly = effectiveLayers[j];
-                        if (!seen[ly]) {
-                            seen[ly] = true;
-                            uniqueLayers.push(ly);
-                        }
-                    }
-
-                    console.log("[Sat60] Selected", uniqueLayers.length, "pass layers covering Romania for WMS rendering.");
-
-                    window._sat60LayerDefs = uniqueLayers.map(function (name) {
-                        return {
-                            layerName: name
-                        };
-                    });
-
-                    window._sat60FrameLayers = [];
-                    window._sat60MapLayer = L.layerGroup([]);
-                    window._sat60Ready = true;
-
-                    // If the toggle was already ON when discovery finished, activate now
-                    var toggle = document.getElementById("satellite60sToggle");
-                    if (toggle && toggle.checked) {
-                        window.toggleSatellite60sMap(true);
-                    }
-                });
-
-                // ── CRITICAL FIX (2026-08): DOM-flooding guard ───────────────
-                // The Satellite imagery 60's layer has 16 WMS sublayers (one per
-                // Corona pass). When the layer group is on the map at a low zoom
-                // covering all of Romania, Leaflet still calls createTile() on
-                // every sublayer for the visible viewport (even though
-                // manualOnly prevents the network request), and that creates
-                // thousands of empty <img class="leaflet-tile"> elements. The
-                // browser tab crashes long before the user has a chance to zoom
-                // in. The user has reported this multiple times.
-                //
-                // The fix: when the user toggles the layer ON, only add
-                // _sat60MapLayer to the map if the current zoom is >= 11 (the
-                // "Load images here" minimum). Below z11 the toggle is honoured
-                // (the checkbox stays checked, the load button stays visible —
-                // showing "Zoom in more" as a hint) but no layer group is on the
-                // map, so zero tile elements are ever created. A map.on('zoomend')
-                // handler re-evaluates this on every zoom change, so the layer
-                // group is added/removed automatically as the user zooms across
-                // the z11 threshold — they don't have to toggle the layer twice.
+                // Sync layer presence on map according to zoom
                 function _sat60SyncOnZoom() {
                     var toggle = document.getElementById('satellite60sToggle');
                     var layerOn = !!(toggle && toggle.checked);
@@ -10104,15 +9825,6 @@
                         }
                     }
                 }
-                // Single shared handler so we don't double-add on every call.
-                // (toggleSatellite60sMap also calls _sat60SyncOnZoom() so the
-                // initial toggle, page-load toggle and zoom crossings all
-                // converge on the same add/remove decision.)
-                // NOTE (2026-08): zooming deliberately does NOT touch an
-                // in-flight "Load images here" run — per the user, moving the
-                // map must neither cancel the current load nor start a new one;
-                // a new viewport is only ever fetched by pressing the button
-                // again (which loads the viewport visible at that press).
                 map.on('zoomend', _sat60SyncOnZoom);
 
                 window.toggleSatellite60sMap = function (on) {
@@ -10123,65 +9835,24 @@
                             window.toggleHistPremiumLayer(true);
                         }
 
-                        if (!window._sat60Ready) {
-                            console.log("[Sat60] Layers still being discovered, will add when ready");
-                            _sat60UpdateLoadBtn();
-                            return;
-                        }
-
-                        // LAZY CREATION (shared with the "load images here"
-                        // button): only build the actual WMS tile layers the
-                        // first time they are needed — see ensureSat60Layers()
-                        // above. They run in on-demand mode (manualOnly), so
-                        // building them here triggers ZERO tile requests — but
-                        // we still must NOT add them to the map below z11
-                        // (see _sat60SyncOnZoom below for the DOM-flooding
-                        // guard). Building them lazily is fine: the WMS
-                        // sublayers exist in memory but aren't attached to the
-                        // map, so Leaflet doesn't iterate the viewport and
-                        // createTile() is never called.
                         ensureSat60Layers();
-
-                        // Only add the layer group to the map at the zoom at
-                        // which tile creation is safe. Below z11 the toggle is
-                        // still ON (the checkbox stays checked), but the
-                        // layer group is detached until the user zooms in.
-                        // _sat60SyncOnZoom() re-evaluates this on every
-                        // 'zoomend' so the layer appears automatically when the
-                        // user crosses z11.
                         _sat60SyncOnZoom();
-
-                        if (window._sat60MapLayer && map.hasLayer(window._sat60MapLayer)) {
-                            try {
-                                var firstLayer = window._sat60FrameLayers[0];
-                                if (firstLayer && firstLayer._url) {
-                                    var sampleUrl = firstLayer.getTileUrl({ x: 147, y: 93, z: 8 }); // Romania tile at zoom 8
-                                    console.log("[Sat60] Sample tile URL (paste in new tab to test):", sampleUrl);
-                                }
-                            } catch (e) {}
-                        }
                     } else {
-                        // Layer off: detach the group — tile elements are
-                        // removed by Leaflet as part of removeLayer(). An
-                        // in-flight "Load images here" run is deliberately left
-                        // running (its results land in the IndexedDB cache and
-                        // render the next time the layer is switched on); the
-                        // user asked that moving/toggling never stop the
-                        // initial process.
                         if (window._sat60MapLayer) {
                             map.hasLayer(window._sat60MapLayer) && map.removeLayer(window._sat60MapLayer);
                         }
+                        if (typeof window.CoronaWmsQueue !== 'undefined' && window.CoronaWmsQueue.cancelProbes) {
+                            window.CoronaWmsQueue.cancelProbes();
+                        }
+                        _sat60LoadingHere = false;
                     }
                     window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
-                    // Reflect the toggle on the "Load images here" button
-                    // (visible only while the layer is switched on).
                     _sat60UpdateLoadBtn();
                 };
 
                 window.setSatellite60sMapOpacity = function (val) {
                     document.getElementById("satellite60sMapPct").textContent = val + "%";
                     var opacity = val / 100;
-                    // Works whether layers were created eagerly or lazily
                     if (window._sat60FrameLayers && window._sat60FrameLayers.length) {
                         window._sat60FrameLayers.forEach(function (layer) {
                             if (layer && layer.setOpacity) layer.setOpacity(opacity);
@@ -10189,11 +9860,7 @@
                     }
                 };
 
-                // Initial state of the "Load images here" button (visible only
-                // while the layer is on; disabled — labelled "Zoom in more" —
-                // below zoom 11) and refresh it whenever the layer toggle
-                // changes.
-                setTimeout(_sat60UpdateLoadBtn, 500);
+                setTimeout(_sat60UpdateLoadBtn, 300);
                 document.addEventListener('change', function (e) {
                     if (e.target && e.target.id === 'satellite60sToggle') _sat60UpdateLoadBtn();
                 });

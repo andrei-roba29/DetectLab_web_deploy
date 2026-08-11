@@ -96,12 +96,7 @@
         minLoadZoom: 11,
         // Hard cap on concurrent WMS image requests ACROSS ALL sublayers.
         concurrent: IS_MOBILE ? 4 : 8,
-        // Separate, higher cap for BULK PROBES (the "Load images here" /
-        // "Încarcă imagini aici" button). A probe can legitimately hold up to
-        // SAT60_LOAD_MAX_JOBS (=2000) tiles; letting them trickle through the
-        // normal 8-slot pool made a full viewport take ~10 minutes. Probes
-        // still go through the SAME shared queue (so they never starve map
-        // tiles), they just get their own pool of slots.
+        // Separate cap for bulk search/probes (the "Search images here" / "Caută imagini aici" button).
         probeConcurrent: IS_MOBILE ? 6 : 12,
         // After this many consecutive GWC tile-cache misses for one
         // layer+zoom (each followed by a successful plain-WMS retry), stop
@@ -651,6 +646,10 @@
             isGwcBroken: function (layerLabel, z) {
                 return gwcBroken[layerLabel + '|' + z] === true;
             },
+            // Check if a tile is already marked as missing in this session
+            isMissing: function (cacheKey) {
+                return missing[cacheKey] === true;
+            },
             // Remember a definitively-missing tile for the rest of the session
             // (used by the probe's transparency check, which lives outside the
             // queue closure).
@@ -1126,6 +1125,14 @@
 
             var self = this;
             var noFetch = this.options.manualOnly === true;
+
+            // Fast path for manualOnly: if this tile is already known missing, reject immediately
+            if (noFetch && Queue.isMissing(cacheKey)) {
+                tile.style.display = 'none';
+                done && done(null, tile);
+                return tile;
+            }
+
             var job = {
                 key: jobKey,
                 cacheKey: cacheKey,
