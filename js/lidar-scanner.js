@@ -1,10 +1,11 @@
 /* DetectLab — premium LIDAR Scanner
- * Reads data/lidar_scanner_points.csv as EPSG:4326 WGS 84 (X/Y/Z), then transforms
- * the complete file to WGS84 once before coordinate searches.
+ * Reads data/lidar_scanner_points.csv as WGS 84 / EPSG:4326 latitude and
+ * longitude. English and Romanian CSV headers are normalized while loading;
+ * legacy EPSG:4936 ECEF X/Y/Z files remain supported by lidar-geo.js.
  */
 (function () {
     'use strict';
-    var DATA_URL = 'data/lidar_scanner_points.csv';
+    var DATA_URL = 'data/lidar_scanner_points.csv?v=20260811-latlon';
     var HERITAGE_RADIUS_M = 600;
     var map = null, resultsLayer = null, selectedMarker = null, selectionCircle = null;
     var points = [], selected = null, active = false, scanning = false, pointsPromise = null;
@@ -26,13 +27,65 @@
     function inBounds(ll, b) { return ll.lat >= b[0][0] && ll.lat <= b[1][0] && ll.lng >= b[0][1] && ll.lng <= b[1][1]; }
     function inAnyLidar(ll) { return Object.keys(lidarBounds).some(function (k) { return inBounds(ll, lidarBounds[k]); }); }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+    function normalizeHeader(value) {
+        var key = String(value == null ? '' : value).replace(/^\uFEFF/, '').trim().toLowerCase();
+        if (key.normalize) key = key.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        var aliases = {
+            lat: 'lat', latitude: 'lat', latitudine: 'lat',
+            lon: 'lon', lng: 'lon', longitude: 'lon', longitudine: 'lon',
+            category: 'category', categorie: 'category', categoria: 'category',
+            name: 'name', nume: 'name', denumire: 'name',
+            id: 'id', fid: 'id', x: 'X', y: 'Y', z: 'Z'
+        };
+        return aliases[key] || String(value == null ? '' : value).trim();
+    }
+    function csvNumber(value) {
+        return parseFloat(String(value == null ? '' : value).trim().replace(',', '.'));
+    }
     function parseCsv(text) {
-        var lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(function(x){return x.trim();});
-        if(!lines.length)return [];
-        var sep=(lines[0].match(/;/g)||[]).length>(lines[0].match(/,/g)||[]).length?';':',';
-        function row(line){var out=[],cur='',quote=false;for(var i=0;i<line.length;i++){var c=line[i];if(c==='"'){if(quote&&line[i+1]==='"'){cur+='"';i++;}else quote=!quote;}else if(c===sep&&!quote){out.push(cur.trim());cur='';}else cur+=c;}out.push(cur.trim());return out;}
-        var headers=row(lines[0]);
-        return lines.slice(1).map(function(line,idx){var vals=row(line), r={};headers.forEach(function(h,i){r[h]=vals[i]||'';});r.category=r.category||r.categoria||'Uncategorized';r.name=r.name||r.denumire||'';r.id=r.id||r.fid||String(idx+1);['X','Y','Z'].forEach(function(k){if(r[k]!==undefined)r[k]=parseFloat(String(r[k]).replace(',','.'));});return r;}).filter(function(r){return isFinite(r.X)&&isFinite(r.Y)&&isFinite(r.Z);});
+        var lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter(function (line) {
+            return line.trim();
+        });
+        if (!lines.length) return [];
+
+        var sep = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
+        function row(line) {
+            var out = [], current = '', quoted = false;
+            for (var i = 0; i < line.length; i++) {
+                var character = line[i];
+                if (character === '"') {
+                    if (quoted && line[i + 1] === '"') {
+                        current += '"';
+                        i++;
+                    } else {
+                        quoted = !quoted;
+                    }
+                } else if (character === sep && !quoted) {
+                    out.push(current.trim());
+                    current = '';
+                } else {
+                    current += character;
+                }
+            }
+            out.push(current.trim());
+            return out;
+        }
+
+        var headers = row(lines[0]).map(normalizeHeader);
+        return lines.slice(1).map(function (line, index) {
+            var values = row(line);
+            var record = {};
+            headers.forEach(function (header, column) {
+                record[header] = values[column] == null ? '' : values[column];
+            });
+            record.category = record.category || 'Uncategorized';
+            record.name = record.name || '';
+            record.id = record.id || String(index + 1);
+            ['lat', 'lon', 'X', 'Y', 'Z'].forEach(function (key) {
+                if (record[key] !== undefined) record[key] = csvNumber(record[key]);
+            });
+            return record;
+        });
     }
     function heritageRecords() {
         var data=window._localLayerData||{}, out=[];
@@ -89,18 +142,77 @@
         setStatus(ll.lat.toFixed(4) + ', ' + ll.lng.toFixed(4));
     }
     function run() {
-        if(!selected||scanning)return; scanning=true; var overlay=document.getElementById('lidarScannerLoading'); if(overlay)overlay.classList.add('visible');
-        var radius=+document.getElementById('lidarScannerDistance').value*1000;
-        setTimeout(function(){
-            var out=LidarGeo.scan(points, selected.lat, selected.lng, radius).filter(function(p){return inAnyLidar(p) && !isNearHeritage(p);});
-            if(resultsLayer)resultsLayer.clearLayers(); else resultsLayer=L.layerGroup(); out.forEach(function(p){resultsLayer.addLayer(makeResult(p));}); resultsLayer.addTo(map);
-            if(out.length){var b=L.latLngBounds(out.map(function(p){return [p.lat,p.lng];}));map.fitBounds(b.pad(.18),{maxZoom:14});setStatus(out.length+' result'+(out.length===1?'':'s')+' / rezultate');} else setStatus('No results / Niciun rezultat');
-            if(overlay)overlay.classList.remove('visible'); scanning=false;
-        },5000);
+        if (!selected || scanning) return;
+        scanning = true;
+        var overlay = document.getElementById('lidarScannerLoading');
+        if (overlay) overlay.classList.add('visible');
+        var radius = +document.getElementById('lidarScannerDistance').value * 1000;
+
+        // Wait for the CSV before scanning. This also covers a quick click on
+        // Scan immediately after the layer has been enabled.
+        load().then(function () {
+            setTimeout(function () {
+                var out = LidarGeo.scan(points, selected.lat, selected.lng, radius).filter(function (point) {
+                    return inAnyLidar(point) && !isNearHeritage(point);
+                });
+                if (resultsLayer) resultsLayer.clearLayers();
+                else resultsLayer = L.layerGroup();
+                out.forEach(function (point) { resultsLayer.addLayer(makeResult(point)); });
+                resultsLayer.addTo(map);
+                if (out.length) {
+                    var bounds = L.latLngBounds(out.map(function (point) { return [point.lat, point.lon]; }));
+                    map.fitBounds(bounds.pad(.18), { maxZoom: 14 });
+                    setStatus(out.length + ' result' + (out.length === 1 ? '' : 's') + ' / rezultate');
+                } else {
+                    setStatus('No results / Niciun rezultat');
+                }
+                if (overlay) overlay.classList.remove('visible');
+                scanning = false;
+            }, 5000);
+        }).catch(function () {
+            if (overlay) overlay.classList.remove('visible');
+            scanning = false;
+        });
     }
-    function setActive(on) { active=on; if(!map)return; var row=document.getElementById('lidarScannerRow'); if(row)row.classList.toggle('is-on',on); if(!on){ if(selectedMarker)map.removeLayer(selectedMarker);if(selectionCircle)map.removeLayer(selectionCircle);if(resultsLayer)resultsLayer.clearLayers();selected=null;map.off('click',onMapClick);setStatus('Choose a point on the map / Alege un punct pe harta'); } else {map.on('click',onMapClick); load();} }
+    function setActive(on) {
+        active = on;
+        if (!map) return;
+        var row = document.getElementById('lidarScannerRow');
+        if (row) row.classList.toggle('is-on', on);
+        if (!on) {
+            if (selectedMarker) map.removeLayer(selectedMarker);
+            if (selectionCircle) map.removeLayer(selectionCircle);
+            if (resultsLayer) resultsLayer.clearLayers();
+            selected = null;
+            map.off('click', onMapClick);
+            setStatus('Choose a point on the map / Alege un punct pe harta');
+        } else {
+            map.on('click', onMapClick);
+            // load() reports the useful status and warning itself. Consume the
+            // rejection here so an invalid file does not become an uncaught
+            // promise in the browser console.
+            load().catch(function () {});
+        }
+    }
     function onMapClick(e){ if(active&&!scanning)drawSelection(e.latlng); }
-    function load(){if(pointsPromise)return pointsPromise;pointsPromise=fetch(DATA_URL).then(function(r){if(!r.ok)throw Error('CSV '+r.status);return r.text();}).then(function(t){points=LidarGeo.load_points(parseCsv(t),'X','Y','Z');setStatus(points.length+' points loaded / puncte încărcate — choose a point on the map');return points;}).catch(function(e){pointsPromise=null;console.warn('[LIDAR Scanner]',e);setStatus('Invalid EPSG:4936 CSV / CSV geocentric invalid');throw e;});return pointsPromise;}
+    function load() {
+        if (pointsPromise) return pointsPromise;
+        setStatus('Loading points / Se încarcă punctele…');
+        pointsPromise = fetch(DATA_URL, { cache: 'no-cache' }).then(function (response) {
+            if (!response.ok) throw Error('CSV HTTP ' + response.status);
+            return response.text();
+        }).then(function (text) {
+            points = LidarGeo.load_points(parseCsv(text));
+            setStatus(points.length + ' points loaded / puncte încărcate — choose a point on the map');
+            return points;
+        }).catch(function (error) {
+            pointsPromise = null;
+            console.warn('[LIDAR Scanner]', error);
+            setStatus('Could not load scanner CSV / CSV-ul scannerului nu a putut fi încărcat');
+            throw error;
+        });
+        return pointsPromise;
+    }
     function wire(){ map=window._dlMap; if(!map){setTimeout(wire,200);return;} document.getElementById('lidarScannerToggle').addEventListener('change',function(){setActive(this.checked);}); document.getElementById('lidarScannerDistance').addEventListener('input',function(){document.getElementById('lidarScannerDistanceValue').textContent=this.value+' km';if(selected)selectionCircle.setRadius(+this.value*1000);}); document.getElementById('lidarScannerRun').addEventListener('click',run); setStatus('Choose a point on the map / Alege un punct pe harta'); }
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
     window.toggleLidarScannerLayer=setActive;
