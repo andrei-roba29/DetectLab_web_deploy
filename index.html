@@ -2305,33 +2305,11 @@
                                        min="0" max="100" value="85"
                                        oninput="setSatellite60sMapOpacity(this.value)">
 
-                                <!-- "Load images here" — Încarcă imagini aici.
-                                     Visible ONLY while the layer is switched on (JS). The
-                                     layer never fetches tiles by itself: this button is the
-                                     only trigger, and only from zoom level 11 — below that
-                                     it stays disabled and reads "Zoom in more" /
-                                     "Mărește mai mult". When pressed it loads the 60s
-                                     imagery tiles for the current viewport only; if none
-                                     exist it reports "No images here" /
-                                     "Nu există imagini aici". -->
-                                <button id="satellite60sLoadBtn" type="button" onclick="window.loadSatellite60sHere()" disabled
-                                        style="display:none;width:100%;margin-top:8px;padding:7px 10px;background:linear-gradient(135deg,rgba(107,63,160,0.38),rgba(74,40,128,0.25));border:1px solid rgba(163,112,232,0.5);border-radius:6px;color:rgba(245,240,235,0.95);font-family:'Outfit',sans-serif;font-size:0.78rem;font-weight:600;cursor:pointer;align-items:center;justify-content:center;gap:7px;transition:background 0.2s,border-color 0.2s,opacity 0.2s;"
-                                        onmouseover="this.style.background='linear-gradient(135deg,rgba(107,63,160,0.6),rgba(74,40,128,0.4))';this.style.borderColor='rgba(196,160,240,0.8)'"
-                                        onmouseout="this.style.background='linear-gradient(135deg,rgba(107,63,160,0.38),rgba(74,40,128,0.25))';this.style.borderColor='rgba(163,112,232,0.5)'"
-                                        title="Load 1960s imagery for the visible area only">
-                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0" aria-hidden="true">
-                                        <path d="M1.5 2.5h10M1.5 6.5h10M1.5 10.5h10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
-                                        <circle cx="6.5" cy="6.5" r="1.4" fill="currentColor"/>
-                                    </svg>
-                                    <span class="t" data-key="sat60_zoom_more">Zoom in more</span>
-                                </button>
-                                <div id="satellite60sLoadMsg" style="display:none;margin-top:7px;font-size:0.72rem;color:rgba(184,216,240,0.8);line-height:1.4;"></div>
-                                <style>
-                                    #satellite60sLoadBtn:disabled { opacity: 0.55; cursor: not-allowed; }
-                                    #satellite60sLoadBtn:focus-visible { outline:2px solid rgba(196,160,240,0.8); outline-offset:1px; }
-                                    #satellite60sLoadBtn.loading svg { animation: sat60LoadSpin 0.9s linear infinite; }
-                                    @keyframes sat60LoadSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-                                </style>
+                                <!-- The "Load images here" button and its result
+                                     message ("No images here") are NOT part of the
+                                     sidebar — they are rendered at the bottom centre
+                                     of the map by the Sat60 IIFE in map-app.js
+                                     (see _sat60EnsureUi / .sat60-bottom-ui). -->
                             </div>
 
                         </div><!-- /histPremiumSubLayers -->

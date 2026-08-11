@@ -126,7 +126,16 @@ const fetchedUrls = [];
 function fakeFetch(url) {
     fetchCalls++;
     fetchedUrls.push(url);
-    if (String(url).indexOf('MISSING') !== -1) {
+    const u = String(url);
+    // GWC404 fails ONLY on the GWC tile-cache path (tests the WMS fallback).
+    if (u.indexOf('GWC404') !== -1 && u.indexOf('/gwc/') !== -1) {
+        return Promise.resolve({ ok: false, status: 404, headers: { get: function () { return null; } } });
+    }
+    // WMS404 fails ONLY on the plain WMS path (tests the double-failure case).
+    if (u.indexOf('WMS404') !== -1 && u.indexOf('/geoserver/wms') !== -1) {
+        return Promise.resolve({ ok: false, status: 404, headers: { get: function () { return null; } } });
+    }
+    if (u.indexOf('MISSING') !== -1) {
         return Promise.resolve({ ok: false, status: 404, headers: { get: function () { return null; } } });
     }
     return Promise.resolve({
@@ -137,7 +146,9 @@ function fakeFetch(url) {
     });
 }
 
-/* ── canvas stub: every image is opaque (has visible content) ────────────── */
+/* ── canvas stub: opaque by default; set fakeCanvasTransparent=true to make
+      the FIRST decode fully transparent (simulates a GWC placeholder tile). */
+let fakeCanvasTransparent = false;
 function fakeCanvas() {
     return {
         width: 0, height: 0,
@@ -146,6 +157,10 @@ function fakeCanvas() {
                 drawImage: function () {},
                 getImageData: function (x, y, w, h) {
                     const data = new Uint8ClampedArray(4 * 4 * 4);
+                    if (fakeCanvasTransparent) {
+                        fakeCanvasTransparent = false; // first decode only
+                        return { data: data };          // all alpha = 0
+                    }
                     // Four opaque pixels → tileHasVisibleContent() => true.
                     data[3] = 255; data[7] = 255; data[11] = 255; data[15] = 255;
                     return { data: data };
@@ -273,12 +288,53 @@ function check(name, cond) {
     check('5.1 queue fetched exactly 2 blobs (1 good + 1 probe of the 404)', s.totals.fetched === 1);
     check('5.2 queue served the re-probe from the negative cache (empty counted)', s.totals.empty >= 3);
 
+    // ── 6) GWC tile-cache 404 → probe falls back to the WMS endpoint ────────
+    // (Distinct x/y so the IndexedDB shim never returns an earlier blob.)
+    fakeCanvasTransparent = false;
+    const c6 = fetchCalls;
+    const gwcOnlyUrl = 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms?SERVICE=WMS&LAYERS=corona%3A' +
+        layerLabel + '&BBOX=1%2C2%2C3%2C4&GWC404=1';
+    const probeRes4 = await W.coronaProbeTiles([
+        { url: gwcOnlyUrl, layerLabel: layerLabel, z: z, x: x + 5, y: y + 2 }
+    ]);
+    await wait(30);
+    check('6.1 GWC 404 falls back to WMS endpoint (2 fetches)', fetchCalls === c6 + 2);
+    check('6.2 fallback URL hits the plain /geoserver/wms endpoint',
+        fetchedUrls.some(function (u) { return String(u).indexOf('/geoserver/wms') !== -1; }));
+    check('6.3 imagery found via the fallback',
+        probeRes4.found === 1 && probeRes4.empty === 0 && probeRes4.failed === 0);
+
+    // ── 7) Transparent tile from the GWC cache → retried on the WMS endpoint ─
+    fakeCanvasTransparent = true;
+    const c7 = fetchCalls;
+    const gwcTransparentUrl = 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms?SERVICE=WMS&LAYERS=corona%3A' +
+        layerLabel + '&BBOX=1%2C2%2C3%2C4';
+    const probeRes5 = await W.coronaProbeTiles([
+        { url: gwcTransparentUrl, layerLabel: layerLabel, z: z, x: x + 6, y: y + 3 }
+    ]);
+    await wait(30);
+    check('7.1 transparent GWC tile retried on WMS (2 fetches)', fetchCalls === c7 + 2);
+    check('7.2 imagery found after the WMS retry', probeRes5.found === 1 && probeRes5.empty === 0);
+    fakeCanvasTransparent = false;
+
+    // ── 8) Both endpoints fail → definitively empty (negative-cached) ───────
+    const c8 = fetchCalls;
+    const bothFailUrl = 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms?SERVICE=WMS&LAYERS=corona%3AMISSING' +
+        '&BBOX=1%2C2%2C3%2C4&GWC404=1&WMS404=1';
+    const probeRes6 = await W.coronaProbeTiles([
+        { url: bothFailUrl, layerLabel: 'corona:MISSING', z: z, x: x + 7, y: y + 4 }
+    ]);
+    await wait(30);
+    check('8.1 GWC 404 + WMS 404 → empty (both endpoints tried)', fetchCalls === c8 + 2);
+    check('8.2 definitive miss reported as empty', probeRes6.empty === 1 && probeRes6.found === 0);
+
     if (failures > 0) {
         console.error('\n[test] ' + failures + ' assertion(s) FAILED');
         process.exit(1);
     }
     console.log('\n[test] ALL OK — layer fetches nothing until "Load images here" is pressed,');
-    console.log('       probed tiles render from cache afterwards, missing tiles stay quiet.');
+    console.log('       probed tiles render from cache afterwards, missing tiles stay quiet,');
+    console.log('       and GWC-only misses fall back to the plain WMS endpoint.');
     process.exit(0);
 })().catch(function (e) {
     console.error('[test] crashed:', e);

@@ -290,3 +290,61 @@ key is in the IndexedDB cache. So even with the new zoom-gated
 fix (and the user's "no requests on toggle" guarantee is preserved).
 The user only ever fetches when they press "Load images here" at
 zoom ≥ 11.
+
+---
+
+## 2026-08-10 Fix round — false "No images here" + bottom-center button placement
+
+### User report
+
+> "satellite imagery 1960's still doesn't work fine. I keep getting the
+> message 'no images here' even though I'm in an area where I know there
+> exist images. Load images here and 'no images' should be in the bottom
+> center of the screen, not in the sidebar layer or sidebar buttons."
+
+### A. Why "No images here" appeared in areas that DO have imagery
+
+The "Load images here" probe requested every tile **only** from the GWC
+tile-cache endpoint (`/geoserver/gwc/service/wms`). A tile cache serves only
+the zoom levels/grids it has **pre-cached** for a layer — at other zooms it
+answers HTTP 400/404 or a fully transparent placeholder. Every tile was then
+counted as "no imagery", so the probe reported "No images here" even though
+the same imagery is served fine by the plain WMS rendering endpoint
+(`/geoserver/wms`). Additional contributors:
+
+| # | Cause | Fix |
+|---|-------|-----|
+| 1 | Probe only hit the GWC cache; no fallback to the WMS rendering endpoint | `js/corona-wms-layer.js`: every probe tile that fails (4xx / non-image 200 / fully transparent) is retried **once** on the plain WMS endpoint (`/geoserver/gwc/service/wms` → `/geoserver/wms`) before being declared empty. Map tiles keep their manualOnly guarantee (zero network on toggle). |
+| 2 | Discovery only accepted `corona:…Aft/Fore` pass names — if the server exposes per-frame layers (`corona:1105-2235df064`), discovery silently fell back to names that may not exist | `js/map-app.js` `discoverCoronaLayers()` now collects **both** pass mosaics and individual frames intersecting Romania; passes are preferred, otherwise up to 16 frames are used, and only then the curated fallback list |
+| 3 | `layer.getTileUrl()` throws when a sublayer was created but never attached to the map (Leaflet only sets `_crs` in `onAdd`) — every job was skipped → `jobs.length === 0` → "No images here" with zero requests | `loadSatellite60sHere()` re-syncs the layer group onto the map (`_sat60SyncOnZoom()`) before building jobs, and a hand-built EPSG:900913 URL builder (`_sat60BuildWmsUrl`) replaces `getTileUrl` when it throws |
+| 4 | If **all** probe requests failed (server/CORS), the code still said "No images here" | Message logic: "No images here" only when at least one tile came back **definitively** empty; total failure now shows "Could not load the imagery, please try again" |
+
+### B. Button + message moved to the bottom center of the screen
+
+- The `#satellite60sLoadBtn` button and `#satellite60sLoadMsg` pill were
+  removed from the sidebar layer row in `index.html`.
+- The Sat60 IIFE (`_sat60EnsureUi`) now renders a `.sat60-bottom-ui` overlay
+  (button + message pill) anchored to `.map-wrapper`, positioned with CSS at
+  `left:50% / bottom:22px` — bottom center of the map, above Leaflet's
+  controls and below the sidebar panel.
+- The old topleft `Sat60LoadControl` Leaflet control was removed; all label /
+  disabled / loading / message logic was moved into `_sat60UpdateLoadBtn()`
+  and `_sat60SetLoadMsg()`.
+
+### Regression tests
+
+- `test-sat60-ondemand.js` — extended with GWC→WMS fallback cases:
+  6.1–6.3 GWC 404 → fallback WMS fetch → imagery found;
+  7.1–7.2 transparent GWC tile → retried on WMS → found;
+  8.1–8.2 both endpoints 404 → definitive empty.
+- `test-sat60-bottom-ui.js` — NEW: verifies the button and message pill live
+  inside the `.sat60-bottom-ui` bar on the map, are visible only while the
+  layer is on, are disabled with "Zoom in more" below z11, enable with
+  "Load images here" at z11+, report probe results in the bottom pill, and
+  hide/clear when the layer is toggled off.
+- `test-sat60-discovery.js` — NEW: discovery picks pass mosaics when present,
+  falls back to frame layers when only frames exist, and uses the curated
+  list when the server has nothing.
+- `test-sat60-zoom-guard.js` — unchanged and still green (DOM-flooding guard).
+
+Run: `node test-sat60-ondemand.js && node test-sat60-discovery.js && node test-sat60-bottom-ui.js && node test-sat60-zoom-guard.js`

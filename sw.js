@@ -2,7 +2,7 @@
    DetectLab — Service Worker v1.3.3
    ============================================================ */
 
-const CACHE_NAME = 'detectlab-v28';
+const CACHE_NAME = 'detectlab-v29';
 
 // ── Detection settings ──
 let detectionEnabled = false;
