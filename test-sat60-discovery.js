@@ -265,7 +265,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     sb = runIIFE('<WMT_MS_Capabilities><Capability><Layer><Name>other:thing</Name></Layer></Capability></WMT_MS_Capabilities>');
     await wait(400);
     check('C.1 curated fallback used when nothing discovered',
-        Array.isArray(sb._sat60LayerDefs) && sb._sat60LayerDefs.length === 16 &&
+        Array.isArray(sb._sat60LayerDefs) && sb._sat60LayerDefs.length === 19 &&
         sb._sat60LayerDefs[0].layerName === 'corona:1022-2104Aft');
 
     if (failures > 0) {

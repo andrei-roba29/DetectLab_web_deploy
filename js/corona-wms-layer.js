@@ -4,13 +4,19 @@
  * Optimised tile layer for the "Satellite imagery 60's" (CORONA / CAST UARK
  * GeoWebCache) layer.
  *
- * Tile source: WMS with GeoWebCache (gwc/service/wms), using EPSG:4326
- * geographic coordinates (lat/lng bounding boxes). This approach avoids the
- * tile coordinate mapping issues that occur with WMTS — the CAST GeoServer
- * uses a non-standard tile matrix coordinate system where standard EPSG:4326
- * tile coordinates (e.g., column 4633) are out of range (valid range
- * 13484-13601 at zoom 13). WMS uses lat/lng BBOX coordinates directly,
- * which work correctly regardless of the underlying tile grid structure.
+ * Tile source: WMS with GeoWebCache (gwc/service/wms), using EPSG:900913
+ * Web Mercator coordinates (in meters) and standard tile bounding boxes.
+ * Why EPSG:900913 instead of EPSG:4326 or WMTS?
+ *  - WMTS with TILEMATRIXSET=EPSG:4326 fails with TileOutOfRange errors
+ *    because standard Web Mercator tile columns/rows do not match the CAST
+ *    server's EPSG:4326 tile matrix grid.
+ *  - WMS with SRS=EPSG:4326 (lat/lng BBOX) fails because GeoWebCache
+ *    (/geoserver/gwc/service/wms) only caches tiles for its Web Mercator
+ *    gridset (EPSG:900913). Queries in EPSG:4326 miss the cache and return
+ *    empty/transparent placeholders or errors.
+ *  - WMS GetMap with SRS=EPSG:900913 and tile bounding boxes in Web
+ *    Mercator meters (minX, minY, maxX, maxY) matches both the standard
+ *    Leaflet tile grid AND GeoWebCache's cached tiles.
  *
  * The gwc/service/wms endpoint serves pre-cached tiles from GeoWebCache when
  * the request matches a cached tile (BBOX + SRS must be byte-identical to the
@@ -24,7 +30,7 @@
  *   3. No caching — pan/zoom re-requests every tile from the remote server.
  *   4. Mobile crashes from memory/connection pressure.
  *   5. WMTS tile coordinate mismatch (TileOutOfRange errors) — fixed by
- *      using WMS with EPSG:4326 BBOX coordinates.
+ *      using WMS with EPSG:900913 BBOX coordinates.
  *
  * Strategy:
  *   • ONE shared request queue across ALL CORONA sublayers, with a hard cap on
@@ -1089,10 +1095,19 @@
                 // (see coronaProbeTiles below).
                 manualOnly: false,
                 // WMS endpoint for Corona imagery via GeoWebCache.
-                // Uses EPSG:4326 geographic coordinates (lat/lng BBOX) instead
-                // of WMTS tile matrix coordinates to avoid the TileOutOfRange
-                // errors that occur when using WMTS with the CAST server's
-                // non-standard tile coordinate system.
+                // Uses EPSG:900913 Web Mercator coordinates (in meters) and
+                // standard tile bounding boxes.
+                // Why EPSG:900913 instead of EPSG:4326 or WMTS?
+                //  - WMTS with TILEMATRIXSET=EPSG:4326 fails with TileOutOfRange
+                //    errors because standard Web Mercator tile columns/rows do not
+                //    match the CAST server's EPSG:4326 tile matrix grid.
+                //  - WMS with SRS=EPSG:4326 (lat/lng BBOX) fails because GeoWebCache
+                //    (/geoserver/gwc/service/wms) only caches tiles for its Web
+                //    Mercator gridset (EPSG:900913). Queries in EPSG:4326 miss the
+                //    cache and return empty/transparent placeholders or errors.
+                //  - WMS GetMap with SRS=EPSG:900913 and tile bounding boxes in
+                //    Web Mercator meters (minX, minY, maxX, maxY) matches both the
+                //    standard Leaflet tile grid AND GeoWebCache's cached tiles.
                 wmsUrl: 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms'
             }, options || {});
 
@@ -1109,7 +1124,7 @@
         // Called by Leaflet to create each tile element. We override it so that:
         //  - tiles below the zoom threshold / outside Romania are never created
         //  - all loads go through the shared, throttled queue
-        //  - the request is a WMS GetMap with EPSG:4326 BBOX coordinates
+        //  - the request is a WMS GetMap with EPSG:900913 BBOX coordinates
         createTile: function (coords, done) {
             var tile = L.DomUtil.create('img', 'leaflet-tile');
             tile.alt = '';
@@ -1133,10 +1148,9 @@
                 return tile;
             }
 
-            // (c) Build the WMS URL using EPSG:4326 geographic coordinates.
-            //     This avoids the tile coordinate mapping issues that occur
-            //     with WMTS (TileOutOfRange errors with the CAST server's
-            //     non-standard tile matrix coordinate system).
+            // (c) Build the WMS URL using EPSG:900913 Web Mercator coordinates.
+            //     This matches GeoWebCache's cached tile grid and avoids both
+            //     WMTS TileOutOfRange errors and EPSG:4326 cache misses.
             var url;
             try {
                 url = buildWmsUrl(this.options, this._layerLabel, z, coords.x, coords.y);
@@ -1224,7 +1238,7 @@
         },
 
         // Override Leaflet's WMS URL builder — we always issue a WMS
-        // GetMap request with EPSG:4326 BBOX coordinates. Called by a
+        // GetMap request with EPSG:900913 BBOX coordinates. Called by a
         // few Leaflet internals (`getAttribute`, `expandAriaLabel`).
         getTileUrl: function (coords) {
             return buildWmsUrl(this.options, this._layerLabel, coords.z, coords.x, coords.y);
@@ -1246,32 +1260,32 @@
     }
 
     /* ───────────────────────────────────────────────────────────────────────
-     * 6b. WMS GetMap URL builder using EPSG:4326 geographic coordinates.
+     * 6b. WMS GetMap URL builder using EPSG:900913 Web Mercator coordinates.
      *
-     *     This uses WMS with EPSG:4326 SRS (lat/lng bounding box) instead of
-     *     WMTS tile matrix coordinates. This avoids the "TileOutOfRange" errors
-     *     that occur when using WMTS with the CAST GeoServer's non-standard
-     *     tile coordinate system (valid range 13484-13601 at zoom 13, not
-     *     the standard EPSG:4326 coordinates that Leaflet produces).
+     *     This uses WMS with EPSG:900913 SRS (Web Mercator in meters) instead of
+     *     WMTS tile matrix coordinates or EPSG:4326. This avoids both:
+     *      - "TileOutOfRange" errors from WMTS with the CAST GeoServer's
+     *        non-standard EPSG:4326 tile coordinate system.
+     *      - Cache misses / empty responses from GeoWebCache (/gwc/service/wms)
+     *        when querying in EPSG:4326. GeoWebCache caches tiles for web maps
+     *        in Spherical Mercator (EPSG:900913 / EPSG:3857).
      *
-     *     The gwc/service/wms endpoint serves pre-cached tiles when the
-     *     BBOX + SRS match a cached request exactly.
+     *     The gwc/service/wms endpoint serves pre-cached 256x256 tiles when the
+     *     BBOX (in meters) and SRS match a cached request exactly.
      * ───────────────────────────────────────────────────────────────────── */
+    function tileToBbox900913(z, x, y) {
+        var ORIGIN = 20037508.342789244;
+        var tileSizeMeters = (ORIGIN * 2) / Math.pow(2, z);
+        var minX = -ORIGIN + x * tileSizeMeters;
+        var maxX = -ORIGIN + (x + 1) * tileSizeMeters;
+        var maxY = ORIGIN - y * tileSizeMeters;
+        var minY = ORIGIN - (y + 1) * tileSizeMeters;
+        return [minX, minY, maxX, maxY].join(',');
+    }
+
     function buildWmsUrl(opts, layerName, z, x, y) {
         var base = opts.wmsUrl || 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms';
-        // Calculate the bounding box for this tile in EPSG:4326 coordinates.
-        // Leaflet's tile coordinates (x, y) at zoom z correspond to:
-        //   - x: column number (0 = -180°W, increasing eastward)
-        //   - y: row number (0 = 90°N, increasing southward)
-        // The tile spans from (lonW, latN) to (lonE, latS).
-        var n = Math.pow(2, z + 1); // 2 tiles wide at z=0
-        var lonW = -180 + (x / n) * 360;
-        var lonE = -180 + ((x + 1) / n) * 360;
-        var m = Math.pow(2, z); // 1 tile tall at z=0
-        var latN = 90 - (y / m) * 180;
-        var latS = 90 - ((y + 1) / m) * 180;
-        // WMS uses BBOX=minx,miny,maxx,maxy (west, south, east, north)
-        var bbox = [round5(lonW), round5(latS), round5(lonE), round5(latN)].join(',');
+        var bbox = tileToBbox900913(z, x, y);
 
         return base
             + '?SERVICE=WMS'
@@ -1280,12 +1294,12 @@
             + '&FORMAT=' + encodeURIComponent(opts.format || 'image/png')
             + '&TRANSPARENT=true'
             + '&LAYERS=' + encodeURIComponent(layerName)
-            + '&STYLES='
-            + '&SRS=EPSG:4326'
+            + '&tiled=true'
             + '&WIDTH=256'
             + '&HEIGHT=256'
-            + '&TILED=true'
-            + '&BBOX=' + bbox;
+            + '&SRS=EPSG%3A900913'
+            + '&STYLES='
+            + '&BBOX=' + encodeURIComponent(bbox);
     }
 
     function round5(v) { return Math.round(v * 100000) / 100000; }
