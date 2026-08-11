@@ -3854,6 +3854,16 @@
                     className: 'lidar-ro2m-tiles',
                     leafletLayer: null
                 },
+                ro1m: {
+                    label: 'Romania 1m/pixel agregare',
+                    enabled: false,
+                    opacity: 0,
+                    type: 'xyz',
+                    url: 'https://tiles.arcgis.com/tiles/wCvLzGFkz06gCfBg/arcgis/rest/services/1m/MapServer/tile/{z}/{y}/{x}',
+                    maxNativeZoom: 16,
+                    className: 'lidar-ro1m-tiles',
+                    leafletLayer: null
+                },
                 cs917: {
                     label: 'CS - LAKI III',
                     enabled: false,
@@ -4014,7 +4024,7 @@
                 var panel = document.getElementById('lidarSubLayers');
                 var icon = document.getElementById('lidarExpandIcon');
                 if (_lidarSubExpandedState) {
-                    panel.style.maxHeight = '900px';
+                    panel.style.maxHeight = '1100px';
                     panel.style.opacity = '1';
                     panel.style.marginTop = '10px';
                     icon.style.transform = 'rotate(0deg)';
@@ -4148,6 +4158,22 @@
                     if (cfg.leafletLayer.setOpacity) cfg.leafletLayer.setOpacity(opacity);
                 }
                 if (val > 0 && !cfg.enabled) { window.toggleLidarSub('ro2m', true); }
+                var masterToggle = document.getElementById('lidarToggle');
+                if (masterToggle && val > 0 && !_lidarVisible) { masterToggle.checked = true; window.toggleLidarLayer(true); }
+            };
+
+            // ── Public: Romania 1m/pixel agregare opacity slider ──
+            window.setLidarRo1mOpacity = function(val) {
+                var opacity = val / 100;
+                var cfg = LIDAR_SUB_LAYERS['ro1m'];
+                cfg.opacity = opacity;
+                var pctEl = document.getElementById('lidarRo1mPct');
+                if (pctEl) pctEl.textContent = val + '%';
+                if (cfg.leafletLayer) {
+                    cfg.leafletLayer.options.opacity = opacity;
+                    if (cfg.leafletLayer.setOpacity) cfg.leafletLayer.setOpacity(opacity);
+                }
+                if (val > 0 && !cfg.enabled) { window.toggleLidarSub('ro1m', true); }
                 var masterToggle = document.getElementById('lidarToggle');
                 if (masterToggle && val > 0 && !_lidarVisible) { masterToggle.checked = true; window.toggleLidarLayer(true); }
             };
@@ -4410,7 +4436,7 @@
             };
 
             map.on('zoomend', function() {
-                ['ar', 'hd', 'ab', 'bh', 'cs', 'ro2m', 'cs917', 'dj917', 'gj917', 'mh917'].forEach(function(key) {
+                ['ar', 'hd', 'ab', 'bh', 'cs', 'ro2m', 'ro1m', 'cs917', 'dj917', 'gj917', 'mh917'].forEach(function(key) {
                     var cfg = LIDAR_SUB_LAYERS[key];
                     if (cfg && cfg.leafletLayer && cfg.enabled && _lidarVisible) {
                         cfg.leafletLayer.options.opacity = cfg.opacity;
