@@ -473,60 +473,66 @@ HTTP requests, overloading the browser connection pool and crashing the page.
    - In-flight requests can be cancelled immediately if the layer is switched off.
 
 
-## 2026-08-11 WMS Migration — Fix for TileOutOfRange Errors
+## 2026-08-11 WMS-C GeoWebCache Fix — Switch from EPSG:4326 to EPSG:900913 (Spherical / Web Mercator)
 
 ### User report
-> "satellite images 1960's" tells me "no images here" even in places that I know for sure there should be images.
+> "satellite imagery 1960's" layer still doesnt work. In places where i confident there were supposed to be images, it tells me that there are no images there. For example this is a valid request from corona:
+> `https://geoserve.cast.uark.edu/geoserver/gwc/service/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=true&LAYERS=corona%3A1104-2155df004&tiled=true&WIDTH=256&HEIGHT=256&SRS=EPSG%3A900913&STYLES=&BBOX=2628210.77928672%2C5897269.604401562%2C2629433.771739064%2C5898492.596853906`
+> and for the same approximate region i have this bad request:
+> `GET https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=corona%3A1110-2289Fore&STYLE=&TILEMATRIXSET=EPSG%3A4326&TILEMATRIX=EPSG%3A4326%3A15&TILECOL=18531&TILEROW=11561&FORMAT=image%2Fpng 400 (Bad Request)`
 
-### Problem: WMTS Tile Coordinate Mismatch
+### Problem: Why WMTS and EPSG:4326 WMS both failed
 
-The CAST GeoServer uses a **non-standard tile coordinate system** for its WMTS endpoint. The valid tile column range
-(13484-13601 at zoom 13) does NOT match the standard EPSG:4326 coordinates that Leaflet produces for Romania
-(9113-9532 at zoom 13). This caused TileOutOfRange errors:
+1. **WMTS `TileOutOfRange` (400 Bad Request):**
+   The WMTS endpoint was queried with `TILEMATRIXSET=EPSG:4326` while passing standard Web Mercator (`EPSG:3857` / `EPSG:900913`) tile columns and rows (e.g., `TILECOL=18531`, `TILEROW=11561` at zoom 15). The server's EPSG:4326 tile matrix grid does not match Web Mercator tile indices, causing:
+   ```
+   <Exception exceptionCode="TileOutOfRange" locator="TILECOLUMN">
+   <ExceptionText>Column 18531 is out of range...</ExceptionText>
+   </Exception>
+   ```
 
-```
-<Exception exceptionCode="TileOutOfRange" locator="TILECOLUMN">
-<ExceptionText>Column 4633 is out of range, min: 13484 max:13601</ExceptionText>
-</Exception>
-```
+2. **WMS with `SRS=EPSG:4326` causing false "No images here":**
+   When the app was switched from WMTS to WMS, requests were built using `SRS=EPSG:4326` and latitude/longitude bounding boxes. However, `https://geoserve.cast.uark.edu/geoserver/gwc/service/wms` is a **GeoWebCache WMS-C caching proxy** configured to cache web map tiles in standard **Spherical Mercator (`EPSG:900913` / `EPSG:3857`)**.
+   When WMS GetMap queries are sent with `SRS=EPSG:4326`, GeoWebCache does not recognize them as hits against its `EPSG:900913` cache grid, resulting in cache misses, empty placeholder responses, or errors. Consequently, when the user clicked "Load images here" ("Încarcă imagini aici"), tile probes returned no imagery and the app incorrectly reported "No images here" ("Nu există imagini aici").
 
-### Solution: Switch from WMTS to WMS with EPSG:4326 BBOX
+3. **Layer Discovery & Mission Coverage:**
+   The dynamic discovery logic only recognized 6 Corona mission prefixes (`["1022", "1103", "1105", "1106", "1107", "1110"]`), missing mission `"1104"` (e.g. `corona:1104-2155df004`). In addition, the curated fallback list (`FALLBACK_ROMANIA_LAYERS`) only contained pass mosaics (`...Aft` and `...Fore`) and no individual declassified frames covering regions where pass mosaics were unavailable.
 
-Instead of using WMTS with tile matrix coordinates (TILEMATRIX, TILECOL, TILEROW), we now use WMS with
-**EPSG:4326 geographic coordinates** (latitude/longitude bounding box). WMS works correctly regardless of
-the server's internal tile grid structure because:
-- WMS uses real-world coordinates (lat/lng BBOX) instead of tile matrix indices
-- The `SRS=EPSG:4326` parameter tells the server to interpret coordinates in standard WGS84
-- The server handles the conversion to its internal tile grid automatically
+### Solution: WMS GetMap with `SRS=EPSG:900913` (Web Mercator Meters BBOX) & Expanded Layers
 
-### Changes
+We updated both tile URL builders (`buildWmsUrl` in `js/corona-wms-layer.js` and `_sat60BuildWmsUrl` in `js/map-app.js`) to generate standard GeoWebCache WMS-C tile requests:
+- **`SRS=EPSG:900913`** (Spherical / Web Mercator)
+- **`BBOX=minX,minY,maxX,maxY`** calculated in Web Mercator meters for each tile `(z, x, y)`
+- **`tiled=true`**, `WIDTH=256`, `HEIGHT=256`, `FORMAT=image/png`, `TRANSPARENT=true`
 
-| File | Change |
-|---|---|
-| `js/corona-wms-layer.js` | Replaced `buildWmtsUrl()` with `buildWmsUrl()` that builds WMS GetMap requests using EPSG:4326 BBOX coordinates. Removed `wmtsUrl` and `wmtsTileMatrixSet` options; replaced with `wmsUrl`. Removed `wmtsTileToBbox3857()` and `buildWmsFallbackUrl()` functions. |
-| `js/map-app.js` | Renamed `SAT60_WMTS_URL` to `SAT60_WMS_URL`. `discoverCoronaLayers()` now uses WMS GetCapabilities instead of WMTS. `_sat60BuildWmsUrl()` now builds WMS GetMap URLs with EPSG:4326 BBOX coordinates. `ensureSat60Layers()` passes `wmsUrl` instead of `wmtsUrl` to the layer factory. |
-
-### The WMS GetMap request format
-
+This matches the exact URL format and tile bounding boxes of valid GeoWebCache tile requests:
 ```
 https://geoserve.cast.uark.edu/geoserver/gwc/service/wms
   ?SERVICE=WMS
   &VERSION=1.1.1
   &REQUEST=GetMap
-  &FORMAT=image/png
+  &FORMAT=image%2Fpng
   &TRANSPARENT=true
-  &LAYERS=corona:1103-2139Aft
+  &LAYERS=corona%3A1104-2155df004
+  &tiled=true
+  &WIDTH=256&HEIGHT=256
+  &SRS=EPSG%3A900913
   &STYLES=
-  &SRS=EPSG:4326
-  &WIDTH=256&HEIGHT=256&TILED=true
-  &BBOX=24.12345,44.67890,26.54321,46.12345
+  &BBOX=2628210.77928672%2C5897269.604401562%2C2629433.771739064%2C5898492.596853906
 ```
+
+### Changes
+
+| File | Change |
+|---|---|
+| `js/corona-wms-layer.js` | Replaced `buildWmsUrl()` to compute BBOX in standard Web Mercator meters (`tileToBbox900913(z, x, y)`) and request `SRS=EPSG:900913` with `tiled=true`. |
+| `js/map-app.js` | Updated `_sat60BuildWmsUrl()` to compute BBOX in Web Mercator meters (`_sat60TileToBbox900913(z, x, y)`) and request `SRS=EPSG:900913`. Expanded `knownRomaniaMissions` to include all relevant Corona mission numbers (`1022`–`1112`, including `1104`). Added `"corona:1104-2155df004"`, `"corona:1105-2235df064"`, and `"corona:1103-2167df101"` to `FALLBACK_ROMANIA_LAYERS`. |
+| `test-sat60-discovery.js` | Updated test assertion for curated fallback length from 16 to 19 layers. |
 
 ### Behaviour unchanged
 - On-demand "Load images here" button
 - IndexedDB cache
 - Concurrency cap (8 desktop / 4 mobile)
 - Zoom ≥ 11 gate
-- 16 pass sublayers
 - Red coverage rectangle
 

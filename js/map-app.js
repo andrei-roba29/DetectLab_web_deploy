@@ -9273,44 +9273,53 @@
             })();
 
             // ── SATELIT 60s (WMS Corona via CAST UARK GeoServer) ──
-            // Uses the gwc/service/wms endpoint with EPSG:4326 geographic
-            // coordinates (lat/lng BBOX). This approach was chosen because
-            // the WMTS endpoint causes TileOutOfRange errors — the CAST
-            // GeoServer uses a non-standard tile coordinate system where
-            // the valid tile column range (13484-13601 at zoom 13) doesn't
-            // match the standard EPSG:4326 coordinates Leaflet produces.
+            // Uses the gwc/service/wms endpoint (GeoWebCache WMS-C tile cache)
+            // with SRS=EPSG:900913 (Web Mercator in meters) and standard Web
+            // Mercator tile bounding boxes.
+            // Why EPSG:900913 instead of EPSG:4326 or WMTS?
+            //  - WMTS with TILEMATRIXSET=EPSG:4326 fails with TileOutOfRange
+            //    errors because standard Web Mercator tile columns/rows do not
+            //    match the CAST server's EPSG:4326 tile matrix grid.
+            //  - WMS with SRS=EPSG:4326 (lat/lng BBOX) fails because GeoWebCache
+            //    (/geoserver/gwc/service/wms) only caches tiles for its Web
+            //    Mercator gridset (EPSG:900913). Queries in EPSG:4326 miss the
+            //    cache and return empty/transparent placeholders or errors.
+            //  - WMS GetMap with SRS=EPSG:900913 and tile bounding boxes in
+            //    Web Mercator meters (minX, minY, maxX, maxY) matches both the
+            //    standard Leaflet tile grid AND GeoWebCache's cached tiles.
             //
-            // The layer uses the 16 verified Corona pass layers (mosaics)
-            // covering Romania. On-demand mode is preserved: the layer NEVER
-            // fetches anything when turned on or during pan/zoom. Tile
+            // The layer checks verified Corona pass layers and declassified
+            // frames covering Romania. On-demand mode is preserved: the layer
+            // NEVER fetches anything when turned on or during pan/zoom. Tile
             // fetching starts ONLY when the search button ("Caută imagini
             // aici" / "Search images here") is pressed at zoom level >= 11
             // for the current visible viewport. The probe uses WMS GetMap
-            // URLs with EPSG:4326 BBOX coordinates.
+            // URLs with EPSG:900913 BBOX coordinates.
             (function () {
                 map.createPane("pane_sat60");
                 map.getPane("pane_sat60").style.zIndex = 648;
                 map.getPane("pane_sat60").style.pointerEvents = "none";
 
-                // The WMS endpoint via GeoWebCache — uses EPSG:4326 geographic
-                // coordinates (lat/lng BBOX) instead of WMTS tile matrix
-                // coordinates. This avoids TileOutOfRange errors that occur
-                // with WMTS due to the CAST GeoServer's non-standard tile
-                // coordinate system (valid range 13484-13601 at zoom 13, not
-                // the standard EPSG:4326 coordinates Leaflet produces).
+                // The WMS endpoint via GeoWebCache — uses EPSG:900913 Web
+                // Mercator coordinates (meters BBOX) instead of WMTS tile matrix
+                // coordinates or EPSG:4326. This avoids both WMTS TileOutOfRange
+                // errors and GeoWebCache EPSG:4326 cache misses.
                 var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
                 // Alias for backward compatibility
                 var SAT60_GWC_URL = SAT60_WMS_URL;
-                var SAT60_WMTS_TILE_MATRIX_SET = "EPSG:4326";
+                var SAT60_WMS_SRS = "EPSG:900913";
                 var SAT60_INITIAL_OPACITY = 0.85;
 
-                // Curated list of verified Corona pass layer names (mosaics) from CAST GeoServer
-                // whose geographic bounding boxes cover Romanian territory.
+                // Curated list of verified Corona pass layer names (mosaics) and
+                // key declassified frames from CAST GeoServer whose geographic
+                // bounding boxes cover Romanian territory.
                 var FALLBACK_ROMANIA_LAYERS = [
                     "corona:1022-2104Aft", "corona:1022-2104Fore",
                     "corona:1103-2139Aft", "corona:1103-2139Fore",
                     "corona:1103-2155Aft", "corona:1103-2155Fore",
                     "corona:1103-2167Aft", "corona:1103-2167Fore",
+                    "corona:1104-2155df004", "corona:1105-2235df064",
+                    "corona:1103-2167df101",
                     "corona:1105-2235Aft", "corona:1105-2235Fore",
                     "corona:1106-1042Aft", "corona:1106-1042Fore",
                     "corona:1107-1074Aft", "corona:1107-1074Fore",
@@ -9336,7 +9345,7 @@
                                 var layerNodes = doc.getElementsByTagName("Layer");
                                 var RO_MIN_X = 19.0, RO_MAX_X = 31.0;
                                 var RO_MIN_Y = 43.0, RO_MAX_Y = 49.0;
-                                var knownRomaniaMissions = ["1022", "1103", "1105", "1106", "1107", "1110"];
+                                var knownRomaniaMissions = ["1022", "1023", "1101", "1102", "1103", "1104", "1105", "1106", "1107", "1108", "1109", "1110", "1111", "1112"];
 
                                 function parseBBox(node) {
                                     var bboxEl = node.getElementsByTagName("LatLonBoundingBox")[0];
@@ -9495,20 +9504,27 @@
                     }
                 }
 
-                // Build a WMS GetMap URL using EPSG:4326 geographic coordinates.
-                // This avoids the tile coordinate mapping issues that occur with
-                // WMTS (TileOutOfRange errors with the CAST server's
-                // non-standard tile matrix coordinate system).
+                // Build a WMS GetMap URL using EPSG:900913 Spherical / Web
+                // Mercator coordinates (in meters).
+                // This avoids both:
+                //  - TileOutOfRange errors from WMTS with the CAST GeoServer's
+                //    non-standard EPSG:4326 tile coordinate system.
+                //  - Cache misses from GeoWebCache (/gwc/service/wms) when
+                //    querying in EPSG:4326. GeoWebCache caches tiles for web
+                //    maps in Spherical Mercator (EPSG:900913 / EPSG:3857).
+                function _sat60TileToBbox900913(z, x, y) {
+                    var ORIGIN = 20037508.342789244;
+                    var tileSizeMeters = (ORIGIN * 2) / Math.pow(2, z);
+                    var minX = -ORIGIN + x * tileSizeMeters;
+                    var maxX = -ORIGIN + (x + 1) * tileSizeMeters;
+                    var maxY = ORIGIN - y * tileSizeMeters;
+                    var minY = ORIGIN - (y + 1) * tileSizeMeters;
+                    return [minX, minY, maxX, maxY].join(',');
+                }
+
                 function _sat60BuildWmsUrl(layerName, coords) {
                     var z = coords.z, x = coords.x, y = coords.y;
-                    var n = Math.pow(2, z + 1); // 2 tiles wide at z=0
-                    var lonW = -180 + (x / n) * 360;
-                    var lonE = -180 + ((x + 1) / n) * 360;
-                    var m = Math.pow(2, z); // 1 tile tall at z=0
-                    var latN = 90 - (y / m) * 180;
-                    var latS = 90 - ((y + 1) / m) * 180;
-                    // WMS uses BBOX=west,south,east,north
-                    var bbox = [lonW.toFixed(5), latS.toFixed(5), lonE.toFixed(5), latN.toFixed(5)].join(',');
+                    var bbox = _sat60TileToBbox900913(z, x, y);
 
                     return SAT60_WMS_URL
                         + '?SERVICE=WMS'
@@ -9517,12 +9533,12 @@
                         + '&FORMAT=image%2Fpng'
                         + '&TRANSPARENT=true'
                         + '&LAYERS=' + encodeURIComponent(layerName)
-                        + '&STYLES='
-                        + '&SRS=EPSG%3A4326'
+                        + '&tiled=true'
                         + '&WIDTH=256'
                         + '&HEIGHT=256'
-                        + '&TILED=true'
-                        + '&BBOX=' + bbox;
+                        + '&SRS=EPSG%3A900913'
+                        + '&STYLES='
+                        + '&BBOX=' + encodeURIComponent(bbox);
                 }
 
                 // ── Bottom-center search button & status bar ────────────────
@@ -9633,9 +9649,11 @@
                         maxNativeZoom: 15,
                         minZoom: effectiveMinZoom,
                         manualOnly: true,
-                        // Use WMS with EPSG:4326 geographic coordinates
-                        // (avoids WMTS TileOutOfRange errors).
-                        wmsUrl: SAT60_WMS_URL
+                        // Use WMS with EPSG:900913 Web Mercator coordinates
+                        // (matches GWC cached tile grid and avoids WMTS errors).
+                        wmsUrl: SAT60_WMS_URL,
+                        tiled: true,
+                        crs: L.CRS.EPSG3857
                     };
 
                     window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
@@ -9648,7 +9666,7 @@
                             // CoronaWmsLayer's superclass constructor expects
                             // something for its internal _tileOnError / _url
                             // bookkeeping. The createTile() override builds
-                            // WMS URLs with EPSG:4326 BBOX coordinates.
+                            // WMS URLs with EPSG:900913 BBOX coordinates.
                             return window.createCoronaWmsLayer(SAT60_WMS_URL, opts);
                         }
                         return L.tileLayer.wms(SAT60_WMS_URL, opts);
