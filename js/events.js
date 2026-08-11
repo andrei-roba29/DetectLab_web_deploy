@@ -15,6 +15,8 @@
     let eventsData = [];
     let activeChatEventId = null;
     let activeChatDeadlineTimer = null;
+    let lastKnownEventChatCount = 0;
+    let eventsRealtimeChannel = null;
 
     // Helper: get current user
     function getCurrentUser() {
@@ -51,6 +53,40 @@
     }
     function saveLocalEvents(arr) {
         try { localStorage.setItem('detectlab_events', JSON.stringify(arr)); } catch (e) {}
+    }
+
+    // `detectlab_events` is also a cache of events downloaded from Supabase. Keep a
+    // separate, explicit list of locally-created events that still need a server
+    // sync. Without this distinction, a cached remote event that has been deleted
+    // can be mistaken for an offline creation and silently uploaded again by another
+    // user's browser (the "deleted for me but still visible to others" issue).
+    function getPendingLocalEventIds() {
+        try {
+            var stored = JSON.parse(localStorage.getItem('detectlab_pending_event_sync') || '[]');
+            return Array.isArray(stored) ? stored.filter(Boolean) : [];
+        } catch (e) { return []; }
+    }
+    function savePendingLocalEventIds(ids) {
+        try {
+            var unique = [];
+            (ids || []).forEach(function (id) {
+                if (id && unique.indexOf(id) === -1) unique.push(id);
+            });
+            localStorage.setItem('detectlab_pending_event_sync', JSON.stringify(unique));
+        } catch (e) {}
+    }
+    function markEventPendingSync(eventId) {
+        if (!eventId) return;
+        var ids = getPendingLocalEventIds();
+        if (ids.indexOf(eventId) === -1) ids.push(eventId);
+        savePendingLocalEventIds(ids);
+    }
+    function clearEventPendingSync(eventId) {
+        if (!eventId) return;
+        savePendingLocalEventIds(getPendingLocalEventIds().filter(function (id) { return id !== eventId; }));
+    }
+    function isEventPendingSync(eventId) {
+        return getPendingLocalEventIds().indexOf(eventId) !== -1;
     }
 
     function getLocalInquiries() {
@@ -260,6 +296,100 @@
         });
 
         return Object.keys(chatMap).map(function (eventId) { return chatMap[eventId]; });
+    }
+
+    function setEventChatBadge(elementId, count, visible) {
+        var el = document.getElementById(elementId);
+        if (!el) return;
+        var safeCount = Math.max(0, Number(count) || 0);
+        el.textContent = safeCount > 9 ? '9+' : String(safeCount);
+        el.style.display = visible && safeCount > 0 ? 'inline-flex' : 'none';
+        el.setAttribute('aria-hidden', visible && safeCount > 0 ? 'false' : 'true');
+    }
+
+    // There are two copies of the notification indicator for each interface:
+    // one is pinned to the collapsed profile control and the other to Events in
+    // the expanded menu. Showing only one at a time makes the notification feel
+    // like it follows the menu as requested, instead of duplicating it.
+    function renderEventChatBadge(count) {
+        lastKnownEventChatCount = Math.max(0, Number(count) || 0);
+        count = lastKnownEventChatCount;
+        var desktopMenu = document.getElementById('userMenu');
+        var desktopMenuOpen = !!(desktopMenu && !desktopMenu.classList.contains('hidden'));
+        var pwaMenu = document.getElementById('pwaUserDropdown');
+        var pwaMenuOpen = !!(pwaMenu && pwaMenu.classList.contains('open'));
+
+        setEventChatBadge('profileEventChatBadge', count, !desktopMenuOpen);
+        setEventChatBadge('desktopEventsChatBadge', count, desktopMenuOpen);
+        setEventChatBadge('pwaProfileEventChatBadge', count, !pwaMenuOpen);
+        setEventChatBadge('pwaEventsChatBadge', count, pwaMenuOpen);
+
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+        var label = count > 0
+            ? (isRo
+                ? count + ' chat' + (count === 1 ? ' de eveniment activ' : 'uri de eveniment active')
+                : count + ' active event chat' + (count === 1 ? '' : 's'))
+            : (isRo ? 'Niciun chat de eveniment activ' : 'No active event chats');
+        ['navUserTrigger', 'pwaUserTrigger', 'desktopEventsButton', 'pwaEventsButton'].forEach(function (id) {
+            var button = document.getElementById(id);
+            if (button) button.setAttribute('data-event-chat-label', label);
+        });
+    }
+
+    async function getAttendingEventsForUser(user) {
+        if (!user || !user.id) return [];
+        var eventIds = {};
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient
+                    .from('event_attendees')
+                    .select('event_id')
+                    .eq('user_id', user.id);
+                if (!res.error && Array.isArray(res.data)) {
+                    res.data.forEach(function (att) { if (att.event_id) eventIds[att.event_id] = true; });
+                }
+            }
+        } catch (e) {}
+        getLocalAttendees().forEach(function (att) {
+            if (att.user_id === user.id && att.event_id) eventIds[att.event_id] = true;
+        });
+        return eventsData.filter(function (ev) { return !!eventIds[ev.id]; });
+    }
+
+    async function getAccessibleActiveChatsForUser(user) {
+        if (!user || !user.id) return [];
+        var eventIds = {};
+        var attending = await getAttendingEventsForUser(user);
+        attending.forEach(function (ev) { eventIds[ev.id] = true; });
+        eventsData.forEach(function (ev) {
+            if (ev.creator_id === user.id || (user.email && ev.creator_email && user.email === ev.creator_email)) {
+                eventIds[ev.id] = true;
+            }
+        });
+        var ids = Object.keys(eventIds).filter(function (id) {
+            var ev = getEventById(id);
+            return ev && !isEventExpired(ev.event_date);
+        });
+        if (ids.length === 0) return [];
+        var chats = await fetchActiveEventChats(ids);
+        return chats.filter(function (chat) { return isActiveEventChat(chat) && eventIds[chat.event_id]; });
+    }
+
+    async function refreshEventChatBadges() {
+        var user = getCurrentUser();
+        if (!user || !user.id) {
+            renderEventChatBadge(0);
+            return 0;
+        }
+        try {
+            var chats = await getAccessibleActiveChatsForUser(user);
+            renderEventChatBadge(chats.length);
+            return chats.length;
+        } catch (e) {
+            // Keep a last known badge rather than making a network hiccup look
+            // like the user's event chat vanished.
+            return 0;
+        }
     }
 
     async function fetchAttendeeCounts(eventIds) {
@@ -513,23 +643,35 @@
         }
         var local = getLocalEvents();
         if (remote !== null) {
-            // Merge: remote is authoritative, but keep local events that are not yet on server
+            // Supabase is authoritative for downloaded events. Only keep records
+            // explicitly marked as an unsynced local creation; all other local rows
+            // are just a cache and must disappear when their remote row is deleted.
+            // This prevents another user's stale cache from resurrecting an event.
             var remoteIds = {};
-            remote.forEach(function(e){ remoteIds[e.id] = true; });
+            remote.forEach(function (e) {
+                remoteIds[e.id] = true;
+                clearEventPendingSync(e.id);
+            });
             var merged = remote.slice();
-            local.forEach(function(e){
-                if (!remoteIds[e.id]) {
+            local.forEach(function (e) {
+                if (!remoteIds[e.id] && isEventPendingSync(e.id)) {
                     merged.push(e);
-                    // Proactively sync local events to server if user is logged in
-                    ensureEventOnServer(e);
+                    // Retry only real offline creations, never cached remote events.
+                    ensureEventOnServer(e).then(function (result) {
+                        if (result && result.ok) clearEventPendingSync(e.id);
+                    });
                 }
             });
             eventsData = merged;
             saveLocalEvents(eventsData);
         } else {
+            // Offline / unavailable server: retain the existing local view.
             eventsData = local;
         }
         refreshEventsMap();
+        // The badge is deliberately refreshed from the same authoritative event
+        // state, but is not awaited so map/event callers stay responsive.
+        refreshEventChatBadges();
         return eventsData;
     }
 
@@ -745,6 +887,12 @@
             };
 
             var savedToServer = await ensureEventOnServer(newEvent);
+
+            // Mark only failed saves as pending. `fetchEvents` may safely retry
+            // these offline creations, while cached server events are never
+            // uploaded again after a remote deletion.
+            if (savedToServer && savedToServer.ok) clearEventPendingSync(newEvent.id);
+            else markEventPendingSync(newEvent.id);
 
             eventsData.push(newEvent);
             saveLocalEvents(eventsData);
@@ -1108,6 +1256,106 @@
         });
     };
 
+    function removeDeletedEventFromClientState(eventId) {
+        if (!eventId) return;
+        eventsData = eventsData.filter(function (event) { return event.id !== eventId; });
+        saveLocalEvents(eventsData);
+        clearEventPendingSync(eventId);
+        saveLocalInquiries(getLocalInquiries().filter(function (inq) { return inq.event_id !== eventId; }));
+        saveLocalAttendees(getLocalAttendees().filter(function (att) { return att.event_id !== eventId; }));
+        removeLocalChatArtifacts(eventId);
+        if (activeChatEventId === eventId) window._closeEventChatModal();
+        refreshEventsMap();
+        refreshEventChatBadges();
+    }
+
+    function stopEventsRealtime() {
+        if (!eventsRealtimeChannel || !window.supabaseClient) {
+            eventsRealtimeChannel = null;
+            return;
+        }
+        try {
+            if (typeof window.supabaseClient.removeChannel === 'function') {
+                window.supabaseClient.removeChannel(eventsRealtimeChannel);
+            } else if (typeof eventsRealtimeChannel.unsubscribe === 'function') {
+                eventsRealtimeChannel.unsubscribe();
+            }
+        } catch (e) {}
+        eventsRealtimeChannel = null;
+    }
+
+    // Realtime makes a creator's confirmed delete disappear on other open maps
+    // immediately. A periodic fetch below remains as a fallback for projects
+    // where the Realtime publication has not yet been enabled.
+    function startEventsRealtime() {
+        stopEventsRealtime();
+        if (!window.supabaseClient || typeof window.supabaseClient.channel !== 'function') return;
+        try {
+            eventsRealtimeChannel = window.supabaseClient
+                .channel('detectlab-events-sync')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, function (payload) {
+                    if (payload && payload.eventType === 'DELETE' && payload.old && payload.old.id) {
+                        removeDeletedEventFromClientState(payload.old.id);
+                    } else {
+                        fetchEvents();
+                    }
+                })
+                .subscribe();
+        } catch (e) {
+            eventsRealtimeChannel = null;
+        }
+    }
+
+    // Delete an event only after Supabase confirms the remote row is gone.
+    // The old handler swallowed every API error and removed only the creator's
+    // local copy, leaving the event live for everybody else.
+    async function deleteEventEverywhere(ev, user) {
+        if (!ev || !ev.id) throw new Error('Event not found.');
+        if (!user || !user.id || (ev.creator_id !== user.id && !(user.email && ev.creator_email && user.email === ev.creator_email))) {
+            throw new Error('Only the event creator can delete this event.');
+        }
+
+        if (window.supabaseClient) {
+            var lookup = await window.supabaseClient
+                .from('events')
+                .select('id')
+                .eq('id', ev.id)
+                .limit(1);
+            if (!lookup || lookup.error) {
+                throw new Error((lookup && lookup.error && lookup.error.message) || 'Could not confirm the event on the server.');
+            }
+
+            // A missing remote row means this was an offline-only event. It is
+            // safe to remove locally because other users could never have seen it.
+            if (Array.isArray(lookup.data) && lookup.data.length > 0) {
+                var deleted = await window.supabaseClient
+                    .from('events')
+                    .delete()
+                    .eq('id', ev.id)
+                    .eq('creator_id', user.id)
+                    .select('id');
+                if (!deleted || deleted.error) {
+                    throw new Error((deleted && deleted.error && deleted.error.message) || 'The server did not delete the event.');
+                }
+
+                // Verify deletion rather than trusting an empty / filtered response.
+                var verify = await window.supabaseClient
+                    .from('events')
+                    .select('id')
+                    .eq('id', ev.id)
+                    .limit(1);
+                if (!verify || verify.error || (Array.isArray(verify.data) && verify.data.length > 0)) {
+                    throw new Error((verify && verify.error && verify.error.message) || 'The event is still present on the server.');
+                }
+            }
+        } else if (!isEventPendingSync(ev.id)) {
+            // Do not pretend a formerly-shared event was deleted while offline.
+            throw new Error('A server connection is required to delete an event that may be visible to other users.');
+        }
+
+        removeDeletedEventFromClientState(ev.id);
+    }
+
     // Manage Event / Creator Panel
     window._manageEvent = function (eventId) {
         var ev = eventsData.find(function (e) { return e.id === eventId; });
@@ -1131,6 +1379,7 @@
             '<button type="button" id="meDeleteBtn" style="background:rgba(196,43,43,0.3); border:1px solid rgba(196,43,43,0.6); border-radius:6px; color:#ff8a8a; padding:6px 12px; font-size:0.76rem; cursor:pointer; font-weight:600;">' + (isRo ? 'Șterge Evenimentul' : 'Delete Event') + '</button>' +
             '<button type="button" id="meCloseBtn" style="background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; padding:6px 12px; font-size:0.76rem; cursor:pointer;">' + (isRo ? 'Închide' : 'Close') + '</button>' +
             '</div>' +
+            '<div id="meDeleteError" role="alert" style="display:none; color:#ff8a8a; font-size:0.76rem; margin:-6px 0 12px;"></div>' +
             '<h4 style="font-size:0.9rem; border-bottom:1px solid rgba(184,216,240,0.15); padding-bottom:4px; margin-bottom:8px;">' + (isRo ? 'Participanți & Cereri' : 'Attendees & Inquiries') + '</h4>' +
             '<div id="meAttendeesList">Se încarcă…</div>';
 
@@ -1142,16 +1391,29 @@
 
         modal.querySelector('#meDeleteBtn').addEventListener('click', async function () {
             if (!confirm(isRo ? 'Sigur doriți să ștergeți acest eveniment?' : 'Are you sure you want to delete this event?')) return;
+            var deleteBtn = modal.querySelector('#meDeleteBtn');
+            var errorEl = modal.querySelector('#meDeleteError');
+            if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+            if (deleteBtn) {
+                deleteBtn.disabled = true;
+                deleteBtn.textContent = isRo ? 'Se șterge pentru toți…' : 'Deleting for everyone…';
+            }
             try {
-                if (window.supabaseClient) {
-                    await window.supabaseClient.from('events').delete().eq('id', ev.id);
+                await deleteEventEverywhere(ev, getCurrentUser());
+                modal.remove();
+            } catch (err) {
+                console.error('Event deletion failed:', err);
+                if (errorEl) {
+                    errorEl.textContent = isRo
+                        ? 'Evenimentul nu a fost șters de pe server și rămâne vizibil pentru ceilalți. ' + (err && err.message ? err.message : '')
+                        : 'The event was not deleted from the server and remains visible to other users. ' + (err && err.message ? err.message : '');
+                    errorEl.style.display = 'block';
                 }
-            } catch (err) {}
-            eventsData = eventsData.filter(function (e) { return e.id !== ev.id; });
-            saveLocalEvents(eventsData);
-            removeLocalChatArtifacts(ev.id);
-            refreshEventsMap();
-            modal.remove();
+                if (deleteBtn) {
+                    deleteBtn.disabled = false;
+                    deleteBtn.textContent = isRo ? 'Șterge Evenimentul' : 'Delete Event';
+                }
+            }
         });
 
         loadManageEventDetails(ev.id);
@@ -1305,6 +1567,10 @@
                 saveLocalAttendees(atts);
             }
             refreshEventsMap();
+            // The notification can be dismissed without opening the chat. Mirror
+            // its accepted state into the persistent Events badge immediately so
+            // the attendee still has an obvious way back to the chat later.
+            syncEventChatState(notif.event_id).then(refreshEventChatBadges);
         }
     }
 
@@ -1454,6 +1720,7 @@
         }
 
         await syncEventChatState(eventId);
+        refreshEventChatBadges();
         loadManageEventDetails(eventId);
         alert(isRo ? 'Cerere acceptată! Chat-ul evenimentului a fost creat.' : 'Inquiry accepted! The event chat was created.');
     };
@@ -1532,6 +1799,7 @@
         var atts = getLocalAttendees().filter(function(a) { return a.id !== attendeeId; });
         saveLocalAttendees(atts);
         await syncEventChatState(eventId);
+        refreshEventChatBadges();
         loadManageEventDetails(eventId);
     };
 
@@ -1686,46 +1954,199 @@
         saveLocalNotifications(notifs);
     }
 
-    // ── EVENTS PANEL (Manage Account -> Events or navbar Events) ──
-    window.openEvents = function () {
-        // Close desktop user menu
+    // ── EVENTS CALENDAR + EVENT CHAT ENTRY POINT ──
+    function closeEventEntryMenus() {
         var menu = document.getElementById('userMenu');
         if (menu) menu.classList.add('hidden');
-
-        // Close PWA dropdowns
         var pwaDropdowns = document.querySelectorAll('#pwaBottomBar .pwa-dropdown');
-        pwaDropdowns.forEach(function(dd) { dd.classList.remove('open'); });
+        pwaDropdowns.forEach(function (dd) { dd.classList.remove('open'); });
         var pwaTriggers = document.querySelectorAll('#pwaBottomBar .pwa-bar-trigger');
-        pwaTriggers.forEach(function(tr) { tr.classList.remove('active'); });
+        pwaTriggers.forEach(function (tr) { tr.classList.remove('active'); });
+        renderEventChatBadge(lastKnownEventChatCount);
+    }
 
+    function closeEventSurfaces() {
+        ['eventsCalendarPanel', 'eventsManagerPanel'].forEach(function (id) {
+            var surface = document.getElementById(id);
+            if (surface) surface.remove();
+        });
+    }
+
+    function getLocalCalendarDateKey(isoStr) {
+        var date = new Date(isoStr);
+        if (isNaN(date.getTime())) return '';
+        return date.getFullYear() + '-' +
+            String(date.getMonth() + 1).padStart(2, '0') + '-' +
+            String(date.getDate()).padStart(2, '0');
+    }
+
+    function openEventsManager(initialTab) {
+        closeEventEntryMenus();
         var user = getCurrentUser();
         if (!user) {
             if (typeof window.openAuth === 'function') window.openAuth('login');
             return;
         }
-
-        var existing = document.getElementById('eventsManagerPanel');
-        if (existing) existing.remove();
+        closeEventSurfaces();
 
         var isRo = (window._currentLang && window._currentLang() === 'ro');
-
         var panel = document.createElement('div');
         panel.id = 'eventsManagerPanel';
         panel.style.cssText = 'position: fixed; inset: 0; z-index: 3500; background: rgba(4,10,22,0.94); backdrop-filter: blur(12px); display: flex; flex-direction: column; padding: 20px; overflow-y: auto; color: #F5F0EB; font-family: \'Outfit\', sans-serif;';
 
         panel.innerHTML = '<div style="max-width: 800px; width: 100%; margin: 0 auto;">' +
-            '<button type="button" onclick="document.getElementById(\'eventsManagerPanel\').remove()" style="background:none; border:none; color:var(--sky); font-weight:600; font-size:0.9rem; cursor:pointer; margin-bottom:16px; display:flex; align-items:center; gap:6px;">← ' + (isRo ? 'Înapoi la hartă' : 'Back to map') + '</button>' +
+            '<button type="button" id="eventsManagerBack" style="background:none; border:none; color:var(--sky); font-weight:600; font-size:0.9rem; cursor:pointer; margin-bottom:16px; display:flex; align-items:center; gap:6px;">← ' + (isRo ? 'Înapoi la calendar' : 'Back to calendar') + '</button>' +
             '<h2 style="font-family:\'Cinzel\',serif; font-size:1.6rem; color:var(--sky); margin-top:0; margin-bottom:16px;">' + (isRo ? 'Evenimente & Chat' : 'Events & Chat') + '</h2>' +
             '<div style="display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid rgba(184,216,240,0.15); padding-bottom:10px;">' +
             '<button type="button" class="ev-tab-btn active" onclick="window._switchEvTab(\'all\')" style="background:rgba(107,63,160,0.3); border:1px solid rgba(196,160,240,0.5); border-radius:6px; color:#fff; padding:8px 14px; font-weight:600; cursor:pointer; font-size:0.85rem;">' + (isRo ? 'Toate Evenimentele' : 'All Events') + '</button>' +
             '<button type="button" class="ev-tab-btn" onclick="window._switchEvTab(\'my\')" style="background:none; border:1px solid rgba(184,216,240,0.2); border-radius:6px; color:rgba(245,240,235,0.7); padding:8px 14px; font-weight:600; cursor:pointer; font-size:0.85rem;">' + (isRo ? 'Evenimentele Mele & Chat-uri' : 'My Events & Chats') + '</button>' +
             '</div>' +
-            '<div id="evTabContent">Se încarcă…</div>' +
+            '<div id="evTabContent">' + (isRo ? 'Se încarcă…' : 'Loading…') + '</div>' +
             '</div>';
 
         document.body.appendChild(panel);
-        window._switchEvTab('all');
-    };
+        var backBtn = panel.querySelector('#eventsManagerBack');
+        if (backBtn) backBtn.addEventListener('click', function () {
+            panel.remove();
+            openEventsCalendar();
+        });
+        window._switchEvTab(initialTab || 'all');
+    }
+
+    async function openEventsCalendar() {
+        closeEventEntryMenus();
+        var user = getCurrentUser();
+        if (!user) {
+            if (typeof window.openAuth === 'function') window.openAuth('login');
+            return;
+        }
+        closeEventSurfaces();
+
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+        await fetchEvents();
+        await maybeCleanupExpiredEventChats();
+
+        var attendingEvents = await getAttendingEventsForUser(user);
+        // Hosted events are shown too, using a different dot. This gives creators
+        // their event date in the same personal calendar without confusing it with
+        // an accepted attendance.
+        var hostedEvents = eventsData.filter(function (ev) {
+            return ev.creator_id === user.id || (user.email && ev.creator_email && user.email === ev.creator_email);
+        });
+        var calendarEventMap = {};
+        attendingEvents.forEach(function (ev) { calendarEventMap[ev.id] = Object.assign({}, ev, { _calendarRole: 'attending' }); });
+        hostedEvents.forEach(function (ev) {
+            if (!calendarEventMap[ev.id]) calendarEventMap[ev.id] = Object.assign({}, ev, { _calendarRole: 'hosting' });
+        });
+        var calendarEvents = Object.keys(calendarEventMap).map(function (id) { return calendarEventMap[id]; });
+        var activeChats = await getAccessibleActiveChatsForUser(user);
+        renderEventChatBadge(activeChats.length);
+
+        var panel = document.createElement('div');
+        panel.id = 'eventsCalendarPanel';
+        panel.style.cssText = 'position:fixed; inset:0; z-index:3500; background:rgba(4,10,22,0.94); backdrop-filter:blur(12px); display:flex; align-items:flex-start; justify-content:center; padding:20px 16px; overflow-y:auto; color:#F5F0EB; font-family:\'Outfit\',sans-serif;';
+        panel.innerHTML = '<div style="width:100%; max-width:620px; margin:auto; padding:4px 0 20px;">' +
+            '<button type="button" id="eventsCalendarClose" style="background:none; border:none; color:var(--sky); font-weight:600; font-size:0.9rem; cursor:pointer; margin-bottom:16px;">← ' + (isRo ? 'Înapoi la hartă' : 'Back to map') + '</button>' +
+            '<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:16px;">' +
+            '<div><h2 style="font-family:\'Cinzel\',serif; font-size:1.55rem; color:var(--sky); margin:0 0 5px;">' + (isRo ? 'Calendar Evenimente' : 'Events Calendar') + '</h2>' +
+            '<p style="margin:0; font-size:0.8rem; color:rgba(245,240,235,0.68);">' + (isRo ? 'Datele marcate sunt evenimente la care participi.' : 'Marked dates are events you are attending.') + '</p></div>' +
+            '<button type="button" id="browseEventsBtn" style="background:rgba(107,63,160,0.18); border:1px solid rgba(196,160,240,0.42); border-radius:7px; color:#e8d0ff; padding:8px 10px; font-size:0.75rem; cursor:pointer; white-space:nowrap;">' + (isRo ? 'Vezi toate' : 'Browse all') + '</button>' +
+            '</div>' +
+            '<div style="background:rgba(10,20,42,0.94); border:1px solid rgba(184,216,240,0.22); border-radius:14px; padding:14px; box-shadow:0 10px 32px rgba(0,0,0,0.35);">' +
+            '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">' +
+            '<button type="button" id="eventCalPrev" aria-label="Previous month" style="width:34px; height:34px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.2); border-radius:7px; color:var(--sky); cursor:pointer; font-size:1.05rem;">‹</button>' +
+            '<strong id="eventCalMonth" style="font-family:\'Cinzel\',serif; color:#F5F0EB;"></strong>' +
+            '<button type="button" id="eventCalNext" aria-label="Next month" style="width:34px; height:34px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.2); border-radius:7px; color:var(--sky); cursor:pointer; font-size:1.05rem;">›</button>' +
+            '</div>' +
+            '<div id="eventCalendarGrid" style="display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px;"></div>' +
+            '<div id="eventCalendarDayEvents" style="margin-top:14px; min-height:76px;"></div>' +
+            '</div>' +
+            '<button type="button" id="eventChatsBtn" style="width:100%; margin-top:16px; background:#0D2B5E; border:1px solid rgba(184,216,240,0.35); border-radius:9px; color:var(--sky); font-weight:700; padding:13px 16px; cursor:pointer; font-size:0.92rem;">💬 ' + (isRo ? 'Chat-uri de eveniment' : 'Event chats') + (activeChats.length ? ' (' + activeChats.length + ')' : '') + '</button>' +
+            '</div>';
+        document.body.appendChild(panel);
+
+        var currentMonth = new Date();
+        currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+        var selectedKey = getLocalCalendarDateKey(new Date().toISOString());
+        var weekdays = isRo ? ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ', 'Du'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+        function renderCalendar() {
+            var monthLabel = currentMonth.toLocaleDateString(isRo ? 'ro-RO' : 'en-US', { month: 'long', year: 'numeric' });
+            var title = panel.querySelector('#eventCalMonth');
+            if (title) title.textContent = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+
+            var firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+            var offset = (firstDay.getDay() + 6) % 7; // Monday first
+            var daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
+            var previousMonthDays = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 0).getDate();
+            var gridHtml = weekdays.map(function (day) {
+                return '<div style="text-align:center; color:rgba(184,216,240,0.62); font-size:0.68rem; font-weight:700; padding:2px 0 5px;">' + day + '</div>';
+            }).join('');
+            var todayKey = getLocalCalendarDateKey(new Date().toISOString());
+
+            for (var cellIndex = 0; cellIndex < 42; cellIndex++) {
+                var dayNumber = cellIndex - offset + 1;
+                var cellDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dayNumber);
+                var isOutside = dayNumber < 1 || dayNumber > daysInMonth;
+                var visibleNumber = isOutside ? (dayNumber < 1 ? previousMonthDays + dayNumber : dayNumber - daysInMonth) : dayNumber;
+                var key = getLocalCalendarDateKey(cellDate.toISOString());
+                var eventsForDay = calendarEvents.filter(function (ev) { return getLocalCalendarDateKey(ev.event_date) === key; });
+                var hasAttending = eventsForDay.some(function (ev) { return ev._calendarRole === 'attending'; });
+                var hasHosting = eventsForDay.some(function (ev) { return ev._calendarRole === 'hosting'; });
+                var isSelected = key === selectedKey;
+                var isToday = key === todayKey;
+                var background = isSelected ? 'rgba(107,63,160,0.48)' : (hasAttending ? 'rgba(46,158,79,0.20)' : 'rgba(255,255,255,0.035)');
+                var border = isSelected ? 'rgba(196,160,240,0.88)' : (isToday ? 'rgba(184,216,240,0.68)' : 'rgba(184,216,240,0.10)');
+                var dots = (hasAttending ? '<span style="width:6px;height:6px;border-radius:50%;background:#2E9E4F;display:inline-block;"></span>' : '') +
+                    (hasHosting ? '<span style="width:6px;height:6px;border-radius:50%;background:#c4a0f0;display:inline-block;"></span>' : '');
+                gridHtml += '<button type="button" data-calendar-date="' + key + '" style="min-height:45px; padding:4px 2px; background:' + background + '; border:1px solid ' + border + '; border-radius:7px; color:' + (isOutside ? 'rgba(245,240,235,0.32)' : '#F5F0EB') + '; cursor:pointer; font:inherit; font-size:0.77rem;">' +
+                    '<span style="display:block; line-height:18px;">' + visibleNumber + '</span><span style="display:flex; min-height:8px; justify-content:center; gap:3px;">' + dots + '</span></button>';
+            }
+            var grid = panel.querySelector('#eventCalendarGrid');
+            if (grid) {
+                grid.innerHTML = gridHtml;
+                grid.querySelectorAll('[data-calendar-date]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        selectedKey = button.getAttribute('data-calendar-date');
+                        renderCalendar();
+                    });
+                });
+            }
+
+            var selectedEvents = calendarEvents.filter(function (ev) { return getLocalCalendarDateKey(ev.event_date) === selectedKey; });
+            var details = panel.querySelector('#eventCalendarDayEvents');
+            if (!details) return;
+            var selectedDate = new Date(selectedKey + 'T12:00:00');
+            var heading = selectedDate.toLocaleDateString(isRo ? 'ro-RO' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+            var detailsHtml = '<div style="font-size:0.75rem; color:rgba(184,216,240,0.76); margin-bottom:7px; text-transform:capitalize;">' + heading + '</div>';
+            if (selectedEvents.length === 0) {
+                detailsHtml += '<div style="font-size:0.78rem; opacity:0.58;">' + (isRo ? 'Niciun eveniment personal în această zi.' : 'No personal events on this day.') + '</div>';
+            } else {
+                selectedEvents.forEach(function (ev) {
+                    var isAttending = ev._calendarRole === 'attending';
+                    detailsHtml += '<div style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:rgba(255,255,255,0.045); border-left:3px solid ' + (isAttending ? '#2E9E4F' : '#c4a0f0') + '; border-radius:5px; margin-top:5px;">' +
+                        '<span style="font-size:0.72rem; color:rgba(245,240,235,0.72);">' + new Date(ev.event_date).toLocaleTimeString(isRo ? 'ro-RO' : 'en-US', { hour: '2-digit', minute: '2-digit' }) + '</span>' +
+                        '<strong style="font-size:0.82rem;">' + escapeHtml(ev.title) + '</strong>' +
+                        '<span style="margin-left:auto; font-size:0.67rem; color:' + (isAttending ? '#79d991' : '#d5b8ff') + ';">' + (isAttending ? (isRo ? 'Participi' : 'Attending') : (isRo ? 'Gazdă' : 'Hosting')) + '</span>' +
+                        '</div>';
+                });
+            }
+            details.innerHTML = detailsHtml;
+        }
+
+        panel.querySelector('#eventsCalendarClose').addEventListener('click', function () { panel.remove(); });
+        panel.querySelector('#browseEventsBtn').addEventListener('click', function () { panel.remove(); openEventsManager('all'); });
+        panel.querySelector('#eventChatsBtn').addEventListener('click', function () { panel.remove(); openEventsManager('my'); });
+        panel.querySelector('#eventCalPrev').addEventListener('click', function () { currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1); renderCalendar(); });
+        panel.querySelector('#eventCalNext').addEventListener('click', function () { currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1); renderCalendar(); });
+        renderCalendar();
+    }
+
+    // Events now opens the personal calendar first. The Event chats button at
+    // the bottom opens the existing management/chat list, preserving access to
+    // all event functionality without making an accepted chat hard to find.
+    window.openEvents = function () { openEventsCalendar(); };
+    window._openEventChats = function () { openEventsManager('my'); };
 
     window._switchEvTab = async function (tab) {
         var contentEl = document.getElementById('evTabContent');
@@ -2172,9 +2593,18 @@
 
     // Periodic check for notifications on app load / login
     document.addEventListener('DOMContentLoaded', function () {
-        setTimeout(checkNotifications, 2000);
+        setTimeout(function () {
+            checkNotifications();
+            fetchEvents();
+            startEventsRealtime();
+        }, 2000);
         setTimeout(function () { maybeCleanupExpiredEventChats(true); }, 2500);
         setInterval(checkNotifications, 15000);
+        // Fallback for deployments that have not enabled the Realtime table
+        // publication yet. The migration in this change enables instant updates.
+        setInterval(function () {
+            if (getCurrentUser()) fetchEvents();
+        }, 30000);
         setInterval(function () { maybeCleanupExpiredEventChats(); }, 60000);
     });
 
@@ -2183,6 +2613,11 @@
         await fetchEvents();
         refreshEventsMap();
         await maybeCleanupExpiredEventChats(true);
+        if (getCurrentUser()) startEventsRealtime();
+        else {
+            stopEventsRealtime();
+            renderEventChatBadge(0);
+        }
         checkNotifications();
     });
 
@@ -2190,4 +2625,6 @@
     window._initEventsLayer = initEventsLayer;
     window._checkEventNotifications = checkNotifications;
     window._fetchEvents = fetchEvents;
+    window._refreshEventChatBadges = refreshEventChatBadges;
+    window._renderEventChatBadge = function () { renderEventChatBadge(lastKnownEventChatCount); };
 })();

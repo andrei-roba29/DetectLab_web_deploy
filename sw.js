@@ -4,7 +4,7 @@
 
 // Bump this when a client-side data-sync fix ships so installed PWAs replace
 // stale script responses instead of continuing to run an older event client.
-const CACHE_NAME = 'detectlab-v34';
+const CACHE_NAME = 'detectlab-v35';
 
 // ── Detection settings ──
 let detectionEnabled = false;

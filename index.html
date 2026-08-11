@@ -636,13 +636,14 @@
             <!-- User dropdown -->
             <div class="nav-user user-dropdown" id="navUser">
 
-                <button class="user-trigger" onclick="toggleUserMenu()">
+                <button class="user-trigger event-badge-host" id="navUserTrigger" onclick="toggleUserMenu()">
 
                     <div class="nav-avatar" id="navAvatar">?</div>
 
                     <span class="nav-username" id="navUsername" style="display:none"></span>
 
                     <span class="user-arrow">▼</span>
+                    <span class="event-chat-badge event-chat-badge-profile" id="profileEventChatBadge" aria-hidden="true"></span>
 
                 </button>
 
@@ -652,8 +653,9 @@
                         <span class="t" data-key="manage_account">Manage Account</span>
                     </button>
 
-                    <button onclick="openEvents()">
+                    <button class="event-menu-action event-badge-host" id="desktopEventsButton" onclick="openEvents()">
                         <span class="t" data-key="nav_events">Events</span>
+                        <span class="event-chat-badge event-chat-badge-menu" id="desktopEventsChatBadge" aria-hidden="true"></span>
                     </button>
 
                     <button onclick="authLogout()">
@@ -726,10 +728,11 @@
         <!-- 3. User Menu (expands up) -->
         <div class="pwa-bar-item" id="pwaUserItem">
             <!-- Logged-in trigger -->
-            <button class="pwa-bar-trigger" id="pwaUserTrigger" onclick="togglePwaUserDropdown()" style="display:none">
+            <button class="pwa-bar-trigger event-badge-host" id="pwaUserTrigger" onclick="togglePwaUserDropdown()" style="display:none">
                 <div class="nav-avatar" id="pwaAvatar" style="width:22px;height:22px;font-size:0.6rem">?</div>
                 <span id="pwaUsername">User</span>
                 <span class="pwa-arrow">▲</span>
+                <span class="event-chat-badge event-chat-badge-profile" id="pwaProfileEventChatBadge" aria-hidden="true"></span>
             </button>
             <!-- Logged-out trigger -->
             <button class="pwa-bar-trigger" id="pwaLoginTrigger" onclick="openAuth('login')">
@@ -745,9 +748,10 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4" /><path d="M20 21a8 8 0 1 0-16 0" /></svg>
                     <span class="t" data-key="manage_account">Manage Account</span>
                 </button>
-                <button class="pwa-drop-item" onclick="openEvents()">
+                <button class="pwa-drop-item event-menu-action event-badge-host" id="pwaEventsButton" onclick="openEvents()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                     <span class="t" data-key="nav_events">Events</span>
+                    <span class="event-chat-badge event-chat-badge-menu" id="pwaEventsChatBadge" aria-hidden="true"></span>
                 </button>
                 <div class="pwa-drop-divider"></div>
                 <button class="pwa-drop-item" onclick="authLogout()" style="color:#ff8a8a">
@@ -2823,7 +2827,7 @@
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js?v=20260811-event-sync"></script>
-    <script src="js/events.js?v=20260811-event-accept-notify"></script>
+    <script src="js/events.js?v=20260811-event-calendar-sync"></script>
     <!-- Optimised CORONA (Satellite imagery 60's) WMS tile layer: shared
          throttled request queue, Romania bbox filtering, zoom threshold,
          IndexedDB tile cache, mobile tuning. Must load before map-app.js. -->
@@ -3428,15 +3432,22 @@
                         dd.classList.add('open');
                         trigger.classList.add('active');
                     }
+                    if (typeof window._renderEventChatBadge === 'function') {
+                        window._renderEventChatBadge();
+                    }
                 };
 
                 function closePwaDropdowns() {
+                    var hadUserMenuOpen = document.getElementById('pwaUserDropdown') && document.getElementById('pwaUserDropdown').classList.contains('open');
                     document.querySelectorAll('#pwaBottomBar .pwa-dropdown').forEach(function(el) {
                         el.classList.remove('open');
                     });
                     document.querySelectorAll('#pwaBottomBar .pwa-bar-trigger').forEach(function(el) {
                         el.classList.remove('active');
                     });
+                    if (hadUserMenuOpen && typeof window._renderEventChatBadge === 'function') {
+                        window._renderEventChatBadge();
+                    }
                 }
 
                 // Close dropdowns when clicking outside

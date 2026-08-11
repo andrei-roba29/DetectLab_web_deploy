@@ -110,11 +110,14 @@
     /*User dropdown JS*/
 
     function toggleUserMenu() {
-
-        document
-            .getElementById("userMenu")
-            .classList
-            .toggle("hidden");
+        var menu = document.getElementById('userMenu');
+        if (!menu) return;
+        menu.classList.toggle('hidden');
+        // Move the persistent event-chat bubble between the profile trigger and
+        // the Events row immediately as this menu opens/closes.
+        if (typeof window._renderEventChatBadge === 'function') {
+            window._renderEventChatBadge();
+        }
     }
 
 

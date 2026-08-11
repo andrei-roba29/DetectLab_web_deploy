@@ -1406,6 +1406,61 @@
 
 
 
+        /* Persistent event-chat notification bubble. It moves from the profile
+           trigger to the Events row while the account menu is expanded. */
+        .event-badge-host {
+            position: relative !important;
+        }
+
+        .event-chat-badge {
+            display: none;
+            position: absolute;
+            align-items: center;
+            justify-content: center;
+            min-width: 17px;
+            height: 17px;
+            padding: 0 4px;
+            border-radius: 999px;
+            background: #e8772a;
+            border: 2px solid #0f172a;
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.61rem;
+            font-weight: 800;
+            line-height: 1;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .event-chat-badge-profile {
+            top: -7px;
+            right: -9px;
+        }
+
+        .event-chat-badge-menu {
+            top: 6px;
+            right: 8px;
+            border-color: #0f172a;
+        }
+
+        .user-menu .event-menu-action,
+        .pwa-dropdown .event-menu-action {
+            padding-right: 34px;
+        }
+
+        .pwa-bottom-bar .event-chat-badge-profile {
+            top: -8px;
+            right: -8px;
+            border-color: #060e1e;
+        }
+
+        .pwa-bottom-bar .event-chat-badge-menu {
+            top: 9px;
+            right: 12px;
+            border-color: #0d1c3c;
+        }
+
         /*USER DROPDOWN*/
 
 
