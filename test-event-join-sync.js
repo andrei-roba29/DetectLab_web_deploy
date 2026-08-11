@@ -2,8 +2,9 @@
 // the live Supabase `events` table is missing the newer columns
 // (pin_id / category / creator_email) that js/events.js sends on upsert.
 //
-// Background: the deployed project's events table predates those columns
-// (PostgREST error 42703), so every event upsert failed, the events table
+// Background: the deployed project's events table predates those columns.
+// PostgREST reports that API/schema-cache mismatch as PGRST204 (not only the
+// PostgreSQL 42703 error), so every event upsert failed, the events table
 // stayed empty, and join inquiries hit the event_id foreign key -> the creator
 // never received join requests. js/events.js now retries with the base columns
 // and reports honest success/failure instead of swallowing errors.
@@ -43,9 +44,10 @@ function fakeSupabaseClient() {
 // ── Logic copied verbatim from js/events.js (adapted to stubs) ──
 function isMissingColumnError(err) {
     if (!err) return false;
-    if (err.code === '42703') return true;
-    var msg = String(err.message || err.error_description || err.hint || '');
-    return msg.indexOf('does not exist') !== -1;
+    if (err.code === '42703' || err.code === 'PGRST204') return true;
+    var msg = String(err.message || err.error_description || err.hint || '').toLowerCase();
+    return msg.indexOf('does not exist') !== -1 ||
+        (msg.indexOf('could not find') !== -1 && msg.indexOf('column') !== -1);
 }
 
 async function ensureEventOnServer(ev, supabaseClient) {
@@ -125,10 +127,13 @@ const event = {
     assert.strictEqual(stub.calls[0].category, 'Metal Detecting');
     assert.strictEqual(stub.calls[0].creator_email, 'creator@example.com');
 
-    // 2) Schema drift (42703 on the full payload): retries with base columns.
+    // 2) Deployed PostgREST schema-cache drift (PGRST204): retries with base columns.
     stub = {
         calls: [],
-        fullPayloadError: { code: '42703', message: 'column events.pin_id does not exist' },
+        fullPayloadError: {
+            code: 'PGRST204',
+            message: "Could not find the 'pin_id' column of 'events' in the schema cache"
+        },
         basePayloadError: null
     };
     r = await ensureEventOnServer(event, fakeSupabaseClient());
