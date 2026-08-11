@@ -441,10 +441,34 @@ and the clarified requirement (2026-08-11, same day):
   zero fetches; `onProgress` + `onTileFound` callbacks fire. (The fake canvas
   now returns a full 256×256 buffer and the fetch stub gained a hold/abort
   mode to observe in-flight counts.)
-- `test-sat60-zoom-guard.js` — section 7 rewritten for the clarified spec:
-  pressing at z12 first probes z12, the same press auto-expands to z13/z14/z15
-  (pyramid), moving after the load starts NO new fetch, moving mid-load does
-  NOT stop/restart the initial process (exactly one z12 stage), and toggle-off
-  + zoom does not auto-fetch.
+- `test-sat60-zoom-guard.js` — verifies:
+  layer group never attaches below z11, attaches at z>=11; pressing search
+  button at z>=11 fetches tiles only for the visible viewport at that zoom;
+  moving/zooming after search starts NO new fetch; toggling OFF cancels any
+  in-flight requests.
 
 Run: `node test-sat60-ondemand.js && node test-sat60-discovery.js && node test-sat60-bottom-ui.js && node test-sat60-zoom-guard.js`
+
+---
+
+## 2026-08-11 Crash Fix & On-Demand Viewport Search from Zoom Level 11
+
+### Root Cause
+The previous implementation attempted to fetch a multi-zoom pyramid (z11, z12, z13, z14, z15)
+in a single button press and dispatched heavy GetCapabilities calls on startup. Across 16
+CORONA pass layers with dual endpoints, this resulted in thousands of simultaneous/cascading
+HTTP requests, overloading the browser connection pool and crashing the page.
+
+### Solution
+1. **Zero Requests on Toggle / Startup**:
+   - Initialized layer definitions directly from the 16 curated Romania pass layers (`FALLBACK_ROMANIA_LAYERS`), eliminating multi-megabyte `GetCapabilities` XML requests on page load.
+   - All 16 sublayers run in strict on-demand mode (`manualOnly: true`), returning empty synchronously for uncached or missing tiles.
+   - Turning the layer toggle ON or panning/zooming makes **0 network requests**.
+2. **Search Button Active from Zoom Level 11**:
+   - Below zoom level 11: The button is disabled and displays **"Zoom in more" / "Mărește mai mult"**.
+   - From zoom level 11: The button is enabled and displays **"Search images here" / "Caută imagini aici"**.
+3. **Viewport-Only Tile Fetching**:
+   - Clicking the search button fetches tiles **only for the current visible viewport** at the active zoom level (capped at 600 jobs max, centre-first).
+   - Tiles with imagery are stored in IndexedDB and rendered incrementally as they arrive.
+   - In-flight requests can be cancelled immediately if the layer is switched off.
+
