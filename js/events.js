@@ -422,13 +422,17 @@
         activeChatDeadlineTimer = setInterval(tick, 1000);
     }
 
-    // Detect PostgREST "column ... does not exist" (42703) so we can retry against an
-    // older `events` schema that predates the pin_id/category/creator_email columns.
+    // Detect missing event columns so we can retry against an older `events` schema.
+    // PostgREST usually reports this as PGRST204 ("Could not find the 'pin_id'
+    // column ... in the schema cache"), rather than PostgreSQL's 42703. The old
+    // check handled only 42703, so the fallback was never used in the deployed
+    // project and every new event was left in localStorage.
     function isMissingColumnError(err) {
         if (!err) return false;
-        if (err.code === '42703') return true;
-        var msg = String(err.message || err.error_description || err.hint || '');
-        return msg.indexOf('does not exist') !== -1;
+        if (err.code === '42703' || err.code === 'PGRST204') return true;
+        var msg = String(err.message || err.error_description || err.hint || '').toLowerCase();
+        return msg.indexOf('does not exist') !== -1 ||
+            (msg.indexOf('could not find') !== -1 && msg.indexOf('column') !== -1);
     }
 
     // Ensure an event exists on Supabase so foreign key constraints in event_inquiries don't fail.
@@ -461,7 +465,7 @@
                     // Schema drift: the live `events` table is missing pin_id / category / creator_email.
                     // Retry with the base columns that exist on the older table so the event row
                     // actually lands in the DB and join requests can reference it.
-                    console.warn('[Events] Server events table missing newer columns; retrying with base columns. Apply migration 20260805000000_create_events_feature.sql for full sync. Detail:', res.error.message);
+                    console.warn('[Events] Server events table is missing newer columns; retrying with base columns. Apply migration 20260811010000_fix_events_schema_drift.sql for full sync. Detail:', res.error.message);
                     var basePayload = {
                         id: ev.id,
                         creator_id: ev.creator_id,

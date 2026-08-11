@@ -1,8 +1,10 @@
 /* ============================================================
-   DetectLab — Service Worker v1.4.1
+   DetectLab — Service Worker v1.4.2
    ============================================================ */
 
-const CACHE_NAME = 'detectlab-v31';
+// Bump this when a client-side data-sync fix ships so installed PWAs replace
+// stale script responses instead of continuing to run an older event client.
+const CACHE_NAME = 'detectlab-v32';
 
 // ── Detection settings ──
 let detectionEnabled = false;
