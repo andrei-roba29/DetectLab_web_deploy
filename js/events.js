@@ -1232,6 +1232,82 @@
         listEl.innerHTML = html;
     }
 
+    // Create a notification addressed to the inquiring user about the outcome of
+    // their request (accepted/declined). The creator already gets notified when an
+    // inquiry arrives; without this the attendee never hears back and their UI keeps
+    // showing "Request pending". No schema change is required: the notification kind
+    // is derived at read time from the related inquiry's owner + status, so this is
+    // robust against the deployed schema lagging the latest migration.
+    async function createOutcomeNotification(params) {
+        var notification = {
+            id: genUuid(),
+            user_id: params.userId,
+            event_id: params.eventId || null,
+            inquiry_id: params.inquiryId || null,
+            sender_id: params.senderId || null,
+            sender_name: params.senderName || '',
+            message: params.message || '',
+            read: false,
+            created_at: new Date().toISOString()
+        };
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient.from('event_notifications').insert([notification]);
+                if (res && res.error) {
+                    console.error('Supabase insert outcome notification failed:', res.error);
+                }
+            }
+        } catch (e) {
+            console.error('createOutcomeNotification error:', e);
+        }
+        var localNotifs = getLocalNotifications();
+        localNotifs.push(notification);
+        saveLocalNotifications(localNotifs);
+        return notification;
+    }
+
+    // When the attendee receives an "accepted" notification, mirror that outcome into
+    // their own local inquiry + attendee records so the map popup and panels reflect
+    // "Already attending" instead of a stale "Request pending".
+    function applyAcceptedOutcome(notif) {
+        if (!notif || !notif.inquiry_id) return;
+        var user = getCurrentUser();
+        if (!user || notif.user_id !== user.id) return;
+
+        var inqs = getLocalInquiries();
+        var idx = inqs.findIndex(function (i) { return i.id === notif.inquiry_id; });
+        if (idx !== -1) {
+            inqs[idx].status = 'accepted';
+        } else if (notif.event_id) {
+            inqs.push({
+                id: notif.inquiry_id,
+                event_id: notif.event_id,
+                user_id: user.id,
+                user_name: user.name || (user.email ? user.email.split('@')[0] : 'User'),
+                message: notif.message || '',
+                status: 'accepted',
+                created_at: notif.created_at || new Date().toISOString()
+            });
+        }
+        saveLocalInquiries(inqs);
+
+        if (notif.event_id) {
+            var atts = getLocalAttendees();
+            var hasAtt = atts.some(function (a) { return a.event_id === notif.event_id && a.user_id === user.id; });
+            if (!hasAtt) {
+                atts.push({
+                    id: genUuid(),
+                    event_id: notif.event_id,
+                    user_id: user.id,
+                    user_name: user.name || (user.email ? user.email.split('@')[0] : 'User'),
+                    joined_at: new Date().toISOString()
+                });
+                saveLocalAttendees(atts);
+            }
+            refreshEventsMap();
+        }
+    }
+
     // Accept Inquiry
     window._acceptInquiry = async function (inquiryId, eventId) {
         var isRo = (window._currentLang && window._currentLang() === 'ro');
@@ -1261,6 +1337,8 @@
             alert(isRo ? 'Cererea nu a fost găsită.' : 'Inquiry not found.');
             return;
         }
+
+        var wasAlreadyAccepted = (inq.status === 'accepted');
 
         // Check 1-event-per-day rule for the attendee
         var ev = eventsData.find(function(e) { return e.id === eventId; });
@@ -1350,6 +1428,31 @@
         }
         saveLocalAttendees(atts);
 
+        // Notify the inquiring user their request was accepted so they actually find out.
+        // Previously only the creator was notified; the attendee never heard back, and
+        // their UI kept showing "Request pending". Guard against double-accept so we do
+        // not spam duplicate outcome notifications.
+        if (!wasAlreadyAccepted && inq.user_id) {
+            try {
+                var creatorName = (ev && ev.creator_name) ? ev.creator_name : 'Creator';
+                var creatorId = (ev && ev.creator_id) ? ev.creator_id : null;
+                var evTitle = (ev && ev.title) ? ev.title : '';
+                var acceptMsg = isRo
+                    ? '✅ Cererea ta de participare la evenimentul «' + evTitle + '» a fost ACCEPTATĂ. Ai acum acces la chatul evenimentului!'
+                    : '✅ Your request to join the event "' + evTitle + '" was ACCEPTED. You now have access to the event chat!';
+                await createOutcomeNotification({
+                    userId: inq.user_id,
+                    eventId: eventId,
+                    inquiryId: inquiryId,
+                    senderId: creatorId,
+                    senderName: creatorName,
+                    message: acceptMsg
+                });
+            } catch (e) {
+                console.error('Failed to create acceptance notification:', e);
+            }
+        }
+
         await syncEventChatState(eventId);
         loadManageEventDetails(eventId);
         alert(isRo ? 'Cerere acceptată! Chat-ul evenimentului a fost creat.' : 'Inquiry accepted! The event chat was created.');
@@ -1357,6 +1460,18 @@
 
     // Decline Inquiry
     window._declineInquiry = async function (inquiryId) {
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+        // Resolve the inquiry so we can notify the inquiring user of the outcome.
+        var inq = getLocalInquiries().find(function (i) { return i.id === inquiryId; });
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient.from('event_inquiries').select('*').eq('id', inquiryId).single();
+                if (!res.error && res.data) inq = res.data;
+            }
+        } catch (e) {}
+
+        var wasAlreadyDeclined = !!(inq && inq.status === 'declined');
+
         try {
             if (window.supabaseClient) {
                 await window.supabaseClient.from('event_inquiries').update({ status: 'declined' }).eq('id', inquiryId);
@@ -1376,6 +1491,27 @@
             inquiries.push({ id: inquiryId, status: 'declined' });
         }
         saveLocalInquiries(inquiries);
+
+        // Notify the inquiring user their request was declined (symmetric with accept).
+        if (!wasAlreadyDeclined && inq && inq.user_id) {
+            try {
+                var evDecl = eventsData.find(function (e) { return e.id === inq.event_id; });
+                var declTitle = (evDecl && evDecl.title) ? evDecl.title : '';
+                var declMsg = isRo
+                    ? '❌ Cererea ta de participare la evenimentul «' + declTitle + '» a fost RESPINSĂ.'
+                    : '❌ Your request to join the event "' + declTitle + '" was DECLINED.';
+                await createOutcomeNotification({
+                    userId: inq.user_id,
+                    eventId: inq.event_id || null,
+                    inquiryId: inquiryId,
+                    senderId: (evDecl && evDecl.creator_id) ? evDecl.creator_id : null,
+                    senderName: (evDecl && evDecl.creator_name) ? evDecl.creator_name : 'Creator',
+                    message: declMsg
+                });
+            } catch (e) {
+                console.error('Failed to create decline notification:', e);
+            }
+        }
 
         var manageModal = document.getElementById('manageEventModal');
         if (manageModal) {
@@ -1418,19 +1554,97 @@
         localUnread.forEach(function(n) { if (!remoteIds[n.id]) notifs.push(n); });
 
         if (notifs.length > 0) {
-            showNotificationModal(notifs[0]);
+            await showNotificationModal(notifs[0]);
         }
     }
 
-    function showNotificationModal(notif) {
+    async function showNotificationModal(notif) {
         var existing = document.getElementById('eventNotifModal');
         if (existing) existing.remove();
 
         var isRo = (window._currentLang && window._currentLang() === 'ro');
+        var user = getCurrentUser();
+
+        // Determine the notification kind. Outcome notifications (accepted/declined) are
+        // addressed to the inquiring user; incoming requests are addressed to the event
+        // creator. We disambiguate by inspecting the related inquiry: if it belongs to the
+        // current user and has an outcome status, this is about THEIR request. This needs
+        // no schema change and is robust against the deployed DB lagging the latest migration.
+        var kind = 'inquiry';
+        try {
+            if (notif.inquiry_id) {
+                if (window.supabaseClient) {
+                    var inqRes = await window.supabaseClient
+                        .from('event_inquiries')
+                        .select('id,user_id,status')
+                        .eq('id', notif.inquiry_id)
+                        .single();
+                    if (!inqRes.error && inqRes.data && inqRes.data.user_id === (user && user.id)) {
+                        if (inqRes.data.status === 'accepted') kind = 'accepted';
+                        else if (inqRes.data.status === 'declined') kind = 'declined';
+                    }
+                }
+                if (kind === 'inquiry') {
+                    var localInq = getLocalInquiries().find(function (i) { return i.id === notif.inquiry_id; });
+                    if (localInq && localInq.user_id === (user && user.id)) {
+                        if (localInq.status === 'accepted') kind = 'accepted';
+                        else if (localInq.status === 'declined') kind = 'declined';
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('showNotificationModal kind lookup failed:', e);
+        }
 
         var modal = document.createElement('div');
         modal.id = 'eventNotifModal';
         modal.style.cssText = 'position: fixed; inset: 0; z-index: 5000; background: rgba(4,10,22,0.85); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 16px;';
+
+        if (kind === 'accepted') {
+            // Mirror the acceptance into local state so the attendee's map popup / panels
+            // immediately show "Already attending" instead of a stale "Request pending".
+            applyAcceptedOutcome(notif);
+
+            modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(46,158,79,0.5); border-radius: 12px; width: 100%; max-width: 420px; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.7); animation: pwaDropUp 0.3s ease;">' +
+                '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:1.4rem;">✅</span><h3 style="margin:0; font-size:1.1rem; color:#2E9E4F; font-family:\'Cinzel\',serif;">' + (isRo ? 'Cerere Acceptată' : 'Request Accepted') + '</h3></div>' +
+                '<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(184,216,240,0.2); border-radius:6px; padding:10px; font-size:0.84rem; margin-bottom:14px;">' + escapeHtml(notif.message || (isRo ? 'Cererea ta a fost acceptată.' : 'Your request was accepted.')) + '</div>' +
+                '<div style="display:flex; gap:10px;"><button type="button" id="notifOpenChatBtn" style="flex:1; background:#0D2B5E; border:1px solid rgba(184,216,240,0.3); border-radius:6px; color:var(--sky); font-weight:600; padding:10px; cursor:pointer;">💬 ' + (isRo ? 'Deschide Chat' : 'Open Chat') + '</button><button type="button" id="notifCloseBtn" style="flex:1; background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Închide' : 'Close') + '</button></div>' +
+                '</div>';
+
+            document.body.appendChild(modal);
+
+            var dismissAccepted = async function () { await markNotifRead(notif.id); modal.remove(); };
+            var openChatBtn = modal.querySelector('#notifOpenChatBtn');
+            var closeBtn = modal.querySelector('#notifCloseBtn');
+            if (openChatBtn) openChatBtn.addEventListener('click', async function () {
+                openChatBtn.disabled = true;
+                await markNotifRead(notif.id);
+                modal.remove();
+                if (notif.event_id && typeof window._openEventChat === 'function') {
+                    window._openEventChat(notif.event_id);
+                }
+            });
+            if (closeBtn) closeBtn.addEventListener('click', dismissAccepted);
+            modal.addEventListener('click', function (e) { if (e.target === modal) dismissAccepted(); });
+            return;
+        }
+
+        if (kind === 'declined') {
+            modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(196,43,43,0.5); border-radius: 12px; width: 100%; max-width: 420px; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.7); animation: pwaDropUp 0.3s ease;">' +
+                '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:1.4rem;">❌</span><h3 style="margin:0; font-size:1.1rem; color:#ff8a8a; font-family:\'Cinzel\',serif;">' + (isRo ? 'Cerere Respinsă' : 'Request Declined') + '</h3></div>' +
+                '<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(184,216,240,0.2); border-radius:6px; padding:10px; font-size:0.84rem; margin-bottom:14px;">' + escapeHtml(notif.message || (isRo ? 'Cererea ta a fost respinsă.' : 'Your request was declined.')) + '</div>' +
+                '<div style="display:flex; gap:10px;"><button type="button" id="notifCloseBtn" style="flex:1; background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Închide' : 'Close') + '</button></div>' +
+                '</div>';
+
+            document.body.appendChild(modal);
+            var dismissDeclined = async function () { await markNotifRead(notif.id); modal.remove(); };
+            var closeBtn2 = modal.querySelector('#notifCloseBtn');
+            if (closeBtn2) closeBtn2.addEventListener('click', dismissDeclined);
+            modal.addEventListener('click', function (e) { if (e.target === modal) dismissDeclined(); });
+            return;
+        }
+
+        // Default: incoming attendance request (creator view) — existing behaviour
         modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.3); border-radius: 12px; width: 100%; max-width: 420px; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.7); animation: pwaDropUp 0.3s ease;">' +
             '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:1.4rem;">🔔</span><h3 style="margin:0; font-size:1.1rem; color:var(--sky); font-family:\'Cinzel\',serif;">' + (isRo ? 'Cerere Nouă de Participare' : 'New Attendance Inquiry') + '</h3></div>' +
             '<div style="font-size:0.85rem; margin-bottom:8px;"><strong>' + escapeHtml(notif.sender_name) + '</strong> ' + (isRo ? 'vrea să participe la evenimentul tău:' : 'wants to attend your event:') + '</div>' +
