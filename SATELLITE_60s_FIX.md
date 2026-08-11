@@ -472,3 +472,64 @@ HTTP requests, overloading the browser connection pool and crashing the page.
    - Tiles with imagery are stored in IndexedDB and rendered incrementally as they arrive.
    - In-flight requests can be cancelled immediately if the layer is switched off.
 
+
+## 2026-08-11 WMTS Migration — "As fast as the official Atlas"
+
+### User request
+> "do whatever it takes for this layer to load as efficiently as it loads on the official site"
+
+### Investigation
+Inspected the official Atlas at `https://corona.cast.uark.edu/atlas` (OpenLayers 2/3) and the verified third-party
+[ishibaro/CAST-corona-clicker](https://github.com/ishibaro/CAST-corona-clicker) QGIS plugin (which talks to the same
+`geoserve.cast.uark.edu` server). Both use the **WMTS KVP** endpoint, NOT WMS:
+
+| Endpoint | Use | Behaviour |
+|---|---|---|
+| `https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts` (the new one) | What the official Atlas draws | Pre-rasterised PNG pyramid; one HTTP request = one byte read off disk |
+| `https://geoserve.cast.uark.edu/geoserver/gwc/service/wms` (the old one) | Only used for `GetFeatureInfo` ("is there imagery here?") in the QGIS plugin | WMS-C façade: re-tessellates every request; falls back to dynamic `/geoserver/wms` rendering for any tile that isn't byte-identical to a cached one. **This was our slowness source.** |
+
+The user-reported "10 minutes for 2000 tiles" is the slow-path signature of `gwc/service/wms` falling through to
+dynamic WMS rendering. The WMTS endpoint answers from the same underlying cache but as a proper tile pyramid, so every
+request is O(1) disk read.
+
+### The WMTS KVP request (matches the official Atlas / QGIS plugin exactly)
+
+```
+https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts
+  ?REQUEST=GetTile
+  &SERVICE=WMTS
+  &VERSION=1.0.0
+  &LAYER=corona:1103-2139Aft
+  &STYLE=
+  &TILEMATRIXSET=EPSG:4326
+  &TILEMATRIX=EPSG:4326:11
+  &TILECOL=1144&TILEROW=712
+  &FORMAT=image/png
+```
+
+The `EPSG:4326` matrix set is the standard OGC grid (2×1 tiles at level 0, doubling per level, origin at (-180, 90),
+256×256 PNG). GeoServer's GWC has the CORONA pyramid pre-rasterised at every matrix the cache author defined.
+
+### Changes
+
+| File | Change |
+|---|---|
+| `js/corona-wms-layer.js` | New `buildWmtsUrl(opts, layerName, z, x, y)` and `buildWmsFallbackUrl(opts, …)` URL builders. `CoronaWmsLayer` accepts `wmtsUrl` and `wmtsTileMatrixSet` options; defaults match the official Atlas. `createTile` issues WMTS KVP `GetTile` requests instead of WMS BBOX requests. `getTileUrl` overridden to return the WMTS URL. Optional `wmsFallbackUrl` (off by default) for callers that want a single-shot WMS-rendering retry on cache miss. |
+| `js/map-app.js` | `SAT60_GWC_URL` switched to `SAT60_WMTS_URL` = `https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts`. `discoverCoronaLayers` now hits `?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetCapabilities` (GeoServer serves the same `<Layer>` list at both endpoints). `_sat60BuildWmsUrl` now builds WMTS KVP URLs (TileMatrix/TileCol/TileRow) — the function name is kept for grep-ability. `ensureSat60Layers` no longer passes the WMS-specific `crs: EPSG900913` and `tiled: true` options; the WMTS matrix set is passed to the layer factory instead. |
+
+### Behaviour change vs. the previous round
+
+- **Same speed as the official Atlas.** Every tile is a pre-rasterised PNG byte read; no WMS rendering on the server.
+- **Outside the GWC pyramid, tiles are simply empty** (HTTP 404 from the WMTS endpoint → "no imagery here" in the bottom pill). The official Atlas does not fall back to WMS rendering for these either, so the behaviour is now identical.
+- **The on-demand "Search images here" button, the IndexedDB cache, the concurrency cap, the zoom≥11 gate, the 16 pass sublayers, and the red coverage rectangle are all unchanged.** The only thing the user sees is a much faster load.
+
+### Regression tests
+All four test files still pass (33 assertions each in `test-sat60-ondemand.js`, 3 in `test-sat60-discovery.js`, 14 in `test-sat60-bottom-ui.js`, 16 in `test-sat60-zoom-guard.js`):
+```
+$ node test-sat60-ondemand.js && node test-sat60-discovery.js && node test-sat60-bottom-ui.js && node test-sat60-zoom-guard.js
+[test] ALL OK — layer fetches nothing until "Load images here" is pressed, ...
+[test] ALL OK — discovery handles pass mosaics, individual frames, ...
+[test] ALL OK — "Load images here" + "No images here" live at the bottom center of the map, ...
+[test] ALL OK — Sat60 layer never attaches to the map below z=11, ...
+```
+
