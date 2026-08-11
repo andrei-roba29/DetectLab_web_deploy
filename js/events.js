@@ -14,6 +14,7 @@
     let eventsLayer = null;
     let eventsData = [];
     let activeChatEventId = null;
+    let activeChatDeadlineTimer = null;
 
     // Helper: get current user
     function getCurrentUser() {
@@ -73,6 +74,13 @@
         try { localStorage.setItem('detectlab_chat_msgs', JSON.stringify(arr)); } catch (e) {}
     }
 
+    function getLocalChats() {
+        try { return JSON.parse(localStorage.getItem('detectlab_event_chats') || '[]'); } catch (e) { return []; }
+    }
+    function saveLocalChats(arr) {
+        try { localStorage.setItem('detectlab_event_chats', JSON.stringify(arr)); } catch (e) {}
+    }
+
     function getLocalNotifications() {
         try { return JSON.parse(localStorage.getItem('detectlab_notifications') || '[]'); } catch (e) { return []; }
     }
@@ -87,6 +95,331 @@
             var r = Math.random()*16|0, v = c === 'x' ? r : (r&0x3|0x8);
             return v.toString(16);
         });
+    }
+
+    function getEventById(eventId) {
+        var found = eventsData.find(function (e) { return e.id === eventId; });
+        if (found) return found;
+        var localEvents = getLocalEvents();
+        for (var i = 0; i < localEvents.length; i++) {
+            if (localEvents[i] && localEvents[i].id === eventId) return localEvents[i];
+        }
+        return null;
+    }
+
+    function isEventExpired(eventOrDate) {
+        var iso = eventOrDate && eventOrDate.event_date ? eventOrDate.event_date : eventOrDate;
+        if (!iso) return false;
+        var deadline = new Date(iso).getTime();
+        return !isNaN(deadline) && deadline <= Date.now();
+    }
+
+    function isActiveEventChat(chat) {
+        return !!(chat && chat.event_id && chat.status !== 'expired' && !isEventExpired(chat.expires_at));
+    }
+
+    function upsertLocalChat(chat) {
+        if (!chat || !chat.event_id) return;
+        var chats = getLocalChats();
+        var idx = chats.findIndex(function (item) { return item.event_id === chat.event_id; });
+        if (idx === -1) {
+            chats.push(chat);
+        } else {
+            chats[idx] = Object.assign({}, chats[idx], chat);
+        }
+        saveLocalChats(chats);
+    }
+
+    function removeLocalChatArtifacts(eventId) {
+        if (!eventId) return;
+        saveLocalChats(getLocalChats().filter(function (chat) { return chat.event_id !== eventId; }));
+        saveLocalMessages(getLocalMessages().filter(function (msg) { return msg.event_id !== eventId; }));
+    }
+
+    function cleanupExpiredLocalChats() {
+        var expiredMap = {};
+        getLocalChats().forEach(function (chat) {
+            if (!isActiveEventChat(chat)) expiredMap[chat.event_id] = true;
+        });
+
+        var knownEvents = eventsData.slice();
+        getLocalEvents().forEach(function (ev) {
+            if (!knownEvents.some(function (existing) { return existing.id === ev.id; })) {
+                knownEvents.push(ev);
+            }
+        });
+        knownEvents.forEach(function (ev) {
+            if (ev && ev.id && isEventExpired(ev.event_date)) expiredMap[ev.id] = true;
+        });
+
+        var expiredEventIds = Object.keys(expiredMap);
+        if (expiredEventIds.length === 0) return expiredEventIds;
+
+        saveLocalChats(getLocalChats().filter(function (chat) {
+            return expiredEventIds.indexOf(chat.event_id) === -1;
+        }));
+        saveLocalMessages(getLocalMessages().filter(function (msg) {
+            return expiredEventIds.indexOf(msg.event_id) === -1;
+        }));
+
+        if (activeChatEventId && expiredEventIds.indexOf(activeChatEventId) !== -1) {
+            window._closeEventChatModal();
+        }
+
+        return expiredEventIds;
+    }
+
+    function formatChatCountdown(targetIso, isRo) {
+        var remaining = Math.max(0, new Date(targetIso).getTime() - Date.now());
+        var totalSeconds = Math.floor(remaining / 1000);
+        var days = Math.floor(totalSeconds / 86400);
+        var hours = Math.floor((totalSeconds % 86400) / 3600);
+        var minutes = Math.floor((totalSeconds % 3600) / 60);
+        var seconds = totalSeconds % 60;
+        var parts = [];
+        if (days > 0) parts.push(days + (isRo ? 'z' : 'd'));
+        if (hours > 0 || days > 0) parts.push(hours + (isRo ? 'h' : 'h'));
+        if (minutes > 0 || hours > 0 || days > 0) parts.push(minutes + (isRo ? 'm' : 'm'));
+        if (days === 0) parts.push(seconds + (isRo ? 's' : 's'));
+        return parts.join(' ');
+    }
+
+    function clearActiveChatDeadlineTimer() {
+        if (activeChatDeadlineTimer) {
+            clearInterval(activeChatDeadlineTimer);
+            activeChatDeadlineTimer = null;
+        }
+    }
+
+    window._closeEventChatModal = function () {
+        clearActiveChatDeadlineTimer();
+        activeChatEventId = null;
+        var modal = document.getElementById('eventChatModal');
+        if (modal) modal.remove();
+    };
+
+    async function cleanupExpiredRemoteChats() {
+        if (!window.supabaseClient) return;
+
+        try {
+            var rpcRes = await window.supabaseClient.rpc('cleanup_expired_event_chats');
+            if (!rpcRes || !rpcRes.error) return;
+        } catch (e) {}
+
+        try {
+            var nowIso = new Date().toISOString();
+            var expiredRes = await window.supabaseClient
+                .from('event_chats')
+                .select('event_id')
+                .lte('expires_at', nowIso);
+            if (expiredRes && !expiredRes.error && Array.isArray(expiredRes.data) && expiredRes.data.length > 0) {
+                var expiredIds = expiredRes.data.map(function (row) { return row.event_id; }).filter(Boolean);
+                if (expiredIds.length > 0) {
+                    await window.supabaseClient.from('event_chat_messages').delete().in('event_id', expiredIds);
+                    await window.supabaseClient.from('event_chats').delete().in('event_id', expiredIds);
+                }
+            }
+        } catch (e) {}
+    }
+
+    var lastEventChatCleanupAt = 0;
+    async function maybeCleanupExpiredEventChats(force) {
+        cleanupExpiredLocalChats();
+        var now = Date.now();
+        if (!force && now - lastEventChatCleanupAt < 60000) return;
+        lastEventChatCleanupAt = now;
+        await cleanupExpiredRemoteChats();
+    }
+
+    async function fetchActiveEventChats(eventIds) {
+        var chatMap = {};
+        var hasFilter = Array.isArray(eventIds) && eventIds.length > 0;
+        var nowIso = new Date().toISOString();
+
+        try {
+            if (window.supabaseClient) {
+                var query = window.supabaseClient
+                    .from('event_chats')
+                    .select('*')
+                    .eq('status', 'active')
+                    .gt('expires_at', nowIso);
+                if (hasFilter) query = query.in('event_id', eventIds);
+                var res = await query;
+                if (!res.error && Array.isArray(res.data)) {
+                    res.data.forEach(function (chat) {
+                        chatMap[chat.event_id] = chat;
+                    });
+                }
+            }
+        } catch (e) {}
+
+        getLocalChats().forEach(function (chat) {
+            if (!isActiveEventChat(chat)) return;
+            if (hasFilter && eventIds.indexOf(chat.event_id) === -1) return;
+            if (!chatMap[chat.event_id]) chatMap[chat.event_id] = chat;
+        });
+
+        return Object.keys(chatMap).map(function (eventId) { return chatMap[eventId]; });
+    }
+
+    async function fetchAttendeeCounts(eventIds) {
+        var counts = {};
+        var uniqueKeys = {};
+        if (!Array.isArray(eventIds) || eventIds.length === 0) return counts;
+
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient
+                    .from('event_attendees')
+                    .select('event_id,user_id')
+                    .in('event_id', eventIds);
+                if (!res.error && Array.isArray(res.data)) {
+                    res.data.forEach(function (att) {
+                        var key = att.event_id + '::' + att.user_id;
+                        if (uniqueKeys[key]) return;
+                        uniqueKeys[key] = true;
+                        counts[att.event_id] = (counts[att.event_id] || 0) + 1;
+                    });
+                }
+            }
+        } catch (e) {}
+
+        getLocalAttendees().forEach(function (att) {
+            if (eventIds.indexOf(att.event_id) === -1) return;
+            var key = att.event_id + '::' + (att.user_id || att.id);
+            if (uniqueKeys[key]) return;
+            uniqueKeys[key] = true;
+            counts[att.event_id] = (counts[att.event_id] || 0) + 1;
+        });
+
+        return counts;
+    }
+
+    async function isUserAcceptedAttendee(eventId, userId) {
+        if (!eventId || !userId) return false;
+
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient
+                    .from('event_attendees')
+                    .select('id')
+                    .eq('event_id', eventId)
+                    .eq('user_id', userId)
+                    .limit(1);
+                if (!res.error && Array.isArray(res.data) && res.data.length > 0) return true;
+            }
+        } catch (e) {}
+
+        return getLocalAttendees().some(function (att) {
+            return att.event_id === eventId && att.user_id === userId;
+        });
+    }
+
+    async function ensureEventChatExists(eventOrId, attendeeCount) {
+        var ev = typeof eventOrId === 'string' ? getEventById(eventOrId) : eventOrId;
+        if (!ev) return null;
+        if (isEventExpired(ev.event_date) || Number(attendeeCount || 0) < 1) {
+            removeLocalChatArtifacts(ev.id);
+            return null;
+        }
+
+        var chat = {
+            event_id: ev.id,
+            expires_at: ev.event_date,
+            status: 'active'
+        };
+
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient
+                    .from('event_chats')
+                    .upsert([chat], { onConflict: 'event_id' })
+                    .select('*');
+                if (!res.error && Array.isArray(res.data) && res.data[0]) {
+                    chat = res.data[0];
+                }
+            }
+        } catch (e) {}
+
+        upsertLocalChat(chat);
+        return chat;
+    }
+
+    async function syncEventChatState(eventId) {
+        var ev = getEventById(eventId);
+        if (!ev) return null;
+        if (isEventExpired(ev.event_date)) {
+            await expireEventChat(eventId, true);
+            return null;
+        }
+        var counts = await fetchAttendeeCounts([eventId]);
+        var attendeeCount = counts[eventId] || 0;
+        if (attendeeCount < 1) {
+            removeLocalChatArtifacts(eventId);
+            try {
+                if (window.supabaseClient) {
+                    await window.supabaseClient.from('event_chat_messages').delete().eq('event_id', eventId);
+                    await window.supabaseClient.from('event_chats').delete().eq('event_id', eventId);
+                }
+            } catch (e) {}
+            return null;
+        }
+        return ensureEventChatExists(ev, attendeeCount);
+    }
+
+    async function expireEventChat(eventId, silent) {
+        if (!eventId) return;
+        removeLocalChatArtifacts(eventId);
+
+        try {
+            if (window.supabaseClient) {
+                var rpcRes = await window.supabaseClient.rpc('cleanup_expired_event_chats');
+                if (rpcRes && rpcRes.error) throw rpcRes.error;
+            }
+        } catch (e) {
+            try {
+                if (window.supabaseClient) {
+                    await window.supabaseClient.from('event_chat_messages').delete().eq('event_id', eventId);
+                    await window.supabaseClient.from('event_chats').delete().eq('event_id', eventId);
+                }
+            } catch (_) {}
+        }
+
+        if (activeChatEventId === eventId) window._closeEventChatModal();
+        if (!silent) {
+            var isRo = (window._currentLang && window._currentLang() === 'ro');
+            alert(isRo ? 'Chat-ul evenimentului a expirat și a fost șters.' : 'The event chat has expired and was deleted.');
+        }
+    }
+
+    function startEventChatDeadlineTimer(ev) {
+        clearActiveChatDeadlineTimer();
+        var expiredHandled = false;
+
+        async function tick() {
+            var timerEl = document.getElementById('chatTimer');
+            if (!timerEl) {
+                clearActiveChatDeadlineTimer();
+                return;
+            }
+
+            var isRo = (window._currentLang && window._currentLang() === 'ro');
+            if (isEventExpired(ev.event_date)) {
+                timerEl.textContent = isRo ? '⌛ Chat expirat. Se șterge…' : '⌛ Chat expired. Deleting…';
+                clearActiveChatDeadlineTimer();
+                if (!expiredHandled) {
+                    expiredHandled = true;
+                    await expireEventChat(ev.id, true);
+                    alert(isRo ? 'Deadline-ul evenimentului a trecut. Chat-ul a fost șters automat.' : 'The event deadline has passed. The chat was deleted automatically.');
+                }
+                return;
+            }
+
+            timerEl.textContent = (isRo ? '⏳ Chat activ încă ' : '⏳ Chat active for ') + formatChatCountdown(ev.event_date, isRo);
+        }
+
+        tick();
+        activeChatDeadlineTimer = setInterval(tick, 1000);
     }
 
     // Ensure an event exists on Supabase so foreign key constraints in event_inquiries don't fail
@@ -514,7 +847,7 @@
     window.openCreateEventModal = openCreateEventModal;
 
     // Check attendance 1-event-per-day rule
-    async function checkAttendanceConflict(userId, eventDateIso) {
+    async function checkAttendanceConflict(userId, eventDateIso, excludeEventId) {
         var targetDateStr = getDateString(eventDateIso);
         var isRo = (window._currentLang && window._currentLang() === 'ro');
 
@@ -534,8 +867,10 @@
 
         for (var i = 0; i < attendances.length; i++) {
             var att = attendances[i];
+            if (excludeEventId && att.event_id === excludeEventId) continue;
             var ev = eventsData.find(function(e) { return e.id === att.event_id; });
             if (ev) {
+                if (excludeEventId && ev.id === excludeEventId) continue;
                 var evDateStr = getDateString(ev.event_date);
                 if (evDateStr === targetDateStr) {
                     return isRo
@@ -738,6 +1073,7 @@
             } catch (err) {}
             eventsData = eventsData.filter(function (e) { return e.id !== ev.id; });
             saveLocalEvents(eventsData);
+            removeLocalChatArtifacts(ev.id);
             refreshEventsMap();
             modal.remove();
         });
@@ -853,7 +1189,12 @@
         // Check 1-event-per-day rule for the attendee
         var ev = eventsData.find(function(e) { return e.id === eventId; });
         if (ev) {
-            var conflict = await checkAttendanceConflict(inq.user_id, ev.event_date);
+            if (isEventExpired(ev.event_date)) {
+                alert(isRo ? 'Evenimentul a expirat deja.' : 'This event has already expired.');
+                await expireEventChat(eventId, true);
+                return;
+            }
+            var conflict = await checkAttendanceConflict(inq.user_id, ev.event_date, eventId);
             if (conflict) {
                 alert(conflict);
                 return;
@@ -861,20 +1202,52 @@
         }
 
         inq.status = 'accepted';
-        var attendee = {
-            id: genUuid(),
-            event_id: eventId,
-            user_id: inq.user_id,
-            user_name: inq.user_name,
-            joined_at: new Date().toISOString()
-        };
+
+        var attendee = null;
+        try {
+            if (window.supabaseClient) {
+                var existingAttRes = await window.supabaseClient
+                    .from('event_attendees')
+                    .select('*')
+                    .eq('event_id', eventId)
+                    .eq('user_id', inq.user_id)
+                    .limit(1);
+                if (!existingAttRes.error && Array.isArray(existingAttRes.data) && existingAttRes.data[0]) {
+                    attendee = existingAttRes.data[0];
+                }
+            }
+        } catch (e) {}
+
+        if (!attendee) {
+            attendee = {
+                id: genUuid(),
+                event_id: eventId,
+                user_id: inq.user_id,
+                user_name: inq.user_name,
+                joined_at: new Date().toISOString()
+            };
+        }
 
         try {
             if (window.supabaseClient) {
                 var updRes = await window.supabaseClient.from('event_inquiries').update({ status: 'accepted' }).eq('id', inquiryId);
                 if (updRes && updRes.error) console.error('Supabase update inquiry status failed:', updRes.error);
-                var attInsRes = await window.supabaseClient.from('event_attendees').insert([attendee]);
-                if (attInsRes && attInsRes.error) console.error('Supabase insert attendee failed:', attInsRes.error);
+                if (!attendee.joined_at) attendee.joined_at = new Date().toISOString();
+                if (!attendee.id || attendee.id === inquiryId) attendee.id = genUuid();
+                var hasExistingRemoteAttendee = false;
+                try {
+                    var remoteAttCheck = await window.supabaseClient
+                        .from('event_attendees')
+                        .select('id')
+                        .eq('event_id', eventId)
+                        .eq('user_id', inq.user_id)
+                        .limit(1);
+                    hasExistingRemoteAttendee = !remoteAttCheck.error && Array.isArray(remoteAttCheck.data) && remoteAttCheck.data.length > 0;
+                } catch (_) {}
+                if (!hasExistingRemoteAttendee) {
+                    var attInsRes = await window.supabaseClient.from('event_attendees').insert([attendee]);
+                    if (attInsRes && attInsRes.error) console.error('Supabase insert attendee failed:', attInsRes.error);
+                }
             }
         } catch (err) {
             console.error('Supabase accept inquiry error:', err);
@@ -891,13 +1264,19 @@
         saveLocalInquiries(localInqs);
 
         var atts = getLocalAttendees();
-        if (!atts.some(function(a) { return a.id === attendee.id; })) {
+        var existingLocalAttendeeIdx = atts.findIndex(function(a) {
+            return a.event_id === eventId && a.user_id === inq.user_id;
+        });
+        if (existingLocalAttendeeIdx === -1) {
             atts.push(attendee);
-            saveLocalAttendees(atts);
+        } else {
+            atts[existingLocalAttendeeIdx] = Object.assign({}, atts[existingLocalAttendeeIdx], attendee);
         }
+        saveLocalAttendees(atts);
 
+        await syncEventChatState(eventId);
         loadManageEventDetails(eventId);
-        alert(isRo ? 'Cerere acceptată! S-a creat chat-ul pentru eveniment.' : 'Inquiry accepted! Event chat created.');
+        alert(isRo ? 'Cerere acceptată! Chat-ul evenimentului a fost creat.' : 'Inquiry accepted! The event chat was created.');
     };
 
     // Decline Inquiry
@@ -940,6 +1319,7 @@
         } catch (err) {}
         var atts = getLocalAttendees().filter(function(a) { return a.id !== attendeeId; });
         saveLocalAttendees(atts);
+        await syncEventChatState(eventId);
         loadManageEventDetails(eventId);
     };
 
@@ -1064,6 +1444,7 @@
         }
 
         await fetchEvents();
+        await maybeCleanupExpiredEventChats();
 
         if (tab === 'all') {
             // Pre-fetch user's inquiries and attendances for accurate button state
@@ -1097,8 +1478,11 @@
                     var isCreator = user && (user.id === ev.creator_id || (user.email && ev.creator_email && user.email === ev.creator_email));
                     var isAttending = userAttEventIds[ev.id];
                     var hasInquiry = userInqEventIds[ev.id];
+                    var isExpired = isEventExpired(ev.event_date);
                     var actionBtn = '';
-                    if (isCreator) {
+                    if (isExpired) {
+                        actionBtn = '<div style="background:rgba(196,43,43,0.15); border:1px solid rgba(196,43,43,0.35); border-radius:6px; color:#ff8a8a; padding:8px; text-align:center; font-weight:600; font-size:0.78rem;">⌛ ' + (isRo ? 'Eveniment expirat' : 'Event expired') + '</div>';
+                    } else if (isCreator) {
                         actionBtn = '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="background:#6B3FA0; border:none; border-radius:6px; color:#fff; font-weight:600; padding:8px; cursor:pointer; font-size:0.78rem;">' + (isRo ? 'Gestionează' : 'Manage') + '</button>';
                     } else if (isAttending) {
                         actionBtn = '<div style="background:rgba(46,158,79,0.2); border:1px solid rgba(46,158,79,0.5); border-radius:6px; color:#2E9E4F; padding:8px; text-align:center; font-weight:600; font-size:0.78rem;">✓ ' + (isRo ? 'Deja participant' : 'Already attending') + '</div>';
@@ -1125,7 +1509,7 @@
             var myEvs = eventsData.filter(function (e) {
                 return e.creator_id === user.id || (user.email && e.creator_email && user.email === e.creator_email);
             });
-            
+
             // Also find events where user is an accepted attendee
             var attEvents = [];
             try {
@@ -1144,31 +1528,67 @@
                 attEvents = eventsData.filter(function(e) { return localIds.indexOf(e.id) !== -1; });
             }
 
+            var eventIdsForChatState = [];
+            myEvs.forEach(function (ev) { if (eventIdsForChatState.indexOf(ev.id) === -1) eventIdsForChatState.push(ev.id); });
+            attEvents.forEach(function (ev) { if (eventIdsForChatState.indexOf(ev.id) === -1) eventIdsForChatState.push(ev.id); });
+
+            var attendeeCounts = await fetchAttendeeCounts(eventIdsForChatState);
+            var activeChats = await fetchActiveEventChats(eventIdsForChatState);
+            var activeChatMap = {};
+            activeChats.forEach(function (chat) {
+                activeChatMap[chat.event_id] = chat;
+            });
+
+            for (var i = 0; i < eventIdsForChatState.length; i++) {
+                var eventId = eventIdsForChatState[i];
+                var evForChat = getEventById(eventId);
+                if (!evForChat || isEventExpired(evForChat.event_date)) continue;
+                if ((attendeeCounts[eventId] || 0) >= 1 && !activeChatMap[eventId]) {
+                    var ensuredChat = await ensureEventChatExists(evForChat, attendeeCounts[eventId]);
+                    if (ensuredChat) activeChatMap[eventId] = ensuredChat;
+                }
+            }
+
+            var attendableChatEvents = attEvents.filter(function (ev) {
+                return !isEventExpired(ev.event_date) && !!activeChatMap[ev.id];
+            });
+
             var html = '<h3 style="font-size:1.05rem; color:var(--sky); margin-bottom:8px;">' + (isRo ? 'Evenimentele create de tine' : 'Events Created By You') + '</h3>';
             if (myEvs.length === 0) {
                 html += '<div style="font-size:0.78rem; opacity:0.6; margin-bottom:20px;">' + (isRo ? 'Nu ai creat niciun eveniment.' : 'You have not created any events.') + '</div>';
             } else {
                 html += '<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">';
                 myEvs.forEach(function (ev) {
-                    html += '<div style="background:rgba(255,255,255,0.04); border:1px solid rgba(184,216,240,0.15); border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">' +
-                        '<div><strong>' + escapeHtml(ev.title) + '</strong><div style="font-size:0.72rem; opacity:0.7;">' + formatDate(ev.event_date) + '</div></div>' +
-                        '<div style="display:flex; gap:8px;">' +
+                    var isExpired = isEventExpired(ev.event_date);
+                    var attendeeCount = attendeeCounts[ev.id] || 0;
+                    var chatAction = '';
+                    if (isExpired) {
+                        chatAction = '<div style="background:rgba(196,43,43,0.15); border:1px solid rgba(196,43,43,0.35); border-radius:6px; color:#ff8a8a; padding:6px 10px; font-size:0.72rem; font-weight:600;">⌛ ' + (isRo ? 'Expirat' : 'Expired') + '</div>';
+                    } else if (activeChatMap[ev.id]) {
+                        chatAction = '<button type="button" onclick="window._openEventChat(\'' + ev.id + '\')" style="background:#0D2B5E; border:1px solid rgba(184,216,240,0.3); border-radius:6px; color:var(--sky); padding:6px 10px; font-size:0.75rem; cursor:pointer; font-weight:600;">💬 Chat</button>';
+                    } else {
+                        chatAction = '<div style="background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.15); border-radius:6px; color:rgba(245,240,235,0.72); padding:6px 10px; font-size:0.72rem; text-align:center;">' + (attendeeCount >= 1 ? (isRo ? 'Se pregătește chat-ul…' : 'Preparing chat…') : (isRo ? 'Chat-ul se activează după primul participant acceptat' : 'Chat unlocks after the first accepted participant')) + '</div>';
+                    }
+
+                    html += '<div style="background:rgba(255,255,255,0.04); border:1px solid rgba(184,216,240,0.15); border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:12px;">' +
+                        '<div><strong>' + escapeHtml(ev.title) + '</strong><div style="font-size:0.72rem; opacity:0.7;">' + formatDate(ev.event_date) + ' • ' + attendeeCount + ' ' + (isRo ? 'participanți acceptați' : 'accepted attendees') + '</div></div>' +
+                        '<div style="display:flex; gap:8px; align-items:center;">' +
                         '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="background:#6B3FA0; border:none; border-radius:6px; color:#fff; padding:6px 10px; font-size:0.75rem; cursor:pointer; font-weight:600;">' + (isRo ? 'Gestionează' : 'Manage') + '</button>' +
-                        '<button type="button" onclick="window._openEventChat(\'' + ev.id + '\')" style="background:#0D2B5E; border:1px solid rgba(184,216,240,0.3); border-radius:6px; color:var(--sky); padding:6px 10px; font-size:0.75rem; cursor:pointer; font-weight:600;">💬 Chat</button>' +
+                        chatAction +
                         '</div></div>';
                 });
                 html += '</div>';
             }
 
             html += '<h3 style="font-size:1.05rem; color:var(--sky); margin-bottom:8px;">' + (isRo ? 'Evenimente la care participi (Chat activ)' : 'Events You Attend (Active Chat)') + '</h3>';
-            if (attEvents.length === 0) {
-                html += '<div style="font-size:0.78rem; opacity:0.6;">' + (isRo ? 'Nu participi la niciun eveniment aprobat.' : 'You are not attending any approved events.') + '</div>';
+            if (attendableChatEvents.length === 0) {
+                html += '<div style="font-size:0.78rem; opacity:0.6;">' + (isRo ? 'Nu participi la niciun chat de eveniment activ.' : 'You are not attending any active event chat.') + '</div>';
             } else {
                 html += '<div style="display:flex; flex-direction:column; gap:8px;">';
-                attEvents.forEach(function (ev) {
+                attendableChatEvents.forEach(function (ev) {
                     html += '<div style="background:rgba(255,255,255,0.04); border:1px solid rgba(184,216,240,0.15); border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">' +
                         '<div><strong>' + escapeHtml(ev.title) + '</strong><div style="font-size:0.72rem; opacity:0.7;">' + formatDate(ev.event_date) + '</div></div>' +
-                        '<button type="button" onclick="window._openEventChat(\'' + ev.id + '\')" style="background:#0D2B5E; border:1px solid rgba(184,216,240,0.3); border-radius:6px; color:var(--sky); padding:6px 12px; font-size:0.75rem; cursor:pointer; font-weight:600;">💬 Deschide Chat</button>' +
+                        '<button type="button" onclick="window._openEventChat(\'' + ev.id + '\')" style="background:#0D2B5E; border:1px solid rgba(184,216,240,0.3); border-radius:6px; color:var(--sky); padding:6px 12px; font-size:0.75rem; cursor:pointer; font-weight:600;">💬 ' + (isRo ? 'Deschide Chat' : 'Open Chat') + '</button>' +
                         '</div>';
                 });
                 html += '</div>';
@@ -1179,16 +1599,49 @@
     };
 
     // ── EVENT CHAT SYSTEM ──
-    window._openEventChat = function (eventId) {
-        var ev = eventsData.find(function (e) { return e.id === eventId; });
+    window._openEventChat = async function (eventId) {
+        await maybeCleanupExpiredEventChats();
+
+        var ev = getEventById(eventId);
         if (!ev) return;
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+        var user = getCurrentUser();
+
+        if (isEventExpired(ev.event_date)) {
+            await expireEventChat(eventId, true);
+            alert(isRo ? 'Chat-ul nu mai este disponibil deoarece deadline-ul evenimentului a trecut.' : 'The chat is no longer available because the event deadline has passed.');
+            return;
+        }
+
+        if (!user || !user.id) {
+            if (typeof window.openAuth === 'function') window.openAuth('login');
+            return;
+        }
+
+        var isCreator = user.id === ev.creator_id || (user.email && ev.creator_email && user.email === ev.creator_email);
+        var isApprovedAttendee = isCreator ? true : await isUserAcceptedAttendee(eventId, user.id);
+        if (!isApprovedAttendee) {
+            alert(isRo ? 'Chat-ul devine disponibil doar pentru creator și participanții acceptați.' : 'The chat is only available to the creator and accepted attendees.');
+            return;
+        }
+
+        var attendeeCounts = await fetchAttendeeCounts([eventId]);
+        var attendeeCount = attendeeCounts[eventId] || 0;
+        if (attendeeCount < 1) {
+            alert(isRo ? 'Chat-ul se creează automat după acceptarea primului participant.' : 'The chat is created automatically after the first participant is accepted.');
+            return;
+        }
+
+        var chat = await ensureEventChatExists(ev, attendeeCount);
+        if (!chat) {
+            alert(isRo ? 'Chat-ul evenimentului nu a putut fi creat.' : 'The event chat could not be created.');
+            return;
+        }
+
         activeChatEventId = eventId;
 
         var existing = document.getElementById('eventChatModal');
         if (existing) existing.remove();
-
-        var isRo = (window._currentLang && window._currentLang() === 'ro');
-        var user = getCurrentUser();
 
         var modal = document.createElement('div');
         modal.id = 'eventChatModal';
@@ -1197,14 +1650,13 @@
         var box = document.createElement('div');
         box.style.cssText = 'max-width: 600px; width: 100%; margin: 0 auto; height: 100%; display: flex; flex-direction: column; background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.25); border-radius: 12px; overflow: hidden;';
 
-        // Header with timer and calendar add
         box.innerHTML = '<div style="background: rgba(6,14,30,0.95); padding: 12px 16px; border-bottom: 1px solid rgba(184,216,240,0.15); display: flex; flex-direction: column; gap: 6px;">' +
             '<div style="display: flex; justify-content: space-between; align-items: center;">' +
             '<strong style="font-size: 1rem; color: #F5F0EB;">' + escapeHtml(ev.title) + '</strong>' +
-            '<button type="button" onclick="document.getElementById(\'eventChatModal\').remove()" style="background:none; border:none; color:var(--sky); font-size:1.2rem; cursor:pointer;">✕</button>' +
+            '<button type="button" onclick="window._closeEventChatModal()" style="background:none; border:none; color:var(--sky); font-size:1.2rem; cursor:pointer;">✕</button>' +
             '</div>' +
-            '<div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem;">' +
-            '<span id="chatTimer" style="color: #ffc832; font-weight: 600;">⏰ Eveniment: ' + formatDate(ev.event_date) + '</span>' +
+            '<div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem; gap:8px;">' +
+            '<span id="chatTimer" style="color: #ffc832; font-weight: 600;">⏳ ' + (isRo ? 'Se verifică deadline-ul chat-ului…' : 'Checking chat deadline…') + '</span>' +
             '<button type="button" onclick="window._addToCalendar(\'' + ev.id + '\')" style="background: rgba(107,63,160,0.35); border: 1px solid rgba(196,160,240,0.5); border-radius: 4px; color: #c4a0f0; padding: 3px 8px; font-size: 0.7rem; cursor: pointer; font-weight: 600;">📅 ' + (isRo ? 'Adaugă în Calendar' : 'Add to Calendar') + '</button>' +
             '</div>' +
             '</div>' +
@@ -1220,18 +1672,29 @@
         modal.appendChild(box);
         document.body.appendChild(modal);
 
-        loadChatMessages(eventId);
+        await loadChatMessages(eventId);
+        startEventChatDeadlineTimer(ev);
 
-        // Enter key to send
-        document.getElementById('chatInput').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') window._sendChatMessage();
-        });
+        var chatInput = document.getElementById('chatInput');
+        if (chatInput) {
+            chatInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') window._sendChatMessage();
+            });
+        }
     };
 
     async function loadChatMessages(eventId) {
         var listEl = document.getElementById('chatMessagesList');
         if (!listEl) return;
         var user = getCurrentUser();
+        var ev = getEventById(eventId);
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+
+        if (ev && isEventExpired(ev.event_date)) {
+            await expireEventChat(eventId, true);
+            listEl.innerHTML = '<div style="text-align:center; opacity:0.7; font-size:0.8rem; margin-top:20px;">' + (isRo ? 'Chat expirat.' : 'Chat expired.') + '</div>';
+            return;
+        }
 
         var msgs = [];
         try {
@@ -1247,7 +1710,7 @@
 
         var html = '';
         if (msgs.length === 0) {
-            html = '<div style="text-align:center; opacity:0.5; font-size:0.8rem; margin-top:20px;">Niciun mesaj încă. Începe conversația!</div>';
+            html = '<div style="text-align:center; opacity:0.5; font-size:0.8rem; margin-top:20px;">' + (isRo ? 'Chat creat. Începe conversația!' : 'Chat created. Start the conversation!') + '</div>';
         } else {
             msgs.forEach(function (m) {
                 var isMe = user && m.user_id === user.id;
@@ -1278,6 +1741,14 @@
         var user = getCurrentUser();
         if (!user || !user.id) return;
 
+        var ev = getEventById(activeChatEventId);
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+        if (!ev || isEventExpired(ev.event_date)) {
+            await expireEventChat(activeChatEventId, true);
+            alert(isRo ? 'Chat-ul a expirat și nu mai poate primi mesaje.' : 'The chat has expired and can no longer receive messages.');
+            return;
+        }
+
         var msg = {
             id: genUuid(),
             event_id: activeChatEventId,
@@ -1289,14 +1760,22 @@
             created_at: new Date().toISOString()
         };
 
+        var shouldPersistLocally = true;
         try {
             if (window.supabaseClient) {
                 var chatInsertRes = await window.supabaseClient.from('event_chat_messages').insert([msg]);
                 if (chatInsertRes && chatInsertRes.error) {
                     console.error('Supabase insert chat message failed:', chatInsertRes.error);
+                    var chatErrorMsg = String(chatInsertRes.error.message || '').toLowerCase();
+                    if (chatErrorMsg.indexOf('chat') !== -1 || chatErrorMsg.indexOf('active') !== -1) {
+                        shouldPersistLocally = false;
+                        await syncEventChatState(activeChatEventId);
+                    }
                 }
             }
         } catch (e) {}
+
+        if (!shouldPersistLocally) return;
 
         var msgs = getLocalMessages();
         msgs.push(msg);
@@ -1306,12 +1785,20 @@
         loadChatMessages(activeChatEventId);
     };
 
-    window._handleChatMedia = function (input) {
+    window._handleChatMedia = async function (input) {
         if (!input.files || !input.files[0] || !activeChatEventId) return;
         var file = input.files[0];
         var reader = new FileReader();
 
         reader.onload = async function (e) {
+            var ev = getEventById(activeChatEventId);
+            var isRo = (window._currentLang && window._currentLang() === 'ro');
+            if (!ev || isEventExpired(ev.event_date)) {
+                await expireEventChat(activeChatEventId, true);
+                alert(isRo ? 'Chat-ul a expirat și nu mai poate primi atașamente.' : 'The chat has expired and can no longer receive attachments.');
+                return;
+            }
+
             var dataUrl = e.target.result;
             var isVideo = file.type.startsWith('video');
             var user = getCurrentUser();
@@ -1328,11 +1815,21 @@
                 created_at: new Date().toISOString()
             };
 
+            var shouldPersistLocally = true;
             try {
                 if (window.supabaseClient) {
-                    await window.supabaseClient.from('event_chat_messages').insert([msg]);
+                    var mediaInsertRes = await window.supabaseClient.from('event_chat_messages').insert([msg]);
+                    if (mediaInsertRes && mediaInsertRes.error) {
+                        var mediaErrorMsg = String(mediaInsertRes.error.message || '').toLowerCase();
+                        if (mediaErrorMsg.indexOf('chat') !== -1 || mediaErrorMsg.indexOf('active') !== -1) {
+                            shouldPersistLocally = false;
+                            await syncEventChatState(activeChatEventId);
+                        }
+                    }
                 }
             } catch (err) {}
+
+            if (!shouldPersistLocally) return;
 
             var msgs = getLocalMessages();
             msgs.push(msg);
@@ -1379,13 +1876,16 @@
     // Periodic check for notifications on app load / login
     document.addEventListener('DOMContentLoaded', function () {
         setTimeout(checkNotifications, 2000);
+        setTimeout(function () { maybeCleanupExpiredEventChats(true); }, 2500);
         setInterval(checkNotifications, 15000);
+        setInterval(function () { maybeCleanupExpiredEventChats(); }, 60000);
     });
 
     // Rebuild event markers and check notifications when auth state changes (login / logout / token refresh)
     window.addEventListener('detectlab:authchange', async function () {
         await fetchEvents();
         refreshEventsMap();
+        await maybeCleanupExpiredEventChats(true);
         checkNotifications();
     });
 
