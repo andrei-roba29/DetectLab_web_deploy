@@ -422,11 +422,22 @@
         activeChatDeadlineTimer = setInterval(tick, 1000);
     }
 
-    // Ensure an event exists on Supabase so foreign key constraints in event_inquiries don't fail
+    // Detect PostgREST "column ... does not exist" (42703) so we can retry against an
+    // older `events` schema that predates the pin_id/category/creator_email columns.
+    function isMissingColumnError(err) {
+        if (!err) return false;
+        if (err.code === '42703') return true;
+        var msg = String(err.message || err.error_description || err.hint || '');
+        return msg.indexOf('does not exist') !== -1;
+    }
+
+    // Ensure an event exists on Supabase so foreign key constraints in event_inquiries don't fail.
+    // Returns { ok: true } on full sync, { ok: true, partial: true } when synced with only the base
+    // columns (live table is missing pin_id/category/creator_email), or { ok: false, reason, error }.
     async function ensureEventOnServer(ev) {
         if (!window.supabaseClient || !ev || !ev.id) {
             console.warn('[Events] Supabase client not available - event saved locally only');
-            return false;
+            return { ok: false, reason: 'no-client' };
         }
         try {
             var payload = {
@@ -446,13 +457,37 @@
             };
             var res = await window.supabaseClient.from('events').upsert([payload], { onConflict: 'id' });
             if (res && res.error) {
+                if (isMissingColumnError(res.error)) {
+                    // Schema drift: the live `events` table is missing pin_id / category / creator_email.
+                    // Retry with the base columns that exist on the older table so the event row
+                    // actually lands in the DB and join requests can reference it.
+                    console.warn('[Events] Server events table missing newer columns; retrying with base columns. Apply migration 20260805000000_create_events_feature.sql for full sync. Detail:', res.error.message);
+                    var basePayload = {
+                        id: ev.id,
+                        creator_id: ev.creator_id,
+                        creator_name: ev.creator_name || 'User',
+                        title: ev.title,
+                        description: ev.description || '',
+                        latitude: Number(ev.latitude),
+                        longitude: Number(ev.longitude),
+                        event_date: ev.event_date,
+                        max_attendees: ev.max_attendees || null,
+                        created_at: ev.created_at || new Date().toISOString()
+                    };
+                    var retry = await window.supabaseClient.from('events').upsert([basePayload], { onConflict: 'id' });
+                    if (retry && retry.error) {
+                        console.error('[Events] Failed to save event to Supabase (base payload):', retry.error);
+                        return { ok: false, reason: 'server-error', error: retry.error };
+                    }
+                    return { ok: true, partial: true };
+                }
                 console.error('[Events] Failed to save event to Supabase:', res.error);
-                return false;
+                return { ok: false, reason: 'server-error', error: res.error };
             }
-            return true;
+            return { ok: true };
         } catch (e) {
             console.error('[Events] ensureEventOnServer error:', e);
-            return false;
+            return { ok: false, reason: 'exception', error: e };
         }
     }
 
@@ -715,8 +750,11 @@
             refreshEventsMap();
             modal.remove();
 
-            if (savedToServer) {
+            if (savedToServer && savedToServer.ok) {
                 alert(isRo ? 'Eveniment creat cu succes!' : 'Event created successfully!');
+                if (savedToServer.partial) {
+                    console.warn('[Events] Event synced without pin_id/category/creator_email (older server schema).');
+                }
             } else {
                 alert(isRo
                     ? 'Eveniment creat local. Alți utilizatori nu îl vor vedea până când conexiunea la server nu este restabilită.'
@@ -991,7 +1029,7 @@
             }
 
             // Ensure parent event exists on Supabase so foreign key constraints in event_inquiries don't fail
-            await ensureEventOnServer(ev);
+            var evSync = await ensureEventOnServer(ev);
 
             var inquiryId = genUuid();
             var inquiry = {
@@ -1016,15 +1054,22 @@
                 created_at: new Date().toISOString()
             };
 
+            var hasServerClient = !!window.supabaseClient;
+            var remoteInquiryOk = false;
             try {
                 if (window.supabaseClient) {
                     var inqRes = await window.supabaseClient.from('event_inquiries').insert([inquiry]);
                     if (inqRes && inqRes.error) {
                         console.error('Supabase insert inquiry failed:', inqRes.error);
+                    } else {
+                        remoteInquiryOk = true;
                     }
                     var notifRes = await window.supabaseClient.from('event_notifications').insert([notification]);
                     if (notifRes && notifRes.error) {
                         console.error('Supabase insert notification failed:', notifRes.error);
+                        if (remoteInquiryOk) {
+                            console.warn('[Events] The request was stored but the creator notification row failed; the creator can still see it via Manage Event.');
+                        }
                     }
                 }
             } catch (err) {
@@ -1040,7 +1085,21 @@
             saveLocalNotifications(localNotifs);
 
             modal.remove();
-            alert(isRo ? 'Cererea a fost trimisă cu succes!' : 'Inquiry sent successfully!');
+            if (remoteInquiryOk) {
+                alert(isRo ? 'Cererea a fost trimisă cu succes!' : 'Inquiry sent successfully!');
+            } else if (!hasServerClient) {
+                alert(isRo
+                    ? '⚠️ Cererea a fost salvată doar pe acest dispozitiv — fără conexiune la server, creatorul nu o va primi. Reîncearcă când conexiunea este restabilită.'
+                    : '⚠️ Your request was only saved on this device — without a server connection the creator will not receive it. Try again once the connection is restored.');
+            } else if (evSync && !evSync.ok) {
+                alert(isRo
+                    ? '⚠️ Evenimentul nu a putut fi sincronizat pe server, deci cererea a fost salvată doar local și creatorul nu o va primi. Verifică consola browserului (F12).'
+                    : '⚠️ The event could not be synced to the server, so your request was only saved locally and the creator will not receive it. Check the browser console (F12).');
+            } else {
+                alert(isRo
+                    ? '⚠️ Cererea NU a putut fi salvată pe server și a fost păstrată doar local. Verifică consola browserului (F12) pentru detalii.'
+                    : '⚠️ Your request could NOT be saved to the server and was kept locally only. Check the browser console (F12) for details.');
+            }
             refreshEventsMap();
         });
     };
