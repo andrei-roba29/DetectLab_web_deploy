@@ -1,5 +1,5 @@
 /* DetectLab — premium LIDAR Scanner
- * Reads data/lidar_scanner_points.csv as EPSG:4936 ECEF (X/Y/Z), then transforms
+ * Reads data/lidar_scanner_points.csv as EPSG:4326 WGS 84 (X/Y/Z), then transforms
  * the complete file to WGS84 once before coordinate searches.
  */
 (function () {
