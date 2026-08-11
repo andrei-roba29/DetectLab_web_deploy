@@ -56,7 +56,38 @@
         circle.bindPopup('<strong>'+esc(p.category)+'</strong>'+(p.name?'<br>'+esc(p.name):'')+'<br><small>'+p.lat.toFixed(5)+', '+p.lng.toFixed(5)+'</small>'); return circle;
     }
     function setStatus(s) { var e=document.getElementById('lidarScannerStatus'); if(e)e.textContent=s; }
-    function drawSelection(ll) { selected=ll; if(selectedMarker)map.removeLayer(selectedMarker); if(selectionCircle)map.removeLayer(selectionCircle); selectedMarker=L.circleMarker(ll,{radius:6,color:'#fff',weight:2,fillColor:'#a070e8',fillOpacity:1}).addTo(map); selectionCircle=L.circle(ll,{radius:parseInt(document.getElementById('lidarScannerDistance').value,10)*1000,color:'#a070e8',weight:1,dashArray:'4 5',fill:false,opacity:.45}).addTo(map); setStatus(ll.lat.toFixed(4)+', '+ll.lng.toFixed(4)); }
+    function drawSelection(ll) {
+        selected = ll;
+        if (selectedMarker) map.removeLayer(selectedMarker);
+        if (selectionCircle) map.removeLayer(selectionCircle);
+        var searchIcon = L.divIcon({
+            className: 'lidar-search-marker-wrapper',
+            html: '<div class="lidar-search-marker" title="Search Point / Punct Căutare"><div class="lidar-search-pulse"></div><div class="lidar-search-dot"></div></div>',
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+        });
+        selectedMarker = L.marker(ll, {
+            icon: searchIcon,
+            zIndexOffset: 2000,
+            interactive: true
+        }).addTo(map);
+        selectedMarker.bindTooltip('<span class="lidar-result-tag"><b>Search Point / Punct căutare</b><br>' + ll.lat.toFixed(4) + ', ' + ll.lng.toFixed(4) + '</span>', {
+            direction: 'top',
+            offset: [0, -14],
+            className: 'lidar-result-tooltip'
+        });
+        selectionCircle = L.circle(ll, {
+            radius: parseInt(document.getElementById('lidarScannerDistance').value, 10) * 1000,
+            color: '#8cff66',
+            weight: 1.8,
+            dashArray: '5 6',
+            fill: true,
+            fillColor: '#39ff14',
+            fillOpacity: 0.05,
+            opacity: 0.85
+        }).addTo(map);
+        setStatus(ll.lat.toFixed(4) + ', ' + ll.lng.toFixed(4));
+    }
     function run() {
         if(!selected||scanning)return; scanning=true; var overlay=document.getElementById('lidarScannerLoading'); if(overlay)overlay.classList.add('visible');
         var radius=+document.getElementById('lidarScannerDistance').value*1000;
