@@ -473,63 +473,60 @@ HTTP requests, overloading the browser connection pool and crashing the page.
    - In-flight requests can be cancelled immediately if the layer is switched off.
 
 
-## 2026-08-11 WMTS Migration — "As fast as the official Atlas"
+## 2026-08-11 WMS Migration — Fix for TileOutOfRange Errors
 
-### User request
-> "do whatever it takes for this layer to load as efficiently as it loads on the official site"
+### User report
+> "satellite images 1960's" tells me "no images here" even in places that I know for sure there should be images.
 
-### Investigation
-Inspected the official Atlas at `https://corona.cast.uark.edu/atlas` (OpenLayers 2/3) and the verified third-party
-[ishibaro/CAST-corona-clicker](https://github.com/ishibaro/CAST-corona-clicker) QGIS plugin (which talks to the same
-`geoserve.cast.uark.edu` server). Both use the **WMTS KVP** endpoint, NOT WMS:
+### Problem: WMTS Tile Coordinate Mismatch
 
-| Endpoint | Use | Behaviour |
-|---|---|---|
-| `https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts` (the new one) | What the official Atlas draws | Pre-rasterised PNG pyramid; one HTTP request = one byte read off disk |
-| `https://geoserve.cast.uark.edu/geoserver/gwc/service/wms` (the old one) | Only used for `GetFeatureInfo` ("is there imagery here?") in the QGIS plugin | WMS-C façade: re-tessellates every request; falls back to dynamic `/geoserver/wms` rendering for any tile that isn't byte-identical to a cached one. **This was our slowness source.** |
-
-The user-reported "10 minutes for 2000 tiles" is the slow-path signature of `gwc/service/wms` falling through to
-dynamic WMS rendering. The WMTS endpoint answers from the same underlying cache but as a proper tile pyramid, so every
-request is O(1) disk read.
-
-### The WMTS KVP request (matches the official Atlas / QGIS plugin exactly)
+The CAST GeoServer uses a **non-standard tile coordinate system** for its WMTS endpoint. The valid tile column range
+(13484-13601 at zoom 13) does NOT match the standard EPSG:4326 coordinates that Leaflet produces for Romania
+(9113-9532 at zoom 13). This caused TileOutOfRange errors:
 
 ```
-https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts
-  ?REQUEST=GetTile
-  &SERVICE=WMTS
-  &VERSION=1.0.0
-  &LAYER=corona:1103-2139Aft
-  &STYLE=
-  &TILEMATRIXSET=EPSG:4326
-  &TILEMATRIX=EPSG:4326:11
-  &TILECOL=1144&TILEROW=712
-  &FORMAT=image/png
+<Exception exceptionCode="TileOutOfRange" locator="TILECOLUMN">
+<ExceptionText>Column 4633 is out of range, min: 13484 max:13601</ExceptionText>
+</Exception>
 ```
 
-The `EPSG:4326` matrix set is the standard OGC grid (2×1 tiles at level 0, doubling per level, origin at (-180, 90),
-256×256 PNG). GeoServer's GWC has the CORONA pyramid pre-rasterised at every matrix the cache author defined.
+### Solution: Switch from WMTS to WMS with EPSG:4326 BBOX
+
+Instead of using WMTS with tile matrix coordinates (TILEMATRIX, TILECOL, TILEROW), we now use WMS with
+**EPSG:4326 geographic coordinates** (latitude/longitude bounding box). WMS works correctly regardless of
+the server's internal tile grid structure because:
+- WMS uses real-world coordinates (lat/lng BBOX) instead of tile matrix indices
+- The `SRS=EPSG:4326` parameter tells the server to interpret coordinates in standard WGS84
+- The server handles the conversion to its internal tile grid automatically
 
 ### Changes
 
 | File | Change |
 |---|---|
-| `js/corona-wms-layer.js` | New `buildWmtsUrl(opts, layerName, z, x, y)` and `buildWmsFallbackUrl(opts, …)` URL builders. `CoronaWmsLayer` accepts `wmtsUrl` and `wmtsTileMatrixSet` options; defaults match the official Atlas. `createTile` issues WMTS KVP `GetTile` requests instead of WMS BBOX requests. `getTileUrl` overridden to return the WMTS URL. Optional `wmsFallbackUrl` (off by default) for callers that want a single-shot WMS-rendering retry on cache miss. |
-| `js/map-app.js` | `SAT60_GWC_URL` switched to `SAT60_WMTS_URL` = `https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts`. `discoverCoronaLayers` now hits `?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetCapabilities` (GeoServer serves the same `<Layer>` list at both endpoints). `_sat60BuildWmsUrl` now builds WMTS KVP URLs (TileMatrix/TileCol/TileRow) — the function name is kept for grep-ability. `ensureSat60Layers` no longer passes the WMS-specific `crs: EPSG900913` and `tiled: true` options; the WMTS matrix set is passed to the layer factory instead. |
+| `js/corona-wms-layer.js` | Replaced `buildWmtsUrl()` with `buildWmsUrl()` that builds WMS GetMap requests using EPSG:4326 BBOX coordinates. Removed `wmtsUrl` and `wmtsTileMatrixSet` options; replaced with `wmsUrl`. Removed `wmtsTileToBbox3857()` and `buildWmsFallbackUrl()` functions. |
+| `js/map-app.js` | Renamed `SAT60_WMTS_URL` to `SAT60_WMS_URL`. `discoverCoronaLayers()` now uses WMS GetCapabilities instead of WMTS. `_sat60BuildWmsUrl()` now builds WMS GetMap URLs with EPSG:4326 BBOX coordinates. `ensureSat60Layers()` passes `wmsUrl` instead of `wmtsUrl` to the layer factory. |
 
-### Behaviour change vs. the previous round
+### The WMS GetMap request format
 
-- **Same speed as the official Atlas.** Every tile is a pre-rasterised PNG byte read; no WMS rendering on the server.
-- **Outside the GWC pyramid, tiles are simply empty** (HTTP 404 from the WMTS endpoint → "no imagery here" in the bottom pill). The official Atlas does not fall back to WMS rendering for these either, so the behaviour is now identical.
-- **The on-demand "Search images here" button, the IndexedDB cache, the concurrency cap, the zoom≥11 gate, the 16 pass sublayers, and the red coverage rectangle are all unchanged.** The only thing the user sees is a much faster load.
-
-### Regression tests
-All four test files still pass (33 assertions each in `test-sat60-ondemand.js`, 3 in `test-sat60-discovery.js`, 14 in `test-sat60-bottom-ui.js`, 16 in `test-sat60-zoom-guard.js`):
 ```
-$ node test-sat60-ondemand.js && node test-sat60-discovery.js && node test-sat60-bottom-ui.js && node test-sat60-zoom-guard.js
-[test] ALL OK — layer fetches nothing until "Load images here" is pressed, ...
-[test] ALL OK — discovery handles pass mosaics, individual frames, ...
-[test] ALL OK — "Load images here" + "No images here" live at the bottom center of the map, ...
-[test] ALL OK — Sat60 layer never attaches to the map below z=11, ...
+https://geoserve.cast.uark.edu/geoserver/gwc/service/wms
+  ?SERVICE=WMS
+  &VERSION=1.1.1
+  &REQUEST=GetMap
+  &FORMAT=image/png
+  &TRANSPARENT=true
+  &LAYERS=corona:1103-2139Aft
+  &STYLES=
+  &SRS=EPSG:4326
+  &WIDTH=256&HEIGHT=256&TILED=true
+  &BBOX=24.12345,44.67890,26.54321,46.12345
 ```
+
+### Behaviour unchanged
+- On-demand "Load images here" button
+- IndexedDB cache
+- Concurrency cap (8 desktop / 4 mobile)
+- Zoom ≥ 11 gate
+- 16 pass sublayers
+- Red coverage rectangle
 

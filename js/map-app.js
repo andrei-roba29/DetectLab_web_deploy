@@ -9272,42 +9272,35 @@
                 };
             })();
 
-            // ── SATELIT 60s (WMTS Corona via CAST UARK GeoServer) ──
-            // Same endpoint and matrix set the official Atlas
-            // (https://corona.cast.uark.edu/atlas) and the verified QGIS
-            // plugin (ishibaro/CAST-corona-clicker) use. The previous
-            // gwc/service/wms endpoint was the slow path: it is a WMS-C
-            // façade over the same cache but re-tessellates every request
-            // and falls back to dynamic rendering against /wms for any tile
-            // that isn't byte-identical to a cached one. Switching to
-            // gwc/service/wmts (the OGC WMTS KVP interface to the pre-
-            // rasterised PNG pyramid) makes every tile a pure byte-read off
-            // disk — zero WMS rendering on the server.
+            // ── SATELIT 60s (WMS Corona via CAST UARK GeoServer) ──
+            // Uses the gwc/service/wms endpoint with EPSG:4326 geographic
+            // coordinates (lat/lng BBOX). This approach was chosen because
+            // the WMTS endpoint causes TileOutOfRange errors — the CAST
+            // GeoServer uses a non-standard tile coordinate system where
+            // the valid tile column range (13484-13601 at zoom 13) doesn't
+            // match the standard EPSG:4326 coordinates Leaflet produces.
             //
-            // The layer still uses the 16 verified Corona pass layers
-            // (mosaics) covering Romania. On-demand mode is preserved: the
-            // layer NEVER fetches anything when turned on or during
-            // pan/zoom. Tile fetching starts ONLY when the search button
-            // ("Caută imagini aici" / "Search images here") is pressed at
-            // zoom level >= 11 for the current visible viewport. The probe
-            // is now fed WMTS KVP URLs (TileMatrix=EPSG:4326:Z, TileCol,
-            // TileRow) instead of WMS BBOX URLs.
+            // The layer uses the 16 verified Corona pass layers (mosaics)
+            // covering Romania. On-demand mode is preserved: the layer NEVER
+            // fetches anything when turned on or during pan/zoom. Tile
+            // fetching starts ONLY when the search button ("Caută imagini
+            // aici" / "Search images here") is pressed at zoom level >= 11
+            // for the current visible viewport. The probe uses WMS GetMap
+            // URLs with EPSG:4326 BBOX coordinates.
             (function () {
                 map.createPane("pane_sat60");
                 map.getPane("pane_sat60").style.zIndex = 648;
                 map.getPane("pane_sat60").style.pointerEvents = "none";
 
-                // The WMTS KVP endpoint — the same one the official Atlas
-                // uses. Returns a pre-rasterised PNG pyramid (256×256
-                // tiles, standard EPSG:4326 matrix set, 2×1 at level 0
-                // doubling per level). One request = one byte read.
-                var SAT60_WMTS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts";
-                // Kept as a variable name for backward-compatibility with
-                // any 3rd-party code that references it. The GetCapabilities
-                // discovery still uses the WMS-C URL (it's the standard
-                // way to list a GeoServer's layers, and it returns the
-                // same <Layer> list for the WMTS endpoint too).
-                var SAT60_GWC_URL = SAT60_WMTS_URL;
+                // The WMS endpoint via GeoWebCache — uses EPSG:4326 geographic
+                // coordinates (lat/lng BBOX) instead of WMTS tile matrix
+                // coordinates. This avoids TileOutOfRange errors that occur
+                // with WMTS due to the CAST GeoServer's non-standard tile
+                // coordinate system (valid range 13484-13601 at zoom 13, not
+                // the standard EPSG:4326 coordinates Leaflet produces).
+                var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
+                // Alias for backward compatibility
+                var SAT60_GWC_URL = SAT60_WMS_URL;
                 var SAT60_WMTS_TILE_MATRIX_SET = "EPSG:4326";
                 var SAT60_INITIAL_OPACITY = 0.85;
 
@@ -9330,7 +9323,8 @@
                 // serves the capabilities document at both /wms and /wmts
                 // and they reference the same configured layers).
                 function discoverCoronaLayers(callback) {
-                    fetch(SAT60_WMTS_URL + "?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetCapabilities")
+                    // Use WMS GetCapabilities instead of WMTS
+                    fetch(SAT60_WMS_URL + "?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities")
                         .then(function (r) { return r.text(); })
                         .then(function (xml) {
                             var passes = [];
@@ -9501,22 +9495,34 @@
                     }
                 }
 
-                // Build a WMTS KVP GetTile URL — the same format the official
-                // Atlas and the QGIS plugin both use. TileMatrix/TileCol/
-                // TileRow are the standard EPSG:4326 addressing (2 tiles wide
-                // at level 0, doubling per level, origin at (-180, 90)).
+                // Build a WMS GetMap URL using EPSG:4326 geographic coordinates.
+                // This avoids the tile coordinate mapping issues that occur with
+                // WMTS (TileOutOfRange errors with the CAST server's
+                // non-standard tile matrix coordinate system).
                 function _sat60BuildWmsUrl(layerName, coords) {
-                    return SAT60_WMTS_URL
-                        + '?REQUEST=GetTile'
-                        + '&SERVICE=WMTS'
-                        + '&VERSION=1.0.0'
-                        + '&LAYER=' + encodeURIComponent(layerName)
-                        + '&STYLE='
-                        + '&TILEMATRIXSET=' + encodeURIComponent(SAT60_WMTS_TILE_MATRIX_SET)
-                        + '&TILEMATRIX=' + encodeURIComponent(SAT60_WMTS_TILE_MATRIX_SET + ':' + coords.z)
-                        + '&TILECOL=' + coords.x
-                        + '&TILEROW=' + coords.y
-                        + '&FORMAT=image%2Fpng';
+                    var z = coords.z, x = coords.x, y = coords.y;
+                    var n = Math.pow(2, z + 1); // 2 tiles wide at z=0
+                    var lonW = -180 + (x / n) * 360;
+                    var lonE = -180 + ((x + 1) / n) * 360;
+                    var m = Math.pow(2, z); // 1 tile tall at z=0
+                    var latN = 90 - (y / m) * 180;
+                    var latS = 90 - ((y + 1) / m) * 180;
+                    // WMS uses BBOX=west,south,east,north
+                    var bbox = [lonW.toFixed(5), latS.toFixed(5), lonE.toFixed(5), latN.toFixed(5)].join(',');
+
+                    return SAT60_WMS_URL
+                        + '?SERVICE=WMS'
+                        + '&VERSION=1.1.1'
+                        + '&REQUEST=GetMap'
+                        + '&FORMAT=image%2Fpng'
+                        + '&TRANSPARENT=true'
+                        + '&LAYERS=' + encodeURIComponent(layerName)
+                        + '&STYLES='
+                        + '&SRS=EPSG%3A4326'
+                        + '&WIDTH=256'
+                        + '&HEIGHT=256'
+                        + '&TILED=true'
+                        + '&BBOX=' + bbox;
                 }
 
                 // ── Bottom-center search button & status bar ────────────────
@@ -9613,10 +9619,8 @@
 
                     // Common options for every corona sublayer. Note: the
                     // createCoronaWmsLayer factory in js/corona-wms-layer.js
-                    // builds WMTS KVP URLs against SAT60_WMTS_URL — see
-                    // buildWmtsUrl() in that file — so we no longer need
-                    // (or want) the WMS-specific `crs: EPSG900913`, `tiled: true`,
-                    // or `version: 1.1.1` options here.
+                    // builds WMS GetMap URLs with EPSG:4326 BBOX coordinates
+                    // against SAT60_WMS_URL — see buildWmsUrl() in that file.
                     var commonOpts = {
                         format: "image/png",
                         transparent: true,
@@ -9629,11 +9633,9 @@
                         maxNativeZoom: 15,
                         minZoom: effectiveMinZoom,
                         manualOnly: true,
-                        // Hand the WMTS KVP endpoint + matrix set to the layer
-                        // factory (the createCoronaWmsLayer class reads
-                        // these and ignores the WMS-C `url` argument).
-                        wmtsUrl: SAT60_WMTS_URL,
-                        wmtsTileMatrixSet: SAT60_WMTS_TILE_MATRIX_SET
+                        // Use WMS with EPSG:4326 geographic coordinates
+                        // (avoids WMTS TileOutOfRange errors).
+                        wmsUrl: SAT60_WMS_URL
                     };
 
                     window._sat60FrameLayers = window._sat60LayerDefs.map(function (def) {
@@ -9642,14 +9644,14 @@
                             coronaLayer: def.layerName
                         });
                         if (useOptimised) {
-                            // Pass SAT60_WMTS_URL as the legacy `url` arg too,
-                            // because CoronaWmsLayer's superclass constructor
-                            // expects something for its internal _tileOnError
-                            // / _url bookkeeping. The createTile() override
-                            // uses the WMTS URL builder regardless.
-                            return window.createCoronaWmsLayer(SAT60_WMTS_URL, opts);
+                            // Pass SAT60_WMS_URL as the `url` arg because
+                            // CoronaWmsLayer's superclass constructor expects
+                            // something for its internal _tileOnError / _url
+                            // bookkeeping. The createTile() override builds
+                            // WMS URLs with EPSG:4326 BBOX coordinates.
+                            return window.createCoronaWmsLayer(SAT60_WMS_URL, opts);
                         }
-                        return L.tileLayer.wms(SAT60_WMTS_URL, opts);
+                        return L.tileLayer.wms(SAT60_WMS_URL, opts);
                     });
                     window._sat60MapLayer = L.layerGroup(window._sat60FrameLayers);
                     return true;

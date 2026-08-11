@@ -4,31 +4,18 @@
  * Optimised tile layer for the "Satellite imagery 60's" (CORONA / CAST UARK
  * GeoWebCache) layer.
  *
- * Tile source: WMTS KVP, just like the official Atlas
- * (https://corona.cast.uark.edu/atlas) and the verified third-party
- * ishibaro/CAST-corona-clicker QGIS plugin — i.e. the pre-rasterised
- * GeoWebCache pyramid at
- *   https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts
- * using the standard `EPSG:4326` matrix set (2×1 tiles at level 0, doubling
- * per level, 256×256 PNG, origin at (-180, 90)). This is the SAME endpoint
- * and matrix set the official Atlas uses, so each tile is a pure byte-read
- * off disk — there is zero WMS rendering on the server, no SRS mismatch, and
- * no 400/404 because of a cache-miss bbox.
+ * Tile source: WMS with GeoWebCache (gwc/service/wms), using EPSG:4326
+ * geographic coordinates (lat/lng bounding boxes). This approach avoids the
+ * tile coordinate mapping issues that occur with WMTS — the CAST GeoServer
+ * uses a non-standard tile matrix coordinate system where standard EPSG:4326
+ * tile coordinates (e.g., column 4633) are out of range (valid range
+ * 13484-13601 at zoom 13). WMS uses lat/lng BBOX coordinates directly,
+ * which work correctly regardless of the underlying tile grid structure.
  *
- * The previous (gwc/service/wms) WMS-C endpoint, by contrast, was the source
- * of the slowness: it is a WMS façade over the same cache but re-tessellates
- * every request, and falls back to the slow /geoserver/wms rendering path
- * for any zoom/bbox that is not byte-identical to a cached tile. The user's
- * reported 10-minute "2000 tiles" load is the slow-path signature.
- *
- * This file is structured so it can ALSO fall back to the WMS rendering
- * endpoint (option `wmsFallbackUrl`) when a tile is missing from the WMTS
- * cache (a 4xx, or a non-image 200 — GWC returns a transparent placeholder
- * in some edge cases). The official Atlas does not do this; we keep the
- * fallback as an option because the user prefers the user-friendly behaviour
- * of "I asked for the imagery and got it" over the strict "the cache has
- * nothing there" behaviour of the official Atlas. The fallback is a single
- * retry per tile — never blocking, never on the hot path.
+ * The gwc/service/wms endpoint serves pre-cached tiles from GeoWebCache when
+ * the request matches a cached tile (BBOX + SRS must be byte-identical to the
+ * cached request). For requests that don't match the cache, the server falls
+ * back to dynamic WMS rendering (/geoserver/wms).
  *
  * Problems this solves (see SATELLITE_60s_FIX.md / task brief):
  *   1. 500+ simultaneous requests because 16 pass sublayers each request
@@ -36,6 +23,8 @@
  *   2. Tiles fetched at every zoom and all over the world, not just Romania.
  *   3. No caching — pan/zoom re-requests every tile from the remote server.
  *   4. Mobile crashes from memory/connection pressure.
+ *   5. WMTS tile coordinate mismatch (TileOutOfRange errors) — fixed by
+ *      using WMS with EPSG:4326 BBOX coordinates.
  *
  * Strategy:
  *   • ONE shared request queue across ALL CORONA sublayers, with a hard cap on
@@ -49,9 +38,6 @@
  *     imagery are never fetched again (re-probing the same area = 0 requests).
  *   • Viewport priority (center tiles first), cancellation of stale/aborted
  *     tiles, exponential backoff, and a circuit breaker after repeated fails.
- *   • WMTS-primary tile requests (the official pipeline), with an OPTIONAL
- *     single-shot WMS-rendering fallback for tiles the cache has never seen
- *     (configured by `wmsFallbackUrl`).
  *   • A small, unobtrusive loading indicator.
  *   • ON-DEMAND MODE (option `manualOnly: true`, used by the Satellite
  *     imagery 60's layer): map tiles NEVER trigger a network request — they
@@ -821,9 +807,9 @@
      *     Definitively empty tiles are persisted (IDB "empty" marker) so a
      *     re-probe of the same area issues zero network requests.
      * ───────────────────────────────────────────────────────────────────── */
-    // Derive the plain WMS rendering URL from a GeoWebCache WMS-C URL by
-    // swapping the /gwc/service/wms path segment for /wms. Returns null when
-    // the URL does not go through the GWC cache (nothing to fall back to).
+    // Derive the dynamic WMS rendering URL from a GeoWebCache WMS-C URL by
+    // swapping the /gwc/service/wms path segment for /geoserver/wms.
+    // This is used as a fallback when GWC doesn't have a cached tile.
     function fallbackWmsUrl(url) {
         if (!url) return null;
         var u = String(url);
@@ -1102,30 +1088,18 @@
                 // the "Load images here" / "Încarcă imagini aici" button
                 // (see coronaProbeTiles below).
                 manualOnly: false,
-                // WMTS-only mode (the default, matches the official Atlas):
-                // the layer requests tiles from the GeoWebCache WMTS KVP
-                // endpoint, which is a pre-rasterised PNG pyramid (no WMS
-                // rendering cost on the server). Set `wmtsUrl` explicitly to
-                // override the default.
-                wmtsUrl: 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts',
-                // The standard `EPSG:4326` matrix set (2×1 at level 0,
-                // doubling per level, 256×256 PNG, origin (-180, 90)). This
-                // is the matrix set the official Atlas and the verified
-                // QGIS plugin both use. If a different server is configured
-                // via `wmtsUrl`, override this to match.
-                wmtsTileMatrixSet: 'EPSG:4326',
-                // Optional WMS-rendering fallback for tiles the WMTS cache
-                // has never seen. Disabled by default (matches the official
-                // Atlas, which also does not render WMS tiles for missing
-                // WMTS pyramid levels). Set to a URL to re-enable.
-                wmsFallbackUrl: null
+                // WMS endpoint for Corona imagery via GeoWebCache.
+                // Uses EPSG:4326 geographic coordinates (lat/lng BBOX) instead
+                // of WMTS tile matrix coordinates to avoid the TileOutOfRange
+                // errors that occur when using WMTS with the CAST server's
+                // non-standard tile coordinate system.
+                wmsUrl: 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms'
             }, options || {});
 
             // The `url` we pass to L.TileLayer.WMS is unused by createTile()
             // (we build our own), but Leaflet's superclass needs SOMETHING
-            // for _tileOnError / setting up internal state. Use the WMTS URL
-            // so debugging output points at the right server.
-            L.TileLayer.WMS.prototype.initialize.call(this, options.wmtsUrl || url, options);
+            // for _tileOnError / setting up internal state.
+            L.TileLayer.WMS.prototype.initialize.call(this, options.wmsUrl || url, options);
 
             // Per-layer bookkeeping of active blob URLs so they can be revoked.
             this._blobUrls = {};
@@ -1135,7 +1109,7 @@
         // Called by Leaflet to create each tile element. We override it so that:
         //  - tiles below the zoom threshold / outside Romania are never created
         //  - all loads go through the shared, throttled queue
-        //  - the request is a WMTS KVP GetTile against the official endpoint
+        //  - the request is a WMS GetMap with EPSG:4326 BBOX coordinates
         createTile: function (coords, done) {
             var tile = L.DomUtil.create('img', 'leaflet-tile');
             tile.alt = '';
@@ -1159,25 +1133,16 @@
                 return tile;
             }
 
-            // (c) Build the WMTS KVP URL — the same format the official Atlas
-            //     and the QGIS plugin both send. The matrix set is the
-            //     standard `EPSG:4326` (2×1 at level 0, origin (-180, 90)),
-            //     so the TileCol/TileRow come straight from lon/lat without
-            //     any EPSG:900913 maths.
+            // (c) Build the WMS URL using EPSG:4326 geographic coordinates.
+            //     This avoids the tile coordinate mapping issues that occur
+            //     with WMTS (TileOutOfRange errors with the CAST server's
+            //     non-standard tile matrix coordinate system).
             var url;
             try {
-                url = buildWmtsUrl(this.options, this._layerLabel, z, coords.x, coords.y);
+                url = buildWmsUrl(this.options, this._layerLabel, z, coords.x, coords.y);
             } catch (e) {
                 done && done(e, tile);
                 return tile;
-            }
-
-            // (c2) Optional WMS-rendering fallback URL (only used by the
-            //      shared queue if the WMTS request misses — disabled by
-            //      default to mirror the official Atlas).
-            var fallbackUrl = null;
-            if (this.options.wmsFallbackUrl) {
-                fallbackUrl = buildWmsFallbackUrl(this.options, this._layerLabel, z, coords.x, coords.y);
             }
 
             // (d) Stable cache key — strip any transient cache-buster param.
@@ -1202,7 +1167,7 @@
                 key: jobKey,
                 cacheKey: cacheKey,
                 url: url,
-                fallbackUrl: fallbackUrl,
+                fallbackUrl: null, // WMS doesn't need a separate fallback
                 tileEl: tile,
                 priority: priority,
                 attempts: 0,
@@ -1258,12 +1223,11 @@
             return L.TileLayer.WMS.prototype._removeTile.call(this, key);
         },
 
-        // Override Leaflet's WMS URL builder — we always issue a WMTS KVP
-        // request, regardless of what the superclass would do. Called by a
-        // few Leaflet internals (`getAttribute`, `expandAriaLabel`); safe to
-        // leave as a thin wrapper around `buildWmtsUrl`.
+        // Override Leaflet's WMS URL builder — we always issue a WMS
+        // GetMap request with EPSG:4326 BBOX coordinates. Called by a
+        // few Leaflet internals (`getAttribute`, `expandAriaLabel`).
         getTileUrl: function (coords) {
-            return buildWmtsUrl(this.options, this._layerLabel, coords.z, coords.x, coords.y);
+            return buildWmsUrl(this.options, this._layerLabel, coords.z, coords.x, coords.y);
         },
 
         // Allow live reconfiguration of the zoom threshold from the console.
@@ -1282,99 +1246,49 @@
     }
 
     /* ───────────────────────────────────────────────────────────────────────
-     * 6b. WMTS KVP URL builder — the official Atlas and the verified QGIS
-     *     plugin both use exactly this format:
+     * 6b. WMS GetMap URL builder using EPSG:4326 geographic coordinates.
      *
-     *       {wmtsUrl}?REQUEST=GetTile
-     *                &SERVICE=WMTS
-     *                &VERSION=1.0.0
-     *                &LAYER={corona:<name>}
-     *                &STYLE=
-     *                &TILEMATRIXSET=EPSG:4326
-     *                &TILEMATRIX=EPSG:4326:{z}
-     *                &TILECOL={x}
-     *                &TILEROW={y}
-     *                &FORMAT=image/png
+     *     This uses WMS with EPSG:4326 SRS (lat/lng bounding box) instead of
+     *     WMTS tile matrix coordinates. This avoids the "TileOutOfRange" errors
+     *     that occur when using WMTS with the CAST GeoServer's non-standard
+     *     tile coordinate system (valid range 13484-13601 at zoom 13, not
+     *     the standard EPSG:4326 coordinates that Leaflet produces).
      *
-     *     The matrix set is the standard `EPSG:4326` GoogleEarth-compatible
-     *     grid: 2 tiles wide × 1 tile tall at level 0, doubling per level,
-     *     origin at (-180, 90), 256×256 PNG. That is what CAST configures
-     *     in GWC, so {x,y,z} above are *exactly* the standard lon/lat
-     *     conversions and require no further math.
+     *     The gwc/service/wms endpoint serves pre-cached tiles when the
+     *     BBOX + SRS match a cached request exactly.
      * ───────────────────────────────────────────────────────────────────── */
-    function buildWmtsUrl(opts, layerName, z, x, y) {
-        var base = opts.wmtsUrl || 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wmts';
-        var tileMatrixSet = opts.wmtsTileMatrixSet || 'EPSG:4326';
-        // The TileMatrix ID is `<TileMatrixSet>:<z>` for OGC KVP, e.g.
-        // "EPSG:4326:11". GeoServer GWC accepts this on every matrix it has
-        // pre-cached; levels outside the cache answer 404.
-        return base
-            + '?REQUEST=GetTile'
-            + '&SERVICE=WMTS'
-            + '&VERSION=1.0.0'
-            + '&LAYER=' + encodeURIComponent(layerName)
-            + '&STYLE='
-            + '&TILEMATRIXSET=' + encodeURIComponent(tileMatrixSet)
-            + '&TILEMATRIX=' + encodeURIComponent(tileMatrixSet + ':' + z)
-            + '&TILECOL=' + x
-            + '&TILEROW=' + y
-            + '&FORMAT=' + encodeURIComponent(opts.format || 'image/png');
-    }
+    function buildWmsUrl(opts, layerName, z, x, y) {
+        var base = opts.wmsUrl || 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms';
+        // Calculate the bounding box for this tile in EPSG:4326 coordinates.
+        // Leaflet's tile coordinates (x, y) at zoom z correspond to:
+        //   - x: column number (0 = -180°W, increasing eastward)
+        //   - y: row number (0 = 90°N, increasing southward)
+        // The tile spans from (lonW, latN) to (lonE, latS).
+        var n = Math.pow(2, z + 1); // 2 tiles wide at z=0
+        var lonW = -180 + (x / n) * 360;
+        var lonE = -180 + ((x + 1) / n) * 360;
+        var m = Math.pow(2, z); // 1 tile tall at z=0
+        var latN = 90 - (y / m) * 180;
+        var latS = 90 - ((y + 1) / m) * 180;
+        // WMS uses BBOX=minx,miny,maxx,maxy (west, south, east, north)
+        var bbox = [round5(lonW), round5(latS), round5(lonE), round5(latN)].join(',');
 
-    /* ───────────────────────────────────────────────────────────────────────
-     * 6c. WMS-rendering fallback URL builder — only used if the layer option
-     *     `wmsFallbackUrl` is set. Mirrors the previous behaviour (the
-     *     slow /gwc/service/wms endpoint, then /wms on the same host) so a
-     *     caller can opt back in to the old "fall back to dynamic rendering"
-     *     semantics by passing a URL.
-     * ───────────────────────────────────────────────────────────────────── */
-    function buildWmsFallbackUrl(opts, layerName, z, x, y) {
-        if (!opts.wmsFallbackUrl) return null;
-        var base = opts.wmsFallbackUrl;
-        // 256×256 tile in EPSG:3857 (the previous behaviour). We don't bother
-        // with BBOX precision here — Leaflet already computed the tile
-        // coords; the WMS endpoint will re-tessellate.
         return base
-            + '?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap'
+            + '?SERVICE=WMS'
+            + '&VERSION=1.1.1'
+            + '&REQUEST=GetMap'
             + '&FORMAT=' + encodeURIComponent(opts.format || 'image/png')
             + '&TRANSPARENT=true'
             + '&LAYERS=' + encodeURIComponent(layerName)
             + '&STYLES='
-            + '&SRS=EPSG%3A3857'
-            + '&WIDTH=256&HEIGHT=256&TILED=true'
-            + '&BBOX=' + wmtsTileToBbox3857(z, x, y);
+            + '&SRS=EPSG:4326'
+            + '&WIDTH=256'
+            + '&HEIGHT=256'
+            + '&TILED=true'
+            + '&BBOX=' + bbox;
     }
 
-    // Convert a (z,x,y) tile coordinate on the standard EPSG:4326 WMTS
-    // matrix set into the equivalent BBOX in EPSG:3857 (the previous WMS-C
-    // request format). Used only by the WMS fallback path; the WMTS primary
-    // path doesn't need a BBOX at all.
-    function wmtsTileToBbox3857(z, x, y) {
-        // EPSG:4326 / EPSG:4326:z: 2 tiles wide at z=0, origin (-180, 90).
-        // Same Y-origin as Google/OSM (north-up) — which is the opposite of
-        // TMS, but matches what GeoServer's WMTS serves. We DON'T flip Y
-        // here: the standard EPSG:4326 WMTS matrix is Y-up, just like the
-        // OGC KVP spec says.
-        var n = Math.pow(2, z + 1); // 2 tiles wide at z=0
-        var lonW = -180 + (x / n) * 360;
-        var lonE = -180 + ((x + 1) / n) * 360;
-        // Each tile covers (180 / n) degrees of latitude. Top of the tile is
-        // at lat = 90 - y * (180 / n), bottom at 90 - (y + 1) * (180 / n).
-        var latN = 90 - (y / n) * 180;
-        var latS = 90 - ((y + 1) / n) * 180;
-        // Project corners to Web Mercator (EPSG:3857) meters.
-        var minX = lonToMercX(lonW);
-        var maxX = lonToMercX(lonE);
-        var minY = latToMercY(latS);
-        var maxY = latToMercY(latN);
-        return [round3(minX), round3(minY), round3(maxX), round3(maxY)].join(',');
-    }
-    function lonToMercX(lon) { return lon * 20037508.34 / 180; }
-    function latToMercY(lat) {
-        var rad = lat * Math.PI / 180;
-        return Math.log(Math.tan(Math.PI / 4 + rad / 2)) * 6378137;
-    }
-    function round3(v) { return Math.round(v * 1000) / 1000; }
+    function round5(v) { return Math.round(v * 100000) / 100000; }
 
     function computePriority(map, coords, z) {
         try {
