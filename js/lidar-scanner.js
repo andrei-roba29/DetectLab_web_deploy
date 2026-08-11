@@ -103,9 +103,19 @@
             return rings.some(function(r){return (r||[]).some(function(c){return distance(p,{lat:c[1],lng:c[0]})<=HERITAGE_RADIUS_M;});});
         });
     }
+    // Result label offset, in pixels above the site.
+    //
+    // This MUST stay small and constant. A tooltip offset is measured in screen
+    // pixels, while the result circle is measured in metres, so the two scale
+    // differently: the circle doubles on screen with every zoom level, a pixel
+    // offset never changes. The old -98 px offset therefore drifted against the
+    // site it labels — at z12 it floated ~2.6 km (94 px) above the circle, and
+    // past z17 it sank inside it. Anchoring the label a few pixels above the
+    // centre keeps it locked onto its site at every zoom level.
+    var RESULT_LABEL_OFFSET = [0, -14];
     function makeResult(p) {
         var circle=L.circle([p.lat,p.lng],{radius:100,color:'#8cff66',weight:2,dashArray:'3 6',fillColor:'#39ff14',fillOpacity:.11,opacity:.98,interactive:true});
-        circle.bindTooltip('<span class="lidar-result-tag"><b>Category / Categoria</b><br>'+esc(p.category)+'</span>',{permanent:true,direction:'top',offset:[0,-98],className:'lidar-result-tooltip'});
+        circle.bindTooltip('<span class="lidar-result-tag"><b>Category / Categoria</b><br>'+esc(p.category)+'</span>',{permanent:true,direction:'top',offset:RESULT_LABEL_OFFSET,className:'lidar-result-tooltip'});
         circle.bindPopup('<strong>'+esc(p.category)+'</strong>'+(p.name?'<br>'+esc(p.name):'')+'<br><small>'+p.lat.toFixed(5)+', '+p.lng.toFixed(5)+'</small>'); return circle;
     }
     function setStatus(s) { var e=document.getElementById('lidarScannerStatus'); if(e)e.textContent=s; }

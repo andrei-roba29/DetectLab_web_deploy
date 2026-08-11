@@ -155,7 +155,22 @@ async function main() {
     sandbox.window.toggleLidarScannerLayer(true);
     await new Promise(resolve => setImmediate(resolve));
     assert(mapEventListeners.click, 'map click listener should be registered when active');
-    assert.match(domElements.lidarScannerStatus.textContent, /^5 points loaded/, 'all five Romanian CSV rows should load');
+    // Derive the expected count from the CSV itself so the suite keeps working
+    // as sites are added to data/lidar_scanner_points.csv. Rows whose
+    // coordinates fall outside valid WGS 84 degrees are rejected by design, so
+    // they are excluded here rather than masked by a hardcoded total.
+    const csvDataRows = csvText.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim()).slice(1);
+    const validCsvRows = csvDataRows.filter(line => {
+        const cells = line.split(',');
+        const lat = parseFloat(cells[0]);
+        const lon = parseFloat(cells[1]);
+        return isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+    }).length;
+    assert.match(
+        domElements.lidarScannerStatus.textContent,
+        new RegExp('^' + validCsvRows + ' points loaded'),
+        'every valid Romanian CSV row should load (' + validCsvRows + ' expected)'
+    );
 
     // 2. Click directly on the first CSV point.
     addedLayers = [];
@@ -181,10 +196,29 @@ async function main() {
     await new Promise(resolve => setImmediate(resolve));
     const resultGroup = addedLayers.find(layer => layer.type === 'layerGroup');
     assert(resultGroup, 'scan results layer should be added to the map');
-    assert.strictEqual(resultGroup.layers.length, 1, '10 km scan should find the first CSV site');
-    assert(resultGroup.layers[0]._tooltip.includes('fortificație'), 'Romanian category should be displayed');
+    assert(resultGroup.layers.length >= 1, '10 km scan should find at least the first CSV site');
+    const scannedSite = resultGroup.layers.find(layer =>
+        layer.latlng[0] === 44.680496658 && layer.latlng[1] === 22.532812357);
+    assert(scannedSite, '10 km scan should include the site that was clicked');
+    assert(scannedSite._tooltip.includes('fortificație'), 'Romanian category should be displayed');
+    // Results are returned nearest-first, so the clicked site leads the list.
+    assert.strictEqual(resultGroup.layers[0], scannedSite, 'closest site should be listed first');
+
+    // Result labels must stay pinned to their site at every zoom level. A
+    // tooltip offset is measured in screen pixels while the result circle is
+    // measured in metres, so a large offset visibly drifts away from the site
+    // as the user zooms (a 98 px offset is ~2.6 km at z12 but only ~10 m at
+    // z20). Keeping the offset small anchors the label on the site itself.
+    const resultTooltipOpts = scannedSite._tooltipOpts;
+    assert.strictEqual(resultTooltipOpts.permanent, true, 'result label should stay visible');
+    assert.strictEqual(resultTooltipOpts.direction, 'top', 'result label should sit above its site');
+    assert.strictEqual(resultTooltipOpts.offset[0], 0, 'result label should not be pushed sideways');
+    assert(
+        Math.abs(resultTooltipOpts.offset[1]) <= 20,
+        'result label offset must stay small so it does not drift from its site when zooming, got ' + resultTooltipOpts.offset[1]
+    );
     assert.deepStrictEqual(
-        Array.from(resultGroup.layers[0].latlng),
+        Array.from(scannedSite.latlng),
         [44.680496658, 22.532812357],
         'result should use WGS 84 latitude/longitude directly'
     );
