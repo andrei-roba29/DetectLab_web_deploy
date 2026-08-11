@@ -9,6 +9,39 @@
     var HERITAGE_RADIUS_M = 600;
     var map = null, resultsLayer = null, selectedMarker = null, selectionCircle = null;
     var points = [], selected = null, active = false, scanning = false, pointsPromise = null;
+
+    // ── Selection circle styling ──────────────────────────────────────────
+    // Two styles, because redrawing the search circle is the single most
+    // expensive thing this layer does on a phone. At high zoom a 50 km radius
+    // is over a million CSS pixels across, so every repaint has to rasterize a
+    // giant dashed arc AND composite a translucent fill over the whole map —
+    // and in the installed PWA that fill also sits under the layer panel's
+    // backdrop-filter, forcing the blur to be recomputed as well. While the
+    // user is dragging the distance slider we therefore draw the circle as a
+    // plain outline (no dash pattern, no fill) and only restore the full
+    // decoration once the drag ends.
+    var CIRCLE_STYLE_IDLE = {
+        color: '#8cff66', weight: 1.8, dashArray: '5 6',
+        fill: true, fillColor: '#39ff14', fillOpacity: 0.05, opacity: 0.85
+    };
+    var CIRCLE_STYLE_DRAG = {
+        color: '#8cff66', weight: 2, dashArray: null,
+        fill: false, fillColor: '#39ff14', fillOpacity: 0, opacity: 0.95
+    };
+
+    // A canvas renderer for the search circle. Leaflet's default SVG renderer
+    // mutates a DOM path on every setRadius() call, which forces style/layout
+    // work in the page on each frame of the drag; canvas just repaints pixels.
+    var circleRenderer = null;
+    function circleRendererOption() {
+        if (!circleRenderer && typeof L !== 'undefined' && L.canvas) {
+            circleRenderer = L.canvas({ padding: 0.3 });
+        }
+        return circleRenderer;
+    }
+
+    var raf = (typeof window !== 'undefined' && window.requestAnimationFrame &&
+        window.requestAnimationFrame.bind(window)) || function (fn) { return setTimeout(fn, 16); };
     var lidarBounds = {
         // County datasets already present in the LIDAR group.
         hd: [[45.20, 22.30], [46.15, 23.25]], ar: [[45.80, 20.85], [46.65, 22.70]],
@@ -87,21 +120,164 @@
             return record;
         });
     }
-    function heritageRecords() {
-        var data=window._localLayerData||{}, out=[];
-        [0,5,6].forEach(function(id){ (data[id]&&data[id].features||[]).forEach(function(f){ if(f.geometry)out.push(f.geometry); }); }); return out;
+    // ── Heritage exclusion index ──────────────────────────────────────────
+    // Scan results are filtered against every known heritage geometry (layers
+    // 0/5/6 — tens of thousands of features nationwide). The original code
+    // rebuilt that whole flat geometry list *inside* the per-result filter and
+    // then walked every ring of every feature, so the cost was
+    // results × features × vertices. At a 10 km radius that is slow but
+    // survivable; at 50 km the result count grows roughly with the square of
+    // the distance, and on a phone the main thread simply stopped responding.
+    //
+    // Instead the geometries are flattened once, given a bounding box padded
+    // by the exclusion radius, and dropped into a coarse lat/lng grid. A
+    // result then only tests the handful of geometries in its own cell.
+    var GRID_DEG = 0.05; // ~5.5 km cells — comfortably larger than HERITAGE_RADIUS_M
+    var heritageIndex = null;
+
+    function cellKey(lat, lng) {
+        return Math.floor(lat / GRID_DEG) + ':' + Math.floor(lng / GRID_DEG);
     }
-    function pointInRing(p, ring) { var inside=false; for(var i=0,j=ring.length-1;i<ring.length;j=i++){var a=ring[i],b=ring[j], yi=a[1],yj=b[1], xi=a[0],xj=b[0]; if(((yi>p.lat)!==(yj>p.lat))&&p.lng<(xj-xi)*(p.lat-yi)/(yj-yi)+xi)inside=!inside;} return inside; }
-    function isNearHeritage(p) {
-        return heritageRecords().some(function(g){
-            var coords=g.coordinates||[], rings=[];
-            if(g.type==='Point') return distance(p,{lat:coords[1],lng:coords[0]})<=HERITAGE_RADIUS_M;
-            if(g.type==='Polygon') rings=coords;
-            else if(g.type==='MultiPolygon') coords.forEach(function(poly){rings=rings.concat(poly);});
-            else if(g.type==='MultiPoint') return coords.some(function(c){return distance(p,{lat:c[1],lng:c[0]})<=HERITAGE_RADIUS_M;});
-            if(rings.some(function(r){return pointInRing(p,r);})) return true;
-            return rings.some(function(r){return (r||[]).some(function(c){return distance(p,{lat:c[1],lng:c[0]})<=HERITAGE_RADIUS_M;});});
+
+    function eachCoordinate(geometry, visit) {
+        var coords = geometry.coordinates;
+        if (!coords) return;
+        if (geometry.type === 'Point') { visit(coords); return; }
+        if (geometry.type === 'MultiPoint' || geometry.type === 'LineString') { coords.forEach(visit); return; }
+        if (geometry.type === 'Polygon' || geometry.type === 'MultiLineString') {
+            coords.forEach(function (ring) { (ring || []).forEach(visit); });
+            return;
+        }
+        if (geometry.type === 'MultiPolygon') {
+            coords.forEach(function (polygon) {
+                (polygon || []).forEach(function (ring) { (ring || []).forEach(visit); });
+            });
+        }
+    }
+
+    function heritageEntry(geometry) {
+        var minLat = Infinity, minLng = Infinity, maxLat = -Infinity, maxLng = -Infinity, count = 0;
+        eachCoordinate(geometry, function (c) {
+            if (!c || !isFinite(c[0]) || !isFinite(c[1])) return;
+            count++;
+            if (c[1] < minLat) minLat = c[1];
+            if (c[1] > maxLat) maxLat = c[1];
+            if (c[0] < minLng) minLng = c[0];
+            if (c[0] > maxLng) maxLng = c[0];
         });
+        if (!count) return null;
+
+        // Rings, pre-flattened once so the point-in-polygon test never has to
+        // rebuild them per candidate result.
+        var rings = [];
+        if (geometry.type === 'Polygon') rings = geometry.coordinates || [];
+        else if (geometry.type === 'MultiPolygon') {
+            (geometry.coordinates || []).forEach(function (polygon) {
+                rings = rings.concat(polygon || []);
+            });
+        }
+        return {
+            type: geometry.type,
+            coordinates: geometry.coordinates,
+            rings: rings,
+            minLat: minLat, maxLat: maxLat, minLng: minLng, maxLng: maxLng
+        };
+    }
+
+    function buildHeritageIndex() {
+        var data = window._localLayerData || {};
+        // Rebuild only when the underlying layer objects change (they are
+        // replaced wholesale when map-app.js finishes loading them).
+        if (heritageIndex && heritageIndex.refs[0] === data[0] &&
+            heritageIndex.refs[5] === data[5] && heritageIndex.refs[6] === data[6]) {
+            return heritageIndex;
+        }
+
+        var cells = Object.create(null);
+        // Pad the bbox by the exclusion radius so a result just outside a
+        // geometry still lands in a cell that contains it.
+        var padLat = HERITAGE_RADIUS_M / 111320 + 1e-9;
+
+        [0, 5, 6].forEach(function (id) {
+            var features = (data[id] && data[id].features) || [];
+            for (var i = 0; i < features.length; i++) {
+                var geometry = features[i] && features[i].geometry;
+                if (!geometry) continue;
+                var entry = heritageEntry(geometry);
+                if (!entry) continue;
+
+                var padLng = padLat / Math.max(Math.cos(((entry.minLat + entry.maxLat) / 2) * Math.PI / 180), 0.2);
+                var latFrom = Math.floor((entry.minLat - padLat) / GRID_DEG);
+                var latTo = Math.floor((entry.maxLat + padLat) / GRID_DEG);
+                var lngFrom = Math.floor((entry.minLng - padLng) / GRID_DEG);
+                var lngTo = Math.floor((entry.maxLng + padLng) / GRID_DEG);
+
+                // Guard against a malformed nationwide geometry carpeting the
+                // whole grid; such a feature is kept in a global bucket.
+                if ((latTo - latFrom + 1) * (lngTo - lngFrom + 1) > 4096) {
+                    (cells['*'] || (cells['*'] = [])).push(entry);
+                    continue;
+                }
+                for (var la = latFrom; la <= latTo; la++) {
+                    for (var ln = lngFrom; ln <= lngTo; ln++) {
+                        var key = la + ':' + ln;
+                        (cells[key] || (cells[key] = [])).push(entry);
+                    }
+                }
+            }
+        });
+
+        heritageIndex = { cells: cells, refs: { 0: data[0], 5: data[5], 6: data[6] } };
+        return heritageIndex;
+    }
+
+    function pointInRing(p, ring) { var inside=false; for(var i=0,j=ring.length-1;i<ring.length;j=i++){var a=ring[i],b=ring[j], yi=a[1],yj=b[1], xi=a[0],xj=b[0]; if(((yi>p.lat)!==(yj>p.lat))&&p.lng<(xj-xi)*(p.lat-yi)/(yj-yi)+xi)inside=!inside;} return inside; }
+
+    function entryExcludes(p, entry) {
+        // Cheap bbox reject before any trigonometry.
+        var padLat = HERITAGE_RADIUS_M / 111320;
+        var padLng = padLat / Math.max(Math.cos(p.lat * Math.PI / 180), 0.2);
+        if (p.lat < entry.minLat - padLat || p.lat > entry.maxLat + padLat ||
+            p.lng < entry.minLng - padLng || p.lng > entry.maxLng + padLng) {
+            return false;
+        }
+        if (entry.type === 'Point') {
+            var c = entry.coordinates;
+            return distance(p, { lat: c[1], lng: c[0] }) <= HERITAGE_RADIUS_M;
+        }
+        if (entry.type === 'MultiPoint') {
+            return (entry.coordinates || []).some(function (mc) {
+                return distance(p, { lat: mc[1], lng: mc[0] }) <= HERITAGE_RADIUS_M;
+            });
+        }
+        var rings = entry.rings;
+        for (var i = 0; i < rings.length; i++) {
+            if (pointInRing(p, rings[i])) return true;
+        }
+        for (var r = 0; r < rings.length; r++) {
+            var ring = rings[r] || [];
+            for (var v = 0; v < ring.length; v++) {
+                if (distance(p, { lat: ring[v][1], lng: ring[v][0] }) <= HERITAGE_RADIUS_M) return true;
+            }
+        }
+        return false;
+    }
+
+    function isNearHeritage(p) {
+        var index = buildHeritageIndex();
+        var candidates = index.cells[cellKey(p.lat, p.lng)];
+        if (candidates) {
+            for (var i = 0; i < candidates.length; i++) {
+                if (entryExcludes(p, candidates[i])) return true;
+            }
+        }
+        var global = index.cells['*'];
+        if (global) {
+            for (var g = 0; g < global.length; g++) {
+                if (entryExcludes(p, global[g])) return true;
+            }
+        }
+        return false;
     }
     // Result label offset, in pixels above the site.
     //
@@ -114,7 +290,14 @@
     // centre keeps it locked onto its site at every zoom level.
     var RESULT_LABEL_OFFSET = [0, -14];
     function makeResult(p) {
-        var circle=L.circle([p.lat,p.lng],{radius:100,color:'#8cff66',weight:2,dashArray:'3 6',fillColor:'#39ff14',fillOpacity:.11,opacity:.98,interactive:true});
+        // Results are drawn on the shared canvas renderer rather than as one
+        // SVG path each: a wide scan can return dozens of sites, and every SVG
+        // path is a DOM node the browser must style, lay out and composite on
+        // each pan/zoom. On canvas they are just pixels.
+        var resultOptions = {radius:100,color:'#8cff66',weight:2,dashArray:'3 6',fillColor:'#39ff14',fillOpacity:.11,opacity:.98,interactive:true};
+        var resultRenderer = circleRendererOption();
+        if (resultRenderer) resultOptions.renderer = resultRenderer;
+        var circle=L.circle([p.lat,p.lng],resultOptions);
         circle.bindTooltip('<span class="lidar-result-tag"><b>Category / Categoria</b><br>'+esc(p.category)+'</span>',{permanent:true,direction:'top',offset:RESULT_LABEL_OFFSET,className:'lidar-result-tooltip'});
         circle.bindPopup('<strong>'+esc(p.category)+'</strong>'+(p.name?'<br>'+esc(p.name):'')+'<br><small>'+p.lat.toFixed(5)+', '+p.lng.toFixed(5)+'</small>'); return circle;
     }
@@ -139,16 +322,20 @@
             offset: [0, -14],
             className: 'lidar-result-tooltip'
         });
-        selectionCircle = L.circle(ll, {
+        var circleOptions = {
             radius: parseInt(document.getElementById('lidarScannerDistance').value, 10) * 1000,
-            color: '#8cff66',
-            weight: 1.8,
-            dashArray: '5 6',
-            fill: true,
-            fillColor: '#39ff14',
-            fillOpacity: 0.05,
-            opacity: 0.85
-        }).addTo(map);
+            color: CIRCLE_STYLE_IDLE.color,
+            weight: CIRCLE_STYLE_IDLE.weight,
+            dashArray: CIRCLE_STYLE_IDLE.dashArray,
+            fill: CIRCLE_STYLE_IDLE.fill,
+            fillColor: CIRCLE_STYLE_IDLE.fillColor,
+            fillOpacity: CIRCLE_STYLE_IDLE.fillOpacity,
+            opacity: CIRCLE_STYLE_IDLE.opacity,
+            interactive: false
+        };
+        var renderer = circleRendererOption();
+        if (renderer) circleOptions.renderer = renderer;
+        selectionCircle = L.circle(ll, circleOptions).addTo(map);
         setStatus(ll.lat.toFixed(4) + ', ' + ll.lng.toFixed(4));
     }
     function run() {
@@ -223,7 +410,108 @@
         });
         return pointsPromise;
     }
-    function wire(){ map=window._dlMap; if(!map){setTimeout(wire,200);return;} document.getElementById('lidarScannerToggle').addEventListener('change',function(){setActive(this.checked);}); document.getElementById('lidarScannerDistance').addEventListener('input',function(){document.getElementById('lidarScannerDistanceValue').textContent=this.value+' km';if(selected)selectionCircle.setRadius(+this.value*1000);}); document.getElementById('lidarScannerRun').addEventListener('click',run); setStatus('Choose a point on the map / Alege un punct pe harta'); }
+    // ── Distance slider ───────────────────────────────────────────────────
+    // A range input fires `input` on every touch move — up to ~120 times a
+    // second on a modern phone. The old handler did a synchronous DOM text
+    // write plus a full circle redraw inside each of those events, so on the
+    // installed PWA (where the map, the frosted layer panel and the circle all
+    // composite together) the events queued up faster than the device could
+    // paint and the slider crawled behind the finger.
+    //
+    // Now every `input` only records the new value; the actual DOM/map work is
+    // coalesced into a single requestAnimationFrame callback, so at most one
+    // update happens per displayed frame no matter how fast the events arrive.
+    // The heavy dashed-and-filled circle style is swapped for a cheap outline
+    // for the duration of the drag and restored on release.
+
+    // Marks the document while the distance slider is being dragged so CSS can
+    // drop the layer panel's backdrop blur and other per-frame effects.
+    function setDragClass(on) {
+        var body = (typeof document !== 'undefined') && document.body;
+        if (body && body.classList) body.classList.toggle('lidar-distance-dragging', !!on);
+    }
+
+    function wireDistanceSlider(slider, valueLabel) {
+        var pendingValue = null;
+        var frameHandle = null;
+        var frameScheduled = false;
+        var dragging = false;
+        var releaseTimer = null;
+
+        function paint() {
+            frameScheduled = false;
+            frameHandle = null;
+            var value = pendingValue;
+            pendingValue = null;
+            if (value == null) return;
+            if (valueLabel) valueLabel.textContent = value + ' km';
+            if (selected && selectionCircle) selectionCircle.setRadius(value * 1000);
+        }
+
+        function schedule() {
+            if (frameScheduled) return;
+            frameScheduled = true;
+            frameHandle = raf(paint);
+        }
+
+        function beginDrag() {
+            if (dragging) return;
+            dragging = true;
+            setDragClass(true);
+            if (selected && selectionCircle) selectionCircle.setStyle(CIRCLE_STYLE_DRAG);
+        }
+
+        function cancelFrame() {
+            if (!frameScheduled) return;
+            if (typeof window !== 'undefined' && window.cancelAnimationFrame) window.cancelAnimationFrame(frameHandle);
+            else clearTimeout(frameHandle);
+            frameScheduled = false;
+            frameHandle = null;
+        }
+
+        function endDrag() {
+            if (!dragging) return;
+            dragging = false;
+            // Flush the last value first so the restored circle uses the
+            // distance the user actually released on.
+            if (pendingValue !== null) {
+                cancelFrame();
+                paint();
+            }
+            if (selected && selectionCircle) selectionCircle.setStyle(CIRCLE_STYLE_IDLE);
+            setDragClass(false);
+        }
+
+        slider.addEventListener('input', function () {
+            pendingValue = +this.value;
+            beginDrag();
+            schedule();
+            // Safety net: `change`/`pointerup` are the normal way out of a
+            // drag, but a cancelled touch (notification, call, palm reject)
+            // can swallow them. Restoring after a short idle period means the
+            // circle can never get stuck in its stripped-down drag style.
+            clearTimeout(releaseTimer);
+            releaseTimer = setTimeout(endDrag, 220);
+        });
+        ['change', 'pointerup', 'pointercancel', 'touchend', 'touchcancel', 'mouseup', 'blur'].forEach(function (type) {
+            slider.addEventListener(type, function () {
+                clearTimeout(releaseTimer);
+                endDrag();
+            });
+        });
+    }
+
+    function wire() {
+        map = window._dlMap;
+        if (!map) { setTimeout(wire, 200); return; }
+        document.getElementById('lidarScannerToggle').addEventListener('change', function () { setActive(this.checked); });
+        wireDistanceSlider(
+            document.getElementById('lidarScannerDistance'),
+            document.getElementById('lidarScannerDistanceValue')
+        );
+        document.getElementById('lidarScannerRun').addEventListener('click', run);
+        setStatus('Choose a point on the map / Alege un punct pe harta');
+    }
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
     window.toggleLidarScannerLayer=setActive;
 })();

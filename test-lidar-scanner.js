@@ -46,9 +46,18 @@ const mockL = {
             type: 'circle',
             latlng,
             options,
+            // Count redraws so the suite can prove the distance slider
+            // coalesces its work instead of repainting per input event.
+            radiusUpdates: 0,
+            styleUpdates: [],
             bindTooltip(html, tooltipOptions) { this._tooltip = html; this._tooltipOpts = tooltipOptions; return this; },
             bindPopup(html) { this._popup = html; return this; },
-            setRadius(radius) { this.options.radius = radius; },
+            setRadius(radius) { this.options.radius = radius; this.radiusUpdates++; return this; },
+            setStyle(style) {
+                Object.keys(style).forEach(key => { this.options[key] = style[key]; });
+                this.styleUpdates.push(style);
+                return this;
+            },
             addTo(map) { map.addLayer(this); return this; }
         };
     },
@@ -97,11 +106,29 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, 'js/lidar-geo.js'), 'utf8')
 const lidarGeo = geoWindow.LidarGeo;
 
 const csvText = fs.readFileSync(path.join(__dirname, 'data/lidar_scanner_points.csv'), 'utf8');
+
+// Short-lived timers are held so the test can inspect drag state before the
+// scanner's release safety net fires.
+const pendingTimers = new Map();
+let nextTimerId = 1;
+function flushTimers() {
+    const pending = Array.from(pendingTimers.values());
+    pendingTimers.clear();
+    pending.forEach(fn => fn());
+}
+
 const sandbox = {
     console,
-    // Run the cosmetic five-second scan delay immediately in tests.
-    setTimeout(fn) { fn(); return 1; },
-    clearTimeout() {},
+    // Run the cosmetic five-second scan delay immediately in tests, but keep
+    // short timers (the slider's drag-release safety net) pending so the test
+    // can observe the drag state rather than having it torn down instantly.
+    setTimeout(fn, ms) {
+        if (!(ms < 1000)) { fn(); return 0; }
+        const id = nextTimerId++;
+        pendingTimers.set(id, fn);
+        return id;
+    },
+    clearTimeout(id) { pendingTimers.delete(id); },
     Promise,
     Math,
     JSON,
@@ -111,7 +138,14 @@ const sandbox = {
     document: {
         readyState: 'complete',
         addEventListener() {},
-        getElementById(id) { return domElements[id] || null; }
+        getElementById(id) { return domElements[id] || null; },
+        body: {
+            classList: {
+                _set: new Set(),
+                toggle(cls, on) { if (on) this._set.add(cls); else this._set.delete(cls); },
+                contains(cls) { return this._set.has(cls); }
+            }
+        }
     },
     window: {
         _dlMap: mockMap,
@@ -126,6 +160,23 @@ sandbox.window.window = sandbox.window;
 sandbox.window.document = sandbox.document;
 sandbox.window.L = sandbox.L;
 sandbox.window.LidarGeo = lidarGeo;
+
+// Controllable animation frames. The distance slider is expected to coalesce
+// its DOM/map writes into one frame instead of doing them per input event, so
+// the test drives frames manually to observe that.
+const frameQueue = new Map();
+let nextFrameId = 1;
+sandbox.window.requestAnimationFrame = fn => {
+    const id = nextFrameId++;
+    frameQueue.set(id, fn);
+    return id;
+};
+sandbox.window.cancelAnimationFrame = id => { frameQueue.delete(id); };
+function flushFrames() {
+    const pending = Array.from(frameQueue.values());
+    frameQueue.clear();
+    pending.forEach(fn => fn());
+}
 
 const scriptCode = fs.readFileSync(path.join(__dirname, 'js/lidar-scanner.js'), 'utf8');
 vm.createContext(sandbox);
@@ -224,9 +275,70 @@ async function main() {
     );
 
     // 4. Update distance slider.
-    domElements.lidarScannerDistance.value = '25';
-    domElements.lidarScannerDistance.listeners.input.call(domElements.lidarScannerDistance);
+    //
+    // Dragging the slider used to redraw the (up to 50 km wide) search circle
+    // synchronously on every single `input` event, which made the control lag
+    // badly in the installed PWA. The work must now be coalesced into one
+    // animation frame per paint, and the circle must drop its expensive dashed
+    // fill for a plain outline while the drag is in progress.
+    circle.radiusUpdates = 0;
+    circle.styleUpdates = [];
+
+    const slider = domElements.lidarScannerDistance;
+    // Simulate a fast drag: many input events before the browser paints.
+    ['12', '15', '19', '23', '25'].forEach(value => {
+        slider.value = value;
+        slider.listeners.input.call(slider);
+    });
+
+    assert.strictEqual(
+        circle.radiusUpdates, 0,
+        'no synchronous circle redraw should happen while input events are still arriving'
+    );
+    assert(
+        sandbox.document.body.classList.contains('lidar-distance-dragging'),
+        'the drag class should be set so CSS can drop the panel backdrop blur'
+    );
+    assert.strictEqual(circle.options.fill, false, 'circle fill should be disabled during the drag');
+    assert.strictEqual(circle.options.dashArray, null, 'circle dash pattern should be dropped during the drag');
+
+    flushFrames();
+    assert.strictEqual(
+        circle.radiusUpdates, 1,
+        'a burst of 5 input events should coalesce into a single circle redraw, got ' + circle.radiusUpdates
+    );
     assert.strictEqual(circle.options.radius, 25000, 'selection circle radius should update to 25 km');
+    assert.strictEqual(domElements.lidarScannerDistanceValue.textContent, '25 km', 'the km readout should show the latest value');
+
+    // Releasing the slider restores the decorated circle.
+    slider.listeners.change.call(slider);
+    assert(
+        !sandbox.document.body.classList.contains('lidar-distance-dragging'),
+        'the drag class should be cleared on release'
+    );
+    assert.strictEqual(circle.options.fill, true, 'circle fill should be restored after the drag');
+    assert.strictEqual(circle.options.dashArray, '5 6', 'circle dash pattern should be restored after the drag');
+    assert.strictEqual(circle.options.radius, 25000, 'released radius should be preserved');
+
+    // A drag that is cancelled without a change/pointerup event (a phone call,
+    // a palm reject) must still restore the circle via the idle safety net.
+    slider.value = '40';
+    slider.listeners.input.call(slider);
+    flushFrames();
+    assert.strictEqual(circle.options.fill, false, 'a new drag should strip the circle again');
+    flushTimers();
+    assert.strictEqual(circle.options.fill, true, 'an interrupted drag should still restore the circle');
+    assert.strictEqual(circle.options.radius, 40000, 'interrupted drag should keep the last radius');
+
+    // The selection circle must not intercept map clicks — the scanner relies
+    // on clicks reaching the map to move the search point.
+    assert.strictEqual(circle.options.interactive, false, 'selection circle must not swallow map clicks');
+
+    // Restore the 25 km state the remaining assertions were written against.
+    slider.value = '25';
+    slider.listeners.input.call(slider);
+    flushFrames();
+    slider.listeners.change.call(slider);
 
     // 5. Deactivate scanner.
     sandbox.window.toggleLidarScannerLayer(false);
