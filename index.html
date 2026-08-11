@@ -862,6 +862,7 @@
             <div class="map-frame">
                 <div class="map-wrapper">
                     <div id="detectlab-map" style="width:100%;height:100%;"></div>
+                    <div id="lidarScannerLoading" class="lidar-scanner-loading" aria-live="polite"><span class="lidar-scanner-ring" aria-hidden="true"></span></div>
 
                     <!-- Josephine Map + source transition — shown only while the premium
                          raster switches between Cloudflare and Supabase. -->
@@ -2333,6 +2334,25 @@
 
                     </div><!-- /histPremium transp-layer-row -->
 
+                    <!-- LIDAR Scanner — premium CSV point scan -->
+                    <div class="transp-layer-row lidar-scanner-row" data-category="premium" id="lidarScannerRow">
+                        <div class="transp-layer-label" style="margin-bottom:6px">
+                            <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0"><circle cx="6.5" cy="6.5" r="5" stroke="#8cff66" stroke-width="1" stroke-dasharray="2 1.5"/><circle cx="6.5" cy="6.5" r="1.5" fill="#8cff66"/></svg>
+                                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">LIDAR Scanner</span>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
+                                <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px">PREMIUM</span>
+                                <label class="apm-toggle-switch" title="Toggle LIDAR Scanner"><input type="checkbox" id="lidarScannerToggle"><span class="apm-toggle-track"></span></label>
+                            </span>
+                        </div>
+                        <div class="lidar-scanner-copy">Choose a point on the map / Alege un punct pe harta</div>
+                        <div class="lidar-scanner-control"><span>Search distance / Distanță</span><strong id="lidarScannerDistanceValue">10 km</strong></div>
+                        <input type="range" class="transp-slider" id="lidarScannerDistance" min="10" max="50" value="10" step="1" aria-label="Search distance from 10 to 50 kilometres">
+                        <button id="lidarScannerRun" class="lidar-scanner-button" type="button">Scan / Scanează</button>
+                        <div id="lidarScannerStatus" class="lidar-scanner-status">Choose a point on the map / Alege un punct pe harta</div>
+                    </div>
+
                     <!-- Archeological Potential Sites (premium) — "Zone cu potențial arheologic".
                          Analiză statistică pe siturile cunoscute (triangulație Delaunay) în jurul
                          centrului curent al hărții. Rulare manuală prin butonul "Zone candidati". -->
@@ -2810,6 +2830,7 @@
     <script src="js/corona-wms-layer.js?v=2026080702"></script>
     <script src="js/map-app.js?v=2026080704-darefix"></script>
     <script src="js/archeo-potential.js?v=20260803"></script>
+    <script src="js/lidar-scanner.js?v=20260811"></script>
 
     <!-- AUTH MODAL -->
     <style>
