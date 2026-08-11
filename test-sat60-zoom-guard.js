@@ -544,6 +544,83 @@ function check(name, cond) {
     fakeMap._simulateZoom(13);
     check('6.3 zoomend back to z=13 → layer is re-added', isSat60OnMap() === true);
 
+    // ── 7) Multi-zoom load + "moving never stops/restarts" (2026-08) ───────
+    // User requirements (2026-08-11):
+    //   • pressing "Load images here" loads ALL tiles for the viewport visible
+    //     when pressed, at the current zoom AND every deeper zoom (up to
+    //     maxNativeZoom), so zooming in afterwards shows imagery instead of a
+    //     blank map;
+    //   • moving the map while tiles are fetched does NOT stop the initial
+    //     process and does NOT start fetching for the new viewport — the
+    //     button must be pressed again for a new viewport, and a press always
+    //     fetches exactly the viewport visible when it was pressed.
+    // Swap the probe stub for one that records every call and reports one
+    // found tile per stage (a tile inside Romania, so the pyramid can expand).
+    const probeCalls = []; // each entry: { z, nJobs }
+    let probeDelay = 0;
+    sandbox.coronaProbeTiles = function (jobs, opts) {
+        const zs = jobs.map(function (j) { return j.z; });
+        probeCalls.push({ z: zs[0], nJobs: jobs.length });
+        if (opts && opts.onTileFound && jobs.length > 0) {
+            const j0 = jobs[0];
+            // Report the first job as "found" — it is inside Romania (the job
+            // list was filtered), so its children drive the deeper stages.
+            opts.onTileFound({ layerLabel: j0.layerLabel, z: j0.z, x: j0.x, y: j0.y }, 'blob:fake');
+        }
+        return new Promise(function (resolve) {
+            setTimeout(function () {
+                resolve({ total: jobs.length, found: 1, empty: 0, failed: 0, cancelled: 0, foundTiles: [] });
+            }, probeDelay);
+        });
+    };
+
+    // 7.1 press the button at z=12 → first stage probes z=12 (current viewport)
+    probeCalls.length = 0;
+    fakeMap.setZoom(12);
+    sandbox.toggleSatellite60sMap(true); // ensure the layer is on
+    sandbox.loadSatellite60sHere();
+    await new Promise(function (r) { setTimeout(r, 120); });
+    check('7.1 button press probes z=12 first',
+        probeCalls.length >= 1 && probeCalls[0].z === 12);
+
+    // 7.2 the SAME press keeps going deeper automatically (z13, z14, z15) —
+    //     children of the found tiles — so zooming in is already covered.
+    const deeper = probeCalls.map(function (c) { return c.z; }).filter(function (z) { return z > 12; });
+    check('7.2 one press also loads deeper zooms (pyramid)',
+        deeper.indexOf(13) !== -1 && deeper.indexOf(14) !== -1 && deeper.indexOf(15) !== -1);
+
+    // 7.3 after the load finishes, moving the map does NOT trigger any new
+    //     fetch (no auto-continue) — a new viewport needs a new button press.
+    probeCalls.length = 0;
+    fakeMap._simulateZoom(13);
+    fakeMap._simulateZoom(12);
+    await new Promise(function (r) { setTimeout(r, 60); });
+    check('7.3 moving after a load starts NO new fetch',
+        probeCalls.length === 0);
+
+    // 7.4 moving WHILE the load is running does NOT cancel it and does NOT
+    //     restart it — the initial process keeps running to completion.
+    probeCalls.length = 0;
+    probeDelay = 30; // each stage takes 30 ms
+    fakeMap.setZoom(12);
+    sandbox.loadSatellite60sHere();
+    await new Promise(function (r) { setTimeout(r, 5); }); // stage z12 in flight
+    fakeMap._simulateZoom(14);                             // user moves mid-load
+    await new Promise(function (r) { setTimeout(r, 400); }); // let it finish
+    probeDelay = 0;
+    const zs = probeCalls.map(function (c) { return c.z; });
+    const z12Count = zs.filter(function (z) { return z === 12; }).length;
+    check('7.4 moving mid-load does NOT stop or restart the initial process',
+        zs.join(',') === '12,13,14,15' && z12Count === 1);
+
+    // 7.5 toggling OFF then moving does NOT auto-fetch (button-only fetches)
+    sandbox.toggleSatellite60sMap(false);
+    probeCalls.length = 0;
+    fakeMap._simulateZoom(13);
+    await new Promise(function (r) { setTimeout(r, 50); });
+    check('7.5 no auto-fetch after toggle OFF + zoom',
+        probeCalls.length === 0);
+
     if (failures > 0) {
         console.error('\n[test] ' + failures + ' assertion(s) FAILED');
         process.exit(1);

@@ -123,7 +123,16 @@ const indexedDB = {
 /* ── fetch stub: counts calls; URLs containing MISSING return 404 ────────── */
 let fetchCalls = 0;
 const fetchedUrls = [];
-function fakeFetch(url) {
+// "Hold mode" — fetches stay pending until released, so tests can observe how
+// many requests are in flight at once (the probe pool vs. the map-tile pool).
+let holdFetches = false;
+let fetchActive = 0;
+let maxFetchActive = 0;
+const heldFetches = [];   // { settled, resolve, result }
+function releaseHeldFetches() {
+    heldFetches.splice(0).forEach(function (h) { h.resolve(h.result); });
+}
+function fakeFetch(url, opts) {
     fetchCalls++;
     fetchedUrls.push(url);
     const u = String(url);
@@ -138,31 +147,62 @@ function fakeFetch(url) {
     if (u.indexOf('MISSING') !== -1) {
         return Promise.resolve({ ok: false, status: 404, headers: { get: function () { return null; } } });
     }
-    return Promise.resolve({
-        ok: true,
-        status: 200,
-        headers: { get: function () { return 'image/png'; } },
-        blob: function () { return Promise.resolve({ fakePng: true }); }
-    });
+    const ok200 = function () {
+        return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: { get: function () { return 'image/png'; } },
+            blob: function () { return Promise.resolve({ fakePng: true }); }
+        });
+    };
+    if (holdFetches) {
+        fetchActive++;
+        if (fetchActive > maxFetchActive) maxFetchActive = fetchActive;
+        return new Promise(function (resolve, reject) {
+            const entry = { settled: false, result: ok200() };
+            entry.resolve = function (r) {
+                if (entry.settled) return;
+                entry.settled = true;
+                fetchActive--;
+                resolve(r);
+            };
+            if (opts && opts.signal) {
+                opts.signal.addEventListener('abort', function () {
+                    if (entry.settled) return;
+                    entry.settled = true;
+                    fetchActive--;
+                    reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+                });
+            }
+            heldFetches.push(entry);
+        });
+    }
+    return ok200();
 }
 
-/* ── canvas stub: opaque by default; set fakeCanvasTransparent=true to make
-      the FIRST decode fully transparent (simulates a GWC placeholder tile). */
-let fakeCanvasTransparent = false;
+/* ── canvas stub: opaque by default; set fakeCanvasTransparentCount = N to
+      make the next N decodes fully transparent (simulates a GWC placeholder
+      tile and/or a transparent WMS answer). */
+let fakeCanvasTransparentCount = 0;
 function fakeCanvas() {
     return {
         width: 0, height: 0,
         getContext: function () {
             return {
+                clearRect: function () {}, // corona-wms-layer reuses one scratch canvas
                 drawImage: function () {},
                 getImageData: function (x, y, w, h) {
-                    const data = new Uint8ClampedArray(4 * 4 * 4);
-                    if (fakeCanvasTransparent) {
-                        fakeCanvasTransparent = false; // first decode only
+                    // A full 256×256 RGBA buffer, like a real canvas — the
+                    // probe samples every 4th pixel (stride 16 bytes), so the
+                    // buffer must be large enough to yield >= 4 alpha samples.
+                    const data = new Uint8ClampedArray(256 * 256 * 4);
+                    if (fakeCanvasTransparentCount > 0) {
+                        fakeCanvasTransparentCount--;
                         return { data: data };          // all alpha = 0
                     }
-                    // Four opaque pixels → tileHasVisibleContent() => true.
-                    data[3] = 255; data[7] = 255; data[11] = 255; data[15] = 255;
+                    // Four opaque pixels spread across the tile (on the
+                    // stride-16 sampling grid) → tileHasVisibleContent() true.
+                    data[3] = 255; data[3 + 16] = 255; data[3 + 32] = 255; data[3 + 48] = 255;
                     return { data: data };
                 }
             };
@@ -290,7 +330,7 @@ function check(name, cond) {
 
     // ── 6) GWC tile-cache 404 → probe falls back to the WMS endpoint ────────
     // (Distinct x/y so the IndexedDB shim never returns an earlier blob.)
-    fakeCanvasTransparent = false;
+    fakeCanvasTransparentCount = 0;
     const c6 = fetchCalls;
     const gwcOnlyUrl = 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms?SERVICE=WMS&LAYERS=corona%3A' +
         layerLabel + '&BBOX=1%2C2%2C3%2C4&GWC404=1';
@@ -305,7 +345,7 @@ function check(name, cond) {
         probeRes4.found === 1 && probeRes4.empty === 0 && probeRes4.failed === 0);
 
     // ── 7) Transparent tile from the GWC cache → retried on the WMS endpoint ─
-    fakeCanvasTransparent = true;
+    fakeCanvasTransparentCount = 1;
     const c7 = fetchCalls;
     const gwcTransparentUrl = 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms?SERVICE=WMS&LAYERS=corona%3A' +
         layerLabel + '&BBOX=1%2C2%2C3%2C4';
@@ -315,7 +355,7 @@ function check(name, cond) {
     await wait(30);
     check('7.1 transparent GWC tile retried on WMS (2 fetches)', fetchCalls === c7 + 2);
     check('7.2 imagery found after the WMS retry', probeRes5.found === 1 && probeRes5.empty === 0);
-    fakeCanvasTransparent = false;
+    fakeCanvasTransparentCount = 0;
 
     // ── 8) Both endpoints fail → definitively empty (negative-cached) ───────
     const c8 = fetchCalls;
@@ -327,6 +367,103 @@ function check(name, cond) {
     await wait(30);
     check('8.1 GWC 404 + WMS 404 → empty (both endpoints tried)', fetchCalls === c8 + 2);
     check('8.2 definitive miss reported as empty', probeRes6.empty === 1 && probeRes6.found === 0);
+
+    // ── 9) Separate probe pool: a bulk probe may use probeConcurrent (12 on
+    //        desktop) instead of the map-tile cap (8), so 2000-tile loads
+    //        don't take ~10 minutes. ─────────────────────────────────────────
+    holdFetches = true;
+    maxFetchActive = 0;
+    const c9 = fetchCalls;
+    const probeJobs9 = [];
+    for (let i = 0; i < 30; i++) {
+        probeJobs9.push({ url: 'https://wms.test/probe?i=' + i, layerLabel: 'corona:PROBEPOOL', z: z, x: x + i, y: y + 1 });
+    }
+    const probePromise9 = W.coronaProbeTiles(probeJobs9);
+    await wait(80); // let the queue start as many jobs as its pools allow
+    check('9.1 probe pool starts 12 concurrent fetches (probeConcurrent)', maxFetchActive === 12);
+    check('9.2 probe pool never exceeds 12', maxFetchActive <= 12);
+    // Drain: every released slot lets the queue start another held fetch.
+    while (heldFetches.length > 0) { releaseHeldFetches(); await wait(40); }
+    const res9 = await probePromise9;
+    await wait(30);
+    check('9.3 all 30 probe jobs fetched and found', fetchCalls === c9 + 30 && res9.found === 30);
+    holdFetches = false;
+
+    // ── 9b) Map-tile pool is NOT raised: normal (auto-fetch) layer tiles are
+    //        still capped at CONFIG.concurrent (8), so the probe pool doesn't
+    //        silently turn the map into a request storm. ─────────────────────
+    maxFetchActive = 0;
+    holdFetches = true;
+    const autoLayer = W.createCoronaWmsLayer('https://wms.test/wms', {
+        layers: 'corona:POOLREG', coronaLayer: 'corona:POOLREG',
+        manualOnly: false, minZoom: 4
+    });
+    autoLayer._map = fakeMap;
+    for (let i = 0; i < 30; i++) {
+        autoLayer.createTile({ x: x + i, y: y + 2, z: z }, function () {});
+    }
+    await wait(80);
+    check('9.4 map-tile pool stays capped at 8 concurrent', maxFetchActive === 8);
+    while (heldFetches.length > 0) { releaseHeldFetches(); await wait(40); }
+    await wait(80);
+    holdFetches = false;
+
+    // ── 10) Stale probe cancellation: zooming away mid-load must drop the
+    //        remaining jobs (queued) and abort the in-flight fetches. ────────
+    holdFetches = true;
+    maxFetchActive = 0;
+    const c10 = fetchCalls;
+    const cancelJobs = [];
+    for (let i = 0; i < 20; i++) {
+        cancelJobs.push({ url: 'https://wms.test/cancel?i=' + i, layerLabel: 'corona:CANCEL', z: z, x: x + 50 + i, y: y + 2 });
+    }
+    const cancelPromise = W.coronaProbeTiles(cancelJobs);
+    await wait(80); // 12 started (in flight), 8 queued
+    W.CoronaWmsQueue.cancelProbes();
+    const res10 = await cancelPromise;
+    await wait(30);
+    check('10.1 cancelled probe resolves with the cancelled count', res10.cancelled === 20 && res10.found === 0);
+    check('10.2 nothing new fetched after the cancel (in-flight aborted, queue dropped)',
+        fetchCalls === c10 + maxFetchActive);
+    holdFetches = false;
+
+    // ── 11) Definitively-empty tiles are persisted (IDB "empty" marker) — a
+    //        re-probe of the same tile issues ZERO network requests. ─────────
+    fakeCanvasTransparentCount = 2; // GWC placeholder + WMS placeholder both transparent
+    const c11 = fetchCalls;
+    const emptyUrl = 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms?SERVICE=WMS&LAYERS=corona%3Acorona%3AEMPTY&BBOX=1%2C2%2C3%2C4';
+    const res11a = await W.coronaProbeTiles([
+        { url: emptyUrl, layerLabel: 'corona:EMPTY', z: z, x: x + 200, y: y + 3 }
+    ]);
+    await wait(30);
+    check('11.1 transparent on both endpoints → empty (2 fetches)',
+        fetchCalls === c11 + 2 && res11a.empty === 1 && res11a.found === 0);
+    const res11b = await W.coronaProbeTiles([
+        { url: emptyUrl, layerLabel: 'corona:EMPTY', z: z, x: x + 200, y: y + 3 }
+    ]);
+    await wait(30);
+    check('11.2 re-probe of a persisted-empty tile issues NO fetch',
+        fetchCalls === c11 + 2 && res11b.empty === 1 && res11b.found === 0);
+    fakeCanvasTransparentCount = 0;
+
+    // ── 12) Probe progress + incremental per-tile callback ──────────────────
+    const c12 = fetchCalls;
+    const progressCalls = [];
+    const foundCalls = [];
+    const jobs12 = [];
+    for (let i = 0; i < 20; i++) {
+        jobs12.push({ url: 'https://wms.test/progress?i=' + i, layerLabel: 'corona:PROGRESS', z: z, x: x + 300 + i, y: y + 1 });
+    }
+    const res12 = await W.coronaProbeTiles(jobs12, {
+        onProgress: function (p) { progressCalls.push(p); },
+        onTileFound: function (job) { foundCalls.push(job); return false; }
+    });
+    await wait(30);
+    check('12.1 progress reported with final totals',
+        progressCalls.length > 0 && progressCalls[progressCalls.length - 1].done === 20 &&
+        progressCalls[progressCalls.length - 1].total === 20);
+    check('12.2 onTileFound called once per found tile', foundCalls.length === 20);
+    check('12.3 all 20 probe tiles found', res12.found === 20);
 
     if (failures > 0) {
         console.error('\n[test] ' + failures + ' assertion(s) FAILED');

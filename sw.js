@@ -1,8 +1,8 @@
 /* ============================================================
-   DetectLab — Service Worker v1.3.3
+   DetectLab — Service Worker v1.4.1
    ============================================================ */
 
-const CACHE_NAME = 'detectlab-v29';
+const CACHE_NAME = 'detectlab-v31';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -28,6 +28,7 @@ const PRECACHE_URLS = [
   'css/MarkerCluster.Default.css',
   'js/translations.js',
   'js/translations.js?v=2026080702',
+  'js/translations.js?v=20260811',
   'js/leaflet.js',
   'js/L.Control.Layers.Tree.min.js',
   'js/L.Control.Locate.min.js',
@@ -43,8 +44,12 @@ const PRECACHE_URLS = [
   'js/account-legacy.js',
   'js/map-app.js',
   'js/map-app.js?v=2026080704',
+  'js/map-app.js?v=20260811-fastprobe',
+  'js/map-app.js?v=20260811-zoomstack',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=2026080702',
+  'js/corona-wms-layer.js?v=20260811-fastprobe',
+  'js/corona-wms-layer.js?v=20260811-zoomstack',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'images/sonar_loading_animation.webp',

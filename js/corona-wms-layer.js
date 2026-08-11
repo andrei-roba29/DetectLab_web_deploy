@@ -13,12 +13,20 @@
  *
  * Strategy:
  *   • ONE shared request queue across ALL CORONA sublayers, with a hard cap on
- *     concurrent in-flight requests (8 desktop / 4 mobile).
+ *     concurrent in-flight requests (8 desktop / 4 mobile) and a SEPARATE,
+ *     higher cap for bulk probes (12 desktop / 6 mobile — a "Load images
+ *     here" run of up to 2000 tiles must not take 10 minutes).
  *   • Per-tile geographic intersection with Romania's bbox BEFORE any request.
- *   • Zoom threshold: no tiles below z4 (desktop) / z5 (mobile).
- *   • IndexedDB blob cache with TTL (30 d desktop / 60 d mobile).
+ *   • Zoom threshold: no tiles below z11 (the "Load images here" minimum).
+ *   • IndexedDB blob cache with TTL (30 d desktop / 60 d mobile) — plus a
+ *     persisted "empty" marker so tiles that were already probed as having no
+ *     imagery are never fetched again (re-probing the same area = 0 requests).
  *   • Viewport priority (center tiles first), cancellation of stale/aborted
  *     tiles, exponential backoff, and a circuit breaker after repeated fails.
+ *   • GWC→WMS fallback that learns: once the tile cache has missed ~6 tiles
+ *     for a layer+zoom, later probes of that layer+zoom go STRAIGHT to the
+ *     plain WMS rendering endpoint (halves the request count on zooms the
+ *     tile cache cannot serve).
  *   • A small, unobtrusive loading indicator.
  *   • ON-DEMAND MODE (option `manualOnly: true`, used by the Satellite
  *     imagery 60's layer): map tiles NEVER trigger a network request — they
@@ -27,6 +35,11 @@
  *     "Încarcă imagini aici" button) is the ONLY thing allowed to hit the
  *     network; every image it downloads lands in the same cache, so the layer
  *     renders the probed viewport instantly without fetching anything itself.
+ *     Probes report progress (opts.onProgress) and hand every found tile's
+ *     blob URL to the caller (opts.onTileFound) so imagery appears on the map
+ *     INCREMENTALLY while the probe is still running — no more 10-minute
+ *     blank screen. Stale probes can be cancelled in one call
+ *     (CoronaWmsQueue.cancelProbes()) when the user zooms/pans away.
  *
  * Leaflet must be loaded BEFORE this file. It exposes:
  *     window.CoronaWmsLayer   → L.TileLayer.WMS subclass (factory: new CoronaWmsLayer(url, opts))
@@ -83,6 +96,19 @@
         minLoadZoom: 11,
         // Hard cap on concurrent WMS image requests ACROSS ALL sublayers.
         concurrent: IS_MOBILE ? 4 : 8,
+        // Separate, higher cap for BULK PROBES (the "Load images here" /
+        // "Încarcă imagini aici" button). A probe can legitimately hold up to
+        // SAT60_LOAD_MAX_JOBS (=2000) tiles; letting them trickle through the
+        // normal 8-slot pool made a full viewport take ~10 minutes. Probes
+        // still go through the SAME shared queue (so they never starve map
+        // tiles), they just get their own pool of slots.
+        probeConcurrent: IS_MOBILE ? 6 : 12,
+        // After this many consecutive GWC tile-cache misses for one
+        // layer+zoom (each followed by a successful plain-WMS retry), stop
+        // asking the tile cache for that layer+zoom and go straight to the
+        // WMS rendering endpoint for the rest of the session. Cuts the
+        // per-tile request count in half on zooms the cache cannot serve.
+        gwcMissSkipAfter: 6,
         // TTL for the IndexedDB tile cache.
         cacheTtlMs: (IS_MOBILE ? 60 : 30) * 24 * 60 * 60 * 1000,
         cacheDb: 'detectlab',
@@ -162,22 +188,34 @@
         }
 
         return {
+            // Returns null (no record / expired) or { blob } / { empty: true }.
             get: function (key) {
                 return tx('readonly', function (store) { return store.get(key); })
                     .then(function (rec) {
-                        if (!rec || !rec.blob) return null;
+                        if (!rec) return null;
                         if (Date.now() - (rec.ts || 0) > CONFIG.cacheTtlMs) {
                             // Expired — best-effort eviction.
                             tx('readwrite', function (store) { store.delete(key); });
                             return null;
                         }
-                        return rec.blob;
+                        if (rec.state === 'empty') return { empty: true };
+                        if (!rec.blob) return null;
+                        return { blob: rec.blob };
                     })
                     .catch(function () { return null; });
             },
             set: function (key, blob) {
                 return tx('readwrite', function (store) {
                     return store.put({ key: key, blob: blob, ts: Date.now() });
+                }).catch(function () { /* quota / private mode — ignore */ });
+            },
+            // Persist a "this tile was probed and has NO imagery" marker so a
+            // later visit / re-probe of the same tile skips the network. The
+            // marker overwrites any previously stored (e.g. fully transparent
+            // GWC placeholder) blob and expires with the normal cache TTL.
+            setEmpty: function (key) {
+                return tx('readwrite', function (store) {
+                    return store.put({ key: key, state: 'empty', ts: Date.now() });
                 }).catch(function () { /* quota / private mode — ignore */ });
             }
         };
@@ -192,7 +230,13 @@
      *    implements exponential backoff + a global circuit breaker.
      * ───────────────────────────────────────────────────────────────────── */
     var Queue = (function () {
+        // Two independent pools: `active` for map tiles (CONFIG.concurrent),
+        // `activeProbe` for bulk "Load images here" probes
+        // (CONFIG.probeConcurrent). Both draw from the same priority-ordered
+        // waiting list, so a 2000-tile probe never starves the map tiles that
+        // render the already-cached imagery.
         var active = 0;
+        var activeProbe = 0;
         var waiting = [];            // { job, priority, enqueuedAt }
         var inFlight = {};           // jobKey -> { controller, job }
         var consecutiveFailures = 0;
@@ -201,22 +245,42 @@
         // (HTTP 404) or are outside the cached grid range (HTTP 400), keyed by
         // cacheKey. Stops the same missing tile being re-requested on every
         // pan/zoom — matters once the lower zoom threshold lets a pass request
-        // zoom levels it has no cached coverage for. NOT persisted to IndexedDB.
+        // zoom levels it has no cached coverage for. NOT persisted to IndexedDB
+        // (the probe also persists an "empty" marker — see IDB.setEmpty).
         var missing = {};
+        // GWC tile-cache miss counters per layer+zoom. Once a layer+zoom has
+        // missed CONFIG.gwcMissSkipAfter times (each followed by a successful
+        // plain-WMS retry), the probe stops asking the tile cache for it.
+        var gwcMissCount = {};
+        var gwcBroken = {};
         var stats = { requested: 0, cacheHits: 0, fetched: 0, failed: 0, queued: 0, cancelled: 0, empty: 0 };
 
         // If the server ever rejects CORS for fetch(), we fall back to a plain
         // <img> load for the whole session (no IndexedDB caching that session).
         var fetchForbidden = false;
 
+        function isProbe(job) { return job && job.probe === true; }
+        function poolUsed(job) { return isProbe(job) ? activeProbe : active; }
+        function poolCap(job) { return isProbe(job) ? CONFIG.probeConcurrent : CONFIG.concurrent; }
+
+        function notifyCancelled(job) {
+            if (job._cancelNotified) return;
+            job._cancelNotified = true;
+            job.onCancelled && job.onCancelled();
+        }
+
         function pump() {
-            while (active < CONFIG.concurrent && waiting.length > 0) {
-                if (Date.now() < circuitOpenUntil) break; // circuit open — wait
-                // Highest priority first (closest to viewport / most recent).
-                waiting.sort(function (a, b) { return b.priority - a.priority; });
-                var item = waiting.shift();
-                if (!item) break;
+            if (Date.now() < circuitOpenUntil) { updateIndicator(); return; }
+            // Highest priority first (closest to viewport / most recent).
+            waiting.sort(function (a, b) { return b.priority - a.priority; });
+            var i = 0;
+            while (i < waiting.length) {
+                var item = waiting[i];
+                if (poolUsed(item.job) >= poolCap(item.job)) { i++; continue; }
+                waiting.splice(i, 1);
                 startJob(item);
+                // After splice the next element is at index i — keep scanning
+                // so jobs of both pools start in priority order.
             }
             updateIndicator();
         }
@@ -232,7 +296,7 @@
                 return;
             }
 
-            active++;
+            if (isProbe(job)) activeProbe++; else active++;
             stats.requested++;
             inFlight[job.key] = { job: job };
 
@@ -257,8 +321,18 @@
                 fetchAndCache(job, controller);
                 return;
             }
-            IDB.get(job.cacheKey).then(function (blob) {
+            IDB.get(job.cacheKey).then(function (rec) {
                 if (job._cancelled) { finish(job, 'cancelled'); return; }
+                // A previously probed (and persisted) "no imagery here" tile —
+                // resolve from the marker, zero network.
+                if (rec && rec.empty) {
+                    missing[job.cacheKey] = true;
+                    stats.empty++;
+                    job.onEmpty && job.onEmpty();
+                    finish(job, 'empty');
+                    return;
+                }
+                var blob = rec ? rec.blob : null;
                 if (blob) {
                     stats.cacheHits++;
                     try {
@@ -338,6 +412,30 @@
                 return true;
             }
 
+            // Count a tile-cache miss for this layer+zoom. When the cache has
+            // missed enough times in a row (each time served fine by the plain
+            // WMS endpoint), the probe stops wasting the first request on it.
+            function noteGwcMiss() {
+                if (!job.layerLabel || job._fallbackTried || !job.fallbackUrl) return;
+                var gk = job.layerLabel + '|' + job.z;
+                gwcMissCount[gk] = (gwcMissCount[gk] || 0) + 1;
+                if (gwcMissCount[gk] >= CONFIG.gwcMissSkipAfter) {
+                    gwcBroken[gk] = true;
+                    console.warn('[CoronaWms] GWC tile cache cannot serve', job.layerLabel, 'at zoom', job.z,
+                        '— probing straight to the WMS endpoint for the rest of this session.');
+                }
+            }
+
+            function markMissing() {
+                missing[job.cacheKey] = true;
+                // Persist the "no imagery" answer so future sessions/zooms do
+                // not re-request the tile either.
+                IDB.setEmpty(job.cacheKey);
+                stats.empty++;
+                job.onEmpty && job.onEmpty();
+                finish(job, 'empty');
+            }
+
             root.fetch(job.url, fetchOpts).then(function (res) {
                 if (job._cancelled) { finish(job, 'cancelled'); return; }
                 if (!res.ok) {
@@ -348,13 +446,12 @@
                     // 5xx = genuine server trouble, still worth one try on the
                     // fallback endpoint before the regular retry path.
                     if (res.status >= 400 && res.status < 500) {
+                        noteGwcMiss();
                         if (tryFallback()) return;
                         // Definitive miss on BOTH endpoints — remember it for
-                        // the session and render an empty tile.
-                        missing[job.cacheKey] = true;
-                        stats.empty++;
-                        job.onEmpty && job.onEmpty();
-                        finish(job, 'empty');
+                        // the session (and for future sessions) and render an
+                        // empty tile.
+                        markMissing();
                         return;
                     }
                     if (tryFallback()) return;
@@ -365,11 +462,9 @@
                     // GWC sometimes returns a text/XML 200 for a missing tile.
                     // Try the WMS endpoint once before declaring a permanent
                     // miss for this session.
+                    noteGwcMiss();
                     if (tryFallback()) return;
-                    missing[job.cacheKey] = true;
-                    stats.empty++;
-                    job.onEmpty && job.onEmpty();
-                    finish(job, 'empty');
+                    markMissing();
                     return;
                 }
                 return res.blob();
@@ -460,8 +555,14 @@
 
         function finish(job, reason, keepSlot) {
             delete inFlight[job.key];
-            if (!keepSlot) active = Math.max(0, active - 1);
-            if (reason === 'cancelled') stats.cancelled++;
+            if (!keepSlot) {
+                if (isProbe(job)) activeProbe = Math.max(0, activeProbe - 1);
+                else active = Math.max(0, active - 1);
+            }
+            if (reason === 'cancelled') {
+                stats.cancelled++;
+                notifyCancelled(job);
+            }
             pump();
         }
 
@@ -469,17 +570,12 @@
         return {
             config: CONFIG,
             // job: { key, cacheKey, url, tileEl, priority, onLoad, onError,
-            //        onBlobUrl, onEmpty, noFetch }
+            //        onBlobUrl, onEmpty, onCancelled, noFetch, probe }
             // noFetch=true (on-demand map tiles): IndexedDB cache ONLY — the
             // job never produces a network request; a cache miss is reported
-            // via onEmpty(). Probes (coronaProbeTiles) use noFetch=false.
+            // via onEmpty(). Probes (coronaProbeTiles) use noFetch=false and
+            // probe=true (they draw from the higher probeConcurrent pool).
             enqueue: function (job) {
-                if (Date.now() < circuitOpenUntil) {
-                    // Queue it; pump() will resume when the cooldown ends.
-                    waiting.push({ job: job, priority: job.priority || 0, enqueuedAt: Date.now() });
-                    stats.queued++;
-                    return;
-                }
                 waiting.push({ job: job, priority: job.priority || 0, enqueuedAt: Date.now() });
                 stats.queued++;
                 pump();
@@ -487,10 +583,12 @@
             cancel: function (key) {
                 // Remove from waiting list.
                 for (var i = waiting.length - 1; i >= 0; i--) {
-                    if (waiting[i].job.key === key) {
-                        waiting[i].job._cancelled = true;
+                    var wj = waiting[i].job;
+                    if (wj.key === key) {
+                        wj._cancelled = true;
                         waiting.splice(i, 1);
                         stats.cancelled++;
+                        notifyCancelled(wj);
                     }
                 }
                 // Abort an in-flight request.
@@ -500,17 +598,64 @@
                     try { infl.controller && infl.controller.abort(); } catch (e) {}
                 }
             },
+            // Cancel EVERY queued/in-flight probe job (used when the user
+            // zooms/pans away from the probed viewport — the tiles at the old
+            // zoom are useless, so the remaining jobs are dropped and the
+            // in-flight fetches aborted). Map-tile jobs are never touched.
+            cancelProbes: function () {
+                for (var i = waiting.length - 1; i >= 0; i--) {
+                    var w = waiting[i];
+                    if (isProbe(w.job)) {
+                        w.job._cancelled = true;
+                        waiting.splice(i, 1);
+                        stats.cancelled++;
+                        notifyCancelled(w.job);
+                    }
+                }
+                for (var k in inFlight) {
+                    var j = inFlight[k].job;
+                    if (isProbe(j)) {
+                        j._cancelled = true;
+                        notifyCancelled(j);
+                        try { inFlight[k].controller && inFlight[k].controller.abort(); } catch (e) {}
+                        // Force-settle a job whose load cannot actually be
+                        // aborted (e.g. the CORS-less direct <img> fallback)
+                        // so the probe's promise always resolves.
+                        (function (job, key) {
+                            setTimeout(function () {
+                                if (inFlight[key] && inFlight[key].job === job) {
+                                    finish(job, 'cancelled');
+                                }
+                            }, 8000);
+                        })(j, k);
+                    }
+                }
+            },
             stats: function () {
                 return {
                     isMobile: IS_MOBILE,
                     minZoom: CONFIG.minZoom,
                     concurrent: CONFIG.concurrent,
+                    probeConcurrent: CONFIG.probeConcurrent,
                     active: active,
+                    activeProbe: activeProbe,
                     waiting: waiting.length,
                     consecutiveFailures: consecutiveFailures,
                     circuitOpen: Date.now() < circuitOpenUntil,
+                    gwcBroken: gwcBroken,
                     totals: stats
                 };
+            },
+            // GWC tile-cache has proven (this session) that it cannot serve
+            // this layer at this zoom — probes should skip it.
+            isGwcBroken: function (layerLabel, z) {
+                return gwcBroken[layerLabel + '|' + z] === true;
+            },
+            // Remember a definitively-missing tile for the rest of the session
+            // (used by the probe's transparency check, which lives outside the
+            // queue closure).
+            noteMissing: function (cacheKey) {
+                missing[cacheKey] = true;
             }
         };
     })();
@@ -543,7 +688,7 @@
             if (mapEl) mapEl.appendChild(_indicatorEl);
             } catch (e) { _indicatorEl = null; return; }
         }
-        var inflight = s.active + s.waiting;
+        var inflight = s.active + (s.activeProbe || 0) + s.waiting;
         if (inflight > 2) {
             _indicatorEl.style.display = 'flex';
             _indicatorEl.querySelector('.corona-loading-text').textContent =
@@ -580,18 +725,27 @@
      *     areas a pass does NOT cover come back as a fully transparent PNG
      *     with HTTP 200, so a successful decode alone is NOT proof of imagery.
      * ───────────────────────────────────────────────────────────────────── */
+    // One shared scratch canvas for the whole probe session. Drawing a tile
+    // into it and reading it back is synchronous, so decodes never overlap.
+    var _probeCanvas = null;
+
     function tileHasVisibleContent(img, cb) {
         try {
-            var c = root.document.createElement('canvas');
-            var w = img.naturalWidth || img.width || 256;
-            var h = img.naturalHeight || img.height || 256;
-            c.width = w;
-            c.height = h;
+            if (!_probeCanvas) {
+                _probeCanvas = root.document.createElement('canvas');
+                _probeCanvas.width = 256;
+                _probeCanvas.height = 256;
+            }
+            var c = _probeCanvas;
             var ctx = c.getContext('2d');
-            ctx.drawImage(img, 0, 0, w, h);
-            var d = ctx.getImageData(0, 0, w, h).data;
+            ctx.clearRect(0, 0, 256, 256);
+            ctx.drawImage(img, 0, 0);
+            var d = ctx.getImageData(0, 0, 256, 256).data;
             var opaque = 0;
-            for (var i = 3; i < d.length; i += 4) {
+            // Sample every 4th pixel (16× less data to scan, same detection
+            // fidelity): a tile is "has imagery" if >= 4 sampled pixels are
+            // opaque. 2000 tiles × full-res scans froze the main thread.
+            for (var i = 3; i < d.length; i += 16) {
                 if (d[i] > 8) {
                     opaque++;
                     if (opaque >= 4) break;
@@ -615,8 +769,21 @@
      *     that actually contains imagery is stored in IndexedDB, which means
      *     the layer's own tiles render from cache right after the probe.
      *
-     *     job: { url, layerLabel, z, x, y }
-     *     resolves: { total, found, empty, failed, foundTiles: ["z/x/y", …] }
+     *     job: { url, layerLabel, z, x, y, priority? }  (priority: viewport-
+     *           centre distance, closer = higher; computed by the caller)
+     *     opts: { onProgress?, onTileFound? }
+     *       onProgress({done,total,found,empty,failed,cancelled}) — throttled
+     *       onTileFound(job, blobUrl) — called for every tile that HAS
+     *         imagery; return true to take ownership of blobUrl (the caller
+     *         injects it into the map tile and revokes it later) or falsy to
+     *         let the probe revoke it.
+     *     resolves: { total, found, empty, failed, cancelled,
+     *                 foundTiles: ["z/x/y", …] }
+     *
+     *     Cancellation: stale probes (user zoomed/panned away) can be dropped
+     *     with CoronaWmsQueue.cancelProbes() — queued jobs are removed,
+     *     in-flight fetches aborted, and the promise resolves with the
+     *     `cancelled` count set.
      *
      *     GWC → WMS fallback: the tile-cache endpoint (/gwc/service/wms) only
      *     serves zooms/grids it has pre-cached per layer, and can answer
@@ -625,7 +792,10 @@
      *     "No images here" results, every probe tile that came back
      *     missing/empty from the cache is retried ONCE on the plain WMS
      *     rendering endpoint (/geoserver/wms), which renders any valid
-     *     layer+bbox on the fly.
+     *     layer+bbox on the fly. Once a layer+zoom has missed the cache
+     *     CONFIG.gwcMissSkipAfter times, later probes skip the cache for it.
+     *     Definitively empty tiles are persisted (IDB "empty" marker) so a
+     *     re-probe of the same area issues zero network requests.
      * ───────────────────────────────────────────────────────────────────── */
     // Derive the plain WMS rendering URL from a GeoWebCache WMS-C URL by
     // swapping the /gwc/service/wms path segment for /wms. Returns null when
@@ -646,20 +816,39 @@
         return null;
     }
 
-    function coronaProbeTiles(jobs) {
+    function coronaProbeTiles(jobs, opts) {
+        opts = opts || {};
         return new Promise(function (resolve) {
             var results = {
                 total: jobs.length,
                 found: 0,
                 empty: 0,
                 failed: 0,
+                cancelled: 0,
                 foundTiles: []
             };
             var pending = jobs.length;
-            if (pending === 0) { resolve(results); return; }
+            var settled = 0;
+            if (pending === 0) {
+                opts.onProgress && opts.onProgress({ done: 0, total: 0, found: 0, empty: 0, failed: 0, cancelled: 0 });
+                resolve(results);
+                return;
+            }
 
             function oneDone() {
+                settled++;
                 pending--;
+                // Progress callback, throttled so a 2000-tile probe does not
+                // touch the DOM 2000 times.
+                if (opts.onProgress && (settled % 15 === 0 || pending <= 0)) {
+                    try {
+                        opts.onProgress({
+                            done: settled, total: jobs.length,
+                            found: results.found, empty: results.empty,
+                            failed: results.failed, cancelled: results.cancelled
+                        });
+                    } catch (e) {}
+                }
                 if (pending <= 0) resolve(results);
             }
 
@@ -672,9 +861,13 @@
             // reports at zooms/areas the cache cannot serve.
             function decide(job, imgEl, allowFallback, blobRef) {
                 tileHasVisibleContent(imgEl, function (hasContent) {
-                    if (blobRef.v) {
-                        try { root.URL.revokeObjectURL(blobRef.v); } catch (e) {}
-                        blobRef.v = null;
+                    if (job._cancelled) {
+                        if (blobRef.v) {
+                            try { root.URL.revokeObjectURL(blobRef.v); } catch (e) {}
+                            blobRef.v = null;
+                        }
+                        oneDone();
+                        return;
                     }
                     if (hasContent) {
                         results.found++;
@@ -682,10 +875,28 @@
                         if (results.foundTiles.indexOf(tileKey) === -1) {
                             results.foundTiles.push(tileKey);
                         }
+                        // Transfer the blob URL to the caller (the map layer)
+                        // so THIS tile appears immediately while the rest of
+                        // the probe is still running. If the caller doesn't
+                        // take it, revoke it as before.
+                        var transferred = false;
+                        if (blobRef.v && opts.onTileFound) {
+                            try { transferred = opts.onTileFound(job, blobRef.v) === true; } catch (e) {}
+                        }
+                        if (blobRef.v) {
+                            if (!transferred) {
+                                try { root.URL.revokeObjectURL(blobRef.v); } catch (e) {}
+                            }
+                            blobRef.v = null;
+                        }
                         oneDone();
                         return;
                     }
                     if (allowFallback && job.fallbackUrl && !job._fbProbeTried) {
+                        if (blobRef.v) {
+                            try { root.URL.revokeObjectURL(blobRef.v); } catch (e) {}
+                            blobRef.v = null;
+                        }
                         job._fbProbeTried = true;
                         // forceFetch: skip the IndexedDB read — the cache may
                         // already hold the transparent GWC blob for this tile.
@@ -694,7 +905,8 @@
                             cacheKey: job.cacheKey,
                             url: job.fallbackUrl,
                             tileEl: imgEl,
-                            priority: 0,
+                            priority: job.priority || 0,
+                            probe: true,
                             forceFetch: true,
                             onBlobUrl: function (url) { blobRef.v = url; },
                             onLoad: function () { decide(job, imgEl, false, blobRef); },
@@ -713,9 +925,26 @@
                                 }
                                 results.failed++;
                                 oneDone();
+                            },
+                            onCancelled: function () {
+                                if (blobRef.v) {
+                                    try { root.URL.revokeObjectURL(blobRef.v); } catch (e) {}
+                                    blobRef.v = null;
+                                }
+                                results.cancelled++;
+                                oneDone();
                             }
                         });
                         return;
+                    }
+                    // Definitively empty on every endpoint that could answer:
+                    // remember it for the session AND for future sessions so
+                    // re-probing the same area is zero-network.
+                    Queue.noteMissing(job.cacheKey);
+                    IDB.setEmpty(job.cacheKey);
+                    if (blobRef.v) {
+                        try { root.URL.revokeObjectURL(blobRef.v); } catch (e) {}
+                        blobRef.v = null;
                     }
                     results.empty++;
                     oneDone();
@@ -725,10 +954,21 @@
             jobs.forEach(function (job, idx) {
                 var cacheKey = makeCacheKey(job.layerLabel, job.z, job.x, job.y);
                 var key = cacheKey + '::probe' + idx;
+                // Attach to the raw job too — decide()/fallback retries use
+                // job.cacheKey (negative-cache markers) and job.key (retry key).
+                job.cacheKey = cacheKey;
+                job.key = key;
                 var imgEl = new root.Image();
                 var blobUrl = { v: null };
                 if (!job.fallbackUrl) {
                     job.fallbackUrl = fallbackWmsUrl(job.url);
+                }
+                // GWC has already proven (this session) that it cannot serve
+                // this layer at this zoom — skip the doomed first request and
+                // probe the plain WMS rendering endpoint directly.
+                if (Queue.isGwcBroken(job.layerLabel, job.z) && job.fallbackUrl) {
+                    job.url = job.fallbackUrl;
+                    job._fallbackTried = true;
                 }
 
                 Queue.enqueue({
@@ -737,7 +977,8 @@
                     url: job.url,
                     fallbackUrl: job.fallbackUrl,
                     tileEl: imgEl,
-                    priority: 0,
+                    priority: job.priority || 0,
+                    probe: true,
                     onBlobUrl: function (url) { blobUrl.v = url; },
                     onLoad: function () {
                         // Synchronous decode inspection, then release the blob URL.
@@ -757,6 +998,14 @@
                             blobUrl.v = null;
                         }
                         results.failed++;
+                        oneDone();
+                    },
+                    onCancelled: function () {
+                        if (blobUrl.v) {
+                            try { root.URL.revokeObjectURL(blobUrl.v); } catch (e) {}
+                            blobUrl.v = null;
+                        }
+                        results.cancelled++;
                         oneDone();
                     }
                 });
@@ -980,9 +1229,11 @@
     // Console helper for on-device verification (Step 9 of the brief).
     root.coronaWmsDebug = function () {
         var s = Queue.stats();
-		console.log('[CoronaWms] device:', s.isMobile ? 'MOBILE' : 'DESKTOP',
-            '| minZoom:', s.minZoom, '| max concurrent:', s.concurrent);
-        console.log('[CoronaWms] active:', s.active, '| queued:', s.waiting,
+        console.log('[CoronaWms] device:', s.isMobile ? 'MOBILE' : 'DESKTOP',
+            '| minZoom:', s.minZoom, '| max concurrent:', s.concurrent,
+            '| probe concurrent:', s.probeConcurrent);
+        console.log('[CoronaWms] active:', s.active, '| probe-active:', s.activeProbe,
+            '| queued:', s.waiting,
             '| cacheHits:', s.totals.cacheHits, '| fetched:', s.totals.fetched,
             '| failed:', s.totals.failed, '| cancelled:', s.totals.cancelled,
             '| circuitOpen:', s.circuitOpen);
@@ -991,6 +1242,7 @@
 
     console.log('[CoronaWms] optimised layer initialised (' +
         (IS_MOBILE ? 'mobile' : 'desktop') + ', minZoom=' + CONFIG.minZoom +
-        ', concurrent=' + CONFIG.concurrent + ').');
+        ', concurrent=' + CONFIG.concurrent + ', probeConcurrent=' +
+        CONFIG.probeConcurrent + ').');
 
 })(typeof window !== 'undefined' ? window : this);
