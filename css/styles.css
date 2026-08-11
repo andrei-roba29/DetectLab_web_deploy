@@ -481,8 +481,9 @@
         }
         .osm-places-tooltip::before { display: none; }
 
-        /* ── LIDAR Ro2m: elimina fundalul alb al tile-urilor ArcGIS pe harta satelit ── */
-        .lidar-ro2m-tiles {
+        /* ── Romania-wide LIDAR: elimina fundalul alb al tile-urilor ArcGIS pe harta satelit ── */
+        .lidar-ro2m-tiles,
+        .lidar-ro1m-tiles {
             filter: invert(1);
             mix-blend-mode: screen;
         }
