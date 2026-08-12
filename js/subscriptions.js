@@ -4,9 +4,9 @@
    Single source of truth for the paid membership:
      · one plan:  Monthly — €5 / month
      · weekly & yearly are marked as NOT AVAILABLE in the pricing UI
-     · premium layers are gated: any attempt to enable a premium layer
-       (or open the Premium tab) opens the membership popup
-     · popup "Buy / Cumpără" -> checkout.html
+     · free members can browse the Premium tab with a lock on every layer
+     · attempts to enable a locked layer open the membership popup
+     · the catalogue CTA and popup "Buy / Cumpără" -> checkout.html
      · after payment the user's profile gets plan='premium' +
        premium_expires_at (Supabase `profiles` table, with a localStorage
        fallback so the demo works even before the migration is applied)
@@ -334,26 +334,44 @@
         return { expiresAt: expiresAt };
     };
 
-    /* ── Gating: premium layers & the Premium tab ────────────────── */
+    /* ── Gating: premium layers ──────────────────────────────────── */
+
+    // Add a real, accessible lock badge to every top-level Premium row.
+    // This is generated here so new Premium layers automatically receive the
+    // same locked treatment without duplicating markup in index.html.
+    function ensurePremiumLockBadges() {
+        document.querySelectorAll('.transp-layer-row[data-category="premium"]').forEach(function (row) {
+            if (row.querySelector('.premium-layer-lock-badge')) return;
+
+            var badge = document.createElement('button');
+            badge.type = 'button';
+            badge.className = 'premium-layer-lock-badge';
+            badge.setAttribute('aria-label', t('prem_layer_locked_label'));
+            badge.innerHTML =
+                '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+                '  <rect x="3" y="7" width="10" height="8" rx="2" stroke="currentColor" stroke-width="1.5"/>' +
+                '  <path d="M5.5 7V4.8a2.5 2.5 0 0 1 5 0V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+                '</svg>' +
+                '<span class="t" data-key="prem_layer_locked_label">' + esc(t('prem_layer_locked_label')) + '</span>';
+            row.insertBefore(badge, row.firstChild);
+        });
+    }
 
     // Anything interactive inside a [data-category="premium"] row is
-    // blocked for free users (capture phase → runs before the layer
-    // toggle handlers).
+    // blocked for free users (capture phase → runs before the layer toggle
+    // handlers). The Premium tab itself is deliberately NOT gated: free users
+    // should be able to browse all of the locked layers and see the checkout
+    // CTA before deciding to subscribe.
     function onDocClickCapture(e) {
         if (isPremium()) return;
         var target = e.target;
         if (!target || !target.closest) return;
 
-        // Gate the Premium tab inside the layers panel.
-        if (target.closest && target.closest('[data-tab="premium"]')) {
-            e.preventDefault();
-            e.stopPropagation();
-            rememberPendingToggle(target);
-            openPremiumModal();
-            return;
-        }
+        // The catalogue CTA starts the checkout flow rather than opening the
+        // generic layer-details popup.
+        if (target.closest('[data-premium-checkout]')) return;
 
-        var row = target.closest('[data-category="premium"]');
+        var row = target.closest('.transp-layer-row[data-category="premium"]');
         if (!row) return;
 
         // Allow pure text selection / scrolling; block every interactive
@@ -414,12 +432,31 @@
         });
     }
 
-    // Keeps premium checkboxes in sync with the actual subscription.
+    // Keeps premium controls and the browseable locked catalogue in sync with
+    // the actual subscription.
     function applyPremiumUI() {
         var prem = isPremium();
-        document.querySelectorAll('[data-category="premium"] input[type="checkbox"]').forEach(function (cb) {
-            if (!prem) cb.checked = false;
+        ensurePremiumLockBadges();
+
+        document.querySelectorAll('.transp-layer-row[data-category="premium"]').forEach(function (row) {
+            row.classList.toggle('is-premium-locked', !prem);
+            if (prem) row.removeAttribute('aria-disabled');
+            else row.setAttribute('aria-disabled', 'true');
+
+            row.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+                if (!prem) cb.checked = false;
+            });
+
+            var lock = row.querySelector('.premium-layer-lock-badge');
+            if (lock) {
+                lock.setAttribute('aria-label', t('prem_layer_locked_label'));
+                lock.tabIndex = prem ? -1 : 0;
+            }
         });
+
+        var panelUpsell = document.getElementById('premiumPanelUpsell');
+        if (panelUpsell) panelUpsell.classList.toggle('premium-member', prem);
+
         // Reflect premium state in the nav pill / user menu if present.
         var navBadge = document.getElementById('navPremiumBadge');
         if (navBadge) navBadge.style.display = prem ? '' : 'none';
@@ -482,6 +519,15 @@
 
     function init() {
         document.addEventListener('click', onDocClickCapture, true);
+
+        var panelCheckoutBtn = document.getElementById('premiumPanelCta');
+        if (panelCheckoutBtn) {
+            panelCheckoutBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof window.goToCheckout === 'function') window.goToCheckout();
+            });
+        }
 
         window.addEventListener('detectlab:authchange', function () {
             refreshPremiumModal();

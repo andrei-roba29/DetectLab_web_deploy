@@ -12,8 +12,9 @@ Stripe** are wired in — including how to go live and receive payouts.
 |---|---|
 | Weekly & Yearly plans marked **Not available** (semi-transparent tag, disabled) | `index.html` pricing section + `css/styles.css` (`.plan-unavailable`, `.plan-disabled`) |
 | Only **Monthly €5** is sold (prices locked to monthly) | `js/translations.js` (`prices`, `isMonthly`) |
-| Trying to enable a **premium layer** (or open the Premium tab) instantly opens the membership popup | `js/subscriptions.js` (document-level capture click gate + wrapped toggle functions) |
-| Popup "Buy / Cumpără" → **checkout page** | `js/subscriptions.js` (`goToCheckout`) |
+| The **Premium tab stays browseable** for free users: every Premium layer is shown with a lock plus a localized membership CTA | `index.html`, `css/styles.css`, `js/subscriptions.js` |
+| Trying to enable a **locked premium layer** instantly opens the membership popup | `js/subscriptions.js` (document-level capture click gate + wrapped toggle functions) |
+| "Become a premium member / Devino membru premium" and popup "Buy / Cumpără" → **checkout page** | `js/subscriptions.js` (`goToCheckout`) |
 | **Buy / Cumpără button in the subscription section** (below the map) → checkout | pricing section button wired to `goToCheckout()` |
 | Checkout page → **Stripe Checkout** (cards + Apple Pay + Google Pay handled by Stripe) | `checkout.html`, `js/checkout.js` |
 | Checkout session created **server-side** (never trust the browser with prices) | `backend/src/routes/payments.js` → `POST /api/payments/checkout` |
@@ -34,14 +35,16 @@ New/changed files (payments):
 
 ## How the flow works
 
-1. A free (or logged-out) user tries to switch on any premium layer — APM
-   2.0, Roman Empire, Historical maps / Josephine +, LIDAR Scanner,
-   Archeological Potential — or clicks the **Premium / Premium** tab.
-2. The **membership popup** appears instantly. Logged-out users get a
-   "Log in / Register" prompt; logged-in users see the benefits and the
+1. A free (or logged-out) user opens the **Premium / Premium** tab and can
+   browse every premium layer — APM 2.0, Roman Empire, Historical maps /
+   Josephine +, LIDAR Scanner and Archeological Potential. Every layer has
+   a visible lock and the catalogue shows **Become a premium member /
+   Devino membru premium**.
+2. Trying a locked control opens the **membership popup**. Logged-out users
+   get a "Log in / Register" prompt; logged-in users see the benefits and the
    **Buy Premium · €5/month** button.
-3. **Buy** → `checkout.html`. Not logged in? You're sent through login
-   first and automatically bounced back to checkout afterwards.
+3. The catalogue CTA or **Buy** → `checkout.html`. Not logged in? You're sent
+   through login first and automatically bounced back to checkout afterwards.
 4. On checkout, **Pay €5.00** → the frontend asks the backend
    (`POST /api/payments/checkout`, authenticated with the user's Supabase
    token) for a **Stripe Checkout Session** and redirects the user to
@@ -180,6 +183,6 @@ All strings are in `js/translations.js` under the `prem_*`, `co_*` and
 ## Tests
 
 ```bash
-node test-premium-subscription.js   # 40 assertions (pricing, gating, purchase, Stripe redirect checkout)
+node test-premium-subscription.js   # pricing, browseable locked catalogue, gating, purchase, Stripe checkout
 node test-payments.mjs              # 27 assertions (webhook signature, event mapping, handler, auth middleware)
 ```

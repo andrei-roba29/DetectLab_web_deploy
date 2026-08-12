@@ -49,6 +49,10 @@
                 prem_buy_btn: 'Buy Premium · €5/month',
                 prem_later: 'Not now',
                 prem_manage: 'Manage subscription',
+                prem_panel_locked: 'Premium layers are locked',
+                prem_panel_desc: 'Become a Premium member to unlock every layer and tool.',
+                prem_panel_cta: 'Become a premium member',
+                prem_layer_locked_label: 'Premium layer locked',
                 // ── Checkout page ──
                 co_back_map: 'Back to map',
                 co_login_title: 'Log in to continue',
@@ -243,6 +247,10 @@
                 prem_buy_btn: 'Cumpără Premium · 5 €/lună',
                 prem_later: 'Acum nu',
                 prem_manage: 'Gestionează abonamentul',
+                prem_panel_locked: 'Straturile premium sunt blocate',
+                prem_panel_desc: 'Devino membru Premium pentru a debloca toate straturile și instrumentele.',
+                prem_panel_cta: 'Devino membru premium',
+                prem_layer_locked_label: 'Strat premium blocat',
                 // ── Checkout page ──
                 co_back_map: 'Înapoi la hartă',
                 co_login_title: 'Autentifică-te pentru a continua',
