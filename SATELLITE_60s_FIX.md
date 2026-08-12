@@ -1,5 +1,58 @@
 # Satellite Imagery 60's — faithful replica of the Corona Atlas tile fetching
 
+> **Update 2026-08-12 (b) — the layer showed nothing: wrong layer *names*.**
+>
+> The request format documented below was already correct; what was wrong was
+> the *list of CORONA layers* being requested. It had been written from the
+> naming pattern instead of the server's real catalogue, so most names did not
+> exist. The reported request
+>
+> ```
+> …/gwc/service/wms?…&LAYERS=corona%3A1107-1074Fore&…
+>   → 400: Unknown layer corona:1107-1074Fore.
+> ```
+>
+> Verified live against `geoserve.cast.uark.edu`:
+>
+> | Old entry | Reality on the server |
+> |---|---|
+> | `corona:1107-1074Fore` | **does not exist** → `400 Unknown layer` (the reported bug) |
+> | `corona:1103-2155Fore`, `corona:1110-2289Aft`, `corona:1103-2139Aft`, `corona:1106-1042Aft`, `corona:1105-2235Aft` | **do not exist** |
+> | `corona:1107-1074Aft` | exists, but images **Greece** (22.09 E, 38.76 N) |
+> | `corona:1110-2289Fore` | exists, but images **Peru** (−75.67 E, −13.02 N) |
+> | `corona:1105-2235Fore` | exists, but images the **Middle East** (31.74 E, 24.62 N) |
+> | `corona:1103-2167df101` | exists, but images **China** (117.57 E, 35.73 N) |
+>
+> So every tile request over Romania either errored or fell outside the pass
+> footprint — the layer could never draw anything. This is expected of the
+> archive: CAST publishes the *"Corona Atlas of the Middle East"*, and its
+> coverage of Romania is limited to a few passes.
+>
+> **Fix:** the list now contains only layers verified to (a) exist and (b)
+> return real pixels over Romania (WMS `GetFeatureInfo`, non-zero `GRAY_INDEX`),
+> each gated to its own footprint read from the layer's KML `LookAt`:
+>
+> | Layer | Verified evidence |
+> |---|---|
+> | `corona:1104-2155Fore` / `…Aft` | Transylvania — `GRAY_INDEX 255` at 22.90 E / 46.58 N |
+> | `corona:1036-2139Fore` | Muntenia/Bucharest — `GRAY_INDEX 88` at 26.10 E / 44.43 N |
+> | `corona:1103-1058Aft` / `…Fore` | Muntenia — `GRAY_INDEX 105/112` at ~25.4 E / 44.4 N |
+> | `corona:1026-2088Aft` | Oltenia — `GRAY_INDEX 119` at ~23.8 E / 44.3 N |
+> | `corona:1104-2155df004` / `df007` / `df011` | Transylvania frames (full detail) |
+>
+> Each layer now carries its **own** `bounds` (its real footprint clipped to
+> Romania) instead of a blanket Romania box, so Leaflet never requests a tile
+> the pass does not cover. A `tileerror` handler hides any tile the server
+> still refuses and logs the layer name once, so a future upstream rename
+> degrades quietly instead of leaving broken tiles.
+>
+> Regression test: `node test-sat60-layers.js`.
+>
+> **Note on scope:** large parts of Romania (e.g. Cluj — the location of the
+> reported tile, plus Iași, Brașov, Constanța, Timișoara) have **no** imagery
+> in the CAST archive at all. There the layer is correctly empty; that is a
+> limit of the source, not a bug.
+
 **Status: 2026-08-12** — the layer now replicates the *exact* tile fetching /
 request sending of the original website
 [Corona Atlas](https://corona.cast.uark.edu/atlas) (CAST, University of
@@ -99,19 +152,20 @@ naming `corona:<mission>-<pass><df|da><###>` / `corona:<mission>-<pass><Fore|Aft
 - The premium red coverage rectangle now hides from z8 (when real pass tiles
   begin) instead of z11.
 
-### Curated Romania layer list
+### Verified Romania layer list (corrected 2026-08-12)
 
-Pass mosaics (16): `corona:1022-2104Aft|Fore`, `corona:1103-2139Aft|Fore`,
-`corona:1103-2155Aft|Fore`, `corona:1103-2167Aft|Fore`,
-`corona:1105-2235Aft|Fore`, `corona:1106-1042Aft|Fore`,
-`corona:1107-1074Aft|Fore`, `corona:1110-2289Aft|Fore`.
+Pass mosaics (6): `corona:1104-2155Fore`, `corona:1104-2155Aft`,
+`corona:1036-2139Fore`, `corona:1103-1058Aft`, `corona:1103-1058Fore`,
+`corona:1026-2088Aft`.
 
-Frames (3): `corona:1104-2155df004`, `corona:1105-2235df064`,
-`corona:1103-2167df101`.
+Frames (3): `corona:1104-2155df004`, `corona:1104-2155df007`,
+`corona:1104-2155df011`.
 
-(These names follow the verified `corona:<mission>-<pass><df|da|Fore|Aft>`
-pattern; the frame identifiers `df064`, `df101`, `df004` are known-good
-layers on the CAST server.)
+Each entry is a `{ name, bounds }` descriptor. **Names are not derived from
+the naming pattern** — that is what caused the bug — they were confirmed
+against the live server (the layer resolves on GeoWebCache, and
+`GetFeatureInfo` returns non-zero `GRAY_INDEX` inside Romania), and `bounds`
+is the layer's own KML footprint clipped to Romania.
 
 ---
 
@@ -123,7 +177,7 @@ layers on the CAST server.)
   fetching, zoom gating z8/z12; coverage-rectangle entry updated
   (`coverageMinZoom: 8`).
 - `index.html` — script comments/versions updated
-  (`?v=20260812-faithful`); the old "Load images here" UI note removed.
+  (`?v=20260812-layers`); the old "Load images here" UI note removed.
 - `js/translations.js` — `sat60_*` UI strings removed (the on-demand button
   is gone); `layer_satellite60s` label kept.
 - `css/styles.css` — `.sat60-bottom-ui` styles removed.
@@ -136,8 +190,15 @@ layers on the CAST server.)
 ## 4. Tests
 
 ```bash
-node test-sat60-fetch.js
+node test-sat60-fetch.js    # request format is byte-identical to the original
+node test-sat60-layers.js   # layer names exist on the server and cover Romania
 ```
+
+`test-sat60-layers.js` pins the regression: it fails if any of the
+non-existent names (including `corona:1107-1074Fore`) or any of the
+wrong-continent layers reappear, if a configured layer is not on the verified
+list, if a layer loses its footprint `bounds`, or if the `tileerror` handling
+is removed.
 
 Verifies: the generated request URL is byte-identical (parameter names,
 order, encoding) to the original's captured traffic, the BBOX is the standard

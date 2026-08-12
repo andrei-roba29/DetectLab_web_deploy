@@ -9286,7 +9286,7 @@
             //              (LAYERS=corona:<pass> / corona:<frame>).
             //
             // This block replicates that exactly: every Corona pass mosaic or
-            // individual frame in the curated Romania list below becomes its
+            // individual frame in the VERIFIED Romania list below becomes its
             // own tile layer that issues those same requests, and tiles are
             // fetched by the browser like any normal map layer — no manual
             // "Load images here" button, no client-side request queue, no
@@ -9304,25 +9304,45 @@
                 var SAT60_OPACITY = 0.85;
                 var SAT60_MAX_NATIVE_ZOOM = 15;
 
-                // Curated CORONA layers whose geographic coverage includes
-                // Romanian territory (verified against the CAST GeoServer
-                // WMS-C capabilities and the archived atlas traffic).
-                // Pass mosaics (…Fore / …Aft) — coarse overview level.
+                // CORONA passes that really exist on the CAST GeoServer AND
+                // really cover Romanian territory.
+                //
+                // IMPORTANT — why this list is short and why it is hard-checked:
+                // the CAST archive is the "Corona Atlas of the Middle East";
+                // its Romanian coverage is limited to a handful of passes.
+                // The previous list here was guessed from the naming pattern
+                // and most of those names do not exist on the server at all
+                // (GeoWebCache answers `400 Unknown layer corona:…`, e.g. the
+                // reported `corona:1107-1074Fore`), while the few that do
+                // exist (`corona:1107-1074Aft`, `corona:1110-2289Fore`, …)
+                // image Greece and Peru, not Romania — so the layer could
+                // never draw anything.
+                //
+                // Every entry below was verified against the live server via
+                // WMS GetFeatureInfo (non-zero GRAY_INDEX = real pixels) and
+                // its footprint read from the layer's own KML LookAt, then
+                // clipped to Romania. `bounds` keeps Leaflet from requesting
+                // tiles outside the pass's real footprint, so no request can
+                // 404/400 and the browser is not flooded with empty tiles.
                 var SAT60_PASS_LAYERS = [
-                    "corona:1022-2104Aft", "corona:1022-2104Fore",
-                    "corona:1103-2139Aft", "corona:1103-2139Fore",
-                    "corona:1103-2155Aft", "corona:1103-2155Fore",
-                    "corona:1103-2167Aft", "corona:1103-2167Fore",
-                    "corona:1105-2235Aft", "corona:1105-2235Fore",
-                    "corona:1106-1042Aft", "corona:1106-1042Fore",
-                    "corona:1107-1074Aft", "corona:1107-1074Fore",
-                    "corona:1110-2289Aft", "corona:1110-2289Fore"
+                    // Transylvania / Apuseni corridor (mission 1104, pass 2155)
+                    { name: "corona:1104-2155Fore", bounds: [[43.50, 19.50], [47.73, 26.77]] },
+                    { name: "corona:1104-2155Aft",  bounds: [[43.50, 19.53], [47.72, 26.63]] },
+                    // Oltenia / Muntenia corridor (mission 1036, pass 2139)
+                    { name: "corona:1036-2139Fore", bounds: [[43.50, 21.08], [46.50, 27.78]] },
+                    // Muntenia / Bucharest corridor (mission 1103, pass 1058)
+                    { name: "corona:1103-1058Aft",  bounds: [[43.50, 23.46], [45.82, 27.38]] },
+                    { name: "corona:1103-1058Fore", bounds: [[43.50, 22.62], [46.01, 28.34]] },
+                    // Southern Carpathians / Oltenia (mission 1026, pass 2088)
+                    { name: "corona:1026-2088Aft",  bounds: [[43.50, 21.52], [46.29, 27.45]] }
                 ];
                 // Individual frames (…df### Fore / …da### Aft) — full detail.
+                // Verified the same way; df004 is the Transylvania frame at
+                // ~22.90E/46.58N (GRAY_INDEX 255 = real imagery).
                 var SAT60_FRAME_LAYERS = [
-                    "corona:1104-2155df004",
-                    "corona:1105-2235df064",
-                    "corona:1103-2167df101"
+                    { name: "corona:1104-2155df004", bounds: [[45.28, 21.01], [47.87, 24.78]] },
+                    { name: "corona:1104-2155df007", bounds: [[44.91, 21.12], [47.50, 24.86]] },
+                    { name: "corona:1104-2155df011", bounds: [[44.42, 21.25], [47.00, 24.95]] }
                 ];
 
                 // The original atlas requests pass-level tiles from mid zoom
@@ -9336,7 +9356,15 @@
                 var _sat60Layers = [];
                 var _sat60MapLayer = L.layerGroup([]);
 
-                function _sat60MakeLayer(name, minZoom) {
+                function _sat60MakeLayer(entry, minZoom) {
+                    // Accept both a plain layer name and a {name, bounds}
+                    // descriptor; `bounds` is the pass's verified footprint
+                    // (clipped to Romania) so Leaflet never asks the server
+                    // for a tile the pass does not cover.
+                    var name = (typeof entry === "string") ? entry : entry.name;
+                    var layerBounds = (typeof entry === "string" || !entry.bounds)
+                        ? ROMANIA_BOUNDS
+                        : L.latLngBounds(entry.bounds);
                     var opts = {
                         layers: name,
                         coronaLayer: name,
@@ -9346,28 +9374,43 @@
                         tileSize: 256,
                         opacity: SAT60_OPACITY,
                         pane: "pane_sat60",
-                        bounds: ROMANIA_BOUNDS,
+                        bounds: layerBounds,
                         minZoom: minZoom,
                         maxNativeZoom: SAT60_MAX_NATIVE_ZOOM,
                         maxZoom: 20
                     };
+                    var layer;
                     if (typeof window.createCoronaWmsLayer === "function") {
                         // Faithful layer: emits the original atlas's exact
                         // WMS-C request URLs (see js/corona-wms-layer.js).
-                        return window.createCoronaWmsLayer(SAT60_WMS_URL, opts);
+                        layer = window.createCoronaWmsLayer(SAT60_WMS_URL, opts);
+                    } else {
+                        // Fallback if corona-wms-layer.js is missing: plain WMS
+                        // tile layer against the same GWC endpoint.
+                        layer = L.tileLayer.wms(SAT60_WMS_URL, opts);
                     }
-                    // Fallback if corona-wms-layer.js is missing: plain WMS
-                    // tile layer against the same GWC endpoint.
-                    return L.tileLayer.wms(SAT60_WMS_URL, opts);
+                    // A tile that the server refuses (e.g. the layer was
+                    // renamed/retired upstream: GeoWebCache answers
+                    // "400 Unknown layer …" instead of a PNG) must not leave a
+                    // broken <img> on the map — hide it and log the layer name
+                    // once so the cause is visible instead of silent.
+                    layer.on("tileerror", function (e) {
+                        if (e && e.tile) { e.tile.style.display = "none"; }
+                        if (!layer._sat60ErrorLogged) {
+                            layer._sat60ErrorLogged = true;
+                            console.warn("[Sat60] CORONA layer unavailable on the CAST server: " + name);
+                        }
+                    });
+                    return layer;
                 }
 
                 function ensureSat60Layers() {
                     if (_sat60Layers.length > 0) return true;
-                    SAT60_PASS_LAYERS.forEach(function (name) {
-                        _sat60Layers.push(_sat60MakeLayer(name, SAT60_PASS_MIN_ZOOM));
+                    SAT60_PASS_LAYERS.forEach(function (entry) {
+                        _sat60Layers.push(_sat60MakeLayer(entry, SAT60_PASS_MIN_ZOOM));
                     });
-                    SAT60_FRAME_LAYERS.forEach(function (name) {
-                        _sat60Layers.push(_sat60MakeLayer(name, SAT60_FRAME_MIN_ZOOM));
+                    SAT60_FRAME_LAYERS.forEach(function (entry) {
+                        _sat60Layers.push(_sat60MakeLayer(entry, SAT60_FRAME_MIN_ZOOM));
                     });
                     _sat60MapLayer = L.layerGroup(_sat60Layers);
                     window._sat60Layers = _sat60Layers;
