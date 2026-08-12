@@ -4,7 +4,7 @@
 
 // Bump this when a client-side data-sync fix ships so installed PWAs replace
 // stale script responses instead of continuing to run an older event client.
-const CACHE_NAME = 'detectlab-v34';
+const CACHE_NAME = 'detectlab-v35';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -53,6 +53,10 @@ const PRECACHE_URLS = [
   'js/lidar-geo.js?v=20260811-latlon',
   'js/lidar-scanner.js?v=20260811-lidar-perf',
   'css/styles.css?v=20260811-lidar-perf',
+  'css/styles.css?v=20260812-vertical-opacity',
+  'js/vertical-opacity-control.js',
+  'js/vertical-opacity-control.js?v=20260812',
+  'js/auth.js?v=20260812-vertical-opacity',
   'images/sonar_loading_animation.webp',
   'images/sonar_loading_animation.webp?v=20260729',
   'images/pwa-icon-192.png',

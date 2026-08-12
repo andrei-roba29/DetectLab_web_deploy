@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260811-lidar-perf">
+    <link rel="stylesheet" href="css/styles.css?v=20260812-vertical-opacity">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -1054,6 +1054,24 @@
                         <path d="M2 2L12 12M12 2L2 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                     </svg>
                 </button>
+
+                <!-- Selected-layer opacity control. Clicking any layer card that owns an
+                     opacity slider mirrors that slider here, vertically, so the map can
+                     remain visible while opacity is adjusted (desktop and installed PWA). -->
+                <div class="vertical-opacity-control" id="verticalOpacityControl"
+                     role="group" aria-label="Selected layer opacity" aria-hidden="true">
+                    <button type="button" class="vertical-opacity-close" id="verticalOpacityClose"
+                            title="Close opacity control" aria-label="Close opacity control">×</button>
+                    <span class="vertical-opacity-caption">OPACITY</span>
+                    <span class="vertical-opacity-layer" id="verticalOpacityLayer">Layer</span>
+                    <div class="vertical-opacity-slider-wrap">
+                        <input type="range" class="vertical-opacity-slider" id="verticalOpacitySlider"
+                               min="0" max="100" value="80" step="1"
+                               aria-label="Layer opacity" aria-orientation="vertical">
+                    </div>
+                    <output class="vertical-opacity-value" id="verticalOpacityValue"
+                            for="verticalOpacitySlider">80%</output>
+                </div>
 
                 <!-- Transparency panel arrow tab — outside map-wrapper to avoid overflow:hidden clipping -->
                 <button class="transp-arrow-tab" id="transpTab" onclick="toggleTranspPanel()" title="Layer Transparency">
@@ -2832,6 +2850,7 @@
          Web-Mercator tiles. Must load before map-app.js. -->
     <script src="js/corona-wms-layer.js?v=20260812-faithful"></script>
     <script src="js/map-app.js?v=20260812-faithful"></script>
+    <script src="js/vertical-opacity-control.js?v=20260812"></script>
     <script src="js/archeo-potential.js?v=20260803"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
     <script src="js/lidar-scanner.js?v=20260811-lidar-perf"></script>
@@ -3156,7 +3175,7 @@
           </div>
     </div>
 
-    <script src="js/auth.js?v=20260730"></script>
+    <script src="js/auth.js?v=20260812-vertical-opacity"></script>
 
 
     <div id="siteAlert">
