@@ -291,6 +291,16 @@
         circle.bindPopup('<strong>'+esc(p.category)+'</strong>'+(p.name?'<br>'+esc(p.name):'')+'<br><small>'+p.lat.toFixed(5)+', '+p.lng.toFixed(5)+'</small>'); return circle;
     }
     function setStatus(s) { var e=document.getElementById('lidarScannerStatus'); if(e)e.textContent=s; }
+    // Search pin must sit above pane_lidar (610) and match result description
+    // tags, which live on Leaflet's tooltipPane (650).
+    function ensureSearchMarkerPane() {
+        if (!map) return 'tooltipPane';
+        if (!map.getPane('pane_lidar_search_pin')) {
+            map.createPane('pane_lidar_search_pin');
+            map.getPane('pane_lidar_search_pin').style.zIndex = 650;
+        }
+        return 'pane_lidar_search_pin';
+    }
     function drawSelection(ll) {
         selected = ll;
         if (selectedMarker) map.removeLayer(selectedMarker);
