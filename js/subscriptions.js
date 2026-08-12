@@ -255,6 +255,61 @@
         window.location.href = 'checkout.html';
     };
 
+    /* ── Shared helpers for the payments API (used by checkout.js and
+          the account panel) ─────────────────────────────────────── */
+
+    window._dlApiBase = (typeof window.DETECTLAB_API_BASE !== 'undefined' && window.DETECTLAB_API_BASE) ||
+        'https://detectlab-backend-production.up.railway.app/api';
+
+    // Redirect helper (overridable in tests; production → real navigation).
+    window._dlRedirect = function (url) { window.location.href = url; };
+
+    window._dlAccessToken = async function () {
+        if (window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.auth.getSession) {
+            var r = await window.supabaseClient.auth.getSession();
+            var session = r && r.data && r.data.session;
+            return session ? session.access_token : null;
+        }
+        return null;
+    };
+
+    // Opens the Stripe billing portal (manage / cancel / renew).
+    window.openStripePortal = async function () {
+        var token = await window._dlAccessToken();
+        if (!token) {
+            if (typeof window.openAuth === 'function') window.openAuth('login');
+            return;
+        }
+        try {
+            var res = await fetch(window._dlApiBase + '/payments/portal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+            });
+            var data = await res.json().catch(function () { return {}; });
+            if (res.ok && data.url) {
+                window._dlRedirect(data.url);
+                return;
+            }
+            throw new Error(data.message || ('HTTP ' + res.status));
+        } catch (err) {
+            console.error('[Premium] openStripePortal:', err);
+            // Fall back to checkout (lets a free user subscribe / renew).
+            if (typeof window.goToCheckout === 'function') window.goToCheckout();
+        }
+    };
+
+    // Account panel button: premium → manage billing; free → checkout.
+    window.accountSubAction = function () {
+        var user = currentUser();
+        var premium = !!(user && user.plan === 'premium' && user.premiumExpiresAt &&
+            new Date(user.premiumExpiresAt).getTime() > Date.now());
+        if (premium && typeof window.openStripePortal === 'function') {
+            window.openStripePortal();
+        } else if (typeof window.goToCheckout === 'function') {
+            window.goToCheckout();
+        }
+    };
+
     // Called by checkout.html after a successful (demo) payment.
     window.completePremiumPurchase = async function (opts) {
         opts = opts || {};

@@ -1,0 +1,11 @@
+# Secrets — never commit these
+.env
+backend/.env
+
+# Dependencies (tracked legacy — new installs should not be committed)
+node_modules/
+backend/node_modules/
+
+# Logs / OS junk
+*.log
+.DS_Store

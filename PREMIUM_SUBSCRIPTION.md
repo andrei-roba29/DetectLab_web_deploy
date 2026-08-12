@@ -1,8 +1,8 @@
 # DetectLab Premium — Paid Subscription & Membership
 
-Everything you need to know about the subscription feature added in this
-branch: monthly membership (€5/month), premium-layer gating, the checkout
-page and how to take payments live.
+Everything about the subscription feature: monthly membership (€5/month),
+premium-layer gating, the checkout page, and how **real payments via
+Stripe** are wired in — including how to go live and receive payouts.
 
 ---
 
@@ -15,111 +15,171 @@ page and how to take payments live.
 | Trying to enable a **premium layer** (or open the Premium tab) instantly opens the membership popup | `js/subscriptions.js` (document-level capture click gate + wrapped toggle functions) |
 | Popup "Buy / Cumpără" → **checkout page** | `js/subscriptions.js` (`goToCheckout`) |
 | **Buy / Cumpără button in the subscription section** (below the map) → checkout | pricing section button wired to `goToCheckout()` |
-| Checkout page with **card form + Google Pay + Apple Pay** | `checkout.html`, `js/checkout.js`, `css/checkout.css` |
-| After payment → user becomes **Premium** | `js/subscriptions.js` (`completePremiumPurchase`) writes `profiles` row (Supabase) + localStorage fallback |
-| **Manage account** shows plan + **expiration date** + days left + Renew button | `js/account-legacy.js` (`refreshAccountSubscription`) + account panel in `index.html` |
+| Checkout page → **Stripe Checkout** (cards + Apple Pay + Google Pay handled by Stripe) | `checkout.html`, `js/checkout.js` |
+| Checkout session created **server-side** (never trust the browser with prices) | `backend/src/routes/payments.js` → `POST /api/payments/checkout` |
+| **Stripe webhook** activates / renews / revokes Premium in the `profiles` table | `backend/src/routes/payments.js` → `POST /api/payments/webhook` + `backend/src/services/subscriptionEvents.js` |
+| **Manage / cancel / renew** via the Stripe billing portal | `backend/src/routes/payments.js` → `POST /api/payments/portal` |
+| **Manage Account** shows plan + expiration + days left + Manage/Renew button | `js/account-legacy.js` + account panel in `index.html` |
 
-New files:
-- `checkout.html` — checkout page (order summary, wallets, card form, success screen)
-- `js/checkout.js` — checkout logic
-- `js/subscriptions.js` — plan config, gating, membership popup, purchase, profile sync
-- `css/checkout.css` — checkout styling
-- `supabase/migrations/20260812010000_create_profiles_subscription.sql` — `profiles` table + RLS
-- `test-premium-subscription.js` — smoke tests (run with `node test-premium-subscription.js`)
-
-Modified files:
-- `index.html` — pricing cards, premium modal, account subscription section, nav PREMIUM badge, script tag
-- `js/translations.js` — prices/notes + all new RO/EN strings
-- `js/auth.js` — loads the subscription profile on session sync
-- `js/account-legacy.js` — subscription block in Manage Account
-- `js/map-app.js` — untouched (gating is done centrally in `subscriptions.js`)
-- `css/styles.css`, `sw.js` (cache bump to `detectlab-v38-premium`)
+New/changed files (payments):
+- `backend/src/routes/payments.js` — checkout / webhook / portal endpoints
+- `backend/src/services/stripeClient.js` — minimal Stripe REST client (no SDK dep): Checkout Sessions, subscription/customer lookup, billing portal, webhook signature verification
+- `backend/src/services/subscriptionEvents.js` — Stripe event → `profiles` sync logic (pure, unit-tested)
+- `backend/src/middleware/requireUser.js` — validates the user's Supabase access token (via Supabase `/auth/v1/user`, so it works regardless of the backend `JWT_SECRET`)
+- `backend/migrations/004_stripe_payment_fields.sql` — Stripe columns on `profiles` + drops the client-side UPDATE/INSERT policies
+- `supabase/migrations/20260812020000_stripe_payment_fields.sql` — same, for `supabase db push`
+- `backend/scripts/setupStripe.js` — creates the product/price and prints your env values
+- `checkout.html`, `js/checkout.js`, `js/subscriptions.js`, `js/account-legacy.js`, `js/translations.js`, `css/checkout.css`, `index.html`, `sw.js`
+- `test-payments.mjs`, `test-premium-subscription.js`
 
 ## How the flow works
 
-1. A free (or logged-out) user tries to switch on any premium layer —
-   APM 2.0, Roman Empire, Historical maps / Josephine +, LIDAR Scanner,
+1. A free (or logged-out) user tries to switch on any premium layer — APM
+   2.0, Roman Empire, Historical maps / Josephine +, LIDAR Scanner,
    Archeological Potential — or clicks the **Premium / Premium** tab.
 2. The **membership popup** appears instantly. Logged-out users get a
    "Log in / Register" prompt; logged-in users see the benefits and the
    **Buy Premium · €5/month** button.
 3. **Buy** → `checkout.html`. Not logged in? You're sent through login
    first and automatically bounced back to checkout afterwards.
-4. On checkout: **Apple Pay / Google Pay** buttons (Payment Request API,
-   only shown on devices/browsers that support them) **or** the classic
-   card form (name, number, expiry, CVC with validation).
-5. Payment confirmed → `completePremiumPurchase()`:
-   - sets `plan = 'premium'` + `premium_expires_at = now + 30 days` on the
-     user's `profiles` row in Supabase;
-   - keeps a localStorage fallback so the demo works even before the
-     migration is applied;
-   - success screen shows the exact expiration date.
-6. **Manage Account** now shows a `PREMIUM` badge, `Expires on: dd.mm.yyyy`,
-   days left, and a Renew button. A PREMIUM badge also appears next to
-   "Manage Account" in the user menu, and the layer toggles the user tried
-   to enable before paying are switched on automatically.
+4. On checkout, **Pay €5.00** → the frontend asks the backend
+   (`POST /api/payments/checkout`, authenticated with the user's Supabase
+   token) for a **Stripe Checkout Session** and redirects the user to
+   Stripe's hosted page. Cards, Apple Pay and Google Pay are all handled
+   by Stripe — DetectLab never sees card data (PCI scope stays with Stripe).
+5. Stripe confirms the payment and calls the **webhook**
+   (`POST /api/payments/webhook`). The server:
+   - `checkout.session.completed` → activates Premium until the end of the billing period;
+   - `invoice.paid` → renews (extends to the new period end) — automatic monthly renewals;
+   - `invoice.payment_failed` → marks the subscription `past_due` (access kept until period end);
+   - `customer.subscription.deleted` → revokes Premium (access ends).
+   The webhook writes directly to `public.profiles` (server-side DB
+   connection, RLS-bypassing on purpose — see security note below).
+6. The checkout page polls the user's profile until the webhook lands
+   (a few seconds), then shows the success screen with the exact
+   expiration date.
+7. **Manage Account** shows a `PREMIUM` badge, `Expires on: dd.mm.yyyy`,
+   days left, and a **Manage subscription** button that opens the Stripe
+   billing portal (change card, cancel, renew — no billing UI to build).
 
-## ⚠️ Demo mode vs. real payments
+## Going live with Stripe (get the money into your account)
 
-**The checkout currently runs in DEMO mode**: the payment is simulated
-(no real charge is made) and the small "Demo mode" note on the checkout
-page says so. This lets you test the entire journey end-to-end right now
-without a payment provider.
+Stripe fully supports Romanian businesses (launched in RO — Billing,
+subscriptions and payouts to a Romanian bank account are available).
 
-To accept **real** payments:
+### 1. Create your Stripe account
+- Sign up at <https://dashboard.stripe.com/register> (as a Romanian
+  business/individual, your PFA/SRL details).
+- Complete the account activation: identity verification + business
+  details (CUI/CNP, address).
+- In **Settings → Payouts**, add your **Romanian bank account (IBAN)**.
+  Stripe pays out subscription revenue there on its standard schedule
+  (typically ~2 business days after each charge), minus Stripe's
+  processing fees.
 
-1. Pick a provider. **Stripe** is the recommended one — its Payment
-   Element supports card + Apple Pay + Google Pay out of the box.
-2. Replace `processPayment()` in `js/checkout.js` with a call to your
-   provider (e.g. a Supabase edge function that creates a
-   `PaymentIntent` / Checkout Session), then `stripe.confirmPayment(...)`.
-3. In the **Stripe webhook** handler (server-side, service_role key),
-   upsert the user's `profiles` row:
-   ```sql
-   insert into profiles (id, plan, premium_expires_at, updated_at)
-   values ($userId, 'premium', now() + interval '1 month', now())
-   on conflict (id) do update
-     set plan = 'premium',
-         premium_expires_at = now() + interval '1 month',
-         updated_at = now();
-   ```
-   For production security, make the webhook the **only** writer of the
-   `plan`/`premium_expires_at` columns and drop the client-side UPDATE
-   policy described below.
-4. Remove/hide the `co_demo_note` text (edit `co_demo_note` in
-   `js/translations.js`).
+### 2. Get your API keys
+- Dashboard → **Developers → API keys**. You get a **test** set
+  (`sk_test_...`) and a **live** set (`sk_live_...`). Keep the secret
+  keys server-side only — never in frontend code.
 
-## Supabase setup (one-time)
-
-Apply the migration:
-
+### 3. Create the product + price (one-time)
 ```bash
-supabase db push          # from the repo root (supabase/ folder)
-# or run supabase/migrations/20260812010000_create_profiles_subscription.sql
-# manually in the Supabase SQL editor
+cd backend
+STRIPE_SECRET_KEY=sk_test_xxx node scripts/setupStripe.js
+```
+This creates (idempotently) the **DetectLab Premium** product and the
+**€5/month** recurring price, then prints:
+- `STRIPE_PRICE_ID=price_xxx` (add to your backend env)
+- instructions for the webhook secret (step 5)
+
+> Do the same with your `sk_live_...` key before going live — test and
+> live have separate products/prices.
+
+### 4. Set the backend environment variables
+On **Railway** (or wherever `backend/` runs) and in `backend/.env`
+(local), set:
+
+```
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx        # from step 5
+STRIPE_PRICE_ID=price_xxx              # from step 3
+STRIPE_SITE_URL=https://your-frontend-host   # checkout return redirects
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_anon_key        # same as js/supabase.js
 ```
 
-What it does:
+`STRIPE_SITE_URL` is the public origin of the frontend (e.g. your GitHub
+Pages URL). If left empty, the backend falls back to the request's
+`Origin` header — fine for local testing.
 
-- `public.profiles` table: `id` (→ `auth.users`), `plan`
-  (`'free' | 'premium'`), `premium_expires_at`, `updated_at`.
-- Row Level Security enabled.
-- Policies: users can `select` / `insert` / `update` **only their own
-  row** (used by the demo checkout). In production with a real payment
-  provider, keep only `select` and let the webhook (service_role) write.
+### 5. Configure the webhook
+- **Production:** Stripe Dashboard → **Developers → Webhooks → Add
+  endpoint** → URL `https://<your-backend-host>/api/payments/webhook`.
+  Events: `checkout.session.completed`, `invoice.paid`,
+  `invoice.payment_failed`, `customer.subscription.updated`,
+  `customer.subscription.deleted`. After saving, click **Reveal signing
+  secret** → copy `whsec_...` into `STRIPE_WEBHOOK_SECRET`.
+- **Local dev:** `stripe listen --forward-to localhost:3001/api/payments/webhook`
+  (uses the Stripe CLI) — it prints a `whsec_...` to use locally.
+
+### 6. Apply the database migration
+```bash
+cd backend && npm run migrate          # adds Stripe columns + drops client UPDATE policy
+```
+or run `supabase/migrations/20260812020000_stripe_payment_fields.sql`
+in the Supabase SQL editor.
+
+### 7. Test end-to-end (test mode)
+With `sk_test_...` keys set:
+- Go through checkout and pay with Stripe's test card **4242 4242 4242
+  4242** (any future expiry, any CVC).
+- The webhook fires → your `profiles` row gets `plan='premium'` and a
+  `premium_expires_at` ≈ now + 1 month.
+- The billing portal lets you cancel — cancelling revokes access on
+  `customer.subscription.deleted`.
+
+### 8. Go live
+- Switch `STRIPE_SECRET_KEY` to `sk_live_...`, `STRIPE_PRICE_ID` to the
+  live price id, `STRIPE_WEBHOOK_SECRET` to the live endpoint's secret,
+  redeploy.
+- Make a small real purchase yourself first (you can refund it from the
+  Stripe dashboard).
+- Revenue appears in **Stripe Dashboard → Balances**, then is paid out
+  to your RO IBAN on the payout schedule.
+
+## ⚠️ Security notes
+
+- **The Stripe webhook is the ONLY writer of `plan`/`premium_expires_at`.**
+  The old demo mode let the browser write its own `profiles` row; with
+  real payments that would let anyone grant themselves Premium. Migration
+  `20260812020000` drops the client-side `profiles_update_own` and
+  `profiles_insert_own` policies. The `select` policy stays (the app reads
+  your own subscription status).
+- **`backend/.env` is no longer tracked in git** (it contained the live
+  database password). Use `backend/.env.example` as the template and set
+  real values via your host's env config. Keep Stripe secret keys
+  server-side only.
+- Stripe webhook requests are **signature-verified** (HMAC-SHA256) before
+  any DB write; the checkout endpoint requires a **valid Supabase token**
+  and re-checks the user server-side.
+
+## Local dev checklist
+
+1. `cp backend/.env.example backend/.env` and fill in values.
+2. `cd backend && npm install && npm run migrate`.
+3. `stripe listen --forward-to localhost:3001/api/payments/webhook` and
+   put the printed secret in `STRIPE_WEBHOOK_SECRET`.
+4. `npm run dev` in `backend/`, serve the site root (`python3 -m http.server`),
+   open `checkout.html`, pay with test card `4242 4242 4242 4242`.
 
 ## Translations
 
-All new strings are in `js/translations.js` under the `prem_*`, `co_*`
-and `acct_*` keys (English + Romanian). The pricing notes for weekly /
-yearly are `note_weekly` / `note_yearly` ("Not available" / "Indisponibil").
+All strings are in `js/translations.js` under the `prem_*`, `co_*` and
+`acct_*` keys (English + Romanian).
 
 ## Tests
 
 ```bash
-node test-premium-subscription.js   # 31 smoke assertions
+node test-premium-subscription.js   # 40 assertions (pricing, gating, purchase, Stripe redirect checkout)
+node test-payments.mjs              # 27 assertions (webhook signature, event mapping, handler, auth middleware)
 ```
-
-Covers: pricing (€5 monthly only), gating (free/logged-out/premium),
-pending-toggle memory, purchase → profile + localStorage + expiry,
-checkout card validation and the success screen.

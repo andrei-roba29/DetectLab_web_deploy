@@ -7,12 +7,18 @@ import { logger } from './logger.js';
 import sitesRouter from './routes/sites.js';
 import layersRouter from './routes/layers.js';
 import clasateRouter from './routes/clasate.js';
+import paymentsRouter from './routes/payments.js';
 import { startScheduler } from './jobs/scheduler.js';
 
 const app = express();
 
 app.use(cors()); // dev-friendly default: allows your React app on any localhost port to call this API
 app.use(compression()); // gzip responses - cuts egress costs substantially on large GeoJSON payloads
+
+// Stripe webhook signature verification needs the RAW body, so this must
+// be mounted BEFORE express.json() consumes it.
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json());
 app.use(pinoHttp({ logger }));
 
@@ -21,6 +27,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api', sitesRouter);
 app.use('/api', layersRouter);
 app.use('/api', clasateRouter);
+app.use('/api', paymentsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

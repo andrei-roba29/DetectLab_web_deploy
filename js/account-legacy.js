@@ -284,7 +284,9 @@
         var btnEl = document.getElementById('acctSubBtn');
         if (btnEl) {
             var label = btnEl.querySelector('.t') || btnEl;
-            label.textContent = premium ? _t('acct_renew') : _t('acct_buy_premium');
+            // Premium → opens the Stripe billing portal (manage/cancel/renew);
+            // free → goes to checkout. Action is wired via accountSubAction().
+            label.textContent = premium ? _t('acct_manage') : _t('acct_buy_premium');
         }
     };
 

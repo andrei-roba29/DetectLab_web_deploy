@@ -266,17 +266,41 @@ body {
 
 .co-btn-ghost:hover { color: var(--text); border-color: var(--border-strong); }
 
-.co-demo-note {
-    margin-top: 14px;
-    font-size: 0.78rem;
-    color: rgba(255, 200, 50, 0.8);
-    text-align: center;
+.co-pay-box { display: flex; flex-direction: column; }
+
+.co-pay-brand {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+}
+
+.co-pay-stripe { color: #635bff; font-weight: 800; }
+
+.co-pay-desc {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.55;
+    margin: 0 0 16px;
 }
 
 .co-secure {
     margin-top: 10px;
     font-size: 0.78rem;
     color: var(--muted);
+    text-align: center;
+}
+
+.co-info {
+    display: none;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(107, 63, 160, 0.12);
+    border: 1px solid rgba(107, 63, 160, 0.35);
+    color: #cdb8f5;
+    font-size: 0.85rem;
+    line-height: 1.5;
     text-align: center;
 }
 
