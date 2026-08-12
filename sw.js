@@ -4,7 +4,7 @@
 
 // Bump this when a client-side data-sync fix ships so installed PWAs replace
 // stale script responses instead of continuing to run an older event client.
-const CACHE_NAME = 'detectlab-v35';
+const CACHE_NAME = 'detectlab-v36';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -45,9 +45,9 @@ const PRECACHE_URLS = [
   'js/auth-forms.js',
   'js/account-legacy.js',
   'js/map-app.js',
-  'js/map-app.js?v=20260812-faithful',
+  'js/map-app.js?v=20260812-layers',
   'js/corona-wms-layer.js',
-  'js/corona-wms-layer.js?v=20260812-faithful',
+  'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',
