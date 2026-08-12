@@ -16,6 +16,267 @@
     let activeChatEventId = null;
     let activeChatDeadlineTimer = null;
 
+    // ── CHAT LAST SEEN TRACKING ──
+    function getChatLastSeenMap() {
+        try { return JSON.parse(localStorage.getItem('detectlab_chat_last_seen') || '{}'); } catch (e) { return {}; }
+    }
+    function saveChatLastSeenMap(map) {
+        try { localStorage.setItem('detectlab_chat_last_seen', JSON.stringify(map)); } catch (e) {}
+    }
+    function getLastSeen(eventId) {
+        var map = getChatLastSeenMap();
+        return map[eventId] || null;
+    }
+    function setLastSeen(eventId) {
+        if (!eventId) return;
+        var map = getChatLastSeenMap();
+        map[eventId] = new Date().toISOString();
+        saveChatLastSeenMap(map);
+    }
+
+    // ── INJECT BADGE + CALENDAR CSS ──
+    (function injectEventsExtraStyles() {
+        if (document.getElementById('detectlab-events-extra-style')) return;
+        var style = document.createElement('style');
+        style.id = 'detectlab-events-extra-style';
+        style.textContent = `
+        .event-notif-badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background: #C42B2B;
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 800;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            border: 2px solid rgba(10,20,42,0.95);
+            z-index: 5;
+            line-height: 1;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+        }
+        .event-notif-badge.hidden { display: none !important; }
+        .event-notif-badge.pulse { animation: eventBadgePulse 1.4s infinite; }
+        @keyframes eventBadgePulse { 0%{transform:scale(1)} 50%{transform:scale(1.18)} 100%{transform:scale(1)} }
+        .user-trigger { position: relative !important; }
+        .pwa-bar-trigger { position: relative !important; }
+        #userMenu button[onclick*="openEvents"] { position: relative !important; }
+        #pwaUserDropdown button[onclick*="openEvents"] { position: relative !important; }
+        .pwa-dropdown-user button[onclick*="openEvents"] { position: relative !important; }
+
+        /* Calendar panel */
+        #eventsManagerPanel {
+            position: fixed;
+            inset: 0;
+            z-index: 3500;
+            background: rgba(4,10,22,0.92);
+            backdrop-filter: blur(14px);
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            overflow-y: auto;
+            color: #F5F0EB;
+            font-family: 'Outfit', sans-serif;
+            animation: pwaDropUp 0.22s ease;
+        }
+        #eventsManagerPanel .cal-wrap {
+            max-width: 560px;
+            width: 100%;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding-bottom: 24px;
+        }
+        .cal-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+        .cal-title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.35rem;
+            color: var(--sky, #B8D8F0);
+            font-weight: 700;
+        }
+        .cal-nav {
+            display: flex;
+            gap: 8px;
+        }
+        .cal-nav button {
+            width: 34px; height: 34px;
+            border-radius: 8px;
+            border: 1px solid rgba(184,216,240,0.18);
+            background: rgba(255,255,255,0.06);
+            color: rgba(245,240,235,0.85);
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.18s, border-color 0.18s;
+        }
+        .cal-nav button:hover { background: rgba(107,63,160,0.28); border-color: rgba(196,160,240,0.5); }
+        .cal-weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: rgba(184,216,240,0.55);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 0 2px;
+        }
+        .cal-weekdays span { text-align: center; padding: 4px 0; }
+        .cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+        }
+        .cal-day {
+            aspect-ratio: 1;
+            min-height: 44px;
+            border-radius: 10px;
+            border: 1px solid rgba(184,216,240,0.12);
+            background: rgba(255,255,255,0.03);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 6px 2px 4px;
+            cursor: pointer;
+            position: relative;
+            transition: background 0.18s, border-color 0.18s, transform 0.12s;
+            user-select: none;
+        }
+        .cal-day:hover { background: rgba(107,63,160,0.18); border-color: rgba(196,160,240,0.35); transform: translateY(-1px); }
+        .cal-day.other-month { opacity: 0.28; }
+        .cal-day.today { border-color: rgba(184,216,240,0.55); box-shadow: inset 0 0 0 1px rgba(184,216,240,0.25); }
+        .cal-day.has-event { background: rgba(107,63,160,0.16); border-color: rgba(196,160,240,0.38); }
+        .cal-day.has-event::after {
+            content: '';
+            position: absolute;
+            bottom: 6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #C4A0F0;
+            box-shadow: 0 0 6px rgba(196,160,240,0.7);
+        }
+        .cal-day.has-event.attending::after { background: #2E9E4F; box-shadow: 0 0 6px rgba(46,158,79,0.6); }
+        .cal-day.selected {
+            background: linear-gradient(135deg, rgba(107,63,160,0.55), rgba(13,43,94,0.65)) !important;
+            border-color: rgba(196,160,240,0.75) !important;
+            color: #fff;
+        }
+        .cal-day-num { font-size: 0.88rem; font-weight: 600; line-height: 1; }
+        .cal-day-count {
+            font-size: 0.58rem;
+            margin-top: 2px;
+            color: rgba(245,240,235,0.6);
+            background: rgba(0,0,0,0.18);
+            border-radius: 6px;
+            padding: 0 4px;
+        }
+        .cal-selected-events {
+            margin-top: 6px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(184,216,240,0.12);
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 48px;
+        }
+        .cal-selected-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: rgba(184,216,240,0.9);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .cal-event-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(184,216,240,0.14);
+            border-radius: 9px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .cal-event-card .cec-title { font-weight: 700; font-size: 0.92rem; }
+        .cal-event-card .cec-meta { font-size: 0.72rem; opacity: 0.7; }
+        .cal-footer {
+            margin-top: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .cal-chats-btn {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #0D2B5E, #6B3FA0);
+            border: 1px solid rgba(196,160,240,0.45);
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            position: relative;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .cal-chats-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(0,0,0,0.45); }
+        .cal-chats-btn .event-notif-badge {
+            position: absolute;
+            top: -8px; right: -8px;
+        }
+        .cal-chats-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .cal-chat-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(184,216,240,0.15);
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+        .cal-back-btn {
+            background: none;
+            border: none;
+            color: var(--sky, #B8D8F0);
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0;
+            margin-bottom: 2px;
+        }
+        `;
+        document.head.appendChild(style);
+    })();
+
+
     // Helper: get current user
     function getCurrentUser() {
         return window._authUser ? window._authUser() : null;
@@ -1455,6 +1716,7 @@
 
         await syncEventChatState(eventId);
         loadManageEventDetails(eventId);
+        try { if (window._updateEventBadges) window._updateEventBadges(); } catch (e) {}
         alert(isRo ? 'Cerere acceptată! Chat-ul evenimentului a fost creat.' : 'Inquiry accepted! The event chat was created.');
     };
 
@@ -1686,17 +1948,413 @@
         saveLocalNotifications(notifs);
     }
 
-    // ── EVENTS PANEL (Manage Account -> Events or navbar Events) ──
-    window.openEvents = function () {
-        // Close desktop user menu
+
+    // ── BADGE / UNREAD CHAT SYSTEM ──
+    function ensureEventBadges() {
+        try {
+            var navTrigger = document.querySelector('#navUser .user-trigger');
+            if (navTrigger) {
+                navTrigger.style.position = 'relative';
+                if (!document.getElementById('navUserBadge')) {
+                    var b = document.createElement('span');
+                    b.id = 'navUserBadge';
+                    b.className = 'event-notif-badge hidden';
+                    b.textContent = '0';
+                    navTrigger.appendChild(b);
+                }
+            }
+            var userMenu = document.getElementById('userMenu');
+            if (userMenu) {
+                var btns = userMenu.querySelectorAll('button');
+                for (var i = 0; i < btns.length; i++) {
+                    var btn = btns[i];
+                    var onclick = btn.getAttribute('onclick') || '';
+                    var txt = (btn.textContent || '').toLowerCase();
+                    if (onclick.indexOf('openEvents') !== -1 || txt.indexOf('eveniment') !== -1 || txt.indexOf('event') !== -1) {
+                        if (txt.indexOf('eveniment') !== -1 || txt.indexOf('event') !== -1) {
+                            btn.style.position = 'relative';
+                            if (!btn.querySelector('#navEventsBadge')) {
+                                var b2 = document.createElement('span');
+                                b2.id = 'navEventsBadge';
+                                b2.className = 'event-notif-badge hidden';
+                                b2.textContent = '0';
+                                btn.appendChild(b2);
+                            }
+                        }
+                    }
+                }
+            }
+            var pwaTrigger = document.getElementById('pwaUserTrigger');
+            if (pwaTrigger) {
+                pwaTrigger.style.position = 'relative';
+                if (!document.getElementById('pwaUserBadge')) {
+                    var b3 = document.createElement('span');
+                    b3.id = 'pwaUserBadge';
+                    b3.className = 'event-notif-badge hidden';
+                    b3.textContent = '0';
+                    pwaTrigger.appendChild(b3);
+                }
+            }
+            var pwaDrop = document.getElementById('pwaUserDropdown');
+            if (pwaDrop) {
+                var pwaBtns = pwaDrop.querySelectorAll('button');
+                for (var j = 0; j < pwaBtns.length; j++) {
+                    var pb = pwaBtns[j];
+                    var pon = pb.getAttribute('onclick') || '';
+                    if (pon.indexOf('openEvents') !== -1) {
+                        pb.style.position = 'relative';
+                        if (!pb.querySelector('#pwaEventsBadge')) {
+                            var b4 = document.createElement('span');
+                            b4.id = 'pwaEventsBadge';
+                            b4.className = 'event-notif-badge hidden';
+                            b4.textContent = '0';
+                            pb.appendChild(b4);
+                        }
+                    }
+                }
+            }
+        } catch (e) { console.warn('ensureEventBadges error', e); }
+    }
+
+    async function getMyParticipatingEventIds() {
+        var user = getCurrentUser();
+        if (!user || !user.id) return [];
+        var ids = {};
+        var allEvs = eventsData.slice();
+        getLocalEvents().forEach(function(ev){ if (!allEvs.some(function(x){return x.id===ev.id;})) allEvs.push(ev); });
+        allEvs.forEach(function(ev){
+            if (ev.creator_id === user.id || (user.email && ev.creator_email && user.email === ev.creator_email)) {
+                ids[ev.id] = true;
+            }
+        });
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient.from('event_attendees').select('event_id').eq('user_id', user.id);
+                if (!res.error && Array.isArray(res.data)) {
+                    res.data.forEach(function(a){ if (a.event_id) ids[a.event_id]=true; });
+                }
+            }
+        } catch (e) {}
+        getLocalAttendees().forEach(function(a){
+            if (a.user_id === user.id && a.event_id) ids[a.event_id]=true;
+        });
+        return Object.keys(ids);
+    }
+
+    async function fetchChatMessagesForBadge(eventId) {
+        var msgs = [];
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient.from('event_chat_messages').select('user_id,created_at').eq('event_id', eventId).order('created_at', {ascending:false}).limit(10);
+                if (!res.error && Array.isArray(res.data) && res.data.length>0) msgs = res.data;
+            }
+        } catch (e) {}
+        if (msgs.length===0) {
+            var local = getLocalMessages().filter(function(m){ return m.event_id===eventId; });
+            local.sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+            msgs = local.slice(0,10);
+        }
+        return msgs;
+    }
+
+    async function getUnreadChatInfos() {
+        var user = getCurrentUser();
+        if (!user || !user.id) return [];
+        var myIds = await getMyParticipatingEventIds();
+        if (myIds.length===0) return [];
+        var activeChats = await fetchActiveEventChats(myIds);
+        var unread = [];
+        for (var i=0;i<activeChats.length;i++) {
+            var chat = activeChats[i];
+            var ev = getEventById(chat.event_id);
+            if (!ev || isEventExpired(ev.event_date)) continue;
+            var lastSeen = getLastSeen(chat.event_id);
+            if (!lastSeen) {
+                unread.push(chat);
+                continue;
+            }
+            try {
+                var msgs = await fetchChatMessagesForBadge(chat.event_id);
+                var lastSeenTime = new Date(lastSeen).getTime();
+                for (var m=0;m<msgs.length;m++) {
+                    var msg = msgs[m];
+                    if (!msg) continue;
+                    if (msg.user_id && msg.user_id === user.id) continue;
+                    var msgTime = new Date(msg.created_at).getTime();
+                    if (msgTime > lastSeenTime) { unread.push(chat); break; }
+                }
+            } catch (e) {}
+        }
+        return unread;
+    }
+
+    async function updateEventBadges() {
+        ensureEventBadges();
+        var user = getCurrentUser();
+        if (!user || !user.id) {
+            ['navUserBadge','navEventsBadge','pwaUserBadge','pwaEventsBadge','calChatsBadge'].forEach(function(id){
+                var el = document.getElementById(id);
+                if (el) { el.classList.add('hidden'); el.textContent='0'; }
+            });
+            return 0;
+        }
+        var unreadChats = [];
+        try { unreadChats = await getUnreadChatInfos(); } catch (e) { console.warn('getUnreadChatInfos failed', e); }
+        var count = unreadChats.length;
+
+        try {
+            if (count===0) {
+                var notifs = getLocalNotifications().filter(function(n){ return n.user_id===user.id && !n.read; });
+                if (window.supabaseClient) {
+                    try {
+                        var res = await window.supabaseClient.from('event_notifications').select('id,inquiry_id,event_id').eq('user_id', user.id).eq('read', false);
+                        if (!res.error && Array.isArray(res.data)) {
+                            res.data.forEach(function(r){ if (!notifs.some(function(nn){return nn.id===r.id;})) notifs.push(r); });
+                        }
+                    } catch (ee){}
+                }
+                for (var ni=0; ni<notifs.length; ni++) {
+                    var nn = notifs[ni];
+                    if (!nn.inquiry_id) continue;
+                    var localInq = getLocalInquiries().find(function(ix){return ix.id===nn.inquiry_id;});
+                    if (localInq && localInq.status==='accepted' && localInq.user_id===user.id) { count++; break; }
+                }
+            }
+        } catch (e) {}
+
+        var ids = ['navUserBadge','navEventsBadge','pwaUserBadge','pwaEventsBadge','calChatsBadge'];
+        ids.forEach(function(id){
+            var el = document.getElementById(id);
+            if (!el) return;
+            if (count>0) {
+                el.textContent = count>99 ? '99+' : String(count);
+                el.classList.remove('hidden');
+                el.classList.add('pulse');
+            } else {
+                el.textContent='0';
+                el.classList.add('hidden');
+                el.classList.remove('pulse');
+            }
+        });
+        var chatsBtnCount = document.getElementById('calChatsCount');
+        if (chatsBtnCount) chatsBtnCount.textContent = count>0 ? '('+count+')' : '';
+        return count;
+    }
+
+    window._updateEventBadges = updateEventBadges;
+
+    // ── CALENDAR STATE ──
+    var calCurrent = new Date();
+    var calSelectedDateStr = null;
+    var calViewMode = 'calendar';
+
+    function formatYMD(d) {
+        var yyyy = d.getFullYear();
+        var mm = String(d.getMonth()+1).padStart(2,'0');
+        var dd = String(d.getDate()).padStart(2,'0');
+        return yyyy+'-'+mm+'-'+dd;
+    }
+
+    function getAttendingMap() {
+        var user = getCurrentUser();
+        var map = {};
+        if (!user) return map;
+        var allEvs = eventsData.slice();
+        getLocalEvents().forEach(function(ev){ if (!allEvs.some(function(x){return x.id===ev.id;})) allEvs.push(ev); });
+        var attendingIds = {};
+        try {
+            getLocalAttendees().forEach(function(a){ if (a.user_id===user.id) attendingIds[a.event_id]=true; });
+        } catch(e){}
+        allEvs.forEach(function(ev){
+            var isCreator = ev.creator_id===user.id || (user.email && ev.creator_email && user.email===ev.creator_email);
+            var isAttendee = !!attendingIds[ev.id];
+            if (!isCreator && !isAttendee) return;
+            if (isEventExpired(ev.event_date)) return;
+            var ds = getDateString(ev.event_date);
+            if (!ds) return;
+            if (!map[ds]) map[ds]=[];
+            map[ds].push(ev);
+        });
+        return map;
+    }
+
+    async function getAttendingMapAsync() {
+        var user = getCurrentUser();
+        var map = {};
+        if (!user) return map;
+        var myIds = await getMyParticipatingEventIds();
+        var allEvs = eventsData.slice();
+        getLocalEvents().forEach(function(ev){ if (!allEvs.some(function(x){return x.id===ev.id;})) allEvs.push(ev); });
+        var wanted = {};
+        myIds.forEach(function(id){ wanted[id]=true; });
+        allEvs.forEach(function(ev){
+            if (!wanted[ev.id]) return;
+            if (isEventExpired(ev.event_date)) return;
+            var ds = getDateString(ev.event_date);
+            if (!ds) return;
+            if (!map[ds]) map[ds]=[];
+            map[ds].push(ev);
+        });
+        return map;
+    }
+
+    function renderCalendar(attendingMap) {
+        var grid = document.getElementById('calGrid');
+        var titleEl = document.getElementById('calMonthTitle');
+        if (!grid) return;
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+        var year = calCurrent.getFullYear();
+        var month = calCurrent.getMonth();
+        var firstDay = new Date(year, month, 1);
+        var rawDow = firstDay.getDay();
+        var leading = (rawDow + 6) % 7;
+        var daysInMonth = new Date(year, month+1, 0).getDate();
+        var daysInPrev = new Date(year, month, 0).getDate();
+        var todayStr = formatYMD(new Date());
+
+        if (titleEl) {
+            try {
+                titleEl.textContent = firstDay.toLocaleDateString(isRo ? 'ro-RO' : 'en-US', { month:'long', year:'numeric' });
+            } catch(e) { titleEl.textContent = (month+1)+'/'+year; }
+        }
+
+        var html = '';
+        for (var i=0;i<42;i++) {
+            var dayNum, dateObj, isOther=false;
+            if (i < leading) {
+                dayNum = daysInPrev - leading + 1 + i;
+                dateObj = new Date(year, month-1, dayNum);
+                isOther=true;
+            } else if (i >= leading+daysInMonth) {
+                dayNum = i - (leading+daysInMonth) + 1;
+                dateObj = new Date(year, month+1, dayNum);
+                isOther=true;
+            } else {
+                dayNum = i - leading + 1;
+                dateObj = new Date(year, month, dayNum);
+            }
+            var ds = formatYMD(dateObj);
+            var has = attendingMap && attendingMap[ds] && attendingMap[ds].length>0;
+            var isToday = ds===todayStr;
+            var isSelected = calSelectedDateStr && ds===calSelectedDateStr;
+            var cls = 'cal-day';
+            if (isOther) cls+=' other-month';
+            if (isToday) cls+=' today';
+            if (has) cls+=' has-event attending';
+            if (isSelected) cls+=' selected';
+            var countBadge = '';
+            if (has) {
+                var cnt = attendingMap[ds].length;
+                if (cnt>1) countBadge='<span class="cal-day-count">'+cnt+'</span>';
+            }
+            html += '<div class="'+cls+'" data-date="'+ds+'" onclick="window._calSelectDate(\''+ds+'\')"><span class="cal-day-num">'+dayNum+'</span>'+countBadge+'</div>';
+        }
+        grid.innerHTML = html;
+        renderSelectedDayEvents(attendingMap);
+    }
+
+    function renderSelectedDayEvents(attendingMap) {
+        var cont = document.getElementById('calSelectedEvents');
+        if (!cont) return;
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+        var sel = calSelectedDateStr;
+        if (!sel) {
+            var all = [];
+            Object.keys(attendingMap).forEach(function(ds){ attendingMap[ds].forEach(function(ev){ all.push(ev); }); });
+            all.sort(function(a,b){ return new Date(a.event_date)-new Date(b.event_date); });
+            var upcoming = all.slice(0,6);
+            if (upcoming.length===0) {
+                cont.innerHTML = '<div class="cal-selected-title">'+(isRo?'Selectează o zi cu eveniment':'Select a day with events')+'</div><div style="font-size:0.78rem;opacity:0.6;">'+(isRo?'Nu participi la evenimente viitoare.':'You are not attending upcoming events.')+'</div>';
+                return;
+            }
+            var html = '<div class="cal-selected-title"><span>'+(isRo?'Evenimentele tale viitoare':'Your upcoming events')+'</span><span style="font-size:0.7rem;opacity:0.6;">'+upcoming.length+'</span></div>';
+            upcoming.forEach(function(ev){
+                html += '<div class="cal-event-card"><div class="cec-title">'+escapeHtml(ev.title)+'</div><div class="cec-meta">📅 '+formatDate(ev.event_date)+' • 👤 '+escapeHtml(ev.creator_name||'User')+'</div><div style="display:flex;gap:8px;margin-top:6px;"><button type="button" onclick="window._openEventChat(\''+ev.id+'\')" style="flex:1;background:#0D2B5E;border:1px solid rgba(184,216,240,0.3);border-radius:6px;color:var(--sky);padding:6px 10px;font-size:0.75rem;cursor:pointer;font-weight:600;">💬 '+(isRo?'Chat':'Chat')+'</button><button type="button" onclick="window._manageEvent(\''+ev.id+'\')" style="background:rgba(255,255,255,0.08);border:1px solid rgba(184,216,240,0.18);border-radius:6px;color:rgba(245,240,235,0.85);padding:6px 10px;font-size:0.72rem;cursor:pointer;">'+(isRo?'Detalii':'Details')+'</button></div></div>';
+            });
+            cont.innerHTML = html;
+            return;
+        }
+        var eventsOnDay = (attendingMap && attendingMap[sel]) ? attendingMap[sel] : [];
+        if (eventsOnDay.length===0) {
+            cont.innerHTML = '<div class="cal-selected-title"><span>📅 '+sel+'</span></div><div style="font-size:0.78rem;opacity:0.6;">'+(isRo?'Niciun eveniment în această zi.':'No events on this day.')+'</div>';
+            return;
+        }
+        var h = '<div class="cal-selected-title"><span>📅 '+sel+'</span><span style="font-size:0.7rem;opacity:0.6;">'+eventsOnDay.length+' '+(isRo?'evenimente':'events')+'</span></div>';
+        eventsOnDay.forEach(function(ev){
+            h += '<div class="cal-event-card"><div class="cec-title">'+escapeHtml(ev.title)+'</div><div class="cec-meta">'+escapeHtml(ev.description||'')+'</div><div class="cec-meta" style="margin-top:2px;">🕒 '+formatDate(ev.event_date)+'</div><div style="display:flex;gap:8px;margin-top:8px;"><button type="button" onclick="window._openEventChat(\''+ev.id+'\')" style="flex:1;background:#0D2B5E;border:1px solid rgba(184,216,240,0.3);border-radius:6px;color:var(--sky);padding:6px 10px;font-size:0.75rem;cursor:pointer;font-weight:600;">💬 '+(isRo?'Deschide Chat':'Open Chat')+'</button><button type="button" onclick="window._manageEvent(\''+ev.id+'\')" style="background:rgba(255,255,255,0.08);border:1px solid rgba(184,216,240,0.18);border-radius:6px;color:rgba(245,240,235,0.85);padding:6px 10px;font-size:0.72rem;cursor:pointer;">'+(isRo?'Gestionează':'Manage')+'</button></div></div>';
+        });
+        cont.innerHTML = h;
+    }
+
+    window._calSelectDate = function(dateStr) {
+        calSelectedDateStr = dateStr;
+        getAttendingMapAsync().then(function(map){ renderCalendar(map); }).catch(function(){ renderCalendar(getAttendingMap()); });
+    };
+    window._calPrevMonth = function() {
+        calCurrent.setMonth(calCurrent.getMonth()-1);
+        getAttendingMapAsync().then(function(map){ renderCalendar(map); }).catch(function(){ renderCalendar(getAttendingMap()); });
+    };
+    window._calNextMonth = function() {
+        calCurrent.setMonth(calCurrent.getMonth()+1);
+        getAttendingMapAsync().then(function(map){ renderCalendar(map); }).catch(function(){ renderCalendar(getAttendingMap()); });
+    };
+    window._calToday = function() {
+        calCurrent = new Date();
+        calSelectedDateStr = formatYMD(new Date());
+        getAttendingMapAsync().then(function(map){ renderCalendar(map); }).catch(function(){ renderCalendar(getAttendingMap()); });
+    };
+
+    async function renderChatsView() {
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+        var listEl = document.getElementById('calChatsList');
+        if (!listEl) return;
+        listEl.innerHTML = '<div style="font-size:0.8rem;opacity:0.6;">'+(isRo?'Se încarcă chat-urile…':'Loading chats…')+'</div>';
+        var user = getCurrentUser();
+        if (!user) { listEl.innerHTML = '<div style="font-size:0.8rem;opacity:0.6;">Login required</div>'; return; }
+        await fetchEvents();
+        await maybeCleanupExpiredEventChats();
+        var myIds = await getMyParticipatingEventIds();
+        if (myIds.length===0) { listEl.innerHTML = '<div style="font-size:0.8rem;opacity:0.6;">'+(isRo?'Nu participi la niciun chat':'You are not in any chat')+'</div>'; return; }
+        var activeChats = await fetchActiveEventChats(myIds);
+        var attendeeCounts = await fetchAttendeeCounts(myIds);
+        for (var i=0;i<myIds.length;i++) {
+            var eid = myIds[i];
+            var ev = getEventById(eid);
+            if (!ev || isEventExpired(ev.event_date)) continue;
+            if ((attendeeCounts[eid]||0)>=1) {
+                var exists = activeChats.some(function(c){return c.event_id===eid;});
+                if (!exists) {
+                    var ensured = await ensureEventChatExists(ev, attendeeCounts[eid]);
+                    if (ensured) activeChats.push(ensured);
+                }
+            }
+        }
+        if (activeChats.length===0) {
+            listEl.innerHTML = '<div style="font-size:0.8rem;opacity:0.6;">'+(isRo?'Nu există chat-uri active.':'No active chats.')+'</div>';
+            return;
+        }
+        activeChats.sort(function(a,b){ return new Date(b.expires_at)-new Date(a.expires_at); });
+        var html='';
+        var lastSeenMap = getChatLastSeenMap();
+        for (var j=0;j<activeChats.length;j++) {
+            var chat = activeChats[j];
+            var ev2 = getEventById(chat.event_id);
+            if (!ev2) continue;
+            var ls = lastSeenMap[chat.event_id];
+            var isUnread = !ls;
+            html += '<div class="cal-chat-card" style="'+(isUnread?'border-color:rgba(196,43,43,0.55);background:rgba(196,43,43,0.08);':'')+'"><div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:0.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escapeHtml(ev2.title)+'</div><div style="font-size:0.72rem;opacity:0.7;">📅 '+formatDate(ev2.event_date)+' • '+ (attendeeCounts[ev2.id]||0) +' '+(isRo?'participanți':'attendees')+'</div>'+(isUnread?'<div style="font-size:0.68rem;color:#ff8a8a;font-weight:700;margin-top:3px;">● '+(isRo?'Nou / necitit':'New / unread')+'</div>':'')+'</div><div style="display:flex;flex-direction:column;gap:6px;"><button type="button" onclick="window._openEventChat(\''+ev2.id+'\')" style="background:#0D2B5E;border:1px solid rgba(184,216,240,0.3);border-radius:6px;color:var(--sky);padding:6px 12px;font-size:0.75rem;cursor:pointer;font-weight:600;white-space:nowrap;">💬 '+(isRo?'Deschide':'Open')+'</button></div></div>';
+        }
+        listEl.innerHTML = html;
+    }
+
+    // ── NEW EVENTS PANEL WITH CALENDAR ──
+    window.openEvents = async function () {
         var menu = document.getElementById('userMenu');
         if (menu) menu.classList.add('hidden');
-
-        // Close PWA dropdowns
         var pwaDropdowns = document.querySelectorAll('#pwaBottomBar .pwa-dropdown');
-        pwaDropdowns.forEach(function(dd) { dd.classList.remove('open'); });
+        pwaDropdowns.forEach(function(dd){ dd.classList.remove('open'); });
         var pwaTriggers = document.querySelectorAll('#pwaBottomBar .pwa-bar-trigger');
-        pwaTriggers.forEach(function(tr) { tr.classList.remove('active'); });
+        pwaTriggers.forEach(function(tr){ tr.classList.remove('active'); });
 
         var user = getCurrentUser();
         if (!user) {
@@ -1711,193 +2369,94 @@
 
         var panel = document.createElement('div');
         panel.id = 'eventsManagerPanel';
-        panel.style.cssText = 'position: fixed; inset: 0; z-index: 3500; background: rgba(4,10,22,0.94); backdrop-filter: blur(12px); display: flex; flex-direction: column; padding: 20px; overflow-y: auto; color: #F5F0EB; font-family: \'Outfit\', sans-serif;';
 
-        panel.innerHTML = '<div style="max-width: 800px; width: 100%; margin: 0 auto;">' +
-            '<button type="button" onclick="document.getElementById(\'eventsManagerPanel\').remove()" style="background:none; border:none; color:var(--sky); font-weight:600; font-size:0.9rem; cursor:pointer; margin-bottom:16px; display:flex; align-items:center; gap:6px;">← ' + (isRo ? 'Înapoi la hartă' : 'Back to map') + '</button>' +
-            '<h2 style="font-family:\'Cinzel\',serif; font-size:1.6rem; color:var(--sky); margin-top:0; margin-bottom:16px;">' + (isRo ? 'Evenimente & Chat' : 'Events & Chat') + '</h2>' +
-            '<div style="display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid rgba(184,216,240,0.15); padding-bottom:10px;">' +
-            '<button type="button" class="ev-tab-btn active" onclick="window._switchEvTab(\'all\')" style="background:rgba(107,63,160,0.3); border:1px solid rgba(196,160,240,0.5); border-radius:6px; color:#fff; padding:8px 14px; font-weight:600; cursor:pointer; font-size:0.85rem;">' + (isRo ? 'Toate Evenimentele' : 'All Events') + '</button>' +
-            '<button type="button" class="ev-tab-btn" onclick="window._switchEvTab(\'my\')" style="background:none; border:1px solid rgba(184,216,240,0.2); border-radius:6px; color:rgba(245,240,235,0.7); padding:8px 14px; font-weight:600; cursor:pointer; font-size:0.85rem;">' + (isRo ? 'Evenimentele Mele & Chat-uri' : 'My Events & Chats') + '</button>' +
-            '</div>' +
-            '<div id="evTabContent">Se încarcă…</div>' +
+        panel.innerHTML =
+            '<div class="cal-wrap">'+
+                '<div class="cal-header-row">'+
+                    '<button class="cal-back-btn" onclick="document.getElementById(\'eventsManagerPanel\').remove()">← '+(isRo?'Înapoi la hartă':'Back to map')+'</button>'+
+                    '<button class="cal-back-btn" onclick="window._calToday()" style="font-size:0.78rem;opacity:0.85;">'+(isRo?'Astăzi':'Today')+'</button>'+
+                '</div>'+
+                '<h2 class="cal-title">'+(isRo?'Evenimente':'Events')+'</h2>'+
+
+                '<div id="calView">'+
+                    '<div class="cal-header-row" style="margin-top:6px;">'+
+                        '<div class="cal-title" id="calMonthTitle" style="font-size:1.05rem;"></div>'+
+                        '<div class="cal-nav"><button type="button" onclick="window._calPrevMonth()">‹</button><button type="button" onclick="window._calNextMonth()">›</button></div>'+
+                    '</div>'+
+                    '<div class="cal-weekdays"><span>'+(isRo?'Lun':'Mon')+'</span><span>Mar</span><span>Mie</span><span>Joi</span><span>Vin</span><span>Sâm</span><span>Dum</span></div>'+
+                    '<div class="cal-grid" id="calGrid"></div>'+
+                    '<div class="cal-selected-events" id="calSelectedEvents"><div style="font-size:0.8rem;opacity:0.6;">'+(isRo?'Se încarcă evenimentele…':'Loading events…')+'</div></div>'+
+                    '<div class="cal-footer">'+
+                        '<button class="cal-chats-btn" id="calChatsBtn" type="button" onclick="window._openChatsFromCalendar()"><span>💬 '+(isRo?'Chat-uri Evenimente':'Event Chats')+'</span><span id="calChatsCount" style="opacity:0.9;font-size:0.8rem;"></span><span class="event-notif-badge hidden" id="calChatsBadge">0</span></button>'+
+                    '</div>'+
+                '</div>'+
+
+                '<div id="calChatsView" style="display:none;">'+
+                    '<div class="cal-header-row"><button class="cal-back-btn" onclick="window._backToCalendarView()">← '+(isRo?'Înapoi la calendar':'Back to calendar')+'</button></div>'+
+                    '<h3 style="font-size:1.1rem;color:var(--sky);margin:4px 0 8px;font-family:Cinzel,serif;">💬 '+(isRo?'Chat-uri Evenimente':'Event Chats')+'</h3>'+
+                    '<div class="cal-chats-list" id="calChatsList"></div>'+
+                    '<div style="margin-top:14px;"><button class="cal-chats-btn" type="button" onclick="window._backToCalendarView()" style="background:rgba(255,255,255,0.06);border-color:rgba(184,216,240,0.18);">← '+(isRo?'Înapoi la calendar':'Back to calendar')+'</button></div>'+
+                '</div>'+
+
             '</div>';
 
         document.body.appendChild(panel);
-        window._switchEvTab('all');
+        calCurrent = new Date();
+        calSelectedDateStr = formatYMD(new Date());
+        calViewMode = 'calendar';
+
+        try {
+            await fetchEvents();
+            await maybeCleanupExpiredEventChats();
+            var attendingMap = await getAttendingMapAsync();
+            renderCalendar(attendingMap);
+            await updateEventBadges();
+        } catch (e) {
+            console.warn('openEvents calendar error', e);
+            renderCalendar(getAttendingMap());
+        }
     };
 
-    window._switchEvTab = async function (tab) {
-        var contentEl = document.getElementById('evTabContent');
-        if (!contentEl) return;
-        var isRo = (window._currentLang && window._currentLang() === 'ro');
-        var user = getCurrentUser();
+    window._openChatsFromCalendar = async function() {
+        var calView = document.getElementById('calView');
+        var chatsView = document.getElementById('calChatsView');
+        if (calView) calView.style.display='none';
+        if (chatsView) chatsView.style.display='block';
+        calViewMode='chats';
+        await renderChatsView();
+        await updateEventBadges();
+    };
+    window._backToCalendarView = async function() {
+        var calView = document.getElementById('calView');
+        var chatsView = document.getElementById('calChatsView');
+        if (chatsView) chatsView.style.display='none';
+        if (calView) calView.style.display='block';
+        calViewMode='calendar';
+        try {
+            var map = await getAttendingMapAsync();
+            renderCalendar(map);
+        } catch(e){ renderCalendar(getAttendingMap()); }
+    };
 
-        // Highlight active tab
-        var buttons = document.querySelectorAll('.ev-tab-btn');
-        if (buttons.length >= 2) {
-            buttons[0].style.background = tab === 'all' ? 'rgba(107,63,160,0.3)' : 'none';
-            buttons[1].style.background = tab === 'my' ? 'rgba(107,63,160,0.3)' : 'none';
-        }
-
-        await fetchEvents();
-        await maybeCleanupExpiredEventChats();
-
-        if (tab === 'all') {
-            // Pre-fetch user's inquiries and attendances for accurate button state
-            var userInquiries = [];
-            var userAttendances = [];
-            try {
-                if (window.supabaseClient && user) {
-                    var resUserInq = await window.supabaseClient.from('event_inquiries').select('event_id,status').eq('user_id', user.id);
-                    if (!resUserInq.error && resUserInq.data) userInquiries = resUserInq.data;
-                    var resUserAtt = await window.supabaseClient.from('event_attendees').select('event_id').eq('user_id', user.id);
-                    if (!resUserAtt.error && resUserAtt.data) userAttendances = resUserAtt.data;
-                }
-            } catch (e) {}
-            if (userInquiries.length === 0 && user) {
-                userInquiries = getLocalInquiries().filter(function(i) { return i.user_id === user.id; });
-            }
-            if (userAttendances.length === 0 && user) {
-                userAttendances = getLocalAttendees().filter(function(a) { return a.user_id === user.id; });
-            }
-            var userInqEventIds = {};
-            userInquiries.forEach(function(i) { userInqEventIds[i.event_id] = i.status; });
-            var userAttEventIds = {};
-            userAttendances.forEach(function(a) { userAttEventIds[a.event_id] = true; });
-
-            var html = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">';
-            if (eventsData.length === 0) {
-                html += '<div style="opacity:0.6;">' + (isRo ? 'Nu există evenimente active.' : 'No active events.') + '</div>';
-            } else {
-                eventsData.forEach(function (ev) {
-                    var color = getEventColor(ev.event_date);
-                    var isCreator = user && (user.id === ev.creator_id || (user.email && ev.creator_email && user.email === ev.creator_email));
-                    var isAttending = userAttEventIds[ev.id];
-                    var hasInquiry = userInqEventIds[ev.id];
-                    var isExpired = isEventExpired(ev.event_date);
-                    var actionBtn = '';
-                    if (isExpired) {
-                        actionBtn = '<div style="background:rgba(196,43,43,0.15); border:1px solid rgba(196,43,43,0.35); border-radius:6px; color:#ff8a8a; padding:8px; text-align:center; font-weight:600; font-size:0.78rem;">⌛ ' + (isRo ? 'Eveniment expirat' : 'Event expired') + '</div>';
-                    } else if (isCreator) {
-                        actionBtn = '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="background:#6B3FA0; border:none; border-radius:6px; color:#fff; font-weight:600; padding:8px; cursor:pointer; font-size:0.78rem;">' + (isRo ? 'Gestionează' : 'Manage') + '</button>';
-                    } else if (isAttending) {
-                        actionBtn = '<div style="background:rgba(46,158,79,0.2); border:1px solid rgba(46,158,79,0.5); border-radius:6px; color:#2E9E4F; padding:8px; text-align:center; font-weight:600; font-size:0.78rem;">✓ ' + (isRo ? 'Deja participant' : 'Already attending') + '</div>';
-                    } else if (hasInquiry && hasInquiry !== 'declined') {
-                        actionBtn = '<div style="background:rgba(232,119,42,0.15); border:1px solid rgba(232,119,42,0.4); border-radius:6px; color:#E8772A; padding:8px; text-align:center; font-weight:600; font-size:0.78rem;">⏳ ' + (isRo ? 'Cerere trimisă' : 'Request pending') + '</div>';
-                    } else {
-                        actionBtn = '<button type="button" onclick="window._openInquiryModal(\'' + ev.id + '\')" style="background:#E8772A; border:none; border-radius:6px; color:#fff; font-weight:600; padding:8px; cursor:pointer; font-size:0.78rem;">' + (isRo ? 'Trimite Cerere' : 'Send Inquiry') + '</button>';
-                    }
-                    html += '<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(184,216,240,0.18); border-radius:10px; padding:16px; display:flex; flex-direction:column; justify-content:space-between;">' +
-                        '<div>' +
-                        '<div style="font-size:0.7rem; color:' + color + '; font-weight:700; margin-bottom:4px;">● ' + formatDate(ev.event_date) + '</div>' +
-                        '<h4 style="margin:0 0 6px 0; font-size:1rem; color:#F5F0EB;">' + escapeHtml(ev.title) + '</h4>' +
-                        '<p style="margin:0 0 10px 0; font-size:0.78rem; opacity:0.8; line-height:1.4;">' + escapeHtml(ev.description || '') + '</p>' +
-                        '<div style="font-size:0.72rem; opacity:0.6; margin-bottom:12px;">👤 ' + escapeHtml(ev.creator_name || 'User') + '</div>' +
-                        '</div>' +
-                        actionBtn +
-                        '</div>';
-                });
-            }
-            html += '</div>';
-            contentEl.innerHTML = html;
+    window._switchEvTab = async function(tab) {
+        if (tab==='my') {
+            await window._openChatsFromCalendar();
         } else {
-            // My events & chats
-            var myEvs = eventsData.filter(function (e) {
-                return e.creator_id === user.id || (user.email && e.creator_email && user.email === e.creator_email);
-            });
-
-            // Also find events where user is an accepted attendee
-            var attEvents = [];
-            try {
-                if (window.supabaseClient) {
-                    var resAtt = await window.supabaseClient.from('event_attendees').select('event_id').eq('user_id', user.id);
-                    if (!resAtt.error && resAtt.data) {
-                        var ids = resAtt.data.map(function(a) { return a.event_id; });
-                        attEvents = eventsData.filter(function(e) { return ids.indexOf(e.id) !== -1; });
-                    }
-                }
-            } catch (e) {}
-
-            if (attEvents.length === 0) {
-                var localAtts = getLocalAttendees().filter(function(a) { return a.user_id === user.id; });
-                var localIds = localAtts.map(function(a) { return a.event_id; });
-                attEvents = eventsData.filter(function(e) { return localIds.indexOf(e.id) !== -1; });
-            }
-
-            var eventIdsForChatState = [];
-            myEvs.forEach(function (ev) { if (eventIdsForChatState.indexOf(ev.id) === -1) eventIdsForChatState.push(ev.id); });
-            attEvents.forEach(function (ev) { if (eventIdsForChatState.indexOf(ev.id) === -1) eventIdsForChatState.push(ev.id); });
-
-            var attendeeCounts = await fetchAttendeeCounts(eventIdsForChatState);
-            var activeChats = await fetchActiveEventChats(eventIdsForChatState);
-            var activeChatMap = {};
-            activeChats.forEach(function (chat) {
-                activeChatMap[chat.event_id] = chat;
-            });
-
-            for (var i = 0; i < eventIdsForChatState.length; i++) {
-                var eventId = eventIdsForChatState[i];
-                var evForChat = getEventById(eventId);
-                if (!evForChat || isEventExpired(evForChat.event_date)) continue;
-                if ((attendeeCounts[eventId] || 0) >= 1 && !activeChatMap[eventId]) {
-                    var ensuredChat = await ensureEventChatExists(evForChat, attendeeCounts[eventId]);
-                    if (ensuredChat) activeChatMap[eventId] = ensuredChat;
-                }
-            }
-
-            var attendableChatEvents = attEvents.filter(function (ev) {
-                return !isEventExpired(ev.event_date) && !!activeChatMap[ev.id];
-            });
-
-            var html = '<h3 style="font-size:1.05rem; color:var(--sky); margin-bottom:8px;">' + (isRo ? 'Evenimentele create de tine' : 'Events Created By You') + '</h3>';
-            if (myEvs.length === 0) {
-                html += '<div style="font-size:0.78rem; opacity:0.6; margin-bottom:20px;">' + (isRo ? 'Nu ai creat niciun eveniment.' : 'You have not created any events.') + '</div>';
-            } else {
-                html += '<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">';
-                myEvs.forEach(function (ev) {
-                    var isExpired = isEventExpired(ev.event_date);
-                    var attendeeCount = attendeeCounts[ev.id] || 0;
-                    var chatAction = '';
-                    if (isExpired) {
-                        chatAction = '<div style="background:rgba(196,43,43,0.15); border:1px solid rgba(196,43,43,0.35); border-radius:6px; color:#ff8a8a; padding:6px 10px; font-size:0.72rem; font-weight:600;">⌛ ' + (isRo ? 'Expirat' : 'Expired') + '</div>';
-                    } else if (activeChatMap[ev.id]) {
-                        chatAction = '<button type="button" onclick="window._openEventChat(\'' + ev.id + '\')" style="background:#0D2B5E; border:1px solid rgba(184,216,240,0.3); border-radius:6px; color:var(--sky); padding:6px 10px; font-size:0.75rem; cursor:pointer; font-weight:600;">💬 Chat</button>';
-                    } else {
-                        chatAction = '<div style="background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.15); border-radius:6px; color:rgba(245,240,235,0.72); padding:6px 10px; font-size:0.72rem; text-align:center;">' + (attendeeCount >= 1 ? (isRo ? 'Se pregătește chat-ul…' : 'Preparing chat…') : (isRo ? 'Chat-ul se activează după primul participant acceptat' : 'Chat unlocks after the first accepted participant')) + '</div>';
-                    }
-
-                    html += '<div style="background:rgba(255,255,255,0.04); border:1px solid rgba(184,216,240,0.15); border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:12px;">' +
-                        '<div><strong>' + escapeHtml(ev.title) + '</strong><div style="font-size:0.72rem; opacity:0.7;">' + formatDate(ev.event_date) + ' • ' + attendeeCount + ' ' + (isRo ? 'participanți acceptați' : 'accepted attendees') + '</div></div>' +
-                        '<div style="display:flex; gap:8px; align-items:center;">' +
-                        '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="background:#6B3FA0; border:none; border-radius:6px; color:#fff; padding:6px 10px; font-size:0.75rem; cursor:pointer; font-weight:600;">' + (isRo ? 'Gestionează' : 'Manage') + '</button>' +
-                        chatAction +
-                        '</div></div>';
-                });
-                html += '</div>';
-            }
-
-            html += '<h3 style="font-size:1.05rem; color:var(--sky); margin-bottom:8px;">' + (isRo ? 'Evenimente la care participi (Chat activ)' : 'Events You Attend (Active Chat)') + '</h3>';
-            if (attendableChatEvents.length === 0) {
-                html += '<div style="font-size:0.78rem; opacity:0.6;">' + (isRo ? 'Nu participi la niciun chat de eveniment activ.' : 'You are not attending any active event chat.') + '</div>';
-            } else {
-                html += '<div style="display:flex; flex-direction:column; gap:8px;">';
-                attendableChatEvents.forEach(function (ev) {
-                    html += '<div style="background:rgba(255,255,255,0.04); border:1px solid rgba(184,216,240,0.15); border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">' +
-                        '<div><strong>' + escapeHtml(ev.title) + '</strong><div style="font-size:0.72rem; opacity:0.7;">' + formatDate(ev.event_date) + '</div></div>' +
-                        '<button type="button" onclick="window._openEventChat(\'' + ev.id + '\')" style="background:#0D2B5E; border:1px solid rgba(184,216,240,0.3); border-radius:6px; color:var(--sky); padding:6px 12px; font-size:0.75rem; cursor:pointer; font-weight:600;">💬 ' + (isRo ? 'Deschide Chat' : 'Open Chat') + '</button>' +
-                        '</div>';
-                });
-                html += '</div>';
-            }
-
-            contentEl.innerHTML = html;
+            await window._backToCalendarView();
         }
     };
+
+
 
     // ── EVENT CHAT SYSTEM ──
     window._openEventChat = async function (eventId) {
         await maybeCleanupExpiredEventChats();
+
+        // Close calendar panel if open, so chat is on top
+        try {
+            var calPanel = document.getElementById('eventsManagerPanel');
+            if (calPanel) calPanel.remove();
+        } catch (e) {}
 
         var ev = getEventById(eventId);
         if (!ev) return;
@@ -1930,6 +2489,10 @@
         }
 
         var chat = await ensureEventChatExists(ev, attendeeCount);
+
+        // Mark as seen and update badges
+        try { setLastSeen(eventId); } catch (e) {}
+        try { if (window._updateEventBadges) window._updateEventBadges(); } catch (e) {}
         if (!chat) {
             alert(isRo ? 'Chat-ul evenimentului nu a putut fi creat.' : 'The event chat could not be created.');
             return;
@@ -2079,6 +2642,8 @@
         saveLocalMessages(msgs);
 
         input.value = '';
+        try { setLastSeen(activeChatEventId); } catch (e) {}
+        try { if (window._updateEventBadges) window._updateEventBadges(); } catch (e) {}
         loadChatMessages(activeChatEventId);
     };
 
@@ -2172,10 +2737,18 @@
 
     // Periodic check for notifications on app load / login
     document.addEventListener('DOMContentLoaded', function () {
+        try { ensureEventBadges(); } catch (e) {}
         setTimeout(checkNotifications, 2000);
-        setTimeout(function () { maybeCleanupExpiredEventChats(true); }, 2500);
+        setTimeout(function () { maybeCleanupExpiredEventChats(true); try { updateEventBadges(); } catch (e) {} }, 2500);
+        setTimeout(function () { try { updateEventBadges(); } catch (e) {} }, 3000);
         setInterval(checkNotifications, 15000);
         setInterval(function () { maybeCleanupExpiredEventChats(); }, 60000);
+        setInterval(function () { try { updateEventBadges(); } catch (e) {} }, 12000);
+        // Observe DOM changes for dynamically created user menus (PWA dropdowns)
+        if (window.MutationObserver) {
+            var obs = new MutationObserver(function(){ try { ensureEventBadges(); } catch(e){} });
+            try { obs.observe(document.body, { childList:true, subtree:true }); } catch (e) {}
+        }
     });
 
     // Rebuild event markers and check notifications when auth state changes (login / logout / token refresh)
@@ -2184,6 +2757,8 @@
         refreshEventsMap();
         await maybeCleanupExpiredEventChats(true);
         checkNotifications();
+        try { ensureEventBadges(); } catch (e) {}
+        try { updateEventBadges(); } catch (e) {}
     });
 
     // Expose init and methods
