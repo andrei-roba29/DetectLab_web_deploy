@@ -68,7 +68,6 @@ export function createCheckoutSession({ priceId, email, userId, successUrl, canc
       mode: 'subscription',
       'line_items[0][price]': priceId,
       'line_items[0][quantity]': '1',
-      customer_creation: 'always',
       customer_email: email,
       'subscription_data[metadata][user_id]': userId,
       client_reference_id: userId,
