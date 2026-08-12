@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Checkout · DetectLab Premium</title>
+    <meta name="theme-color" content="#0a0d14">
+    <meta name="description" content="DetectLab Premium subscription checkout">
+    <link rel="manifest" href="manifest.json">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Cinzel:wght@600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/checkout.css?v=20260812">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='15' cy='15' r='13' fill='none' stroke='%23B8D8F0' stroke-width='1.4'/%3E%3Ccircle cx='15' cy='15' r='3.5' fill='%23E8772A'/%3E%3C/svg%3E">
+</head>
+<body>
+
+    <header class="co-header">
+        <a class="co-brand" href="index.html#map-section" aria-label="DetectLab">
+            <svg width="26" height="26" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+                <circle cx="15" cy="15" r="13" stroke="#B8D8F0" stroke-width="1.4" />
+                <circle cx="15" cy="15" r="8" stroke="#6B3FA0" stroke-width="1" />
+                <circle cx="15" cy="15" r="3.5" fill="#E8772A" />
+                <line x1="2" y1="15" x2="28" y2="15" stroke="#B8D8F0" stroke-width="0.7" opacity="0.5" />
+                <line x1="15" y1="2" x2="15" y2="28" stroke="#B8D8F0" stroke-width="0.7" opacity="0.5" />
+            </svg>
+            <span>Detect<span style="color:#E8772A">Lab</span></span>
+        </a>
+        <a class="co-back" href="index.html#map-section">← <span class="t" data-key="co_back_map">Back to map</span></a>
+    </header>
+
+    <main class="co-main">
+
+        <!-- ── LOGIN REQUIRED ── -->
+        <section class="co-card co-login-card" id="coLoginCard" style="display:none">
+            <div class="co-ico">🔐</div>
+            <h1 class="t" data-key="co_login_title">Log in to continue</h1>
+            <p class="co-muted t" data-key="co_login_desc">You need an account to purchase a subscription.</p>
+            <a class="co-btn co-btn-primary" href="index.html?goto=checkout">
+                <span class="t" data-key="co_login_btn">Go to login</span>
+            </a>
+        </section>
+
+        <!-- ── CHECKOUT ── -->
+        <section class="co-grid" id="coCheckoutCard" style="display:none">
+
+            <!-- Order summary -->
+            <aside class="co-card co-summary">
+                <h2 class="co-h2 t" data-key="co_order_title">Order summary</h2>
+                <div class="co-summary-row">
+                    <div>
+                        <div class="co-plan-name t" data-key="co_plan_name">DetectLab Premium — Monthly</div>
+                        <div class="co-muted">👑 <span class="t" data-key="co_all_layers">All premium map layers</span></div>
+                    </div>
+                    <div class="co-price">€5<span class="co-period">/month</span></div>
+                </div>
+                <div class="co-divider"></div>
+                <div class="co-summary-row co-total">
+                    <span class="t" data-key="co_total">Total due today</span>
+                    <strong>€5.00</strong>
+                </div>
+                <div class="co-summary-row co-summary-sub">
+                    <span class="t" data-key="co_renews">Renews automatically every month. Cancel anytime.</span>
+                </div>
+            </aside>
+
+            <!-- Payment -->
+            <div class="co-card co-pay">
+                <h2 class="co-h2 t" data-key="co_pay_title">Payment method</h2>
+
+                <!-- Wallet buttons -->
+                <div class="co-wallets" id="coWallets" style="display:none">
+                    <button type="button" class="co-wallet-btn co-wallet-apple" id="coApplePayBtn" style="display:none">
+                        <svg width="20" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.07 2.47.3 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 3.83M15.97 4.17c.66-.81 1.11-1.93.99-3.06-1 .04-2.18.66-2.9 1.54-.62.75-1.17 1.89-1.02 3 .12.98.66 1.83.99 1.83.08 0 1.28-.5 1.94-2.31z"/>
+                        </svg>
+                        <span>Pay</span>
+                    </button>
+                    <button type="button" class="co-wallet-btn co-wallet-google" id="coGooglePayBtn" style="display:none">
+                        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/>
+                            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"/>
+                            <path fill="#FBBC05" d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z"/>
+                            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09C6.22 6.86 8.87 4.75 12 4.75z"/>
+                        </svg>
+                        <span>Pay</span>
+                    </button>
+                    <div class="co-wallet-or" id="coWalletOr"><span class="t" data-key="co_or">or pay with card</span></div>
+                </div>
+
+                <!-- Card form -->
+                <form id="coCardForm" autocomplete="off" novalidate>
+                    <div class="co-field">
+                        <label class="co-label t" data-key="co_card_name" for="coCardName">Name on card</label>
+                        <input class="co-input" id="coCardName" type="text" placeholder="ION POPESCU" autocomplete="cc-name" inputmode="text">
+                    </div>
+                    <div class="co-field">
+                        <label class="co-label t" data-key="co_card_number" for="coCardNumber">Card number</label>
+                        <div class="co-input-wrap">
+                            <input class="co-input co-card-number" id="coCardNumber" type="text" inputmode="numeric" placeholder="1234 5678 9012 3456" autocomplete="cc-number" maxlength="19">
+                            <span class="co-card-brand" id="coCardBrand">💳</span>
+                        </div>
+                    </div>
+                    <div class="co-field-row">
+                        <div class="co-field">
+                            <label class="co-label t" data-key="co_card_exp" for="coCardExp">Expiry</label>
+                            <input class="co-input" id="coCardExp" type="text" inputmode="numeric" placeholder="MM/YY" autocomplete="cc-exp" maxlength="5">
+                        </div>
+                        <div class="co-field">
+                            <label class="co-label t" data-key="co_card_cvc" for="coCardCvc">CVC</label>
+                            <input class="co-input" id="coCardCvc" type="text" inputmode="numeric" placeholder="123" autocomplete="cc-csc" maxlength="4">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="co-btn co-btn-pay" id="coPayBtn">
+                        <span class="co-lock">🔒</span>
+                        <span id="coPayLabel" class="t" data-key="co_pay_btn">Pay €5.00</span>
+                    </button>
+                </form>
+
+                <p class="co-demo-note" id="coDemoNote">🧪 <span class="t" data-key="co_demo_note">Demo mode — no real charge is made.</span></p>
+                <p class="co-secure">🔒 <span class="t" data-key="co_secure">Payments are encrypted and processed securely.</span></p>
+                <div class="co-error" id="coError"></div>
+            </div>
+        </section>
+
+        <!-- ── PROCESSING ── -->
+        <section class="co-card co-processing" id="coProcessingCard" style="display:none">
+            <div class="co-spinner"></div>
+            <h2 class="t" data-key="co_processing">Processing payment…</h2>
+            <p class="co-muted">DetectLab Premium — €5.00</p>
+        </section>
+
+        <!-- ── SUCCESS ── -->
+        <section class="co-card co-success" id="coSuccessCard" style="display:none">
+            <div class="co-success-check">✓</div>
+            <h1 class="t" data-key="co_success_title">Payment confirmed!</h1>
+            <p class="co-muted t" data-key="co_success_desc">Your account is now Premium. Enjoy every premium layer.</p>
+            <div class="co-success-expiry">
+                <span class="co-muted t" data-key="co_success_expiry">Premium active until</span>
+                <strong id="coSuccessDate">—</strong>
+            </div>
+            <div class="co-success-actions">
+                <a class="co-btn co-btn-primary" href="index.html?open=account">
+                    <span class="t" data-key="co_go_account">Go to my account</span>
+                </a>
+                <a class="co-btn co-btn-ghost" href="index.html#map-section">
+                    <span class="t" data-key="co_back_map">Back to map</span>
+                </a>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="co-footer">
+        <span class="t" data-key="co_footer">DetectLab · Saving history together</span>
+    </footer>
+
+    <script src="js/translations.js?v=20260811"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/auth.js?v=20260812-vertical-opacity"></script>
+    <script src="js/subscriptions.js?v=20260812-premium"></script>
+    <script src="js/checkout.js?v=20260812-premium"></script>
+</body>
+</html>

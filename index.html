@@ -650,6 +650,7 @@
 
                     <button onclick="openAccount()">
                         <span class="t" data-key="manage_account">Manage Account</span>
+                        <span class="user-premium-badge" id="navPremiumBadge" style="display:none">PREMIUM</span>
                     </button>
 
                     <button onclick="openEvents()">
@@ -2541,6 +2542,17 @@
                         <span id="acctEmail">—</span>
                     </div>
 
+                    <div class="account-section-label t" data-key="acct_subscription">Subscription</div>
+                    <div class="account-sub-row">
+                        <div class="account-sub-info">
+                            <div class="account-sub-status" id="acctSubStatus">FREE</div>
+                            <div class="account-sub-expiry" id="acctSubExpiry"></div>
+                        </div>
+                        <button class="account-btn primary" id="acctSubBtn" onclick="goToCheckout()">
+                            <span class="t" data-key="acct_buy_premium">Buy Premium</span>
+                        </button>
+                    </div>
+
                     <div class="account-section-label">Change Password</div>
                     <div class="account-pw-form">
                         <input type="password" id="acctPwCurrent" placeholder="Current password" autocomplete="current-password">
@@ -2734,46 +2746,48 @@
             <p class="section-label t" data-key="pricing_label">Membership</p>
             <h2 class="section-title t" data-key="pricing_title">Choose Your <span class="hl">Plan</span></h2>
             <p class="section-desc t" data-key="pricing_desc">Whether you're a hobbyist, a researcher, or an institution — DetectLab has a plan for you.</p>
-            <div class="pricing-toggle">
+            <div class="pricing-toggle" style="display:none" aria-hidden="true">
                 <span class="toggle-label active t" id="lbl_weekly" data-key="lbl_weekly">Weekly</span>
-                <button class="toggle-switch" id="billingToggle" onclick="toggleBilling()"></button>
+                <button class="toggle-switch" id="billingToggle" onclick="toggleBilling()" tabindex="-1"></button>
                 <span class="toggle-label t" id="lbl_monthly" data-key="lbl_monthly">Monthly</span>
                 <span class="toggle-save t" data-key="save_badge">Save up to 45%</span>
             </div>
             <div class="pricing-grid">
-                <!-- BRONZE -->
-                <div class="plan-card">
+                <!-- BRONZE — NOT AVAILABLE -->
+                <div class="plan-card plan-disabled" id="planWeeklyCard">
+                    <span class="plan-unavailable t" data-key="not_available">Not available</span>
                     <p class="plan-tier bronze t" data-key="tier_bronze">Bronze</p>
                     <h3 class="plan-name t" data-key="plan_weekly">Weekly</h3>
-                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="bronzePrice">4</span><span class="period" id="bronzePeriod">/week</span></div>
-                    <p class="plan-billing-note t" id="bronzeNote" data-key="note_weekly">Billed weekly</p>
+                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="bronzePrice">—</span><span class="period" id="bronzePeriod"></span></div>
+                    <p class="plan-billing-note t" id="bronzeNote" data-key="note_weekly">Not available</p>
                     <div class="plan-divider"></div>
                     <ul class="plan-features">
                     </ul>
-                    <button class="btn-plan t" data-key="btn_bronze">Start Bronze</button>
+                    <button class="btn-plan t" disabled data-key="btn_bronze">Buy</button>
                 </div>
-                <!-- SILVER -->
+                <!-- SILVER — MONTHLY €5 -->
                 <div class="plan-card featured">
                     <div class="plan-badge t" data-key="badge_popular">Most Popular</div>
                     <p class="plan-tier silver t" data-key="tier_silver">Silver</p>
                     <h3 class="plan-name t" data-key="plan_monthly">Monthly</h3>
-                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="silverPrice">12</span><span class="period" id="silverPeriod">/month</span></div>
+                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="silverPrice">5</span><span class="period" id="silverPeriod">/month</span></div>
                     <p class="plan-billing-note t" id="silverNote" data-key="note_monthly">Billed monthly</p>
                     <div class="plan-divider"></div>
                     <ul class="plan-features">
                     </ul>
-                    <button class="btn-plan fp t" data-key="btn_silver">Start Silver</button>
+                    <button class="btn-plan fp t" data-key="btn_silver" onclick="goToCheckout()">Buy</button>
                 </div>
-                <!-- GOLD -->
-                <div class="plan-card">
+                <!-- GOLD — NOT AVAILABLE -->
+                <div class="plan-card plan-disabled" id="planYearlyCard">
+                    <span class="plan-unavailable t" data-key="not_available">Not available</span>
                     <p class="plan-tier gold t" data-key="tier_gold">Gold</p>
                     <h3 class="plan-name t" data-key="plan_yearly">Yearly</h3>
-                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="goldPrice">79</span><span class="period" id="goldPeriod">/year</span></div>
-                    <p class="plan-billing-note t" id="goldNote" data-key="note_yearly">Billed annually — save 45%</p>
+                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="goldPrice">—</span><span class="period" id="goldPeriod"></span></div>
+                    <p class="plan-billing-note t" id="goldNote" data-key="note_yearly">Not available</p>
                     <div class="plan-divider"></div>
                     <ul class="plan-features">
                     </ul>
-                    <button class="btn-plan t" data-key="btn_gold">Start Gold</button>
+                    <button class="btn-plan t" disabled data-key="btn_gold">Buy</button>
                 </div>
             </div>
             <div class="free-plan">
@@ -2876,6 +2890,24 @@
         }
         .auth-oauth-btn:hover { background: #F5F7FA; border-color: #C7CFDA; }
     </style>
+    <!-- PREMIUM MEMBERSHIP POPUP — opened when a free user tries to use a
+         premium layer or open the Premium tab. Wired in js/subscriptions.js -->
+    <div id="premiumModal" role="dialog" aria-modal="true" aria-label="DetectLab Premium" style="display:none">
+        <div class="premium-box">
+            <button class="auth-close" onclick="closePremiumModal()" aria-label="Close">&times;</button>
+            <h2 id="premTitle">DetectLab Premium</h2>
+            <div id="premBody"></div>
+            <div class="prem-buy-wrap" id="premBuyWrap">
+                <button type="button" class="prem-btn prem-btn-buy" onclick="goToCheckout()">
+                    <span id="premBuyLabel" class="t" data-key="prem_buy_btn">Buy Premium · €5/month</span>
+                </button>
+                <button type="button" class="prem-btn prem-btn-ghost" id="premLaterBtn" onclick="closePremiumModal()">
+                    <span class="t" data-key="prem_later">Not now</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="authModal" role="dialog" aria-modal="true" aria-label="Login / Register">
         <div class="auth-box">
             <button class="auth-close" onclick="closeAuth()" aria-label="Close">&times;</button>
@@ -3621,6 +3653,7 @@
     </div>
 
 <script src="js/account-legacy.js?v=20260812-event-sync-fixes"></script>
+<script src="js/subscriptions.js?v=20260812-premium"></script>
 
 
 
