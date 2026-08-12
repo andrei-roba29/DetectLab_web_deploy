@@ -11,15 +11,57 @@ let addedLayers = [];
 let removedLayers = [];
 let mapEventListeners = {};
 
+// Leaflet's stock pane z-indexes, plus the LIDAR imagery pane created by
+// map-app.js. The scanner must place everything it draws above pane_lidar,
+// otherwise the search pin and the result tags are painted underneath the
+// terrain tiles and vanish as soon as a LIDAR sub-layer is switched on.
+const BUILTIN_PANE_Z = {
+    tilePane: 200,
+    overlayPane: 400,
+    shadowPane: 500,
+    markerPane: 600,
+    tooltipPane: 650,
+    popupPane: 700
+};
+const LIDAR_PANE_Z = 610; // js/map-app.js -> map.getPane('pane_lidar')
+
+// Panes the app creates outside the scanner, so the test resolves a realistic
+// z-index for any pane the scanner asks for.
+const mapPanes = Object.assign({}, BUILTIN_PANE_Z, { pane_lidar: LIDAR_PANE_Z });
+
 const mockMap = {
+    panes: {},
     addLayer(layer) { addedLayers.push(layer); return this; },
     removeLayer(layer) { removedLayers.push(layer); return this; },
     on(event, fn) { mapEventListeners[event] = fn; return this; },
     off(event) { delete mapEventListeners[event]; return this; },
     fitBounds() {},
-    createPane() { return { style: {} }; },
-    getPane() { return { style: {} }; }
+    createPane(name) {
+        // Mirror Leaflet: creating an existing pane returns the existing node.
+        if (!this.panes[name]) this.panes[name] = { name, style: {} };
+        return this.panes[name];
+    },
+    getPane(name) {
+        if (this.panes[name]) return this.panes[name];
+        // Built-in / foreign panes exist without the scanner creating them.
+        if (mapPanes[name] !== undefined) {
+            this.panes[name] = { name, style: { zIndex: mapPanes[name] } };
+            return this.panes[name];
+        }
+        return undefined;
+    }
 };
+
+// Effective z-index of the pane a layer was placed on. A layer with no pane
+// option falls back to Leaflet's default for its type.
+function paneZIndexOf(layer, defaultPane) {
+    const name = (layer.options && layer.options.pane) || defaultPane;
+    const pane = mockMap.getPane(name);
+    assert(pane, 'layer refers to a pane that was never created: ' + name);
+    const z = Number(pane.style.zIndex);
+    assert(isFinite(z), 'pane ' + name + ' has no numeric z-index');
+    return z;
+}
 
 const domElements = {
     lidarScannerToggle: { checked: false, listeners: {}, addEventListener(event, fn) { this.listeners[event] = fn; } },
@@ -73,6 +115,12 @@ const mockL = {
     },
     divIcon(options) {
         return { type: 'divIcon', options };
+    },
+    // The scanner draws its circles on a shared canvas renderer. It is mocked
+    // here (rather than left undefined) so the test covers the real code path
+    // and can assert the renderer is pinned to a pane above the LIDAR tiles.
+    canvas(options) {
+        return { type: 'canvasRenderer', options };
     },
     layerGroup() {
         const layers = [];
@@ -241,6 +289,38 @@ async function main() {
     assert.strictEqual(circle.options.color, '#8cff66', 'circle stroke should be neon green');
     assert.strictEqual(circle.options.fillColor, '#39ff14', 'circle fill should be neon green');
 
+    // ── Stacking: the search pin and its tag must clear every LIDAR layer ──
+    // Leaflet's default marker pane is 600 and its overlay pane is 400, both
+    // BELOW pane_lidar (610). Without explicit panes the pin and the search
+    // radius were drawn underneath the LIDAR imagery and became invisible the
+    // moment a sub-layer was enabled.
+    const pinZ = paneZIndexOf(marker, 'markerPane');
+    const pinTagZ = paneZIndexOf({ options: marker._tooltipOpts }, 'tooltipPane');
+    const searchCircleZ = paneZIndexOf(circle, 'overlayPane');
+
+    assert(
+        pinZ > LIDAR_PANE_Z,
+        'search pin must be painted above the LIDAR pane (' + LIDAR_PANE_Z + '), got ' + pinZ
+    );
+    assert(
+        pinTagZ > LIDAR_PANE_Z,
+        'search pin tag must be painted above the LIDAR pane (' + LIDAR_PANE_Z + '), got ' + pinTagZ
+    );
+    assert(
+        searchCircleZ > LIDAR_PANE_Z,
+        'search radius circle must be painted above the LIDAR pane (' + LIDAR_PANE_Z + '), got ' + searchCircleZ
+    );
+    // Tags ride above the pin so a label is never clipped by the pulsing dot.
+    assert(
+        pinTagZ >= pinZ,
+        'tags should sit at or above the pin, got tag ' + pinTagZ + ' vs pin ' + pinZ
+    );
+    // ...but the scanner must not leapfrog the measurement/popup tooling.
+    assert(
+        pinTagZ < BUILTIN_PANE_Z.popupPane,
+        'scanner panes must stay below popups (' + BUILTIN_PANE_Z.popupPane + '), got ' + pinTagZ
+    );
+
     // 3. A 10 km scan at the first coordinate returns that CSV site and its
     // Romanian category, proving no X/Y/Z conversion is attempted.
     domElements.lidarScannerRun.listeners.click();
@@ -272,6 +352,78 @@ async function main() {
         Array.from(scannedSite.latlng),
         [44.680496658, 22.532812357],
         'result should use WGS 84 latitude/longitude directly'
+    );
+
+    // Scan result rings and their permanent category tags must clear the LIDAR
+    // imagery too — a result drawn under a hillshade tile is unreadable.
+    const resultRingZ = paneZIndexOf(scannedSite, 'overlayPane');
+    const resultTagZ = paneZIndexOf({ options: resultTooltipOpts }, 'tooltipPane');
+    assert(
+        resultRingZ > LIDAR_PANE_Z,
+        'result ring must be painted above the LIDAR pane (' + LIDAR_PANE_Z + '), got ' + resultRingZ
+    );
+    assert(
+        resultTagZ > LIDAR_PANE_Z,
+        'result tag must be painted above the LIDAR pane (' + LIDAR_PANE_Z + '), got ' + resultTagZ
+    );
+    assert(
+        resultTagZ >= resultRingZ,
+        'result tags should sit above their rings, got tag ' + resultTagZ + ' vs ring ' + resultRingZ
+    );
+
+    // Result rings must NOT be handed the shared canvas renderer. They are
+    // clickable, and their pane is pointer-events:none (see below); Leaflet's
+    // stylesheet can only re-enable hit-testing for an interactive *SVG* path,
+    // never for a shape painted into a canvas. A canvas-rendered ring inside
+    // that pane would be permanently unclickable.
+    assert(
+        !scannedSite.options.renderer,
+        'result rings must use the default SVG renderer so they stay clickable ' +
+        'inside a pointer-events:none pane'
+    );
+    assert(
+        scannedSite.options.interactive === true,
+        'result rings carry a popup and must stay interactive'
+    );
+
+    // The scanner's circles pane holds a viewport-sized canvas (the search
+    // circle's renderer). Leaflet neutralises pointer events for
+    // `.leaflet-pane > svg path` but has no such rule for `.leaflet-pane >
+    // canvas`, so at z-index 655 that canvas would sit over every interactive
+    // layer on the map — the heritage polygons at 620, the UAT boundaries at
+    // 402, the markers at 600 — and swallow their clicks across the whole
+    // viewport. The pane must therefore be click-transparent, exactly like the
+    // raster panes map-app.js creates.
+    const circlesPane = mockMap.getPane(scannedSite.options.pane);
+    assert(
+        circlesPane.style.pointerEvents === 'none',
+        'the scanner circles pane must be pointer-events:none so its full-viewport ' +
+        'canvas cannot steal clicks from the layers underneath, got ' +
+        JSON.stringify(circlesPane.style.pointerEvents)
+    );
+
+    // The pin and tag panes are small DOM elements, not full-viewport
+    // surfaces, so they must keep normal pointer handling — the pin has a
+    // tooltip and the operator can interact with it.
+    for (const paneName of [marker.options.pane, resultTooltipOpts.pane]) {
+        const pane = mockMap.getPane(paneName);
+        assert(
+            !pane.style.pointerEvents || pane.style.pointerEvents === 'auto',
+            'pane ' + paneName + ' must keep pointer events, got ' +
+            JSON.stringify(pane.style.pointerEvents)
+        );
+    }
+
+    // The search circle keeps the canvas renderer: it is resized on every
+    // frame of the distance drag, which is the one place canvas matters.
+    assert(
+        circle.options.renderer,
+        'the search circle should keep its canvas renderer for drag performance'
+    );
+    const rendererZ = paneZIndexOf(circle.options.renderer, 'overlayPane');
+    assert(
+        rendererZ > LIDAR_PANE_Z,
+        'the scanner canvas renderer must live above the LIDAR pane, got ' + rendererZ
     );
 
     // 4. Update distance slider.

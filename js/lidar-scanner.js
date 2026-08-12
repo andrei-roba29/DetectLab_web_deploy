@@ -5,7 +5,7 @@
  */
 (function () {
     'use strict';
-    var DATA_URL = 'data/lidar_scanner_points.csv?v=20260812-anywhere';
+    var DATA_URL = 'data/lidar_scanner_points.csv?v=20260812-scanner-above-lidar';
     var HERITAGE_RADIUS_M = 600;
     var map = null, resultsLayer = null, selectedMarker = null, selectionCircle = null;
     var points = [], selected = null, active = false, scanning = false, pointsPromise = null;
@@ -29,13 +29,81 @@
         fill: false, fillColor: '#39ff14', fillOpacity: 0, opacity: 0.95
     };
 
+    // ── Scanner panes: everything the scanner draws sits above the LIDAR ──
+    // The LIDAR imagery lives on `pane_lidar` (z-index 610, created in
+    // map-app.js). Leaflet's stock panes are all *below* that: overlays (where
+    // circles are drawn) are 400 and markers are 600, so with a LIDAR sub-layer
+    // switched on, the search pin and the scan results were painted underneath
+    // the terrain tiles and effectively disappeared — exactly what the operator
+    // needs to see while reading a hillshade.
+    //
+    // Three dedicated panes are used instead, stacked above every LIDAR layer
+    // (and above the other historical rasters at 615-651) but still below the
+    // measurement pane (700) and the iOS overlay (1000):
+    //
+    //   655  circles  — search radius + result rings
+    //   660  pin      — the search point marker
+    //   665  tags     — permanent category labels and the pin's own tooltip
+    //
+    // Labels sit above the pin so a tag is never clipped by the pulsing dot.
+    var PANE_CIRCLES = 'pane_lidar_scanner_shapes';
+    var PANE_PIN = 'pane_lidar_search_pin';
+    var PANE_TAGS = 'pane_lidar_scanner_tags';
+
+    // pointerEvents is deliberate on the circles pane. Its canvas renderer is a
+    // single element the size of the viewport, and Leaflet's stylesheet only
+    // neutralises pointer events for `.leaflet-pane > svg path`, never for
+    // `.leaflet-pane > canvas`. Sitting at 655 the canvas would therefore
+    // intercept every click over the whole map and starve the interactive
+    // layers underneath it (pane_patrimoniu 620, pane_uat 402, the markers at
+    // 600 …) — the same reason map-app.js sets pointerEvents='none' on its own
+    // raster panes. The interactive result rings are unaffected: pointer-events
+    // is re-enabled per element, and Leaflet's stylesheet already does that for
+    // `.leaflet-pane > svg path.leaflet-interactive`, which is exactly why
+    // makeResult keeps the rings on the SVG renderer. The pin and tag panes
+    // keep normal pointer handling: they are small DOM elements, not
+    // full-viewport surfaces.
+    var SCANNER_PANES = [
+        [PANE_CIRCLES, 655, 'none'],
+        [PANE_PIN, 660, ''],
+        [PANE_TAGS, 665, '']
+    ];
+
+    function ensureScannerPanes() {
+        if (!map || !map.createPane) return false;
+        for (var i = 0; i < SCANNER_PANES.length; i++) {
+            var name = SCANNER_PANES[i][0];
+            if (!map.getPane(name)) map.createPane(name);
+            var pane = map.getPane(name);
+            if (pane && pane.style) {
+                pane.style.zIndex = SCANNER_PANES[i][1];
+                pane.style.pointerEvents = SCANNER_PANES[i][2];
+            }
+        }
+        return true;
+    }
+
+    // Returns a pane name only when the pane really exists, so a failure to
+    // create one degrades to Leaflet's default pane instead of throwing.
+    function paneOption(name) {
+        return ensureScannerPanes() && map.getPane(name) ? name : undefined;
+    }
+
+    function assignPane(options, name) {
+        var pane = paneOption(name);
+        if (pane) options.pane = pane;
+        return options;
+    }
+
     // A canvas renderer for the search circle. Leaflet's default SVG renderer
     // mutates a DOM path on every setRadius() call, which forces style/layout
     // work in the page on each frame of the drag; canvas just repaints pixels.
+    // The renderer is pinned to the scanner's own pane so the canvas itself is
+    // composited above the LIDAR tiles.
     var circleRenderer = null;
     function circleRendererOption() {
         if (!circleRenderer && typeof L !== 'undefined' && L.canvas) {
-            circleRenderer = L.canvas({ padding: 0.3 });
+            circleRenderer = L.canvas(assignPane({ padding: 0.3 }, PANE_CIRCLES));
         }
         return circleRenderer;
     }
@@ -279,28 +347,22 @@
     // centre keeps it locked onto its site at every zoom level.
     var RESULT_LABEL_OFFSET = [0, -14];
     function makeResult(p) {
-        // Results are drawn on the shared canvas renderer rather than as one
-        // SVG path each: a wide scan can return dozens of sites, and every SVG
-        // path is a DOM node the browser must style, lay out and composite on
-        // each pan/zoom. On canvas they are just pixels.
-        var resultOptions = {radius:100,color:'#8cff66',weight:2,dashArray:'3 6',fillColor:'#39ff14',fillOpacity:.11,opacity:.98,interactive:true};
-        var resultRenderer = circleRendererOption();
-        if (resultRenderer) resultOptions.renderer = resultRenderer;
+        // Result rings stay on Leaflet's SVG renderer on purpose. They are
+        // clickable (they carry a popup), and the circles pane is
+        // pointer-events:none so its full-viewport canvas cannot steal clicks
+        // from the layers below. Leaflet's own stylesheet re-enables hits for
+        // `.leaflet-pane > svg path.leaflet-interactive`, so an SVG ring is
+        // still clickable inside that pane while a canvas-drawn one would not
+        // be — canvas has no such rule and cannot opt back in per shape.
+        // A scan returns at most a few dozen rings, so the DOM cost is small;
+        // the perf-critical shape is the search circle resized on every frame
+        // of the distance drag, and that one keeps the canvas renderer.
+        var resultOptions = assignPane({radius:100,color:'#8cff66',weight:2,dashArray:'3 6',fillColor:'#39ff14',fillOpacity:.11,opacity:.98,interactive:true}, PANE_CIRCLES);
         var circle=L.circle([p.lat,p.lng],resultOptions);
-        circle.bindTooltip('<span class="lidar-result-tag"><b>Category / Categoria</b><br>'+esc(p.category)+'</span>',{permanent:true,direction:'top',offset:RESULT_LABEL_OFFSET,className:'lidar-result-tooltip'});
+        circle.bindTooltip('<span class="lidar-result-tag"><b>Category / Categoria</b><br>'+esc(p.category)+'</span>',assignPane({permanent:true,direction:'top',offset:RESULT_LABEL_OFFSET,className:'lidar-result-tooltip'}, PANE_TAGS));
         circle.bindPopup('<strong>'+esc(p.category)+'</strong>'+(p.name?'<br>'+esc(p.name):'')+'<br><small>'+p.lat.toFixed(5)+', '+p.lng.toFixed(5)+'</small>'); return circle;
     }
     function setStatus(s) { var e=document.getElementById('lidarScannerStatus'); if(e)e.textContent=s; }
-    // Search pin must sit above pane_lidar (610) and match result description
-    // tags, which live on Leaflet's tooltipPane (650).
-    function ensureSearchMarkerPane() {
-        if (!map) return 'tooltipPane';
-        if (!map.getPane('pane_lidar_search_pin')) {
-            map.createPane('pane_lidar_search_pin');
-            map.getPane('pane_lidar_search_pin').style.zIndex = 650;
-        }
-        return 'pane_lidar_search_pin';
-    }
     function drawSelection(ll) {
         selected = ll;
         if (selectedMarker) map.removeLayer(selectedMarker);
@@ -311,16 +373,16 @@
             iconSize: [26, 26],
             iconAnchor: [13, 13]
         });
-        selectedMarker = L.marker(ll, {
+        selectedMarker = L.marker(ll, assignPane({
             icon: searchIcon,
             zIndexOffset: 2000,
             interactive: true
-        }).addTo(map);
-        selectedMarker.bindTooltip('<span class="lidar-result-tag"><b>Search Point / Punct căutare</b><br>' + ll.lat.toFixed(4) + ', ' + ll.lng.toFixed(4) + '</span>', {
+        }, PANE_PIN)).addTo(map);
+        selectedMarker.bindTooltip('<span class="lidar-result-tag"><b>Search Point / Punct căutare</b><br>' + ll.lat.toFixed(4) + ', ' + ll.lng.toFixed(4) + '</span>', assignPane({
             direction: 'top',
             offset: [0, -14],
             className: 'lidar-result-tooltip'
-        });
+        }, PANE_TAGS));
         var circleOptions = {
             radius: parseInt(document.getElementById('lidarScannerDistance').value, 10) * 1000,
             color: CIRCLE_STYLE_IDLE.color,
@@ -332,6 +394,7 @@
             opacity: CIRCLE_STYLE_IDLE.opacity,
             interactive: false
         };
+        assignPane(circleOptions, PANE_CIRCLES);
         var renderer = circleRendererOption();
         if (renderer) circleOptions.renderer = renderer;
         selectionCircle = L.circle(ll, circleOptions).addTo(map);
