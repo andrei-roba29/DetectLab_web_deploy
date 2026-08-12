@@ -340,7 +340,37 @@ async function main() {
     flushFrames();
     slider.listeners.change.call(slider);
 
-    // 5. Deactivate scanner.
+    // 5. Sites are no longer clipped to LIDAR coverage tiles — a Dobrogea
+    // point far outside the old county boxes must still be returned. Heritage
+    // radiuses remain the only spatial exclusion.
+    mapEventListeners.click({ latlng: { lat: 43.7708993, lng: 28.5362063 } });
+    slider.value = '10';
+    slider.listeners.input.call(slider);
+    flushFrames();
+    slider.listeners.change.call(slider);
+    addedLayers = [];
+    domElements.lidarScannerRun.listeners.click();
+    await new Promise(resolve => setImmediate(resolve));
+    const anywhereGroup = addedLayers.find(layer => layer.type === 'layerGroup') || resultGroup;
+    const easternSite = anywhereGroup.layers.find(layer =>
+        layer.latlng[0] === 43.7708993 && layer.latlng[1] === 28.5362063);
+    assert(easternSite, 'sites outside former LIDAR coverage bounds must still be found');
+    assert(easternSite._tooltip.includes('tumul'), 'appended Dobrogea site should keep its category');
+
+    sandbox.window._localLayerData[0] = {
+        features: [{
+            geometry: { type: 'Point', coordinates: [28.5362063, 43.7708993] }
+        }]
+    };
+    addedLayers = [];
+    anywhereGroup.clearLayers();
+    domElements.lidarScannerRun.listeners.click();
+    await new Promise(resolve => setImmediate(resolve));
+    const excluded = anywhereGroup.layers.find(layer =>
+        layer.latlng[0] === 43.7708993 && layer.latlng[1] === 28.5362063);
+    assert(!excluded, 'a site inside a heritage radius must still be filtered out');
+
+    // 6. Deactivate scanner.
     sandbox.window.toggleLidarScannerLayer(false);
     assert(!mapEventListeners.click, 'map click listener should be removed when deactivated');
     assert(removedLayers.includes(marker), 'selected marker should be removed when layer is turned off');

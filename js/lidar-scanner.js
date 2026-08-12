@@ -5,7 +5,7 @@
  */
 (function () {
     'use strict';
-    var DATA_URL = 'data/lidar_scanner_points.csv?v=20260811-latlon';
+    var DATA_URL = 'data/lidar_scanner_points.csv?v=20260812-anywhere';
     var HERITAGE_RADIUS_M = 600;
     var map = null, resultsLayer = null, selectedMarker = null, selectionCircle = null;
     var points = [], selected = null, active = false, scanning = false, pointsPromise = null;
@@ -42,23 +42,11 @@
 
     var raf = (typeof window !== 'undefined' && window.requestAnimationFrame &&
         window.requestAnimationFrame.bind(window)) || function (fn) { return setTimeout(fn, 16); };
-    var lidarBounds = {
-        // County datasets already present in the LIDAR group.
-        hd: [[45.20, 22.30], [46.15, 23.25]], ar: [[45.80, 20.85], [46.65, 22.70]],
-        ab: [[45.20, 22.70], [46.45, 24.10]], bh: [[46.25, 21.35], [47.20, 23.15]],
-        cs: [[44.55, 21.55], [45.50, 23.25]], cs917: [[44.55, 21.55], [45.50, 23.25]],
-        dj917: [[43.90, 22.35], [45.10, 24.15]], gj917: [[44.45, 22.10], [45.25, 23.95]],
-        mh917: [[44.15, 22.25], [44.95, 23.25]],
-        ro2m: [[43.50, 19.50], [48.50, 30.50]], ro1m: [[43.50, 19.50], [48.50, 30.50]]
-    };
-
     function distance(a, b) {
         var R = 6371000, p = Math.PI / 180, dLat = (b.lat-a.lat)*p, dLng = (b.lng-a.lng)*p;
         var x = Math.sin(dLat/2) ** 2 + Math.cos(a.lat*p)*Math.cos(b.lat*p)*Math.sin(dLng/2) ** 2;
         return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
     }
-    function inBounds(ll, b) { return ll.lat >= b[0][0] && ll.lat <= b[1][0] && ll.lng >= b[0][1] && ll.lng <= b[1][1]; }
-    function inAnyLidar(ll) { return Object.keys(lidarBounds).some(function (k) { return inBounds(ll, lidarBounds[k]); }); }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
     function normalizeHeader(value) {
         var key = String(value == null ? '' : value).replace(/^\uFEFF/, '').trim().toLowerCase();
@@ -67,6 +55,7 @@
             lat: 'lat', latitude: 'lat', latitudine: 'lat',
             lon: 'lon', lng: 'lon', longitude: 'lon', longitudine: 'lon',
             category: 'category', categorie: 'category', categoria: 'category',
+            descriere: 'category', description: 'category',
             name: 'name', nume: 'name', denumire: 'name',
             id: 'id', fid: 'id', x: 'X', y: 'Y', z: 'Z'
         };
@@ -350,7 +339,7 @@
         load().then(function () {
             setTimeout(function () {
                 var out = LidarGeo.scan(points, selected.lat, selected.lng, radius).filter(function (point) {
-                    return inAnyLidar(point) && !isNearHeritage(point);
+                    return !isNearHeritage(point);
                 });
                 if (resultsLayer) resultsLayer.clearLayers();
                 else resultsLayer = L.layerGroup();
