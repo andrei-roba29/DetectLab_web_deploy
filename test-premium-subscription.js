@@ -129,6 +129,9 @@ async function testSubscriptions() {
     w.goToCheckout();
     ok(authModalOpened, 'goToCheckout (logged out) opens the auth modal');
     ok(w.sessionStorage.getItem('dl_redirect_after_login') === 'checkout.html', 'redirect after login flag set');
+    // Clear the pending redirect so the later purchase in this test doesn't
+    // attempt a (jsdom-unsupported) navigation to checkout.html.
+    w.sessionStorage.removeItem('dl_redirect_after_login');
 
     // — free (logged-in) user
     authUser = { id: 'u1', name: 'Test', email: 't@t.ro' };
@@ -169,91 +172,141 @@ async function testSubscriptions() {
 }
 
 /* ────────────────────────────────────────────────────────────────────
-   Test 3: checkout.js — card form → success → expiry date
+   Test 3: checkout.js — Stripe redirect flow
    ──────────────────────────────────────────────────────────────────── */
-async function testCheckout() {
-    console.log('\n[3] Checkout — js/checkout.js');
-    const dom = new JSDOM(`<!DOCTYPE html><html><body>
-        <main class="co-main">
-        <section id="coLoginCard" style="display:none"></section>
-        <section id="coCheckoutCard" style="display:none">
-            <form id="coCardForm">
-                <input id="coCardName" type="text">
-                <input id="coCardNumber" type="text">
-                <input id="coCardExp" type="text">
-                <input id="coCardCvc" type="text">
-                <button type="submit" id="coPayBtn"><span id="coPayLabel"></span></button>
-            </form>
-            <div id="coCardBrand"></div>
-        </section>
-        <section id="coProcessingCard" style="display:none"></section>
-        <section id="coSuccessCard" style="display:none">
-            <strong id="coSuccessDate"></strong>
-        </section>
+const CHECKOUT_DOM = `<!DOCTYPE html><html><body>
+    <main class="co-main">
+    <section id="coLoginCard" style="display:none"></section>
+    <section id="coCheckoutCard" style="display:none">
+        <button type="button" id="coPayBtn"><span id="coPayLabel">Pay €5.00</span></button>
+        <div id="coInfo" style="display:none"></div>
         <div id="coError"></div>
-        <div id="coWallets" style="display:none"></div>
-        <div id="coApplePayBtn" style="display:none"></div>
-        <div id="coGooglePayBtn" style="display:none"></div>
-        <div id="coWalletOr" style="display:none"></div>
-        </main>
-    </body></html>`, { runScripts: 'outside-only', url: 'http://localhost/checkout.html' });
+    </section>
+    <section id="coRedirectCard" style="display:none"></section>
+    <section id="coProcessingCard" style="display:none"></section>
+    <section id="coPendingCard" style="display:none"><button id="coCheckAgainBtn"></button></section>
+    <section id="coAlreadyCard" style="display:none"><button id="coManageBtn"></button></section>
+    <section id="coSuccessCard" style="display:none">
+        <strong id="coSuccessDate"></strong><button id="coSuccessManageBtn"></button>
+    </section>
+    </main>
+</body></html>`;
 
+async function buildCheckoutPage(url, { fetchImpl, onPremiumLoad } = {}) {
+    const dom = new JSDOM(CHECKOUT_DOM, { runScripts: 'outside-only', url: url || 'http://localhost/checkout.html' });
     const w = dom.window;
     patchWindow(w);
     w.translations = { en: {}, ro: {
         co_login_title: 'x', co_login_desc: 'x', co_login_btn: 'x', co_order_title: 'x', co_plan_name: 'x',
-        co_all_layers: 'x', co_total: 'x', co_renews: 'x', co_pay_title: 'x', co_or: 'x',
-        co_card_name: 'x', co_card_number: 'x', co_card_exp: 'x', co_card_cvc: 'x',
-        co_pay_btn: 'Plătește 5,00 €', co_processing: 'x', co_processing_short: '…',
-        co_demo_note: 'x', co_secure: 'x', co_success_title: 'x', co_success_desc: 'x',
-        co_success_expiry: 'x', co_go_account: 'x', co_back_map: 'x', co_footer: 'x', co_login_btn2: 'x'
+        co_all_layers: 'x', co_total: 'x', co_renews: 'x', co_pay_title: 'x',
+        co_pay_btn: 'Plătește 5,00 €', co_processing: 'x', co_processing_desc: 'x',
+        co_redirecting: 'x', co_cancelled: 'x', co_already_title: 'x', co_already_desc: 'x',
+        co_manage_billing: 'x', co_pending_title: 'x', co_pending_desc: 'x', co_check_again: 'x',
+        co_not_configured: 'x', co_login_needed: 'x', co_secure: 'x', co_success_title: 'x',
+        co_success_desc: 'x', co_success_expiry: 'x', co_go_account: 'x', co_back_map: 'x',
+        co_footer: 'x', co_login_btn2: 'x', co_portal_return: 'x'
     } };
     w.currentLang = 'ro';
     const user = { id: 'u1', name: 'Ion', email: 'i@t.ro', plan: 'free' };
     w._authUser = () => user;
     w._authReadyPromise = Promise.resolve(null);
     w._save = () => {};
-    w.supabaseClient = { from: () => ({}) };
+    w.supabaseClient = {
+        auth: { getSession: async () => ({ data: { session: { access_token: 'tok_123' } } }) },
+        from: () => ({})
+    };
+    w.fetch = fetchImpl || (async () => ({ ok: true, status: 200, json: async () => ({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' }) }));
 
     w.eval(read('js/subscriptions.js'));
-    // Override AFTER subscriptions.js so checkout.js talks to our stub.
-    let purchaseCalled = null;
-    w.completePremiumPurchase = async (opts) => {
-        purchaseCalled = opts;
-        user.plan = 'premium';
-        user.premiumExpiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
-        return { expiresAt: new Date(user.premiumExpiresAt) };
-    };
+    // Override AFTER subscriptions.js: controllable profile loader + redirect capture.
+    let loadCount = 0;
+    w.loadUserPremiumProfile = onPremiumLoad || (async () => {
+        loadCount++;
+        if (loadCount >= 2) {
+            user.plan = 'premium';
+            user.premiumExpiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+        }
+    });
+    let redirectedTo = null;
+    w._dlRedirect = (u) => { redirectedTo = u; };
     w.eval(read('js/checkout.js'));
 
     const $ = (id) => w.document.getElementById(id);
     await new Promise(r => setTimeout(r, 30));
+    return { w, $, user, getRedirected: () => redirectedTo };
+}
 
-    ok($('coCheckoutCard').style.display !== 'none', 'logged-in user sees the checkout');
-    ok($('coLoginCard').style.display === 'none', 'login-required hidden for logged-in user');
+async function testCheckout() {
+    console.log('\n[3] Checkout — js/checkout.js (Stripe redirect)');
 
-    // Fill the card form with a valid test number
-    $('coCardName').value = 'ION POPESCU';
-    $('coCardNumber').value = '4242 4242 4242 4242';
-    $('coCardExp').value = '12/30';
-    $('coCardCvc').value = '123';
+    // — logged-in user sees the checkout card
+    {
+        const { w, $ } = await buildCheckoutPage('http://localhost/checkout.html');
+        ok($('coCheckoutCard').style.display !== 'none', 'logged-in user sees the checkout');
+        ok($('coLoginCard').style.display === 'none', 'login-required hidden for logged-in user');
+        w.close();
+    }
 
-    const form = $('coCardForm');
-    form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    // — clicking Pay calls the backend and redirects to Stripe
+    {
+        let fetchCalled = null;
+        const { w, $, getRedirected } = await buildCheckoutPage('http://localhost/checkout.html', {
+            fetchImpl: async (url, options) => {
+                fetchCalled = { url, options };
+                return { ok: true, status: 200, json: async () => ({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' }) };
+            }
+        });
+        $('coPayBtn').dispatchEvent(new w.Event('click', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 50));
 
-    await new Promise(r => setTimeout(r, 2600)); // processing delay ~1.8s
+        ok(!!fetchCalled, 'Pay click → fetch called');
+        ok(fetchCalled && fetchCalled.url.indexOf('/api/payments/checkout') !== -1, 'fetch hits /api/payments/checkout');
+        ok(fetchCalled && fetchCalled.options.method === 'POST', 'fetch uses POST');
+        ok(fetchCalled && fetchCalled.options.headers.Authorization === 'Bearer tok_123', 'Authorization: Bearer <supabase token>');
+        ok(getRedirected() === 'https://checkout.stripe.com/c/pay/cs_test_1', 'redirects to the Stripe Checkout URL');
+        ok($('coRedirectCard').style.display !== 'none', 'redirect card shown while navigating');
+        w.close();
+    }
 
-    ok($('coSuccessCard').style.display !== 'none', 'success card shown after payment');
-    ok(/^\d{2}\.\d{2}\.\d{4}$/.test($('coSuccessDate').textContent), 'expiry date shown on success card');
-    ok(!!purchaseCalled, 'completePremiumPurchase invoked');
+    // — backend rejects (not configured / 500) → error, stay on checkout
+    {
+        const { w, $ } = await buildCheckoutPage('http://localhost/checkout.html', {
+            fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({ error: 'payments_not_configured' }) })
+        });
+        $('coPayBtn').dispatchEvent(new w.Event('click', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 50));
+        ok($('coError').textContent.length > 0, 'backend failure shows an error');
+        ok($('coCheckoutCard').style.display !== 'none', 'stays on the checkout card');
+        w.close();
+    }
 
-    // Invalid card should error
-    $('coCardName').value = 'A';
-    $('coCardNumber').value = '1234';
-    $('coCardExp').value = '1';
-    $('coCardCvc').value = '1';
-    form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
-    ok($('coError').textContent.length > 0, 'invalid card shows an error');
+    // — already premium (409) → "already premium" card
+    {
+        const { w, $ } = await buildCheckoutPage('http://localhost/checkout.html', {
+            fetchImpl: async () => ({ ok: false, status: 409, json: async () => ({ error: 'already_premium' }) })
+        });
+        $('coPayBtn').dispatchEvent(new w.Event('click', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 50));
+        ok($('coAlreadyCard').style.display !== 'none', '409 already_premium → already-premium card');
+        w.close();
+    }
+
+    // — return flow: ?payment=success → polls profile → success card with expiry
+    {
+        const { w, $ } = await buildCheckoutPage('http://localhost/checkout.html?payment=success&session_id=cs_test_1');
+        await new Promise(r => setTimeout(r, 3800)); // ~2 polls × 1.5s
+        ok($('coSuccessCard').style.display !== 'none', 'success card shown after webhook activates Premium');
+        ok(/^\d{2}\.\d{2}\.\d{4}$/.test($('coSuccessDate').textContent), 'expiry date shown on success card');
+        w.close();
+    }
+
+    // — return flow: ?payment=cancelled → back to checkout with info
+    {
+        const { w, $ } = await buildCheckoutPage('http://localhost/checkout.html?payment=cancelled');
+        ok($('coCheckoutCard').style.display !== 'none', 'cancelled → checkout card shown again');
+        ok($('coInfo').style.display === 'block' && $('coInfo').textContent.length > 0, 'cancelled → info message shown');
+        w.close();
+    }
 }
 
 (async () => {

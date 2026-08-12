@@ -32,4 +32,19 @@ export const env = {
     cron: process.env.SYNC_CRON || '0 0 * * *',
     onBoot: process.env.SYNC_ON_BOOT === 'true',
   },
+
+  // ── Supabase (auth verification for the payments API) ────────────────
+  // Not required at boot: the payments endpoints return 503 until set.
+  supabaseUrl: process.env.SUPABASE_URL || '',
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
+
+  // ── Stripe (real payments) ────────────────────────────────────────────
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY || '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+    priceId: process.env.STRIPE_PRICE_ID || '',
+    // Base URL used for success/cancel redirects; falls back to the
+    // request's Origin header (handy for local testing).
+    siteUrl: process.env.STRIPE_SITE_URL || '',
+  },
 };
