@@ -3875,6 +3875,260 @@
                 cursor: pointer;
             }
 
+        /* ── SELECTED LAYER: VERTICAL OPACITY CONTROL ──
+           Every real opacity range in the layer panel is registered by
+           vertical-opacity-control.js. The selected range is mirrored here so
+           users can tune it over the map after the full layer panel closes. */
+        .vertical-opacity-control {
+            position: absolute;
+            right: calc(38px + env(safe-area-inset-right, 0px));
+            top: 50%;
+            z-index: 1000;
+            width: 68px;
+            height: 294px;
+            padding: 10px 8px 11px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            color: #F5F0EB;
+            background:
+                radial-gradient(circle at 50% 0%, rgba(107,63,160,0.28), transparent 48%),
+                linear-gradient(180deg, rgba(10,25,48,0.94), rgba(6,14,30,0.96));
+            border: 1px solid rgba(184,216,240,0.28);
+            border-radius: 14px;
+            box-shadow: 0 9px 30px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,255,255,0.05);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+            transform: translateY(-50%) translateX(16px) scale(0.96);
+            transform-origin: center right;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s;
+        }
+
+        .vertical-opacity-control.visible {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transform: translateY(-50%) translateX(0) scale(1);
+            transition-delay: 0s;
+        }
+
+        .vertical-opacity-close {
+            position: absolute;
+            top: 4px;
+            right: 5px;
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(184,216,240,0.68);
+            background: transparent;
+            border: 0;
+            border-radius: 50%;
+            font: 400 17px/1 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: color 0.15s, background 0.15s;
+        }
+
+        .vertical-opacity-close:hover,
+        .vertical-opacity-close:focus-visible {
+            color: #fff;
+            background: rgba(184,216,240,0.12);
+            outline: none;
+        }
+
+        .vertical-opacity-caption {
+            align-self: flex-start;
+            max-width: calc(100% - 18px);
+            overflow: hidden;
+            color: rgba(184,216,240,0.52);
+            font: 600 0.5rem/1 'Outfit', sans-serif;
+            letter-spacing: 0.12em;
+            white-space: nowrap;
+        }
+
+        .vertical-opacity-layer {
+            width: 100%;
+            min-height: 31px;
+            padding-top: 2px;
+            display: -webkit-box;
+            overflow: hidden;
+            color: rgba(245,240,235,0.9);
+            font: 600 0.62rem/1.2 'Outfit', sans-serif;
+            text-align: center;
+            overflow-wrap: anywhere;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+        }
+
+        .vertical-opacity-slider-wrap {
+            position: relative;
+            flex: 1 1 auto;
+            width: 34px;
+            min-height: 146px;
+        }
+
+        /* The range remains logically horizontal and is rotated. This keeps
+           vertical touch dragging reliable in Chromium PWAs and iOS Safari:
+           minimum is at the bottom, maximum at the top. */
+        .vertical-opacity-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 168px;
+            height: 6px;
+            margin: 0;
+            border-radius: 4px;
+            background: linear-gradient(90deg, rgba(184,216,240,0.16), rgba(160,112,232,0.82));
+            outline: none;
+            cursor: pointer;
+            touch-action: none;
+            transform: translate(-50%, -50%) rotate(-90deg);
+            transform-origin: center;
+        }
+
+        .vertical-opacity-slider:focus-visible {
+            box-shadow: 0 0 0 3px rgba(184,216,240,0.22);
+        }
+
+        .vertical-opacity-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #8051bd;
+            border: 2px solid rgba(255,255,255,0.94);
+            box-shadow: 0 0 0 5px rgba(107,63,160,0.22), 0 3px 9px rgba(0,0,0,0.55);
+            cursor: grab;
+        }
+
+        .vertical-opacity-slider:active::-webkit-slider-thumb {
+            cursor: grabbing;
+            background: var(--sky);
+        }
+
+        .vertical-opacity-slider::-moz-range-thumb {
+            width: 17px;
+            height: 17px;
+            border-radius: 50%;
+            background: #8051bd;
+            border: 2px solid rgba(255,255,255,0.94);
+            box-shadow: 0 0 0 5px rgba(107,63,160,0.22), 0 3px 9px rgba(0,0,0,0.55);
+            cursor: grab;
+        }
+
+        .vertical-opacity-slider::-moz-range-track {
+            height: 6px;
+            border: 0;
+            border-radius: 4px;
+            background: linear-gradient(90deg, rgba(184,216,240,0.16), rgba(160,112,232,0.82));
+        }
+
+        .vertical-opacity-value {
+            min-width: 46px;
+            padding: 3px 4px;
+            color: var(--sky);
+            background: rgba(184,216,240,0.09);
+            border: 1px solid rgba(184,216,240,0.18);
+            border-radius: 7px;
+            font: 700 0.72rem/1.2 'Cinzel', serif;
+            text-align: center;
+        }
+
+        /* Cursor/focus/selection feedback makes both top-level cards and the
+           nested historical/LIDAR entries visibly clickable. */
+        #transpPanel .opacity-layer-selectable {
+            cursor: pointer;
+            border-radius: 8px;
+        }
+
+        #transpPanel .opacity-layer-selectable:focus-visible {
+            outline: 2px solid rgba(184,216,240,0.75);
+            outline-offset: 3px;
+        }
+
+        #transpPanel .opacity-layer-selectable.opacity-layer-selected {
+            box-shadow: 0 0 0 1px rgba(160,112,232,0.68), 0 0 18px rgba(107,63,160,0.22);
+        }
+
+        /* The control belongs to map-frame, so it naturally fills the PWA map
+           and remains anchored in normal and browser fullscreen modes. */
+        .map-frame.is-fullscreen .vertical-opacity-control {
+            position: fixed;
+            z-index: 10001;
+        }
+
+        body.is-pwa .vertical-opacity-control {
+            top: calc(50% - var(--pwa-bottom-controls-half-clearance, 22px));
+        }
+
+        .vertical-opacity-control.auth-hidden {
+            opacity: 0 !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+
+        @media (max-width: 600px) {
+            .vertical-opacity-control {
+                right: calc(34px + env(safe-area-inset-right, 0px));
+                width: 62px;
+                height: 262px;
+                padding-left: 6px;
+                padding-right: 6px;
+            }
+
+            .vertical-opacity-slider {
+                width: 142px;
+            }
+
+            .vertical-opacity-layer {
+                font-size: 0.58rem;
+            }
+        }
+
+        @media (max-height: 500px) {
+            .vertical-opacity-control {
+                height: 222px;
+            }
+
+            .vertical-opacity-caption {
+                display: none;
+            }
+
+            .vertical-opacity-layer {
+                min-height: 24px;
+                -webkit-line-clamp: 2;
+            }
+
+            .vertical-opacity-slider {
+                width: 116px;
+            }
+        }
+
+        @media (max-height: 360px) {
+            .vertical-opacity-control {
+                height: 184px;
+            }
+
+            .vertical-opacity-slider {
+                width: 82px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .vertical-opacity-control {
+                transition: none;
+            }
+        }
+
         .transp-divider {
             height: 0;
             margin: 8px 0;
