@@ -27,12 +27,63 @@
                 lbl_weekly: 'Weekly', lbl_monthly: 'Monthly', save_badge: 'Save up to 45%',
                 tier_bronze: 'Bronze', tier_silver: 'Silver', tier_gold: 'Gold',
                 plan_weekly: 'Weekly', plan_monthly: 'Monthly', plan_yearly: 'Yearly',
-                note_weekly: 'Billed weekly', note_monthly: 'Billed monthly', note_yearly: 'Billed annually — save 45%',
+                note_weekly: 'Not available', note_monthly: 'Billed monthly', note_yearly: 'Not available',
                 badge_popular: 'Most Popular',
+                not_available: 'Not available',
                 f_map: 'Full APM interactive map', f_sat: 'Satellite + APM overlay', f_legend: 'Score legend & zone info',
                 f_export: 'Export data (GeoJSON, KMZ)', f_filters: 'Advanced layer filters', f_api: 'API access', f_api_plus: 'API access + priority support',
                 btn_bronze: 'Buy', btn_silver: 'Buy', btn_gold: 'Buy',
                 free_title: 'Free — Always Available', free_desc: 'Explore a limited preview of the APM map, read about the methodology and learn what archaeological prediction can do for research.', free_btn: 'Explore Free Map',
+                // ── Premium membership ──
+                prem_modal_title: 'DetectLab Premium',
+                prem_modal_sub: 'Unlock every premium layer on the interactive map.',
+                prem_login_needed: 'You need a free account to subscribe. Log in or register — it takes a minute.',
+                prem_login_btn: 'Log in / Register',
+                prem_already: 'You already have an active Premium subscription. Thank you for supporting DetectLab!',
+                prem_feat_apm20: 'APM 2.0 — advanced archaeological prediction model',
+                prem_feat_hist: 'Historical maps — Josephine +, Bucovina 1861–1864, Austro-Hungarian, WWI, WWII',
+                prem_feat_lidar: 'LIDAR Scanner — point-cloud analysis around any location',
+                prem_feat_archeo: 'Archeological Potential — automatic candidate zone analysis',
+                prem_feat_roman: 'Roman Empire layers — roads, forts and settlements',
+                prem_price_line: 'Just €5 / month — cancel anytime',
+                prem_buy_btn: 'Buy Premium · €5/month',
+                prem_later: 'Not now',
+                prem_manage: 'Manage subscription',
+                // ── Checkout page ──
+                co_back_map: 'Back to map',
+                co_login_title: 'Log in to continue',
+                co_login_desc: 'You need an account to purchase a subscription.',
+                co_login_btn: 'Go to login',
+                co_order_title: 'Order summary',
+                co_plan_name: 'DetectLab Premium — Monthly',
+                co_all_layers: 'All premium map layers',
+                co_total: 'Total due today',
+                co_renews: 'Renews automatically every month. Cancel anytime.',
+                co_pay_title: 'Payment method',
+                co_or: 'or pay with card',
+                co_card_name: 'Name on card',
+                co_card_number: 'Card number',
+                co_card_exp: 'Expiry',
+                co_card_cvc: 'CVC',
+                co_pay_btn: 'Pay €5.00',
+                co_processing: 'Processing payment…',
+                co_processing_short: 'Processing…',
+                co_demo_note: 'Demo mode — no real charge is made.',
+                co_secure: 'Payments are encrypted and processed securely.',
+                co_success_title: 'Payment confirmed!',
+                co_success_desc: 'Your account is now Premium. Enjoy every premium layer.',
+                co_success_expiry: 'Premium active until',
+                co_go_account: 'Go to my account',
+                co_footer: 'DetectLab · Saving history together',
+                // ── Account / subscription ──
+                acct_subscription: 'Subscription',
+                acct_buy_premium: 'Buy Premium',
+                acct_renew: 'Renew',
+                acct_expires_on: 'Expires on',
+                acct_premium_until: 'Premium until {date}',
+                acct_days_left: '{n} days left',
+                acct_day_left: '{n} day left',
+                acct_no_sub: 'No active subscription',
                 f_product: 'Product', f_resources: 'Resources', f_contact: 'Contact',
                 f_method: 'Methodology', f_docs: 'Documentation', f_papers: 'Research Papers', f_qgis: 'QGIS Project',
                 f_about: 'About Us', f_partner: 'contact@detectlab.ro', f_press: 'Press',
@@ -162,12 +213,63 @@
                 lbl_weekly: 'Săptămânal', lbl_monthly: 'Lunar', save_badge: 'Economisești până la 45%',
                 tier_bronze: 'Bronz', tier_silver: 'Argint', tier_gold: 'Aur',
                 plan_weekly: 'Săptămânal', plan_monthly: 'Lunar', plan_yearly: 'Anual',
-                note_weekly: 'Facturat săptămânal', note_monthly: 'Facturat lunar', note_yearly: 'Facturat anual — economisești 45%',
+                note_weekly: 'Indisponibil', note_monthly: 'Facturat lunar', note_yearly: 'Indisponibil',
                 badge_popular: 'Cel Mai Popular',
+                not_available: 'Indisponibil',
                 f_map: 'Hartă APM interactivă completă', f_sat: 'Suprapunere satelit + APM', f_legend: 'Legendă scoruri & info zone',
                 f_export: 'Export date (GeoJSON, KMZ)', f_filters: 'Filtre avansate de straturi', f_api: 'Acces API', f_api_plus: 'Acces API + suport prioritar',
                 btn_bronze: 'Cumpără', btn_silver: 'Cumpără', btn_gold: 'Cumpără',
                 free_title: 'Gratuit — Mereu Disponibil', free_desc: 'Explorează o previzualizare limitată a hărții APM, citește despre metodologie și înțelege ce poate face predicția arheologică pentru cercetare.', free_btn: 'Explorează Harta Gratuită',
+                // ── Premium membership ──
+                prem_modal_title: 'DetectLab Premium',
+                prem_modal_sub: 'Deblochează toate straturile premium de pe harta interactivă.',
+                prem_login_needed: 'Ai nevoie de un cont gratuit ca să te abonezi. Autentifică-te sau înregistrează-te — durează un minut.',
+                prem_login_btn: 'Autentificare / Înregistrare',
+                prem_already: 'Ai deja un abonament Premium activ. Îți mulțumim că susții DetectLab!',
+                prem_feat_apm20: 'APM 2.0 — model avansat de predicție arheologică',
+                prem_feat_hist: 'Hărți istorice — Iosefină +, Bucovina 1861–1864, austro-ungară, WWI, WWII',
+                prem_feat_lidar: 'LIDAR Scanner — analiza norului de puncte în jurul oricărei locații',
+                prem_feat_archeo: 'Potențial Arheologic — analiza automată a zonelor candidate',
+                prem_feat_roman: 'Straturile Imperiului Roman — drumuri, forturi și așezări',
+                prem_price_line: 'Doar 5 € / lună — anulezi oricând',
+                prem_buy_btn: 'Cumpără Premium · 5 €/lună',
+                prem_later: 'Acum nu',
+                prem_manage: 'Gestionează abonamentul',
+                // ── Checkout page ──
+                co_back_map: 'Înapoi la hartă',
+                co_login_title: 'Autentifică-te pentru a continua',
+                co_login_desc: 'Ai nevoie de un cont pentru a cumpăra un abonament.',
+                co_login_btn: 'Mergi la autentificare',
+                co_order_title: 'Rezumat comandă',
+                co_plan_name: 'DetectLab Premium — Lunar',
+                co_all_layers: 'Toate straturile premium de pe hartă',
+                co_total: 'Total de plată astăzi',
+                co_renews: 'Se reînnoiește automat în fiecare lună. Anulezi oricând.',
+                co_pay_title: 'Metodă de plată',
+                co_or: 'sau plătește cu cardul',
+                co_card_name: 'Numele de pe card',
+                co_card_number: 'Număr card',
+                co_card_exp: 'Expiră',
+                co_card_cvc: 'CVC',
+                co_pay_btn: 'Plătește 5,00 €',
+                co_processing: 'Se procesează plata…',
+                co_processing_short: 'Se procesează…',
+                co_demo_note: 'Mod demo — nu se efectuează nicio plată reală.',
+                co_secure: 'Plățile sunt criptate și procesate în siguranță.',
+                co_success_title: 'Plată confirmată!',
+                co_success_desc: 'Contul tău este acum Premium. Bucură-te de toate straturile premium.',
+                co_success_expiry: 'Premium activ până pe',
+                co_go_account: 'Mergi la contul meu',
+                co_footer: 'DetectLab · Salvăm istoria împreună',
+                // ── Account / subscription ──
+                acct_subscription: 'Abonament',
+                acct_buy_premium: 'Cumpără Premium',
+                acct_renew: 'Reînnoiește',
+                acct_expires_on: 'Expiră pe',
+                acct_premium_until: 'Premium până pe {date}',
+                acct_days_left: '{n} zile rămase',
+                acct_day_left: '{n} zi rămasă',
+                acct_no_sub: 'Niciun abonament activ',
                 f_product: 'Produs', f_resources: 'Resurse', f_contact: 'Contact',
                 f_method: 'Metodologie', f_docs: 'Documentație', f_papers: 'Articole Științifice', f_qgis: 'Proiect QGIS',
                 f_about: 'Despre Noi', f_partner: 'contact@detectlab.ro', f_press: 'Presă',
@@ -324,9 +426,12 @@
         });
 
         // ── BILLING TOGGLE ──
-        let isMonthly = false;
+        // Only the monthly plan is sold: weekly & yearly are marked as
+        // "Not available" in the pricing section, so the toggle is locked
+        // on monthly billing.
+        let isMonthly = true;
         const prices = {
-            weekly: { bronze: ['  ', '/week'], silver: ['  ', '/week'], gold: ['  ', '/week'] }
+            monthly: { bronze: ['—', ''], silver: ['5', '/month'], gold: ['—', ''] }
         };
         const periodRO = { '/week': '/săpt.', '/month': '/lună', '/year': '/an' };
 
@@ -362,23 +467,28 @@
         setLang(currentLang);
 
         function toggleBilling() {
-            isMonthly = !isMonthly;
-            document.getElementById('billingToggle').classList.toggle('monthly', isMonthly);
-            document.getElementById('lbl_weekly').classList.toggle('active', !isMonthly);
-            document.getElementById('lbl_monthly').classList.toggle('active', isMonthly);
+            // Only monthly billing is offered; keep the toggle inert.
+            isMonthly = true;
             updateBillingDisplay();
         }
 
         function updateBillingDisplay() {
             const mode = isMonthly ? 'monthly' : 'weekly';
             const T = translations[currentLang];
+            const pricesForMode = prices[mode] || prices.monthly;
             ['bronze', 'silver', 'gold'].forEach(tier => {
-                const [price, period] = prices[mode][tier];
-                document.getElementById(tier + 'Price').textContent = price;
+                const row = pricesForMode[tier] || ['—', ''];
+                const price = row[0];
+                const period = row[1];
+                // Guarded so translations.js can also load on pages that
+                // don't contain the pricing section (e.g. checkout.html).
+                const priceEl = document.getElementById(tier + 'Price');
+                if (priceEl) priceEl.textContent = price;
                 const pEl = document.getElementById(tier + 'Period');
-                pEl.textContent = currentLang === 'ro' ? periodRO[period] : period;
+                if (pEl) pEl.textContent = currentLang === 'ro' ? (periodRO[period] || period) : period;
                 const nKey = tier === 'gold' ? 'note_yearly' : (tier === 'silver' ? 'note_monthly' : 'note_weekly');
-                document.getElementById(tier + 'Note').innerHTML = T[nKey] || '';
+                const nEl = document.getElementById(tier + 'Note');
+                if (nEl) nEl.innerHTML = T[nKey] || '';
             });
         }
 

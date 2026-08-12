@@ -59,6 +59,11 @@ function _syncFromSession(session) {
             email: session.user.email,
             user_metadata: session.user.user_metadata
         });
+        // Load the subscription status (plan / premium_expires_at) from the
+        // Supabase `profiles` table — defined in js/subscriptions.js.
+        if (typeof window.loadUserPremiumProfile === 'function') {
+            window.loadUserPremiumProfile(session.user.id);
+        }
     } else {
         _clear();
     }

@@ -227,32 +227,80 @@
         }
     }
 
+    function _t(key) {
+        var lang = (typeof currentLang !== 'undefined') ? currentLang : 'ro';
+        var T = (typeof translations !== 'undefined' && translations[lang]) ? translations[lang] : {};
+        return T[key] !== undefined ? T[key] : key;
+    }
+
+    function _fmtDate(d) {
+        var dd = String(d.getDate()).padStart(2, '0');
+        var mm = String(d.getMonth() + 1).padStart(2, '0');
+        return dd + '.' + mm + '.' + d.getFullYear();
+    }
+
+    // Single source of truth for the account panel's subscription block —
+    // also used after a purchase so the panel updates without a reload.
+    window.refreshAccountSubscription = function () {
+        var user = (typeof window._authUser === 'function') ? window._authUser() : null;
+        if (!user) return;
+
+        var premium = user.plan === 'premium' && !!user.premiumExpiresAt &&
+            new Date(user.premiumExpiresAt).getTime() > Date.now();
+        var expiresAt = premium ? new Date(user.premiumExpiresAt) : null;
+
+        var badgeEl = document.getElementById('acctPlanBadge');
+        if (badgeEl) {
+            badgeEl.textContent = premium ? 'PREMIUM' : 'FREE';
+            badgeEl.className = 'account-plan-badge ' + (premium ? 'premium' : 'free');
+        }
+
+        var daysEl = document.getElementById('acctPlanDays');
+        if (daysEl) {
+            daysEl.textContent = '';
+            if (premium && expiresAt) {
+                var msLeft = expiresAt.getTime() - Date.now();
+                var daysLeft = Math.max(0, Math.ceil(msLeft / 86400000));
+                var key = daysLeft === 1 ? 'acct_day_left' : 'acct_days_left';
+                daysEl.textContent = ' · ' + _t(key).replace('{n}', String(daysLeft));
+            }
+        }
+
+        var statusEl = document.getElementById('acctSubStatus');
+        if (statusEl) {
+            statusEl.textContent = premium ? 'PREMIUM' : _t('acct_no_sub');
+            statusEl.className = 'account-sub-status' + (premium ? ' premium' : ' free');
+        }
+
+        var expiryEl = document.getElementById('acctSubExpiry');
+        if (expiryEl) {
+            expiryEl.textContent = '';
+            if (premium && expiresAt) {
+                expiryEl.textContent = _t('acct_expires_on') + ': ' + _fmtDate(expiresAt) +
+                    ' · ' + _t('acct_premium_until').replace('{date}', _fmtDate(expiresAt));
+            }
+        }
+
+        var btnEl = document.getElementById('acctSubBtn');
+        if (btnEl) {
+            var label = btnEl.querySelector('.t') || btnEl;
+            label.textContent = premium ? _t('acct_renew') : _t('acct_buy_premium');
+        }
+    };
+
     function renderAccountPanel(user) {
         var avatarEl = document.getElementById('acctAvatar');
         var nameEl = document.getElementById('acctName');
         var emailEl = document.getElementById('acctEmail');
-        var badgeEl = document.getElementById('acctPlanBadge');
-        var daysEl = document.getElementById('acctPlanDays');
 
         if (avatarEl) avatarEl.textContent = (user.name || user.email || '?').charAt(0).toUpperCase();
         if (nameEl) nameEl.textContent = user.name || user.email || 'Account';
         if (emailEl) emailEl.textContent = user.email || '—';
 
-        // Subscription level: reads user.plan / user.premiumExpiresAt if the
-        // backend provides them, defaults to Free otherwise.
-        var isPremium = user.plan === 'premium' || user.isPremium === true;
-        if (badgeEl) {
-            badgeEl.textContent = isPremium ? 'PREMIUM' : 'FREE';
-            badgeEl.className = 'account-plan-badge ' + (isPremium ? 'premium' : 'free');
-        }
-        if (daysEl) {
-            daysEl.textContent = '';
-            if (isPremium && user.premiumExpiresAt) {
-                var msLeft = new Date(user.premiumExpiresAt).getTime() - Date.now();
-                var daysLeft = Math.max(0, Math.ceil(msLeft / 86400000));
-                daysEl.textContent = daysLeft + (daysLeft === 1 ? ' day left' : ' days left');
-            }
-        }
+        // Subscription level + expiration date (reads user.plan /
+        // user.premiumExpiresAt — populated from the Supabase `profiles`
+        // table by js/subscriptions.js).
+        window.refreshAccountSubscription();
 
         ['acctPwCurrent', 'acctPwNew', 'acctPwConfirm'].forEach(function (id) {
             var el = document.getElementById(id);
@@ -261,6 +309,15 @@
         var msgEl = document.getElementById('acctPwMsg');
         if (msgEl) { msgEl.textContent = ''; msgEl.className = 'account-msg'; }
     }
+
+    // Keep the account panel in sync when the subscription changes
+    // (e.g. right after a successful checkout, or when it expires).
+    window.addEventListener('detectlab:authchange', function () {
+        var panel = document.getElementById('accountPanel');
+        if (panel && panel.classList.contains('active')) {
+            window.refreshAccountSubscription();
+        }
+    });
 
     // Exposed so the PWA account overlay (inline script in index.html) can
     // refresh the account card without running the desktop openAccount() flow.

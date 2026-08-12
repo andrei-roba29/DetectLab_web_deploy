@@ -1314,6 +1314,19 @@
                     background: rgba(255,255,255,.06);
                 }
 
+        .user-premium-badge {
+            float: right;
+            font-size: 0.58rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            background: rgba(255,200,50,0.15);
+            color: #ffc832;
+            border: 1px solid rgba(255,200,50,0.4);
+            border-radius: 4px;
+            padding: 2px 6px;
+            margin-top: 1px;
+        }
+
         .hidden {
             display: none;
         }
@@ -1777,6 +1790,43 @@
             padding: 4px 16px;
             border-radius: 100px;
             white-space: nowrap;
+        }
+
+        /* Plans that are not sold (weekly / yearly) — semi-transparent
+           "Not available" tag + dimmed card */
+        .plan-card.plan-disabled {
+            opacity: 0.68;
+            filter: saturate(0.55);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .plan-card.plan-disabled:hover {
+            transform: none !important;
+        }
+
+        .plan-unavailable {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            background: rgba(255, 255, 255, 0.10);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            color: rgba(245, 240, 235, 0.75);
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            padding: 5px 10px;
+            border: 1px solid rgba(245, 240, 235, 0.28);
+            border-radius: 100px;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .plan-card .btn-plan:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
         }
 
         .plan-tier {
@@ -3028,6 +3078,51 @@
             font-size: 0.72rem;
             color: rgba(184,216,240,0.55);
             margin-left: 8px;
+        }
+
+        .account-sub-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: rgba(184,216,240,0.05);
+            border: 1px solid rgba(184,216,240,0.12);
+            border-radius: 10px;
+            padding: 12px 14px;
+            flex-wrap: wrap;
+        }
+
+        .account-sub-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .account-sub-status {
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+        }
+
+            .account-sub-status.free {
+                color: rgba(184,216,240,0.6);
+            }
+
+            .account-sub-status.premium {
+                color: #ffc832;
+            }
+
+        .account-sub-expiry {
+            font-size: 0.72rem;
+            color: rgba(245,240,235,0.55);
+            line-height: 1.45;
+        }
+
+        .account-sub-row .account-btn {
+            padding: 9px 14px;
+            font-size: 0.78rem;
+            flex-shrink: 0;
         }
 
         .account-section-label {
@@ -4464,6 +4559,160 @@
         }
 
         /* ── AUTH MODAL ── */
+        #premiumModal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: rgba(4,10,22,0.82);
+            backdrop-filter: blur(10px);
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+            #premiumModal.show {
+                display: flex;
+            }
+
+        .premium-box {
+            background: linear-gradient(160deg, #141a2e 0%, #0d1526 60%, #180f33 100%);
+            border: 1px solid rgba(255,200,50,0.22);
+            border-radius: 16px;
+            padding: 40px 38px 34px;
+            width: 100%;
+            max-width: 480px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(107,63,160,0.2);
+            position: relative;
+            animation: authSlideIn 0.35s cubic-bezier(.22,.68,0,1.2) both;
+            text-align: center;
+        }
+
+        .premium-box h2 {
+            font-family: 'Cinzel', serif;
+            font-size: 1.45rem;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            color: #ffc832;
+            margin: 6px 0 6px;
+            text-shadow: 0 2px 24px rgba(255,200,50,0.25);
+        }
+
+        .prem-ico {
+            font-size: 2.6rem;
+            line-height: 1.2;
+            margin: 4px 0 8px;
+        }
+
+        .prem-sub {
+            color: rgba(245,240,235,0.78);
+            font-size: 0.98rem;
+            line-height: 1.55;
+            margin: 0 0 16px;
+        }
+
+        .prem-features {
+            text-align: left;
+            margin: 4px 0 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+        }
+
+        .prem-feature {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 0.86rem;
+            line-height: 1.45;
+            color: rgba(245,240,235,0.9);
+            background: rgba(184,216,240,0.05);
+            border: 1px solid rgba(184,216,240,0.1);
+            border-radius: 9px;
+            padding: 10px 12px;
+        }
+
+        .prem-price-line {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #ffc832;
+            margin: 4px 0 18px;
+        }
+
+        .prem-expiry {
+            font-size: 0.9rem;
+            color: #2ecc71;
+            margin: 0 0 14px;
+            font-weight: 600;
+        }
+
+        .prem-login-box {
+            margin: 8px 0 2px;
+            padding: 14px;
+            border: 1px dashed rgba(184,216,240,0.22);
+            border-radius: 10px;
+            background: rgba(184,216,240,0.04);
+        }
+
+        .prem-login-box p {
+            color: rgba(245,240,235,0.7);
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin: 0 0 12px;
+        }
+
+        .prem-buy-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        .prem-btn {
+            width: 100%;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            padding: 14px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: transform 0.15s, box-shadow 0.2s, background 0.2s, opacity 0.2s;
+        }
+
+        .prem-btn-buy {
+            background: linear-gradient(135deg, #E8772A, #c9550e);
+            color: #fff;
+        }
+
+        .prem-btn-buy:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(232,119,42,0.35);
+        }
+
+        .prem-btn-primary {
+            background: linear-gradient(135deg, #6B3FA0, #4a2a80);
+            color: #fff;
+        }
+
+        .prem-btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(107,63,160,0.4);
+        }
+
+        .prem-btn-ghost {
+            background: transparent;
+            border-color: rgba(184,216,240,0.18);
+            color: rgba(245,240,235,0.6);
+        }
+
+        .prem-btn-ghost:hover {
+            color: #fff;
+            border-color: rgba(184,216,240,0.4);
+        }
+
         #authModal {
             display: none;
             position: fixed;

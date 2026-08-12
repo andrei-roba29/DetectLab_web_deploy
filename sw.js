@@ -4,7 +4,7 @@
 
 // Bump this when a client-side data-sync fix ships so installed PWAs replace
 // stale script responses instead of continuing to run an older event client.
-const CACHE_NAME = 'detectlab-v37';
+const CACHE_NAME = 'detectlab-v38-premium';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -57,6 +57,10 @@ const PRECACHE_URLS = [
   'js/vertical-opacity-control.js',
   'js/vertical-opacity-control.js?v=20260812',
   'js/auth.js?v=20260812-vertical-opacity',
+  'js/subscriptions.js?v=20260812-premium',
+  'js/checkout.js?v=20260812-premium',
+  'css/checkout.css?v=20260812',
+  'checkout.html',
   'images/sonar_loading_animation.webp',
   'images/sonar_loading_animation.webp?v=20260729',
   'images/pwa-icon-192.png',
