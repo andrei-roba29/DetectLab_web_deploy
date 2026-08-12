@@ -3417,6 +3417,79 @@
             display: none !important;
         }
 
+        /* ── MAP COMPASS (bottom-left) ── */
+        #detectlab-map .detectlab-compass {
+            margin: 12px !important;
+            border: none !important;
+            background: none !important;
+            box-shadow: none !important;
+        }
+        .detectlab-compass-btn {
+            width: 48px;
+            height: 48px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(10, 25, 48, 0.90);
+            border: 1px solid rgba(184, 216, 240, 0.22);
+            border-radius: 50%;
+            color: #B8D8F0;
+            cursor: pointer;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+        }
+        .detectlab-compass-btn:hover {
+            background: rgba(107, 63, 160, 0.82);
+            border-color: rgba(107, 63, 160, 0.65);
+            color: #fff;
+        }
+        .detectlab-compass-btn:active {
+            transform: scale(0.94);
+        }
+        .detectlab-compass-btn.is-rotated {
+            border-color: rgba(196, 43, 43, 0.65);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(196, 43, 43, 0.25);
+        }
+        .detectlab-compass-rose {
+            display: block;
+            width: 36px;
+            height: 36px;
+            transform-origin: 50% 50%;
+            will-change: transform;
+        }
+        .detectlab-compass-rose svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .dl-compass-ring {
+            fill: rgba(184, 216, 240, 0.06);
+            stroke: rgba(184, 216, 240, 0.45);
+            stroke-width: 1.4;
+        }
+        .dl-compass-hub {
+            fill: #F5F0EB;
+        }
+        .dl-compass-needle-n {
+            fill: #C42B2B;
+        }
+        .dl-compass-needle-s {
+            fill: rgba(184, 216, 240, 0.72);
+        }
+        .dl-compass-n {
+            fill: #F5F0EB;
+            font-family: 'Outfit', sans-serif;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        #detectlab-map.is-map-rotated {
+            cursor: grab;
+        }
+
         /* ── CUSTOM MEASURE BUTTON ── */
         .btn-measure {
             width: 38px;
