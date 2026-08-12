@@ -756,6 +756,29 @@
         }
     }
 
+    // Fetch the set of event ids that were explicitly deleted (tombstones). Any
+    // event in this set must be purged from local caches and must never be
+    // re-synced, otherwise a creator-deleted event would be resurrected for
+    // everyone from another user's stale localStorage copy.
+    async function fetchDeletedEventIds() {
+        var deletedIds = {};
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient.from('event_deletions').select('event_id');
+                if (!res.error && Array.isArray(res.data)) {
+                    res.data.forEach(function (r) {
+                        if (r && r.event_id) deletedIds[r.event_id] = true;
+                    });
+                } else if (res && res.error) {
+                    console.warn('Supabase fetchDeletedEventIds error:', res.error);
+                }
+            }
+        } catch (err) {
+            console.warn('Supabase fetchDeletedEventIds error, ignoring tombstones:', err);
+        }
+        return deletedIds;
+    }
+
     // Load all events from Supabase or fallback – merges remote + local so that
     // locally-created events are not wiped when the remote query returns empty.
     async function fetchEvents() {
@@ -772,23 +795,31 @@
         } catch (err) {
             console.warn('Supabase fetchEvents error, using local:', err);
         }
+        var deletedIds = await fetchDeletedEventIds();
         var local = getLocalEvents();
         if (remote !== null) {
-            // Merge: remote is authoritative, but keep local events that are not yet on server
+            // Merge: remote is authoritative, but keep local events that are not
+            // yet on server. Locally cached events that were deleted on the server
+            // (their id is in event_deletions) must NOT be re-added or re-synced,
+            // otherwise a deleted event would be resurrected for everyone.
             var remoteIds = {};
             remote.forEach(function(e){ remoteIds[e.id] = true; });
             var merged = remote.slice();
             local.forEach(function(e){
+                if (!e || !e.id) return;
+                if (deletedIds[e.id]) return;
                 if (!remoteIds[e.id]) {
                     merged.push(e);
                     // Proactively sync local events to server if user is logged in
                     ensureEventOnServer(e);
                 }
             });
+            // Purge any deleted events that leaked into the local cache.
+            merged = merged.filter(function (e) { return !(e && e.id && deletedIds[e.id]); });
             eventsData = merged;
             saveLocalEvents(eventsData);
         } else {
-            eventsData = local;
+            eventsData = local.filter(function (e) { return !(e && e.id && deletedIds[e.id]); });
         }
         refreshEventsMap();
         return eventsData;
@@ -1405,9 +1436,24 @@
             if (!confirm(isRo ? 'Sigur doriți să ștergeți acest eveniment?' : 'Are you sure you want to delete this event?')) return;
             try {
                 if (window.supabaseClient) {
+                    // Record the deletion tombstone FIRST so that every other client
+                    // knows to purge this event from its local cache and stop
+                    // re-syncing it. Otherwise a stale local copy on another device
+                    // would resurrect the deleted event for everyone.
+                    try {
+                        var delUser = getCurrentUser();
+                        await window.supabaseClient.from('event_deletions').upsert(
+                            { event_id: ev.id, deleted_by: (delUser && delUser.id) || null },
+                            { onConflict: 'event_id' }
+                        );
+                    } catch (err) {
+                        console.warn('Could not record event deletion tombstone:', err);
+                    }
                     await window.supabaseClient.from('events').delete().eq('id', ev.id);
                 }
-            } catch (err) {}
+            } catch (err) {
+                console.warn('Could not delete event from Supabase backend:', err);
+            }
             eventsData = eventsData.filter(function (e) { return e.id !== ev.id; });
             saveLocalEvents(eventsData);
             removeLocalChatArtifacts(ev.id);
