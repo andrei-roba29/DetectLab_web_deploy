@@ -85,6 +85,15 @@
             font-family: 'Outfit', sans-serif;
             animation: pwaDropUp 0.22s ease;
         }
+        /* Installed PWA only: the translucent phone status bar sits on top of
+           the Events header and intercepts taps on Back / Today. Extra top
+           padding (safe-area + a small fixed buffer) pushes those buttons
+           below the bar; the inset itself is painted #060D1D. */
+        html.is-pwa #eventsManagerPanel,
+        body.is-pwa #eventsManagerPanel {
+            padding-top: calc(16px + max(32px, env(safe-area-inset-top, 0px)));
+            background: #060D1D;
+        }
         #eventsManagerPanel .cal-wrap {
             max-width: 560px;
             width: 100%;
