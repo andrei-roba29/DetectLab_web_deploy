@@ -80,9 +80,15 @@ async function testSubscriptions() {
             <button id="premLaterBtn"></button>
         </div></div>
         <button class="tab-btn" data-tab="premium" onclick="switchLayerTab('premium')">Premium</button>
+        <div class="premium-panel-upsell" id="premiumPanelUpsell" data-category="premium">
+            <button type="button" id="premiumPanelCta" data-premium-checkout>Become a premium member</button>
+        </div>
         <div class="transp-layer-row" data-category="premium">
             <label class="apm-toggle-switch"><input type="checkbox" id="apm20Toggle"></label>
             <button id="lidarScannerRun">Scan</button>
+        </div>
+        <div class="transp-layer-row" data-category="premium" id="secondPremiumRow">
+            <label><input type="checkbox" id="secondPremiumToggle"></label>
         </div>
         <div class="transp-layer-row" data-category="free">
             <label><input type="checkbox" id="apmToggle"></label>
@@ -92,7 +98,7 @@ async function testSubscriptions() {
 
     const w = dom.window;
     patchWindow(w);
-    w.translations = { en: {}, ro: { prem_modal_title: 'DetectLab Premium', prem_login_needed: 'x', prem_login_btn: 'Log in', prem_modal_sub: 's', prem_already: 'a', prem_manage: 'm', prem_buy_btn: 'b', prem_later: 'n', acct_premium_until: 'Premium until {date}' } };
+    w.translations = { en: {}, ro: { prem_modal_title: 'DetectLab Premium', prem_login_needed: 'x', prem_login_btn: 'Log in', prem_modal_sub: 's', prem_already: 'a', prem_manage: 'm', prem_buy_btn: 'b', prem_later: 'n', prem_layer_locked_label: 'Strat premium blocat', acct_premium_until: 'Premium until {date}' } };
     w.currentLang = 'ro';
     let authUser = null;
     let authModalOpened = false;
@@ -100,6 +106,11 @@ async function testSubscriptions() {
     w._save = (u) => { authUser = u; };
     w._authReadyPromise = Promise.resolve(null);
     w.openAuth = () => { authModalOpened = true; };
+    w.switchLayerTab = (tab) => {
+        w.document.querySelectorAll('[data-category]').forEach((el) => {
+            el.classList.toggle('active', el.dataset.category === tab);
+        });
+    };
 
     // Supabase stub
     let db = {};
@@ -140,11 +151,24 @@ async function testSubscriptions() {
     ok(apm20.checked === false, 'free user: premium checkbox stays unchecked');
     ok(w.sessionStorage.getItem('dl_pending_premium_toggle') === 'apm20Toggle', 'pending premium toggle remembered');
 
-    // — free user clicking the premium tab → modal opens
+    // — free user clicking the premium tab → full locked catalogue (not a blocking modal)
     modal.classList.remove('show');
     w.document.querySelector('[data-tab="premium"]').click();
-    ok(modal.classList.contains('show'), 'free user: clicking the Premium tab opens the modal');
-    modal.classList.remove('show');
+    // jsdom's outside-only mode does not execute inline onclick attributes;
+    // invoke the real tab-switch equivalent after proving the gate allowed it.
+    w.switchLayerTab('premium');
+    ok(!modal.classList.contains('show'), 'free user: Premium tab remains browseable');
+    ok(w.document.querySelectorAll('.transp-layer-row[data-category="premium"].active').length === 2, 'free user: all Premium rows are shown');
+    ok(w.document.querySelectorAll('.transp-layer-row.is-premium-locked .premium-layer-lock-badge').length === 2, 'free user: every Premium row has a visible lock badge');
+    ok(!w.document.getElementById('premiumPanelUpsell').classList.contains('premium-member'), 'free user: membership CTA is shown');
+
+    let panelCheckoutStarted = false;
+    const realGoToCheckout = w.goToCheckout;
+    w.goToCheckout = () => { panelCheckoutStarted = true; };
+    w.document.getElementById('premiumPanelCta').click();
+    ok(panelCheckoutStarted, 'Become a premium member CTA starts checkout');
+    ok(!modal.classList.contains('show'), 'catalogue CTA goes to checkout without opening the layer popup');
+    w.goToCheckout = realGoToCheckout;
 
     // — free user clicking a free row toggle → no modal
     w.document.getElementById('apmToggle').click();
@@ -159,6 +183,8 @@ async function testSubscriptions() {
     ok(days >= 29 && days <= 31, 'expiry ≈ 30 days out (got ' + days + ')');
     ok(db.profiles && db.profiles.u1 && db.profiles.u1.plan === 'premium', 'purchase upserted into Supabase profiles');
     ok(!!res.expiresAt, 'purchase returns the expiry date');
+    ok(w.document.querySelectorAll('.transp-layer-row.is-premium-locked').length === 0, 'active Premium membership removes every layer lock');
+    ok(w.document.getElementById('premiumPanelUpsell').classList.contains('premium-member'), 'active Premium membership hides the checkout CTA');
 
     // — premium user clicking a premium toggle → no modal, checkbox toggles
     modal.classList.remove('show');

@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260812-compass">
+    <link rel="stylesheet" href="css/styles.css?v=20260812-premium-catalogue">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -1095,6 +1095,30 @@
                     <div class="transp-panel-tabs">
                         <button class="tab-btn active" data-tab="free" onclick="switchLayerTab('free')">Gratis / Free</button>
                         <button class="tab-btn" data-tab="premium" onclick="switchLayerTab('premium')">Premium / Premium</button>
+                    </div>
+
+                    <!-- Free members can browse the complete Premium catalogue. The
+                         controls remain locked until checkout has activated their plan. -->
+                    <div class="premium-panel-upsell" id="premiumPanelUpsell" data-category="premium" aria-live="polite">
+                        <div class="premium-panel-upsell-head">
+                            <span class="premium-panel-upsell-icon" aria-hidden="true">
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+                                    <rect x="5" y="10" width="14" height="11" rx="3" stroke="currentColor" stroke-width="1.8"/>
+                                    <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                    <circle cx="12" cy="15.5" r="1.3" fill="currentColor"/>
+                                </svg>
+                            </span>
+                            <div>
+                                <strong class="t" data-key="prem_panel_locked">Premium layers are locked</strong>
+                                <p class="t" data-key="prem_panel_desc">Become a Premium member to unlock every layer and tool.</p>
+                            </div>
+                        </div>
+                        <button type="button" class="premium-panel-cta" id="premiumPanelCta" data-premium-checkout>
+                            <span class="t" data-key="prem_panel_cta">Become a premium member</span>
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <path d="M3 8h9M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
                     </div>
 
                     <!-- APM layer toggle + slider -->
@@ -2839,7 +2863,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260812-payments"></script>
+    <script src="js/translations.js?v=20260812-premium-catalogue"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -2892,7 +2916,8 @@
         .auth-oauth-btn:hover { background: #F5F7FA; border-color: #C7CFDA; }
     </style>
     <!-- PREMIUM MEMBERSHIP POPUP — opened when a free user tries to use a
-         premium layer or open the Premium tab. Wired in js/subscriptions.js -->
+         locked premium layer. The Premium tab itself remains browseable and
+         includes a direct checkout CTA. Wired in js/subscriptions.js -->
     <div id="premiumModal" role="dialog" aria-modal="true" aria-label="DetectLab Premium" style="display:none">
         <div class="premium-box">
             <button class="auth-close" onclick="closePremiumModal()" aria-label="Close">&times;</button>
@@ -3654,7 +3679,7 @@
     </div>
 
 <script src="js/account-legacy.js?v=20260812-payments"></script>
-<script src="js/subscriptions.js?v=20260812-payments"></script>
+<script src="js/subscriptions.js?v=20260812-premium-catalogue"></script>
 
 
 

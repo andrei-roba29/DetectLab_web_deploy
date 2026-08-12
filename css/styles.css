@@ -3972,6 +3972,153 @@
             box-shadow: 0 0 14px rgba(107,63,160,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
         }
 
+        /* ── Premium catalogue for free members ──
+           Free users can browse every Premium row instead of being stopped at
+           the tab. Each row is visibly locked and this checkout CTA stays at
+           the top of the catalogue. */
+        .premium-panel-upsell[data-category] {
+            display: none;
+        }
+
+        .premium-panel-upsell[data-category].active {
+            display: block;
+        }
+
+        .premium-panel-upsell.premium-member {
+            display: none !important;
+        }
+
+        .premium-panel-upsell {
+            margin: 0 0 13px;
+            padding: 13px;
+            border: 1px solid rgba(255,200,50,0.34);
+            border-radius: 12px;
+            background:
+                radial-gradient(circle at 100% 0%, rgba(255,200,50,0.13), transparent 55%),
+                linear-gradient(145deg, rgba(107,63,160,0.23), rgba(255,200,50,0.055));
+            box-shadow: 0 8px 22px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.035);
+        }
+
+        .premium-panel-upsell-head {
+            display: flex;
+            align-items: flex-start;
+            gap: 9px;
+        }
+
+        .premium-panel-upsell-icon {
+            width: 29px;
+            height: 29px;
+            flex: 0 0 29px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            color: #ffc832;
+            background: rgba(255,200,50,0.1);
+            border: 1px solid rgba(255,200,50,0.28);
+        }
+
+        .premium-panel-upsell strong {
+            display: block;
+            margin: 1px 0 3px;
+            color: #fff1bd;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.79rem;
+            line-height: 1.25;
+        }
+
+        .premium-panel-upsell p {
+            margin: 0;
+            color: rgba(245,240,235,0.62);
+            font-size: 0.68rem;
+            line-height: 1.4;
+        }
+
+        .premium-panel-cta {
+            width: 100%;
+            margin-top: 11px;
+            padding: 9px 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            border: 1px solid rgba(255,200,50,0.55);
+            border-radius: 8px;
+            background: linear-gradient(135deg, #e8772a, #c9550e);
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            line-height: 1.2;
+            cursor: pointer;
+            box-shadow: 0 5px 16px rgba(232,119,42,0.21);
+            transition: transform 0.16s ease, box-shadow 0.2s ease, filter 0.2s ease;
+        }
+
+        .premium-panel-cta:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.08);
+            box-shadow: 0 8px 20px rgba(232,119,42,0.32);
+        }
+
+        .premium-panel-cta:focus-visible {
+            outline: 2px solid #ffc832;
+            outline-offset: 2px;
+        }
+
+        .premium-layer-lock-badge {
+            display: none;
+            width: max-content;
+            margin: -2px 0 10px auto;
+            padding: 4px 7px;
+            align-items: center;
+            gap: 5px;
+            border: 1px solid rgba(255,200,50,0.32);
+            border-radius: 999px;
+            background: rgba(255,200,50,0.08);
+            color: #ffd866;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.58rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            line-height: 1;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+
+        .transp-layer-row.is-premium-locked {
+            border-color: rgba(255,200,50,0.18);
+            background: linear-gradient(145deg, rgba(255,200,50,0.035), rgba(184,216,240,0.025));
+        }
+
+        .transp-layer-row.is-premium-locked:hover {
+            border-color: rgba(255,200,50,0.34);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.32), inset 0 0 20px rgba(255,200,50,0.025);
+        }
+
+        .transp-layer-row.is-premium-locked > .premium-layer-lock-badge {
+            display: inline-flex;
+        }
+
+        .transp-layer-row.is-premium-locked > :not(.premium-layer-lock-badge) {
+            opacity: 0.52;
+            filter: saturate(0.7);
+        }
+
+        .transp-layer-row.is-premium-locked input,
+        .transp-layer-row.is-premium-locked button,
+        .transp-layer-row.is-premium-locked label,
+        .transp-layer-row.is-premium-locked select,
+        .transp-layer-row.is-premium-locked textarea {
+            cursor: not-allowed !important;
+        }
+
+        .transp-layer-row.is-premium-locked .premium-layer-lock-badge {
+            opacity: 1;
+            filter: none;
+            cursor: pointer !important;
+        }
+
         /* ── Layer Groups Visibility Toggle ── */
         .transp-layer-row[data-category] {
             display: none !important;
