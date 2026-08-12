@@ -376,9 +376,13 @@
     });
 
 
-    function openEvents() {
-        if (typeof window.openEvents === 'function') {
-            window.openEvents();
-        }
-    }
+    // NOTE: there used to be a `function openEvents()` shim here that called
+    // window.openEvents(). Because this file is a classic (non-module) script,
+    // that top-level declaration created a *global* binding, i.e. it overwrote
+    // window.openEvents — the real implementation installed by js/events.js,
+    // which is loaded earlier. The shim therefore called itself recursively and
+    // the inline onclick="openEvents()" handlers blew the stack instead of
+    // opening the events panel (the badge still rendered, so the button just
+    // looked dead). js/events.js already exposes window.openEvents globally, so
+    // no shim is needed here.
 

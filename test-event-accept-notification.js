@@ -124,6 +124,9 @@ function makeDocStub() {
         querySelector() { return null; },
         querySelectorAll() { return []; },
         createElement() { return fakeEl(); },
+        // events.js injects its badge/calendar stylesheet into document.head on
+        // load, so the stub needs a head as well as a body.
+        head: { appendChild() {} },
         body: { appendChild() {} }
     };
 }

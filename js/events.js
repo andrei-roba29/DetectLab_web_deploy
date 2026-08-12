@@ -349,6 +349,232 @@
         try { localStorage.setItem('detectlab_notifications', JSON.stringify(arr)); } catch (e) {}
     }
 
+    /* ══════════════════════════════════════════════════════════════════
+       SERVER-AUTHORITATIVE MIRROR
+       ------------------------------------------------------------------
+       Everything above is a localStorage mirror of the Supabase tables so
+       the feature keeps working offline. The mirror used to be *additive
+       only*: whatever the server did not return was still merged back in
+       (and local-only events were even re-uploaded). That made REMOVALS
+       invisible across accounts:
+
+         • an event deleted by its creator stayed on every other user's map,
+           because their stale local copy was merged back in and re-synced;
+         • a kicked attendee stayed a participant for himself and everyone
+           else, because their cached event_attendees row was never dropped.
+
+       The helpers below make the server win whenever it is reachable, while
+       still protecting genuinely local (offline-created, never-synced) data.
+       ══════════════════════════════════════════════════════════════════ */
+
+    // Ids of events confirmed to exist on the server by the last successful
+    // fetch, and whether that fetch reached the server at all.
+    var serverEventIds = null;
+    var serverReachable = false;
+
+    // Events this device confirmed as saved on the server. If such an event
+    // later disappears from the server it was deleted there — it must not be
+    // resurrected, even when the event_deletions tombstone table is missing.
+    function getSyncedEventIds() {
+        try { return JSON.parse(localStorage.getItem('detectlab_events_synced') || '{}'); } catch (e) { return {}; }
+    }
+    function saveSyncedEventIds(map) {
+        try { localStorage.setItem('detectlab_events_synced', JSON.stringify(map)); } catch (e) {}
+    }
+    function markEventSynced(eventId) {
+        if (!eventId) return;
+        var map = getSyncedEventIds();
+        if (map[eventId]) return;
+        map[eventId] = true;
+        saveSyncedEventIds(map);
+    }
+    function forgetSyncedEvents(eventIds) {
+        var map = getSyncedEventIds();
+        var changed = false;
+        (eventIds || []).forEach(function (id) {
+            if (map[id]) { delete map[id]; changed = true; }
+        });
+        if (changed) saveSyncedEventIds(map);
+    }
+
+    function isEventOwnedByUser(ev, user) {
+        if (!ev || !user) return false;
+        if (ev.creator_id && user.id && ev.creator_id === user.id) return true;
+        return !!(user.email && ev.creator_email && user.email === ev.creator_email);
+    }
+
+    // True when the server's answer about this event may be treated as complete:
+    // the last fetch reached the server AND the event exists there, so any child
+    // row (attendee, inquiry) missing from the response was genuinely removed.
+    function canTrustServerFor(eventId) {
+        return !!(serverReachable && serverEventIds && serverEventIds[eventId]);
+    }
+
+    // Drop every locally cached artifact of events that no longer exist.
+    function purgeLocalEventArtifacts(eventIds) {
+        var gone = {};
+        (eventIds || []).forEach(function (id) { if (id) gone[id] = true; });
+        var goneIds = Object.keys(gone);
+        if (goneIds.length === 0) return;
+
+        saveLocalEvents(getLocalEvents().filter(function (e) { return !(e && gone[e.id]); }));
+        saveLocalAttendees(getLocalAttendees().filter(function (a) { return !(a && gone[a.event_id]); }));
+        saveLocalInquiries(getLocalInquiries().filter(function (i) { return !(i && gone[i.event_id]); }));
+        saveLocalNotifications(getLocalNotifications().filter(function (n) { return !(n && gone[n.event_id]); }));
+        saveLocalChats(getLocalChats().filter(function (c) { return !(c && gone[c.event_id]); }));
+        saveLocalMessages(getLocalMessages().filter(function (m) { return !(m && gone[m.event_id]); }));
+        forgetSyncedEvents(goneIds);
+
+        var seen = getChatLastSeenMap();
+        var seenChanged = false;
+        goneIds.forEach(function (id) { if (seen[id]) { delete seen[id]; seenChanged = true; } });
+        if (seenChanged) saveChatLastSeenMap(seen);
+
+        if (activeChatEventId && gone[activeChatEventId]) {
+            window._closeEventChatModal();
+        }
+    }
+
+    // Make the cached attendee rows of `eventIds` match the server's list.
+    // Returns the removed rows as [{ event_id, user_id }].
+    function reconcileLocalAttendees(eventIds, remoteRows) {
+        var scope = {};
+        (eventIds || []).forEach(function (id) { if (id && canTrustServerFor(id)) scope[id] = true; });
+        if (Object.keys(scope).length === 0) return [];
+
+        var keep = {};
+        (remoteRows || []).forEach(function (row) {
+            if (row && row.event_id && row.user_id) keep[row.event_id + '::' + row.user_id] = row;
+        });
+
+        var removed = [];
+        var next = [];
+        getLocalAttendees().forEach(function (att) {
+            if (!att || !att.event_id) return;
+            if (!scope[att.event_id]) { next.push(att); return; }
+            var row = keep[att.event_id + '::' + att.user_id];
+            if (row) {
+                next.push(Object.assign({}, att, row));
+            } else {
+                // Gone on the server → kicked out by the creator.
+                removed.push({ event_id: att.event_id, user_id: att.user_id });
+            }
+        });
+        Object.keys(keep).forEach(function (key) {
+            var row = keep[key];
+            var present = next.some(function (a) {
+                return a.event_id === row.event_id && a.user_id === row.user_id;
+            });
+            if (!present) next.push(row);
+        });
+
+        saveLocalAttendees(next);
+        return removed;
+    }
+
+    // Same idea, but scoped to one user across all their events. Used to detect
+    // that the *current* user was kicked out of an event on another device.
+    function reconcileLocalAttendanceForUser(userId, remoteRows) {
+        if (!userId) return [];
+        var keep = {};
+        (remoteRows || []).forEach(function (row) {
+            if (row && row.event_id && row.user_id === userId) keep[row.event_id] = row;
+        });
+
+        var removed = [];
+        var next = [];
+        getLocalAttendees().forEach(function (att) {
+            if (!att || att.user_id !== userId) { if (att) next.push(att); return; }
+            if (keep[att.event_id]) { next.push(Object.assign({}, att, keep[att.event_id])); return; }
+            if (canTrustServerFor(att.event_id)) {
+                removed.push({ event_id: att.event_id, user_id: userId });
+                return;
+            }
+            next.push(att); // unverifiable (offline / local-only event) → keep
+        });
+        Object.keys(keep).forEach(function (eventId) {
+            var present = next.some(function (a) { return a.event_id === eventId && a.user_id === userId; });
+            if (!present) next.push(keep[eventId]);
+        });
+
+        saveLocalAttendees(next);
+        return removed;
+    }
+
+    // React to attendance rows that vanished server-side. Only the rows that
+    // belong to the current user affect their UI (chat access, alert).
+    function handleAttendanceRemovals(removedRows) {
+        if (!removedRows || removedRows.length === 0) return;
+        var user = getCurrentUser();
+        if (!user || !user.id) return;
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+
+        removedRows.forEach(function (row) {
+            if (!row || row.user_id !== user.id) return;
+            var ev = getEventById(row.event_id);
+            if (isEventOwnedByUser(ev, user)) return; // creators are never "kicked"
+            removeLocalChatArtifacts(row.event_id);
+            if (activeChatEventId === row.event_id) {
+                window._closeEventChatModal();
+                alert(isRo
+                    ? 'Ai fost eliminat din acest eveniment de către organizator.'
+                    : 'You were removed from this event by the organiser.');
+            }
+        });
+
+        refreshEventsMap(true);
+    }
+
+    // Make the current user's cached inquiries match the server, so a request
+    // that was withdrawn/removed there stops showing as "Request pending".
+    async function reconcileMyLocalInquiries(userId) {
+        if (!userId || !window.supabaseClient) return;
+        var rows = null;
+        try {
+            var res = await window.supabaseClient.from('event_inquiries').select('*').eq('user_id', userId);
+            if (res && !res.error && Array.isArray(res.data)) rows = res.data;
+        } catch (e) {}
+        if (!rows) return;
+
+        var byId = {};
+        rows.forEach(function (r) { if (r && r.id) byId[r.id] = r; });
+
+        var next = [];
+        getLocalInquiries().forEach(function (inq) {
+            if (!inq || inq.user_id !== userId) { if (inq) next.push(inq); return; }
+            if (byId[inq.id]) {
+                next.push(Object.assign({}, inq, byId[inq.id]));
+                delete byId[inq.id];
+                return;
+            }
+            // Not on the server. Keep it only while we cannot verify the event
+            // (offline / local-only), otherwise it is stale and would freeze the
+            // popup on "Request pending" forever.
+            if (!canTrustServerFor(inq.event_id)) next.push(inq);
+        });
+        Object.keys(byId).forEach(function (id) { next.push(byId[id]); });
+        saveLocalInquiries(next);
+    }
+
+    // Pull the current user's own attendance + inquiries and mirror the server.
+    // This is what makes a "kick out" visible on the kicked user's own device.
+    async function syncMyEventStateFromServer() {
+        var user = getCurrentUser();
+        if (!user || !user.id || !window.supabaseClient) return;
+
+        var removed = [];
+        try {
+            var attRes = await window.supabaseClient.from('event_attendees').select('*').eq('user_id', user.id);
+            if (attRes && !attRes.error && Array.isArray(attRes.data)) {
+                removed = reconcileLocalAttendanceForUser(user.id, attRes.data);
+            }
+        } catch (e) {}
+
+        try { await reconcileMyLocalInquiries(user.id); } catch (e) {}
+
+        if (removed.length > 0) handleAttendanceRemovals(removed);
+    }
+
     function genUuid() {
         try { if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID(); } catch (e) {}
         // fallback uuid v4
@@ -567,7 +793,17 @@
                     .eq('event_id', eventId)
                     .eq('user_id', userId)
                     .limit(1);
-                if (!res.error && Array.isArray(res.data) && res.data.length > 0) return true;
+                if (!res.error && Array.isArray(res.data)) {
+                    if (res.data.length > 0) return true;
+                    // The server answered "not an attendee". Trust that (it means
+                    // the user was kicked out) instead of falling through to the
+                    // stale local cache, which would keep granting chat access.
+                    if (canTrustServerFor(eventId)) {
+                        var removed = reconcileLocalAttendees([eventId], []);
+                        if (removed.length > 0) handleAttendanceRemovals(removed);
+                        return false;
+                    }
+                }
             }
         } catch (e) {}
 
@@ -779,6 +1015,29 @@
         return deletedIds;
     }
 
+    // Record a deletion tombstone. Best-effort: the `event_deletions` table only
+    // exists once migration 20260812000000 has been applied. The caller must not
+    // depend on it — fetchEvents() also treats "was on the server, now gone" as a
+    // deletion, so deletes propagate even without the table.
+    async function recordEventDeletion(eventId) {
+        if (!eventId || !window.supabaseClient) return false;
+        try {
+            var user = getCurrentUser();
+            var res = await window.supabaseClient.from('event_deletions').upsert(
+                { event_id: eventId, deleted_by: (user && user.id) || null },
+                { onConflict: 'event_id' }
+            );
+            if (res && res.error) {
+                console.warn('[Events] Could not record deletion tombstone (apply migration 20260812000000_event_deletions.sql):', res.error.message);
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.warn('[Events] Could not record deletion tombstone:', err);
+            return false;
+        }
+    }
+
     // Load all events from Supabase or fallback – merges remote + local so that
     // locally-created events are not wiped when the remote query returns empty.
     async function fetchEvents() {
@@ -797,31 +1056,59 @@
         }
         var deletedIds = await fetchDeletedEventIds();
         var local = getLocalEvents();
+
         if (remote !== null) {
-            // Merge: remote is authoritative, but keep local events that are not
-            // yet on server. Locally cached events that were deleted on the server
-            // (their id is in event_deletions) must NOT be re-added or re-synced,
-            // otherwise a deleted event would be resurrected for everyone.
-            var remoteIds = {};
-            remote.forEach(function(e){ remoteIds[e.id] = true; });
+            // The server answered, so it is authoritative about which events exist.
+            serverReachable = true;
+            serverEventIds = {};
+            remote.forEach(function (e) { if (e && e.id) serverEventIds[e.id] = true; });
+
+            var syncedIds = getSyncedEventIds();
             var merged = remote.slice();
-            local.forEach(function(e){
+            var vanished = [];
+
+            local.forEach(function (e) {
                 if (!e || !e.id) return;
-                if (deletedIds[e.id]) return;
-                if (!remoteIds[e.id]) {
-                    merged.push(e);
-                    // Proactively sync local events to server if user is logged in
-                    ensureEventOnServer(e);
+                if (serverEventIds[e.id]) return;      // already in `remote`
+                if (deletedIds[e.id]) {                // explicit tombstone
+                    vanished.push(e.id);
+                    return;
                 }
+                if (syncedIds[e.id]) {
+                    // This event WAS confirmed on the server before and is gone
+                    // now → the creator deleted it. Previously it was merged back
+                    // in and re-uploaded, which is exactly why a deleted event
+                    // kept showing up for every other participant.
+                    vanished.push(e.id);
+                    return;
+                }
+                // Never reached the server: a genuine offline-created event.
+                // Keep it and (re)try the upload.
+                merged.push(e);
+                var pending = e.id;
+                ensureEventOnServer(e).then(function (result) {
+                    if (result && result.ok) markEventSynced(pending);
+                });
             });
-            // Purge any deleted events that leaked into the local cache.
-            merged = merged.filter(function (e) { return !(e && e.id && deletedIds[e.id]); });
+
+            // Purge any deleted/vanished event that leaked into the local caches.
+            merged = merged.filter(function (e) {
+                return !(e && e.id && (deletedIds[e.id] || vanished.indexOf(e.id) !== -1));
+            });
+
             eventsData = merged;
             saveLocalEvents(eventsData);
+            remote.forEach(function (e) { if (e && e.id) markEventSynced(e.id); });
+            if (vanished.length > 0) purgeLocalEventArtifacts(vanished);
         } else {
+            // Offline / server unreachable: keep showing the cache, but never
+            // assume anything was deleted (we simply cannot tell).
+            serverReachable = false;
+            serverEventIds = null;
             eventsData = local.filter(function (e) { return !(e && e.id && deletedIds[e.id]); });
         }
-        refreshEventsMap();
+
+        refreshEventsMap(true);
         return eventsData;
     }
 
@@ -849,9 +1136,23 @@
         }
     }
 
-    function refreshEventsMap() {
+    function refreshEventsMap(refreshOpenPopup) {
         var map = window._dlMap || window.map;
         if (!map || !eventsLayer) return;
+
+        // A popup that is open while the underlying data changed (event deleted,
+        // attendee kicked) would otherwise keep showing the stale state until the
+        // user closes and reopens it.
+        if (refreshOpenPopup) {
+            try {
+                var open = map._popup;
+                if (open && open._source && open._source._dlEventId) {
+                    var stillExists = eventsData.some(function (e) { return e.id === open._source._dlEventId; });
+                    if (!stillExists) map.closePopup();
+                }
+            } catch (e) {}
+        }
+
         eventsLayer.clearLayers();
 
         eventsData.forEach(function (ev) {
@@ -871,6 +1172,7 @@
             });
 
             var marker = L.marker([ev.latitude, ev.longitude], { icon: icon });
+            marker._dlEventId = ev.id;
             // Fresh popup HTML evaluated on open
             marker.bindPopup(function () { return createEventPopupHtml(ev); });
             eventsLayer.addLayer(marker);
@@ -886,6 +1188,9 @@
         var alreadyInquired = false;
         var alreadyAttending = false;
         if (user && !isCreator) {
+            // These read the local mirror, which syncMyEventStateFromServer()
+            // keeps reconciled with the server — so a kicked user stops seeing
+            // "Already attending" and can request to join again.
             var localInqs = getLocalInquiries();
             alreadyInquired = localInqs.some(function(i) { return i.event_id === ev.id && i.user_id === user.id && i.status !== 'declined'; });
             var localAtts = getLocalAttendees();
@@ -1037,6 +1342,10 @@
             };
 
             var savedToServer = await ensureEventOnServer(newEvent);
+            // Remember that the server accepted it. If the event later vanishes
+            // from the server it was deleted there, and fetchEvents() must drop
+            // it instead of re-uploading the stale local copy.
+            if (savedToServer && savedToServer.ok) markEventSynced(newEvent.id);
 
             eventsData.push(newEvent);
             saveLocalEvents(eventsData);
@@ -1434,31 +1743,54 @@
 
         modal.querySelector('#meDeleteBtn').addEventListener('click', async function () {
             if (!confirm(isRo ? 'Sigur doriți să ștergeți acest eveniment?' : 'Are you sure you want to delete this event?')) return;
-            try {
-                if (window.supabaseClient) {
-                    // Record the deletion tombstone FIRST so that every other client
-                    // knows to purge this event from its local cache and stop
-                    // re-syncing it. Otherwise a stale local copy on another device
-                    // would resurrect the deleted event for everyone.
-                    try {
-                        var delUser = getCurrentUser();
-                        await window.supabaseClient.from('event_deletions').upsert(
-                            { event_id: ev.id, deleted_by: (delUser && delUser.id) || null },
-                            { onConflict: 'event_id' }
-                        );
-                    } catch (err) {
-                        console.warn('Could not record event deletion tombstone:', err);
-                    }
-                    await window.supabaseClient.from('events').delete().eq('id', ev.id);
+
+            var delBtn = modal.querySelector('#meDeleteBtn');
+            if (delBtn) { delBtn.disabled = true; delBtn.textContent = isRo ? 'Se șterge…' : 'Deleting…'; }
+
+            var deletedOnServer = false;
+            if (window.supabaseClient) {
+                // Record the deletion tombstone FIRST so every other client knows
+                // to purge this event from its local cache and stop re-syncing it.
+                await recordEventDeletion(ev.id);
+
+                try {
+                    // Remove the children explicitly. `on delete cascade` handles
+                    // this server-side, but doing it here keeps the data clean even
+                    // if the deployed schema predates those constraints — otherwise
+                    // orphan attendee rows keep the event "alive" for participants.
+                    await window.supabaseClient.from('event_chat_messages').delete().eq('event_id', ev.id);
+                    await window.supabaseClient.from('event_chats').delete().eq('event_id', ev.id);
+                    await window.supabaseClient.from('event_attendees').delete().eq('event_id', ev.id);
+                    await window.supabaseClient.from('event_inquiries').delete().eq('event_id', ev.id);
+                    await window.supabaseClient.from('event_notifications').delete().eq('event_id', ev.id);
+                } catch (err) {
+                    console.warn('Could not fully clean up event children:', err);
                 }
-            } catch (err) {
-                console.warn('Could not delete event from Supabase backend:', err);
+
+                try {
+                    var delRes = await window.supabaseClient.from('events').delete().eq('id', ev.id);
+                    if (delRes && delRes.error) {
+                        console.error('[Events] Failed to delete event on the server:', delRes.error);
+                    } else {
+                        deletedOnServer = true;
+                    }
+                } catch (err) {
+                    console.warn('Could not delete event from Supabase backend:', err);
+                }
             }
+
+            // Purge every local trace so the event cannot be re-uploaded later.
             eventsData = eventsData.filter(function (e) { return e.id !== ev.id; });
+            purgeLocalEventArtifacts([ev.id]);
             saveLocalEvents(eventsData);
-            removeLocalChatArtifacts(ev.id);
-            refreshEventsMap();
+            refreshEventsMap(true);
             modal.remove();
+
+            if (window.supabaseClient && !deletedOnServer) {
+                alert(isRo
+                    ? '⚠️ Evenimentul a fost șters de pe acest dispozitiv, dar serverul a respins ștergerea, deci ceilalți participanți îl vor vedea în continuare. Verifică consola browserului (F12).'
+                    : '⚠️ The event was removed on this device, but the server rejected the delete, so other participants will still see it. Check the browser console (F12).');
+            }
         });
 
         loadManageEventDetails(ev.id);
@@ -1471,37 +1803,51 @@
 
         var inquiries = [];
         var attendees = [];
+        var remoteInquiriesOk = false;
+        var remoteAttendeesOk = false;
         try {
             if (window.supabaseClient) {
                 var resInq = await window.supabaseClient.from('event_inquiries').select('*').eq('event_id', eventId);
-                if (!resInq.error && Array.isArray(resInq.data)) inquiries = resInq.data;
+                if (!resInq.error && Array.isArray(resInq.data)) { inquiries = resInq.data; remoteInquiriesOk = true; }
                 var resAtt = await window.supabaseClient.from('event_attendees').select('*').eq('event_id', eventId);
-                if (!resAtt.error && Array.isArray(resAtt.data)) attendees = resAtt.data;
+                if (!resAtt.error && Array.isArray(resAtt.data)) { attendees = resAtt.data; remoteAttendeesOk = true; }
             }
         } catch (e) {
             console.warn('loadManageEventDetails remote fetch error:', e);
         }
 
-        // Merge remote + local so nothing is lost
-        var inqMap = {};
-        inquiries.forEach(function(i) { inqMap[i.id] = i; });
-        var localInqs = getLocalInquiries().filter(function(i) { return i.event_id === eventId; });
-        localInqs.forEach(function(i) {
-            if (!inqMap[i.id]) {
-                inquiries.push(i);
-                inqMap[i.id] = i;
-            }
-        });
+        // The server list is the truth when we could read it. Merging unmatched
+        // local rows back in unconditionally (the old behaviour) is what made a
+        // kicked attendee reappear in the creator's own list: the deleted row was
+        // still cached locally and got re-added on every re-render.
+        if (remoteAttendeesOk) {
+            var removedAtt = reconcileLocalAttendees([eventId], attendees);
+            if (removedAtt.length > 0) handleAttendanceRemovals(removedAtt);
+        } else {
+            // Offline: fall back to the cache so the panel is not empty.
+            var attMap = {};
+            attendees.forEach(function (a) { attMap[a.event_id + '::' + a.user_id] = a; });
+            getLocalAttendees().forEach(function (a) {
+                if (!a || a.event_id !== eventId) return;
+                if (!attMap[a.event_id + '::' + a.user_id]) {
+                    attendees.push(a);
+                    attMap[a.event_id + '::' + a.user_id] = a;
+                }
+            });
+        }
 
-        var attMap = {};
-        attendees.forEach(function(a) { attMap[a.id] = a; });
-        var localAtts = getLocalAttendees().filter(function(a) { return a.event_id === eventId; });
-        localAtts.forEach(function(a) {
-            if (!attMap[a.id]) {
-                attendees.push(a);
-                attMap[a.id] = a;
-            }
-        });
+        if (!remoteInquiriesOk) {
+            var inqMap = {};
+            inquiries.forEach(function (i) { inqMap[i.id] = i; });
+            getLocalInquiries().forEach(function (i) {
+                if (!i || i.event_id !== eventId) return;
+                if (!inqMap[i.id]) { inquiries.push(i); inqMap[i.id] = i; }
+            });
+        }
+
+        // Never offer to accept someone who is already an approved attendee.
+        var attendeeUserIds = {};
+        attendees.forEach(function (a) { if (a && a.user_id) attendeeUserIds[a.user_id] = true; });
 
         var html = '';
         if (inquiries.length === 0 && attendees.length === 0) {
@@ -1510,7 +1856,9 @@
         }
 
         html += '<div style="font-size:0.78rem; font-weight:600; color:var(--sky); margin-top:8px;">' + (isRo ? 'Cereri în așteptare:' : 'Pending Inquiries:') + '</div>';
-        var pending = inquiries.filter(function(i) { return i.status === 'pending'; });
+        var pending = inquiries.filter(function(i) {
+            return i.status === 'pending' && !attendeeUserIds[i.user_id];
+        });
         if (pending.length === 0) {
             html += '<div style="font-size:0.75rem; opacity:0.5; margin-bottom:6px;">' + (isRo ? 'Nicio cerere în așteptare.' : 'No pending inquiries.') + '</div>';
         } else {
@@ -1829,18 +2177,107 @@
     };
 
     // Kick Attendee
+    //
+    // The kick has to be durable on the SERVER, otherwise it is only a local
+    // edit on the creator's device and everyone else — including the kicked
+    // user — keeps seeing the old participant list. Three things are required:
+    //   1. delete the event_attendees row by (event_id, user_id), not just by
+    //      the row id: the id in the creator's list may come from a local cache
+    //      and not match the server row, in which case `.eq('id', …)` deletes
+    //      nothing and silently "succeeds";
+    //   2. also drop the accepted inquiry, or the user is re-added as an
+    //      attendee the next time the acceptance is mirrored locally;
+    //   3. tell the kicked user, via a notification they pick up on any device.
     window._kickAttendee = async function (attendeeId, eventId) {
         var isRo = (window._currentLang && window._currentLang() === 'ro');
         if (!confirm(isRo ? 'Sigur doriți să dați afară acest participant din eveniment și din chat?' : 'Are you sure you want to kick out this attendee from the event and chat?')) return;
-        try {
-            if (window.supabaseClient) {
-                await window.supabaseClient.from('event_attendees').delete().eq('id', attendeeId);
+
+        // Resolve the attendee so we can delete by (event_id, user_id).
+        var attendee = getLocalAttendees().find(function (a) {
+            return a.id === attendeeId && a.event_id === eventId;
+        });
+        if (window.supabaseClient) {
+            try {
+                var lookup = await window.supabaseClient
+                    .from('event_attendees').select('*').eq('id', attendeeId).limit(1);
+                if (lookup && !lookup.error && Array.isArray(lookup.data) && lookup.data[0]) {
+                    attendee = lookup.data[0];
+                }
+            } catch (e) {}
+        }
+
+        if (!attendee || !attendee.user_id) {
+            alert(isRo ? 'Participantul nu a putut fi identificat.' : 'Could not identify that attendee.');
+            return;
+        }
+
+        var removedOnServer = false;
+        if (window.supabaseClient) {
+            try {
+                var delRes = await window.supabaseClient
+                    .from('event_attendees')
+                    .delete()
+                    .eq('event_id', eventId)
+                    .eq('user_id', attendee.user_id);
+                if (delRes && delRes.error) {
+                    console.error('[Events] Failed to remove attendee on the server:', delRes.error);
+                } else {
+                    removedOnServer = true;
+                }
+            } catch (err) {
+                console.error('[Events] Kick attendee request failed:', err);
             }
-        } catch (err) {}
-        var atts = getLocalAttendees().filter(function(a) { return a.id !== attendeeId; });
-        saveLocalAttendees(atts);
+
+            // Withdraw the acceptance so the kick is not undone by a re-sync.
+            try {
+                await window.supabaseClient
+                    .from('event_inquiries')
+                    .update({ status: 'declined' })
+                    .eq('event_id', eventId)
+                    .eq('user_id', attendee.user_id);
+            } catch (e) {}
+        }
+
+        // Mirror locally (creator's own cache).
+        saveLocalAttendees(getLocalAttendees().filter(function (a) {
+            return !(a && a.event_id === eventId && a.user_id === attendee.user_id);
+        }));
+        var localInqs = getLocalInquiries();
+        localInqs.forEach(function (i) {
+            if (i && i.event_id === eventId && i.user_id === attendee.user_id) i.status = 'declined';
+        });
+        saveLocalInquiries(localInqs);
+
+        // Let the kicked user know, on whatever device they use next.
+        if (removedOnServer) {
+            try {
+                var evKick = getEventById(eventId);
+                var kickTitle = (evKick && evKick.title) ? evKick.title : '';
+                await createOutcomeNotification({
+                    userId: attendee.user_id,
+                    eventId: eventId,
+                    inquiryId: null,
+                    senderId: (evKick && evKick.creator_id) ? evKick.creator_id : null,
+                    senderName: (evKick && evKick.creator_name) ? evKick.creator_name : 'Creator',
+                    message: isRo
+                        ? '🚫 Ai fost eliminat din evenimentul «' + kickTitle + '» de către organizator.'
+                        : '🚫 You were removed from the event "' + kickTitle + '" by the organiser.'
+                });
+            } catch (e) {
+                console.error('Failed to create kick notification:', e);
+            }
+        }
+
         await syncEventChatState(eventId);
+        refreshEventsMap(true);
         loadManageEventDetails(eventId);
+        try { if (window._updateEventBadges) window._updateEventBadges(); } catch (e) {}
+
+        if (window.supabaseClient && !removedOnServer) {
+            alert(isRo
+                ? '⚠️ Participantul a fost eliminat doar pe acest dispozitiv — serverul a respins operațiunea, deci ceilalți îl vor vedea în continuare. Verifică consola browserului (F12).'
+                : '⚠️ The attendee was only removed on this device — the server rejected the change, so others will still see them. Check the browser console (F12).');
+        }
     };
 
     // ── NOTIFICATIONS & WINDOWS NOTIFICATION SYSTEM ──
@@ -2073,18 +2510,38 @@
                 ids[ev.id] = true;
             }
         });
+        var remoteAttendanceOk = false;
         try {
             if (window.supabaseClient) {
-                var res = await window.supabaseClient.from('event_attendees').select('event_id').eq('user_id', user.id);
+                var res = await window.supabaseClient.from('event_attendees').select('*').eq('user_id', user.id);
                 if (!res.error && Array.isArray(res.data)) {
+                    remoteAttendanceOk = true;
+                    // Reconcile first, so an event this user was kicked out of is
+                    // dropped from the cache instead of being OR-ed back in below.
+                    var removed = reconcileLocalAttendanceForUser(user.id, res.data);
+                    if (removed.length > 0) handleAttendanceRemovals(removed);
                     res.data.forEach(function(a){ if (a.event_id) ids[a.event_id]=true; });
                 }
             }
         } catch (e) {}
+
         getLocalAttendees().forEach(function(a){
-            if (a.user_id === user.id && a.event_id) ids[a.event_id]=true;
+            if (a.user_id !== user.id || !a.event_id) return;
+            // When the server answered, it already told us the full list; only
+            // add cached rows it could not have known about (local-only events).
+            if (remoteAttendanceOk && canTrustServerFor(a.event_id)) return;
+            ids[a.event_id] = true;
         });
-        return Object.keys(ids);
+
+        // Never list events that no longer exist on the server.
+        return Object.keys(ids).filter(function (id) {
+            if (serverReachable && serverEventIds && !serverEventIds[id]) {
+                return !!getLocalEvents().some(function (e) {
+                    return e && e.id === id && !getSyncedEventIds()[id];
+                });
+            }
+            return true;
+        });
     }
 
     async function fetchChatMessagesForBadge(eventId) {
@@ -2453,6 +2910,7 @@
 
         try {
             await fetchEvents();
+            await syncMyEventStateFromServer();
             await maybeCleanupExpiredEventChats();
             var attendingMap = await getAttendingMapAsync();
             renderCalendar(attendingMap);
@@ -2781,15 +3239,35 @@
         link.remove();
     };
 
+    // Pull the shared event state (events + my attendance) from the server.
+    // Runs on a timer so deletions and kick-outs performed by the creator on
+    // another device show up here without a page reload.
+    async function pollSharedEventState() {
+        if (!getCurrentUser()) return;
+        try {
+            await fetchEvents();              // picks up deleted events
+            await syncMyEventStateFromServer(); // picks up kick-outs
+        } catch (e) {
+            console.warn('pollSharedEventState failed', e);
+        }
+    }
+    window._syncMyEventState = syncMyEventStateFromServer;
+
     // Periodic check for notifications on app load / login
     document.addEventListener('DOMContentLoaded', function () {
         try { ensureEventBadges(); } catch (e) {}
         setTimeout(checkNotifications, 2000);
         setTimeout(function () { maybeCleanupExpiredEventChats(true); try { updateEventBadges(); } catch (e) {} }, 2500);
         setTimeout(function () { try { updateEventBadges(); } catch (e) {} }, 3000);
+        setTimeout(pollSharedEventState, 3500);
         setInterval(checkNotifications, 15000);
         setInterval(function () { maybeCleanupExpiredEventChats(); }, 60000);
         setInterval(function () { try { updateEventBadges(); } catch (e) {} }, 12000);
+        setInterval(pollSharedEventState, 30000);
+        // Also refresh as soon as the user comes back to the tab.
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) pollSharedEventState();
+        });
         // Observe DOM changes for dynamically created user menus (PWA dropdowns)
         if (window.MutationObserver) {
             var obs = new MutationObserver(function(){ try { ensureEventBadges(); } catch(e){} });
@@ -2800,7 +3278,8 @@
     // Rebuild event markers and check notifications when auth state changes (login / logout / token refresh)
     window.addEventListener('detectlab:authchange', async function () {
         await fetchEvents();
-        refreshEventsMap();
+        try { await syncMyEventStateFromServer(); } catch (e) {}
+        refreshEventsMap(true);
         await maybeCleanupExpiredEventChats(true);
         checkNotifications();
         try { ensureEventBadges(); } catch (e) {}
