@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Checkout · DetectLab Premium</title>
     <meta name="theme-color" content="#0a0d14">
-    <meta name="description" content="DetectLab Premium subscription checkout">
+    <meta name="description" content="DetectLab Premium — €5 for one month, no automatic renewal">
     <link rel="manifest" href="manifest.json">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Cinzel:wght@600;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/checkout.css?v=20260812">
+    <link rel="stylesheet" href="css/checkout.css?v=20260813-onetime">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='15' cy='15' r='13' fill='none' stroke='%23B8D8F0' stroke-width='1.4'/%3E%3Ccircle cx='15' cy='15' r='3.5' fill='%23E8772A'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -35,7 +35,7 @@
         <section class="co-card co-login-card" id="coLoginCard" style="display:none">
             <div class="co-ico">🔐</div>
             <h1 class="t" data-key="co_login_title">Log in to continue</h1>
-            <p class="co-muted t" data-key="co_login_desc">You need an account to purchase a subscription.</p>
+            <p class="co-muted t" data-key="co_login_desc">You need an account to purchase Premium.</p>
             <a class="co-btn co-btn-primary" href="index.html?goto=checkout">
                 <span class="t" data-key="co_login_btn">Go to login</span>
             </a>
@@ -49,10 +49,10 @@
                 <h2 class="co-h2 t" data-key="co_order_title">Order summary</h2>
                 <div class="co-summary-row">
                     <div>
-                        <div class="co-plan-name t" data-key="co_plan_name">DetectLab Premium — Monthly</div>
+                        <div class="co-plan-name t" data-key="co_plan_name">DetectLab Premium — one month</div>
                         <div class="co-muted">👑 <span class="t" data-key="co_all_layers">All premium map layers</span></div>
                     </div>
-                    <div class="co-price">€5<span class="co-period">/month</span></div>
+                    <div class="co-price">€5<span class="co-period t" data-key="co_period_once">one-time</span></div>
                 </div>
                 <div class="co-divider"></div>
                 <div class="co-summary-row co-total">
@@ -60,7 +60,7 @@
                     <strong>€5.00</strong>
                 </div>
                 <div class="co-summary-row co-summary-sub">
-                    <span class="t" data-key="co_renews">Renews automatically every month. Cancel anytime.</span>
+                    <span class="t" data-key="co_renews">€5 for one month — no automatic renewal</span>
                 </div>
             </aside>
 
@@ -117,9 +117,15 @@
         <section class="co-card co-pending" id="coAlreadyCard" style="display:none">
             <div class="co-ico">👑</div>
             <h1 class="t" data-key="co_already_title">You are already Premium</h1>
-            <p class="co-muted t" data-key="co_already_desc">Your subscription is already active. You can manage or renew it anytime.</p>
+            <p class="co-muted t" data-key="co_already_desc">Your Premium month is still active. You can buy another month once it ends.</p>
+            <div class="co-success-expiry">
+                <span class="co-muted t" data-key="co_success_expiry">Premium active until</span>
+                <strong id="coAlreadyDate">—</strong>
+            </div>
             <div class="co-success-actions">
-                <button type="button" class="co-btn co-btn-primary" id="coManageBtn">
+                <!-- Legacy recurring subscribers only — hidden for one-time
+                     purchasers by js/checkout.js (nothing to manage). -->
+                <button type="button" class="co-btn co-btn-primary" id="coManageBtn" style="display:none">
                     <span class="t" data-key="co_manage_billing">Manage subscription</span>
                 </button>
                 <a class="co-btn co-btn-ghost" href="index.html?open=account">
@@ -132,13 +138,16 @@
         <section class="co-card co-success" id="coSuccessCard" style="display:none">
             <div class="co-success-check">✓</div>
             <h1 class="t" data-key="co_success_title">Payment confirmed!</h1>
-            <p class="co-muted t" data-key="co_success_desc">Your account is now Premium. Enjoy every premium layer.</p>
+            <p class="co-muted t" data-key="co_success_desc">Your account is Premium for one month. Enjoy every premium layer.</p>
             <div class="co-success-expiry">
                 <span class="co-muted t" data-key="co_success_expiry">Premium active until</span>
                 <strong id="coSuccessDate">—</strong>
             </div>
+            <p class="co-muted t" data-key="co_no_renewal">No automatic renewal — you will not be charged again.</p>
             <div class="co-success-actions">
-                <button type="button" class="co-btn co-btn-primary" id="coSuccessManageBtn">
+                <!-- Legacy recurring subscribers only — hidden for one-time
+                     purchasers by js/checkout.js (nothing to manage). -->
+                <button type="button" class="co-btn co-btn-primary" id="coSuccessManageBtn" style="display:none">
                     <span class="t" data-key="co_manage_billing">Manage subscription</span>
                 </button>
                 <a class="co-btn co-btn-ghost" href="index.html?open=account">
@@ -153,11 +162,11 @@
         <span class="t" data-key="co_footer">DetectLab · Saving history together</span>
     </footer>
 
-    <script src="js/translations.js?v=20260812-payments"></script>
+    <script src="js/translations.js?v=20260813-onetime"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js"></script>
-    <script src="js/auth.js?v=20260812-payments"></script>
-    <script src="js/subscriptions.js?v=20260812-payments"></script>
-    <script src="js/checkout.js?v=20260812-payments"></script>
+    <script src="js/auth.js?v=20260813-onetime"></script>
+    <script src="js/subscriptions.js?v=20260813-onetime"></script>
+    <script src="js/checkout.js?v=20260813-onetime"></script>
 </body>
 </html>

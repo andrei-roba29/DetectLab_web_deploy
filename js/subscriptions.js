@@ -2,7 +2,7 @@
    DetectLab Premium — subscriptions, gating, membership popup, checkout
    ───────────────────────────────────────────────────────────────────────
    Single source of truth for the paid membership:
-     · one plan:  Monthly — €5 / month
+     · one product:  €5 for one month — no automatic renewal
      · weekly & yearly are marked as NOT AVAILABLE in the pricing UI
      · free members can browse the Premium tab with a lock on every layer
      · attempts to enable a locked layer open the membership popup
@@ -16,15 +16,36 @@
 
     /* ── Plan config ─────────────────────────────────────────────── */
     var PLAN = {
-        id: 'monthly',
+        id: 'one_month',
         nameKey: 'plan_monthly',
         price: 5,
         currency: 'EUR',
-        period: 'month',
-        days: 30        // demo expiry: +30 days
+        period: 'month'   // one calendar month, one-time payment
     };
 
     var LS_PREFIX = 'dl_premium_';   // localStorage key prefix (per user id)
+
+    // Status written by the backend webhook for a one-time purchase.
+    // Anything else (active / past_due / trialing / …) means the account is
+    // a LEGACY recurring subscriber, which is the only case where the
+    // Stripe billing portal ("Manage subscription") makes sense.
+    var ONE_TIME_STATUS = 'one_time_paid';
+
+    /* Adds one calendar month, clamping short months:
+       Aug 13 → Sep 13 · Jan 31 → Feb 28/29 · May 31 → Jun 30 */
+    function addCalendarMonth(date) {
+        var d = new Date(date.getTime());
+        var day = d.getDate();
+        var target = new Date(d.getTime());
+        target.setDate(1);
+        target.setMonth(target.getMonth() + 1);
+        var lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+        target.setDate(Math.min(day, lastDay));
+        target.setHours(d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
+        return target;
+    }
+
+    window._dlAddCalendarMonth = addCalendarMonth;
 
     /* ── i18n helper (mirrors translations.js) ───────────────────── */
     function t(key) {
@@ -119,7 +140,7 @@
             if (window.supabaseClient && window.supabaseClient.from) {
                 var res = await window.supabaseClient
                     .from('profiles')
-                    .select('plan, premium_expires_at')
+                    .select('plan, premium_expires_at, stripe_subscription_id, stripe_subscription_status')
                     .eq('id', userId)
                     .maybeSingle();
                 if (!res.error && res.data) fromDb = res.data;
@@ -133,6 +154,11 @@
 
             u.plan = (rec.plan === 'premium' && rec.premium_expires_at) ? 'premium' : 'free';
             u.premiumExpiresAt = rec.premium_expires_at || null;
+            // Legacy recurring subscribers are the only ones with a Stripe
+            // subscription id + a non-one-time status; one-time purchasers
+            // must never be offered "Manage subscription".
+            u.stripeSubscriptionId = rec.stripe_subscription_id || null;
+            u.stripeSubscriptionStatus = rec.stripe_subscription_status || null;
 
             // Sync local cache to whatever the DB said (so the demo
             // fallback never outlives a real profile row).
@@ -181,7 +207,9 @@
 
         var buyWrap = document.getElementById('premBuyWrap');
         var laterBtn = document.getElementById('premLaterBtn');
-        if (buyWrap) buyWrap.style.display = user ? '' : 'none';
+        // An account with unexpired Premium cannot buy another month, so
+        // the buy CTA is hidden until the current month runs out.
+        if (buyWrap) buyWrap.style.display = (user && !prem) ? '' : 'none';
         if (laterBtn) laterBtn.style.display = user ? '' : 'none';
 
         if (titleEl) titleEl.textContent = t('prem_modal_title');
@@ -201,15 +229,21 @@
 
         if (prem) {
             var exp = getExpiryDate();
+            // Only legacy recurring subscribers have something to manage in
+            // the Stripe billing portal. One-time purchasers just see the
+            // exact date their month of Premium ends.
+            var legacy = isLegacySubscriber(user);
             bodyEl.innerHTML =
                 '<div class="prem-ico">✅</div>' +
                 '<p class="prem-sub">' + esc(t('prem_already')) + '</p>' +
                 (exp ? '<p class="prem-expiry">' + esc(t('acct_premium_until').replace('{date}', formatDate(exp))) + '</p>' : '') +
-                '<div class="prem-login-box">' +
-                '  <button type="button" class="prem-btn prem-btn-primary" onclick="goToCheckout()">' +
-                '    ' + esc(t('prem_manage')) +
-                '  </button>' +
-                '</div>';
+                (legacy
+                    ? '<div class="prem-login-box">' +
+                      '  <button type="button" class="prem-btn prem-btn-primary" onclick="window.openStripePortal && window.openStripePortal()">' +
+                      '    ' + esc(t('prem_manage')) +
+                      '  </button>' +
+                      '</div>'
+                    : '');
             return;
         }
 
@@ -273,7 +307,19 @@
         return null;
     };
 
-    // Opens the Stripe billing portal (manage / cancel / renew).
+    // True only for LEGACY recurring subscribers (bought before the switch
+    // to the one-time €5 purchase). They are the only accounts with an
+    // auto-renewing Stripe subscription to manage or cancel.
+    function isLegacySubscriber(user) {
+        var u = user || currentUser();
+        if (!u) return false;
+        if (!u.stripeSubscriptionId) return false;
+        return u.stripeSubscriptionStatus !== ONE_TIME_STATUS;
+    }
+
+    window._dlIsLegacySubscriber = isLegacySubscriber;
+
+    // Opens the Stripe billing portal — legacy recurring subscribers only.
     window.openStripePortal = async function () {
         var token = await window._dlAccessToken();
         if (!token) {
@@ -298,19 +344,21 @@
         }
     };
 
-    // Account panel button: premium → manage billing; free → checkout.
+    // Account panel button:
+    //   · legacy recurring subscriber → Stripe billing portal
+    //   · one-time purchaser (or free) → checkout (buy another month once
+    //     the current one expires; the backend rejects an early re-purchase)
     window.accountSubAction = function () {
         var user = currentUser();
-        var premium = !!(user && user.plan === 'premium' && user.premiumExpiresAt &&
-            new Date(user.premiumExpiresAt).getTime() > Date.now());
-        if (premium && typeof window.openStripePortal === 'function') {
+        if (isLegacySubscriber(user) && typeof window.openStripePortal === 'function') {
             window.openStripePortal();
-        } else if (typeof window.goToCheckout === 'function') {
-            window.goToCheckout();
+            return;
         }
+        if (typeof window.goToCheckout === 'function') window.goToCheckout();
     };
 
-    // Called by checkout.html after a successful (demo) payment.
+    // Called by checkout.html after a successful (demo) payment. Grants
+    // one calendar month — the real grant is written by the Stripe webhook.
     window.completePremiumPurchase = async function (opts) {
         opts = opts || {};
         var user = currentUser();
@@ -319,7 +367,8 @@
         var from = opts.from || null;
         var base = from && from.premiumExpiresAt ? new Date(from.premiumExpiresAt) : new Date();
         if (from && from.premiumExpiresAt && new Date(from.premiumExpiresAt) > base) base = new Date(from.premiumExpiresAt);
-        var expiresAt = new Date(base.getTime() + (PLAN.days * 24 * 60 * 60 * 1000));
+        // One calendar month from the payment (Aug 13 → Sep 13), not +30 days.
+        var expiresAt = addCalendarMonth(base);
 
         // In-memory user + local cache (works even if the migration is
         // not applied yet).

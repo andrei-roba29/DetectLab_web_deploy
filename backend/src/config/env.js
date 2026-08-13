@@ -42,6 +42,11 @@ export const env = {
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+    // One-time €5 price (Premium for one calendar month, no renewal).
+    // This is what new checkouts use.
+    oneTimePriceId: process.env.STRIPE_ONE_TIME_PRICE_ID || '',
+    // Legacy recurring price — kept only so existing subscribers keep
+    // working and as a fallback when the one-time price is not set yet.
     priceId: process.env.STRIPE_PRICE_ID || '',
     // Base URL used for success/cancel redirects; falls back to the
     // request's Origin header (handy for local testing).

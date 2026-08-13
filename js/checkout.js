@@ -1,10 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════════════
    DetectLab Premium — checkout page logic (REAL payments via Stripe)
    ───────────────────────────────────────────────────────────────────────
-   · order summary (€5 / month, subscription)
+   · order summary (€5 for one month — one-time payment, no auto-renewal)
    · "Pay" → POST /api/payments/checkout (backend) → redirect to Stripe's
-     hosted Checkout page (cards + Apple Pay + Google Pay are handled by
-     Stripe — this page never touches card data)
+     hosted Checkout page in `payment` mode (cards + Apple Pay + Google
+     Pay are handled by Stripe — this page never touches card data)
    · return flow (?payment=success / cancelled / portal)
    · activation is confirmed server-side by the Stripe webhook; the page
      polls the user's profile until the webhook lands.
@@ -71,10 +71,13 @@
         show('coPendingCard');
     }
 
-    function showAlready() {
+    function showAlready(expiresAt) {
         hide('coLoginCard'); hide('coCheckoutCard'); hide('coRedirectCard');
         hide('coProcessingCard'); hide('coPendingCard'); hide('coSuccessCard');
         show('coAlreadyCard');
+        var d = $('coAlreadyDate');
+        if (d) d.textContent = formatDate(expiresAt || currentExpiry());
+        applyManageVisibility();
     }
 
     function showSuccess(expiresAt) {
@@ -83,6 +86,30 @@
         show('coSuccessCard');
         var d = $('coSuccessDate');
         if (d) d.textContent = formatDate(expiresAt);
+        applyManageVisibility();
+    }
+
+    function currentExpiry() {
+        var u = currentUser();
+        return (u && u.premiumExpiresAt) ? new Date(u.premiumExpiresAt) : null;
+    }
+
+    // "Manage subscription" only makes sense for LEGACY recurring
+    // subscribers — a one-time purchase has no renewal to cancel.
+    function isLegacySubscriber() {
+        if (typeof window._dlIsLegacySubscriber === 'function') {
+            return !!window._dlIsLegacySubscriber(currentUser());
+        }
+        var u = currentUser();
+        return !!(u && u.stripeSubscriptionId && u.stripeSubscriptionStatus !== 'one_time_paid');
+    }
+
+    function applyManageVisibility() {
+        var legacy = isLegacySubscriber();
+        ['coManageBtn', 'coSuccessManageBtn'].forEach(function (id) {
+            var el = $(id);
+            if (el) el.style.display = legacy ? '' : 'none';
+        });
     }
 
     function formatDate(d) {
@@ -150,7 +177,7 @@
             var data = await res.json().catch(function () { return {}; });
 
             if (res.status === 409 && data.error === 'already_premium') {
-                showAlready();
+                showAlready(data.premium_expires_at ? new Date(data.premium_expires_at) : null);
                 return;
             }
             if (!res.ok) {
@@ -257,6 +284,7 @@
             var el = $(ids[0]);
             if (el) el.addEventListener('click', openPortal);
         });
+        applyManageVisibility();
 
         // Language: swap [data-key] nodes to the active language.
         try {
@@ -271,6 +299,22 @@
 
         // Wait for the auth system (auth.js on this page).
         var ready = (typeof window._authReadyPromise !== 'undefined') ? window._authReadyPromise : Promise.resolve();
+        // An account whose Premium has NOT expired yet cannot buy another
+        // month — decided purely on premium_expires_at (the backend enforces
+        // the same rule and answers 409 already_premium). js/subscriptions.js
+        // loads the profile from Supabase asynchronously, so re-check
+        // whenever the user object changes.
+        function hasUnexpiredPremium() {
+            var exp = currentExpiry();
+            return !!(exp && exp.getTime() > Date.now());
+        }
+
+        window.addEventListener('detectlab:authchange', function () {
+            var card = $('coCheckoutCard');
+            var onCheckoutCard = card && card.style.display !== 'none';
+            if (onCheckoutCard && hasUnexpiredPremium()) showAlready(currentExpiry());
+        });
+
         ready.then(function () {
             var user = currentUser();
             if (!user) {
@@ -279,6 +323,10 @@
             }
             if (getParam('payment')) {
                 handleReturn();
+                return;
+            }
+            if (hasUnexpiredPremium()) {
+                showAlready(currentExpiry());
                 return;
             }
             showCheckout();
