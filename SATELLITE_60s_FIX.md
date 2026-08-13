@@ -220,3 +220,68 @@ on-demand machinery).
 - If `geoserve.cast.uark.edu` is ever unreachable, the layer simply shows
   nothing (like the original); the fallback inside `_sat60MakeLayer` keeps a
   plain `L.tileLayer.wms` in case `corona-wms-layer.js` fails to load.
+
+## 6. Mobile crash on fast zoom / sudden movement (fixed)
+
+**Symptom.** With the layer working and drawing imagery, zooming in quickly or
+making a sudden map movement crashed the site on mobile browsers — including
+"Desktop site" mode and the installed PWA. Desktop was unaffected.
+
+**Cause.** Not a leak, and not the request format: pure volume. The layer is
+nine tile layers (6 pass mosaics + 3 frames) in one pane, and Leaflet 1.9.4's
+per-layer defaults are the worst case for that stack:
+
+| option | default | effect here |
+|---|---|---|
+| `updateWhenZooming` | `true` | every frame of a pinch/scroll zoom re-runs `_update()` and queues tiles — ×9 layers |
+| `updateWhenIdle` | `L.Browser.mobile` | **`false` when the UA is spoofed by "Desktop site"**, so every pan frame does the same |
+| `keepBuffer` | `2` | a 2-tile ring of off-screen tiles retained per layer |
+
+On top of that `_pruneTiles()` retains up to 5 ancestor levels and 2 descendant
+levels per layer while the zoom is changing. A fast gesture therefore produced
+hundreds of in-flight requests and decoded 256×256 PNGs within about a second.
+For a 390×780 phone viewport that is 63 tiles/layer × 9 layers = 567 live
+tiles before retained levels — well past the point where mobile WebKit /
+Chromium terminates the tab for memory.
+
+**Fix** (`js/map-app.js`, Sat60 block). Nothing about *what* is requested
+changed — same endpoint, same byte-identical WMS-C URL and parameter order,
+same nine verified layer names, same footprints, same z8/z12 gating. Only
+*how often* and *how many* tiles stay alive:
+
+1. `updateWhenZooming: false` — zoom-animation frames become pure CSS
+   transforms (`_setView` short-circuits to `_setZoomTransforms`); tiles load
+   once, at the end of the zoom.
+2. `updateWhenIdle: true` — set explicitly rather than inherited from the
+   user-agent sniff, so "Desktop site" mode no longer opts phones into
+   per-frame pan updates.
+3. `keepBuffer: 0` on touch / low-memory devices (desktop keeps Leaflet's `2`).
+   Detection (`_sat60IsLowPowerDevice`) combines `L.Browser.mobile`, a coarse
+   pointer plus touch points (survives UA spoofing), and
+   `navigator.deviceMemory <= 4`. Override with
+   `window.SAT60_LOW_POWER_TILES = true/false`.
+4. `_sat60SyncActiveLayers()` detaches passes/frames that cannot draw in the
+   current view (footprint off-screen, or min zoom not reached) so they stop
+   holding containers, retained levels and tiles. It runs on `moveend zoomend`
+   only — never during a gesture — and pads the viewport by
+   `SAT60_VIEWPORT_PAD` (0.35) so a drag never uncovers imagery before the
+   re-sync. Whatever covers the screen is always attached, so the visible
+   result is unchanged.
+
+Typical z13 view: ~3 relevant layers × 15 tiles = 45 live tiles instead of 567.
+
+**Also fixed:** `js/map-app.js` did not parse at all. A bad paste had left a
+dangling `var tl =` followed by a duplicated block inside `readSerial()`
+(line ~5826), a `SyntaxError` that prevented the *entire* file from loading.
+It was present at HEAD (`d690808`) and is unrelated to the mobile crash, but
+nothing in `map-app.js` could run until it was repaired.
+
+```
+node test-sat60-mobile-crash.js   # gesture volume limits + imagery unchanged
+```
+
+`test-sat60-mobile-crash.js` fails if the file stops parsing, if the truncated
+paste reappears, if any of the four mitigations is removed or weakened, if the
+sync is wired to a per-frame event, or if the requests/layers/gating change.
+It also simulates the viewport sync against the real configuration to prove
+that every layer whose footprint covers the view stays attached.

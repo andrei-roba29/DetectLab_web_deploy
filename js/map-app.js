@@ -5823,14 +5823,6 @@
                     if (s === 9) return { v: 1, n: 0 };
                     if (s >= 12 && s % 2 === 0) { var ln = (s - 12) / 2; return { v: buf.slice(off, off + ln), n: ln }; }
                     if (s >= 13 && s % 2 === 1) {
-                        var tl =                 if (s === 3) { var x = (u8[off] << 16) | (u8[off+1] << 8) | u8[off+2]; return { v: x >= 0x800000 ? x - 0x1000000 : x, n: 3 }; }
-                    if (s === 4) return { v: dv.getInt32(off), n: 4 };
-                    if (s === 5) return { v: dv.getInt16(off) * 4294967296 + dv.getUint32(off+2), n: 6 };
-                    if (s === 6 || s === 7) return { v: dv.getFloat64(off), n: 8 };
-                    if (s === 8) return { v: 0, n: 0 };
-                    if (s === 9) return { v: 1, n: 0 };
-                    if (s >= 12 && s % 2 === 0) { var ln = (s - 12) / 2; return { v: buf.slice(off, off + ln), n: ln }; }
-                    if (s >= 13 && s % 2 === 1) {
                         var tl = (s - 13) / 2, tb = new Uint8Array(buf, off, tl), ts = '';
                         for (var ci = 0; ci < tb.length; ci++) ts += String.fromCharCode(tb[ci]);
                         return { v: ts, n: tl };
@@ -9554,6 +9546,62 @@
                 var _sat60Layers = [];
                 var _sat60MapLayer = L.layerGroup([]);
 
+                // ── Mobile safety: why this layer used to crash phones ──────
+                // Nine CORONA tile layers share one pane. On a phone (incl.
+                // "Desktop site" / PWA, where Leaflet's own L.Browser.mobile
+                // sniff is defeated by the spoofed user-agent) Leaflet's
+                // defaults are the worst case for that stack:
+                //   • updateWhenIdle  = L.Browser.mobile → false when the UA
+                //     is spoofed, so EVERY pan frame re-runs _update() nine
+                //     times and queues new tiles while the finger is moving;
+                //   • updateWhenZooming = true → the same happens on every
+                //     frame of a pinch/scroll zoom animation;
+                //   • keepBuffer = 2 → each layer keeps a two-tile ring
+                //     around the viewport, i.e. (w+4)×(h+4) live <img> nodes
+                //     per layer, ×9 layers, plus up to 5 retained parent
+                //     levels while zooming.
+                // The result is hundreds of in-flight requests and decoded
+                // 256×256 PNGs within a second → mobile WebKit/Chromium kills
+                // the tab (out of memory). Nothing below changes WHAT is
+                // requested (same endpoint, same WMS-C URL, same layers, same
+                // zoom gating, same footprints) — only HOW OFTEN and HOW MANY
+                // tiles are kept alive on constrained devices.
+                var _sat60LowPowerCache = null;
+                function _sat60IsLowPowerDevice() {
+                    if (typeof window.SAT60_LOW_POWER_TILES === "boolean") {
+                        return window.SAT60_LOW_POWER_TILES;
+                    }
+                    if (_sat60LowPowerCache !== null) return _sat60LowPowerCache;
+                    var lowPower = false;
+                    try {
+                        // Leaflet's UA sniff (true on a normal mobile browser).
+                        if (L.Browser && L.Browser.mobile) lowPower = true;
+                        // "Desktop site" / PWA on a phone defeats the UA sniff,
+                        // but a touch-first device still reports a coarse
+                        // pointer and touch points.
+                        var coarse = !!(window.matchMedia &&
+                            window.matchMedia("(pointer: coarse)").matches);
+                        var touchPoints = (navigator.maxTouchPoints || 0) > 0 ||
+                            ("ontouchstart" in window);
+                        if (coarse && touchPoints) lowPower = true;
+                        // Low-memory devices benefit from the same limits.
+                        if (typeof navigator.deviceMemory === "number" &&
+                            navigator.deviceMemory > 0 && navigator.deviceMemory <= 4) {
+                            lowPower = true;
+                        }
+                    } catch (err) {
+                        lowPower = false;
+                    }
+                    _sat60LowPowerCache = lowPower;
+                    return lowPower;
+                }
+
+                // How far outside the viewport a pass/frame still counts as
+                // "visible" (fraction of the viewport size). Small enough to
+                // keep memory down, large enough that a normal drag does not
+                // uncover an empty area before moveend fires.
+                var SAT60_VIEWPORT_PAD = 0.35;
+
                 function _sat60MakeLayer(entry, minZoom) {
                     // Accept both a plain layer name and a {name, bounds}
                     // descriptor; `bounds` is the pass's verified footprint
@@ -9563,6 +9611,7 @@
                     var layerBounds = (typeof entry === "string" || !entry.bounds)
                         ? ROMANIA_BOUNDS
                         : L.latLngBounds(entry.bounds);
+                    var lowPower = _sat60IsLowPowerDevice();
                     var opts = {
                         layers: name,
                         coronaLayer: name,
@@ -9575,7 +9624,22 @@
                         bounds: layerBounds,
                         minZoom: minZoom,
                         maxNativeZoom: SAT60_MAX_NATIVE_ZOOM,
-                        maxZoom: 20
+                        maxZoom: 20,
+                        // Never queue tiles for the intermediate frames of a
+                        // zoom animation: Leaflet then only re-transforms the
+                        // levels it already has and loads the final zoom once,
+                        // on zoomend. This alone removes the burst that killed
+                        // the tab on a fast pinch/scroll zoom.
+                        updateWhenZooming: false,
+                        // Same idea for panning: load after the gesture ends
+                        // instead of on every move frame. Forced on regardless
+                        // of the user-agent (Leaflet's default is the mobile
+                        // sniff, which "Desktop site" mode defeats).
+                        updateWhenIdle: true,
+                        // Fewer off-screen tiles retained around the viewport
+                        // on phones (9 layers × the tile ring is what filled
+                        // memory); desktop keeps Leaflet's default of 2.
+                        keepBuffer: lowPower ? 0 : 2
                     };
                     var layer;
                     if (typeof window.createCoronaWmsLayer === "function") {
@@ -9599,7 +9663,42 @@
                             console.warn("[Sat60] CORONA layer unavailable on the CAST server: " + name);
                         }
                     });
+                    // The pass's footprint, kept for the viewport check in
+                    // _sat60SyncActiveLayers (options.bounds is normalised by
+                    // Leaflet; this stays a plain LatLngBounds).
+                    layer._sat60Bounds = L.latLngBounds(layerBounds);
                     return layer;
+                }
+
+                // Attach only the passes/frames that can actually draw in the
+                // current view. A layer whose footprint is off-screen, or
+                // whose min zoom is not reached, never produces a visible
+                // tile anyway (Leaflet's `bounds`/`minZoom` already reject
+                // those requests) — but while it is attached it still keeps
+                // its container, its retained tile levels and its share of the
+                // per-frame update work alive. Detaching it frees that memory,
+                // and re-attaching costs nothing but the tiles it really needs.
+                // What the user sees is unchanged: whatever imagery covers the
+                // screen is always attached.
+                function _sat60SyncActiveLayers() {
+                    if (!_sat60Layers.length || !map.hasLayer(_sat60MapLayer)) return;
+                    var zoom = map.getZoom();
+                    var view;
+                    try {
+                        view = map.getBounds().pad(SAT60_VIEWPORT_PAD);
+                    } catch (err) {
+                        return; // map not laid out yet — leave membership as is
+                    }
+                    _sat60Layers.forEach(function (layer) {
+                        var wanted = zoom >= (layer.options.minZoom || 0) &&
+                            (!layer._sat60Bounds || layer._sat60Bounds.intersects(view));
+                        var attached = _sat60MapLayer.hasLayer(layer);
+                        if (wanted && !attached) {
+                            _sat60MapLayer.addLayer(layer);
+                        } else if (!wanted && attached) {
+                            _sat60MapLayer.removeLayer(layer);
+                        }
+                    });
                 }
 
                 function ensureSat60Layers() {
@@ -9614,6 +9713,9 @@
                     window._sat60Layers = _sat60Layers;
                     // Used by the premium coverage-rectangle system.
                     window._sat60MapLayer = _sat60MapLayer;
+                    // Re-evaluate which passes/frames are worth keeping alive
+                    // once each gesture has settled (never during it).
+                    map.on("moveend zoomend", _sat60SyncActiveLayers);
                     return true;
                 }
 
@@ -9628,6 +9730,7 @@
                         if (!map.hasLayer(_sat60MapLayer)) {
                             _sat60MapLayer.addTo(map);
                         }
+                        _sat60SyncActiveLayers();
                     } else {
                         if (map.hasLayer(_sat60MapLayer)) {
                             map.removeLayer(_sat60MapLayer);
