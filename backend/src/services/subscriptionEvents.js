@@ -70,6 +70,17 @@ export function classifyEvent(event) {
 
 /* ── DB write (single upsert path) ─────────────────────────────────── */
 
+export async function dbFindUserByCustomerId(customerId) {
+  const result = await pool.query(
+    `select id
+       from public.profiles
+      where stripe_customer_id = $1
+      limit 1`,
+    [customerId]
+  );
+  return result.rows[0]?.id || null;
+}
+
 export async function dbUpsertSubscription({ userId, action, status, periodEnd, subscriptionId, customerId }) {
   if (action === 'revoke') {
     await pool.query(
@@ -137,6 +148,7 @@ export function createEventHandler({ stripe, db }) {
         logger.warn({ err, customerId: cls.customerId }, 'Failed to retrieve Stripe customer');
       }
     }
+    if (!userId && cls.customerId && db.findUserByCustomerId) userId = await db.findUserByCustomerId(cls.customerId) || null;
     if (!userId) return { handled: false, reason: 'no-user-id' };
 
     const status = sub ? sub.status : (cls.status || null);
@@ -157,5 +169,11 @@ export function createEventHandler({ stripe, db }) {
 
 /** Default handler wired to the real Stripe client + Postgres pool. */
 export function handleStripeEvent(event) {
-  return createEventHandler({ stripe: stripeApi, db: { upsertSubscription: dbUpsertSubscription } })(event);
+  return createEventHandler({
+    stripe: stripeApi,
+    db: {
+      upsertSubscription: dbUpsertSubscription,
+      findUserByCustomerId: dbFindUserByCustomerId,
+    },
+  })(event);
 }
