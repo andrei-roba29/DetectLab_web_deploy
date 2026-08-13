@@ -148,11 +148,17 @@ export function createEventHandler({ stripe, db }) {
         logger.warn({ err, customerId: cls.customerId }, 'Failed to retrieve Stripe customer');
       }
     }
-    if (!userId && cls.customerId && db.findUserByCustomerId) userId = await db.findUserByCustomerId(cls.customerId) || null;
+    if (!userId && cls.customerId && db.findUserByCustomerId) {
+      try {
+        userId = (await db.findUserByCustomerId(cls.customerId)) || null;
+      } catch (err) {
+        logger.warn({ err, customerId: cls.customerId }, 'Failed to look up user by Stripe customer id');
+      }
+    }
     if (!userId) return { handled: false, reason: 'no-user-id' };
 
     const status = sub ? sub.status : (cls.status || null);
-    const periodEnd = cls.periodEnd || (sub ? sub.current_period_end : null) || null;
+    const periodEnd = (sub && sub.current_period_end) || cls.periodEnd || null;
 
     await db.upsertSubscription({
       userId,
