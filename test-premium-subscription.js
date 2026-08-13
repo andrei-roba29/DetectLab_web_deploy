@@ -1,4 +1,8 @@
-/* Smoke test for the DetectLab Premium subscription flow.
+/* Smoke test for the DetectLab Premium flow.
+
+   Premium is a ONE-TIME €5 purchase granting one calendar month of access
+   with NO automatic renewal. Legacy recurring subscribers (bought before
+   the switch) keep the Stripe billing portal.
    Runs the real js/subscriptions.js, js/translations.js, js/account-legacy.js
    and js/checkout.js against a jsdom DOM that mirrors the relevant parts of
    index.html / checkout.html.
@@ -38,7 +42,7 @@ function patchWindow(w) {
 }
 
 /* ────────────────────────────────────────────────────────────────────
-   Test 1: translations.js pricing (monthly-only, €5, "Not available")
+   Test 1: translations.js pricing (€5 one-time / one month, "Not available")
    ──────────────────────────────────────────────────────────────────── */
 async function testPricing() {
     console.log('\n[1] Pricing — translations.js');
@@ -55,16 +59,45 @@ async function testPricing() {
     const w = dom.window;
     patchWindow(w);
     w.localStorage.setItem('detectlab_lang', 'ro');
-    w.eval(read('js/translations.js'));
+    // `translations` is a top-level const in the file, so export it explicitly.
+    w.eval(read('js/translations.js') + '\n; window.__translations = translations;');
 
     ok(w.document.getElementById('silverPrice').textContent === '5', 'silver (monthly) price = 5');
-    ok(w.document.getElementById('silverPeriod').textContent === '/lună', 'silver period = /lună (ro)');
+    ok(w.document.getElementById('silverPeriod').textContent === '/o lună', 'silver period = /o lună (ro, one month — not recurring)');
     ok(w.document.getElementById('bronzePrice').textContent === '—', 'bronze (weekly) price = —');
     ok(w.document.getElementById('goldPrice').textContent === '—', 'gold (yearly) price = —');
     ok(w.document.getElementById('bronzeNote').textContent === 'Indisponibil', 'bronze note = Indisponibil');
     ok(w.document.getElementById('goldNote').textContent === 'Indisponibil', 'gold note = Indisponibil');
-    ok(w.document.getElementById('silverNote').textContent === 'Facturat lunar', 'silver note = Facturat lunar');
+    ok(w.document.getElementById('silverNote').textContent === 'Plată unică', 'silver note = Plată unică (one-time payment)');
     ok(w.document.getElementById('pricing_title').innerHTML.includes('Planul'), 'ro pricing title applied');
+
+    // ── One-time wording: no monthly-subscription / auto-renew / cancel-anytime ──
+    const T = w.__translations;
+    ok(T.en.prem_price_line === '€5 for one month — no automatic renewal',
+        'EN price line: "€5 for one month — no automatic renewal"');
+    ok(T.ro.prem_price_line === '5 € pentru o lună — fără reînnoire automată',
+        'RO price line: "5 € pentru o lună — fără reînnoire automată"');
+    ok(T.en.co_renews === '€5 for one month — no automatic renewal',
+        'EN checkout summary uses the one-time wording');
+    ok(T.ro.co_renews === '5 € pentru o lună — fără reînnoire automată',
+        'RO checkout summary uses the one-time wording');
+
+    const renewalWords = /(cancel anytime|renews automatically|every month|\/month|anulezi oricând|reînnoiește automat|în fiecare lună|\/lună)/i;
+    const checkedKeys = [
+        'prem_price_line', 'prem_buy_btn', 'co_plan_name', 'co_renews',
+        'co_success_desc', 'co_already_desc', 'acct_buy_premium', 'acct_renew',
+        'note_monthly', 'plan_monthly',
+    ];
+    let offending = [];
+    ['en', 'ro'].forEach((lang) => {
+        checkedKeys.forEach((k) => {
+            if (renewalWords.test(String(T[lang][k] || ''))) offending.push(lang + '.' + k);
+        });
+    });
+    ok(offending.length === 0, 'no monthly-subscription / auto-renewal / cancel-anytime wording left (' + (offending.join(', ') || 'clean') + ')');
+
+    ok(/no automatic renewal/i.test(T.en.co_no_renewal || ''), 'EN success screen states there is no automatic renewal');
+    ok(/fără reînnoire automată/i.test(T.ro.co_no_renewal || ''), 'RO success screen states there is no automatic renewal');
 }
 
 /* ────────────────────────────────────────────────────────────────────
@@ -179,8 +212,19 @@ async function testSubscriptions() {
     const res = await w.completePremiumPurchase({ from: authUser });
     ok(authUser.plan === 'premium' && !!authUser.premiumExpiresAt, 'purchase sets plan + expiry on user');
     ok(w.localStorage.getItem('dl_premium_u1') && JSON.parse(w.localStorage.getItem('dl_premium_u1')).plan === 'premium', 'purchase persisted to localStorage');
-    const days = Math.round((new Date(authUser.premiumExpiresAt) - Date.now()) / 86400000);
-    ok(days >= 29 && days <= 31, 'expiry ≈ 30 days out (got ' + days + ')');
+    const expDate = new Date(authUser.premiumExpiresAt);
+    const nowDate = new Date();
+    const expectedMonth = (nowDate.getMonth() + 1) % 12;
+    ok(expDate.getMonth() === expectedMonth, 'expiry lands in the next calendar month');
+    ok(w._dlAddCalendarMonth(new Date(2026, 7, 13)).getDate() === 13 &&
+       w._dlAddCalendarMonth(new Date(2026, 7, 13)).getMonth() === 8,
+        'calendar month: Aug 13 → Sep 13');
+    ok(w._dlAddCalendarMonth(new Date(2026, 0, 31)).getMonth() === 1 &&
+       w._dlAddCalendarMonth(new Date(2026, 0, 31)).getDate() === 28,
+        'calendar month clamp: Jan 31 → Feb 28');
+    ok(w._dlAddCalendarMonth(new Date(2026, 4, 31)).getMonth() === 5 &&
+       w._dlAddCalendarMonth(new Date(2026, 4, 31)).getDate() === 30,
+        'calendar month clamp: May 31 → Jun 30');
     ok(db.profiles && db.profiles.u1 && db.profiles.u1.plan === 'premium', 'purchase upserted into Supabase profiles');
     ok(!!res.expiresAt, 'purchase returns the expiry date');
     ok(w.document.querySelectorAll('.transp-layer-row.is-premium-locked').length === 0, 'active Premium membership removes every layer lock');
@@ -211,14 +255,16 @@ const CHECKOUT_DOM = `<!DOCTYPE html><html><body>
     <section id="coRedirectCard" style="display:none"></section>
     <section id="coProcessingCard" style="display:none"></section>
     <section id="coPendingCard" style="display:none"><button id="coCheckAgainBtn"></button></section>
-    <section id="coAlreadyCard" style="display:none"><button id="coManageBtn"></button></section>
+    <section id="coAlreadyCard" style="display:none">
+        <strong id="coAlreadyDate">—</strong><button id="coManageBtn" style="display:none"></button>
+    </section>
     <section id="coSuccessCard" style="display:none">
-        <strong id="coSuccessDate"></strong><button id="coSuccessManageBtn"></button>
+        <strong id="coSuccessDate"></strong><button id="coSuccessManageBtn" style="display:none"></button>
     </section>
     </main>
 </body></html>`;
 
-async function buildCheckoutPage(url, { fetchImpl, onPremiumLoad } = {}) {
+async function buildCheckoutPage(url, { fetchImpl, onPremiumLoad, userOverrides } = {}) {
     const dom = new JSDOM(CHECKOUT_DOM, { runScripts: 'outside-only', url: url || 'http://localhost/checkout.html' });
     const w = dom.window;
     patchWindow(w);
@@ -233,7 +279,7 @@ async function buildCheckoutPage(url, { fetchImpl, onPremiumLoad } = {}) {
         co_footer: 'x', co_login_btn2: 'x', co_portal_return: 'x'
     } };
     w.currentLang = 'ro';
-    const user = { id: 'u1', name: 'Ion', email: 'i@t.ro', plan: 'free' };
+    const user = Object.assign({ id: 'u1', name: 'Ion', email: 'i@t.ro', plan: 'free' }, userOverrides || {});
     w._authUser = () => user;
     w._authReadyPromise = Promise.resolve(null);
     w._save = () => {};
@@ -335,10 +381,123 @@ async function testCheckout() {
     }
 }
 
+/* ────────────────────────────────────────────────────────────────────
+   Test 4: one-time purchase UI rules (no "Manage subscription",
+   unexpired Premium cannot buy another month)
+   ──────────────────────────────────────────────────────────────────── */
+async function testOneTimeUi() {
+    console.log('\n[4] One-time purchase UI (no auto-renewal)');
+
+    const future = new Date(Date.now() + 20 * 86400000).toISOString();
+
+    // — one-time purchaser with an unexpired month: no Manage button,
+    //   cannot buy again, exact expiry date is displayed
+    {
+        const { w, $ } = await buildCheckoutPage('http://localhost/checkout.html', {
+            userOverrides: {
+                plan: 'premium', premiumExpiresAt: future,
+                stripeSubscriptionId: null, stripeSubscriptionStatus: 'one_time_paid',
+            }
+        });
+        ok($('coAlreadyCard').style.display !== 'none', 'unexpired Premium → cannot buy another month');
+        ok($('coCheckoutCard').style.display === 'none', 'buy form is not shown to an unexpired Premium account');
+        ok($('coManageBtn').style.display === 'none', 'one-time purchaser does NOT see "Manage subscription"');
+        ok(/^\d{2}\.\d{2}\.\d{4}$/.test($('coAlreadyDate').textContent), 'exact Premium expiration date is displayed');
+        w.close();
+    }
+
+    // — LEGACY recurring subscriber: the billing portal button stays
+    {
+        const { w, $ } = await buildCheckoutPage('http://localhost/checkout.html', {
+            userOverrides: {
+                plan: 'premium', premiumExpiresAt: future,
+                stripeSubscriptionId: 'sub_legacy_1', stripeSubscriptionStatus: 'active',
+            }
+        });
+        ok($('coAlreadyCard').style.display !== 'none', 'legacy subscriber also cannot stack another month');
+        ok($('coManageBtn').style.display !== 'none', 'legacy recurring subscriber DOES see "Manage subscription"');
+        w.close();
+    }
+
+    // — expired Premium → checkout is available again
+    {
+        const { w, $ } = await buildCheckoutPage('http://localhost/checkout.html', {
+            userOverrides: {
+                plan: 'premium', premiumExpiresAt: new Date(Date.now() - 86400000).toISOString(),
+                stripeSubscriptionStatus: 'one_time_paid',
+            }
+        });
+        ok($('coCheckoutCard').style.display !== 'none', 'expired Premium → can buy another month');
+        w.close();
+    }
+
+    // — success screen after a one-time purchase hides "Manage subscription"
+    {
+        const { w, $ } = await buildCheckoutPage('http://localhost/checkout.html?payment=success&session_id=cs_1');
+        await new Promise(r => setTimeout(r, 3800));
+        ok($('coSuccessCard').style.display !== 'none', 'success card shown after the webhook grants Premium');
+        ok($('coSuccessManageBtn').style.display === 'none', 'success card hides "Manage subscription" for one-time purchases');
+        ok(/^\d{2}\.\d{2}\.\d{4}$/.test($('coSuccessDate').textContent), 'success card shows the exact expiration date');
+        w.close();
+    }
+
+    // — account panel: one-time purchaser gets no "Manage subscription"
+    {
+        const dom = new JSDOM(`<!DOCTYPE html><html><body>
+            <span id="acctPlanBadge"></span><span id="acctPlanDays"></span>
+            <div id="acctSubStatus"></div><div id="acctSubExpiry"></div>
+            <div id="acctSubNote"></div>
+            <button id="acctSubBtn"><span class="t"></span></button>
+            <div id="acctAvatar"></div><div id="acctName"></div><div id="acctEmail"></div>
+            <div id="accountPanel"></div>
+            <!-- account-legacy.js observes the map auth gate at load time. -->
+            <div id="mapAuthGate" class="hidden"><div id="authGateSlideshow"></div></div>
+        </body></html>`, { runScripts: 'outside-only', url: 'http://localhost/index.html' });
+        const w = dom.window;
+        patchWindow(w);
+        w.translations = { ro: {
+            acct_manage: 'Gestionează abonamentul',
+            acct_buy_premium: 'Cumpără Premium · 5 € pentru o lună',
+            acct_no_sub: 'Premium inactiv',
+            acct_no_renewal: '5 € pentru o lună — fără reînnoire automată',
+            acct_expires_on: 'Expiră pe', acct_premium_until: 'Premium până pe {date}',
+            acct_days_left: '{n} zile rămase', acct_day_left: '{n} zi rămasă',
+        } };
+        w.currentLang = 'ro';
+        let acctUser = {
+            id: 'u1', email: 'i@t.ro', plan: 'premium', premiumExpiresAt: future,
+            stripeSubscriptionId: null, stripeSubscriptionStatus: 'one_time_paid',
+        };
+        w._authUser = () => acctUser;
+        w._dlIsLegacySubscriber = (u) => !!(u && u.stripeSubscriptionId && u.stripeSubscriptionStatus !== 'one_time_paid');
+        w.eval(read('js/account-legacy.js'));
+        await new Promise(r => setTimeout(r, 30));
+
+        w.refreshAccountSubscription();
+        ok(w.document.getElementById('acctSubBtn').style.display === 'none',
+            'account panel: one-time purchaser sees no "Manage subscription" button');
+        ok(w.document.getElementById('acctSubExpiry').textContent.indexOf('Expiră pe') !== -1,
+            'account panel keeps showing the exact Premium expiration date');
+        ok(w.document.getElementById('acctSubNote').textContent === '5 € pentru o lună — fără reînnoire automată',
+            'account panel states there is no automatic renewal');
+
+        // Legacy recurring subscriber → the portal button comes back.
+        acctUser = Object.assign({}, acctUser, { stripeSubscriptionId: 'sub_1', stripeSubscriptionStatus: 'active' });
+        w.refreshAccountSubscription();
+        const btn = w.document.getElementById('acctSubBtn');
+        ok(btn.style.display !== 'none' && btn.querySelector('.t').textContent === 'Gestionează abonamentul',
+            'account panel: legacy subscriber still gets the billing portal button');
+        ok(w.document.getElementById('acctSubNote').textContent === '',
+            'account panel: no-renewal note hidden for legacy subscribers');
+        w.close();
+    }
+}
+
 (async () => {
     await testPricing();
     await testSubscriptions();
     await testCheckout();
+    await testOneTimeUi();
     console.log('\n────────────────────────────────────────');
     console.log(`passed: ${passed}   failed: ${failed}`);
     process.exit(failed ? 1 : 0);

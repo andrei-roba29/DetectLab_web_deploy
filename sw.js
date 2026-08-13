@@ -4,7 +4,7 @@
 
 // Bump this when a client-side data-sync fix ships so installed PWAs replace
 // stale script responses instead of continuing to run an older event client.
-const CACHE_NAME = 'detectlab-v43-detect-toggle-symmetry';
+const CACHE_NAME = 'detectlab-v44-one-time-premium';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -66,6 +66,13 @@ const PRECACHE_URLS = [
   'js/subscriptions.js?v=20260812-premium-catalogue',
   'css/styles.css?v=20260812-premium-catalogue',
   'css/checkout.css?v=20260812',
+  // ── One-time €5 Premium purchase (no automatic renewal) ──
+  'js/translations.js?v=20260813-onetime',
+  'js/subscriptions.js?v=20260813-onetime',
+  'js/checkout.js?v=20260813-onetime',
+  'js/account-legacy.js?v=20260813-onetime',
+  'js/auth.js?v=20260813-onetime',
+  'css/checkout.css?v=20260813-onetime',
   'checkout.html',
   'images/sonar_loading_animation.webp',
   'images/sonar_loading_animation.webp?v=20260729',

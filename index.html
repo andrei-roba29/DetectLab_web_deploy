@@ -2566,14 +2566,17 @@
                         <span id="acctEmail">—</span>
                     </div>
 
-                    <div class="account-section-label t" data-key="acct_subscription">Subscription</div>
+                    <div class="account-section-label t" data-key="acct_subscription">Premium</div>
                     <div class="account-sub-row">
                         <div class="account-sub-info">
                             <div class="account-sub-status" id="acctSubStatus">FREE</div>
                             <div class="account-sub-expiry" id="acctSubExpiry"></div>
+                            <div class="account-sub-note t" id="acctSubNote" data-key="acct_no_renewal">€5 for one month — no automatic renewal</div>
                         </div>
-                        <button class="account-btn primary" id="acctSubBtn" onclick="goToCheckout()">
-                            <span class="t" data-key="acct_buy_premium">Buy Premium</span>
+                        <!-- accountSubAction(): legacy recurring subscribers get the
+                             Stripe billing portal; everyone else goes to checkout. -->
+                        <button class="account-btn primary" id="acctSubBtn" onclick="accountSubAction()">
+                            <span class="t" data-key="acct_buy_premium">Buy Premium · €5 for one month</span>
                         </button>
                     </div>
 
@@ -2793,9 +2796,10 @@
                 <div class="plan-card featured">
                     <div class="plan-badge t" data-key="badge_popular">Most Popular</div>
                     <p class="plan-tier silver t" data-key="tier_silver">Silver</p>
-                    <h3 class="plan-name t" data-key="plan_monthly">Monthly</h3>
-                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="silverPrice">5</span><span class="period" id="silverPeriod">/month</span></div>
-                    <p class="plan-billing-note t" id="silverNote" data-key="note_monthly">Billed monthly</p>
+                    <h3 class="plan-name t" data-key="plan_monthly">One month</h3>
+                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="silverPrice">5</span><span class="period" id="silverPeriod">/one month</span></div>
+                    <p class="plan-billing-note t" id="silverNote" data-key="note_monthly">One-time payment</p>
+                    <p class="plan-billing-note t" data-key="prem_price_line">€5 for one month — no automatic renewal</p>
                     <div class="plan-divider"></div>
                     <ul class="plan-features">
                     </ul>
@@ -2863,7 +2867,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260812-premium-catalogue"></script>
+    <script src="js/translations.js?v=20260813-onetime"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -2925,7 +2929,7 @@
             <div id="premBody"></div>
             <div class="prem-buy-wrap" id="premBuyWrap">
                 <button type="button" class="prem-btn prem-btn-buy" onclick="goToCheckout()">
-                    <span id="premBuyLabel" class="t" data-key="prem_buy_btn">Buy Premium · €5/month</span>
+                    <span id="premBuyLabel" class="t" data-key="prem_buy_btn">Buy Premium · €5 for one month</span>
                 </button>
                 <button type="button" class="prem-btn prem-btn-ghost" id="premLaterBtn" onclick="closePremiumModal()">
                     <span class="t" data-key="prem_later">Not now</span>
@@ -3093,15 +3097,24 @@
                     </li>
                 </ul>
 
-                <h2>Premium Subscription</h2>
+                <h2>Premium Access</h2>
                 <p>
-                    A premium subscription provides access to various map layers developed
+                    Premium access is sold as a <strong>single, one-time payment of €5 that
+                    grants access for one calendar month</strong>. There is
+                    <strong>no automatic renewal</strong> and no recurring subscription:
+                    you are charged once, access ends on the expiration date shown in your
+                    account, and nothing is ever billed to you again unless you choose to
+                    buy another month yourself.
+                </p>
+
+                <p>
+                    Premium access provides access to various map layers developed
                     and/or administered by DetectLab, including historical maps, APM 2.0,
                     and other map layers made available within the App.
                 </p>
 
                 <p>
-                    The subscription fee is charged for the service of providing access to
+                    The fee is charged for the service of providing access to
                     and processing this content, and not for ownership or sale of the
                     underlying content itself. Map content may originate from third parties
                     and is provided under the respective licenses applicable to that content,
@@ -3114,22 +3127,22 @@
                 </p>
 
                 <p>
-                    Refunds relating to premium subscriptions will be handled in accordance
+                    Refunds relating to premium access will be handled in accordance
                     with applicable consumer-protection legislation and the policies of the
-                    platform through which the subscription was purchased, including the
+                    platform through which the purchase was made, including the
                     App Store or Google Play.
                 </p>
 
                 <p>
                     If a third-party map layer is removed, restricted, or becomes unavailable,
                     this will not, by itself, affect your access to the other features included
-                    in your premium subscription.
+                    in your premium access.
                 </p>
 
                 <h2>Changes to Features and Content</h2>
                 <p>
                     The DetectLab service may change and develop over time. We reserve the
-                    right, at any time, including while a subscription is active, to add,
+                    right, at any time, including while premium access is active, to add,
                     modify, suspend, replace, or remove features, functionality, or map layers
                     offered through the App.
                 </p>
@@ -3142,18 +3155,18 @@
                 </p>
 
                 <p>
-                    A DetectLab subscription provides access to an evolving service and is not
+                    DetectLab Premium provides access to an evolving service and is not
                     a guarantee of access to any particular individual feature or map layer.
                     The removal or temporary unavailability of one specific feature or layer
                     does not, by itself, affect access to the remaining features included in
-                    the subscription.
+                    premium access.
                 </p>
 
                 <p>
                     Nothing in this section excludes or limits any mandatory rights you may
                     have under applicable consumer-protection legislation. Any refund or
                     termination rights provided by applicable law, or by the policies of the
-                    platform through which the subscription was purchased, including the App
+                    platform through which the purchase was made, including the App
                     Store or Google Play, will be respected in accordance with those rules.
                 </p>
 
@@ -3678,8 +3691,8 @@
       </div>
     </div>
 
-<script src="js/account-legacy.js?v=20260812-payments"></script>
-<script src="js/subscriptions.js?v=20260812-premium-catalogue"></script>
+<script src="js/account-legacy.js?v=20260813-onetime"></script>
+<script src="js/subscriptions.js?v=20260813-onetime"></script>
 
 
 

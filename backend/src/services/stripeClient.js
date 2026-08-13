@@ -4,13 +4,14 @@
    Uses only global fetch (Node ≥ 18) + node:crypto. Covers everything
    DetectLab needs:
 
-     · create a Checkout Session  (subscription mode, €5/month)
-     · retrieve a Subscription / Customer  (webhook follow-ups)
-     · create a Billing Portal session  (manage / cancel / renew)
+     · create a Checkout Session  (payment mode, one-time €5)
+     · retrieve a Subscription / Customer  (legacy webhook follow-ups)
+     · create a Billing Portal session  (legacy subscribers only)
      · verify webhook signatures
 
    Keys come from env (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
-   STRIPE_PRICE_ID) — see backend/.env.example.
+   STRIPE_ONE_TIME_PRICE_ID with STRIPE_PRICE_ID as legacy fallback) —
+   see backend/.env.example.
    ═══════════════════════════════════════════════════════════════════════ */
 
 import crypto from 'node:crypto';
@@ -19,8 +20,22 @@ import { env } from '../config/env.js';
 const API = 'https://api.stripe.com/v1';
 const SIGNATURE_TOLERANCE_S = 300; // Stripe's recommended clock tolerance
 
+/**
+ * The price new checkouts use: the one-time €5 price when configured,
+ * otherwise the legacy recurring price (kept for backwards compatibility
+ * with deployments that have not set STRIPE_ONE_TIME_PRICE_ID yet).
+ */
+export function checkoutPriceId() {
+  return env.stripe.oneTimePriceId || env.stripe.priceId || '';
+}
+
+/** True when the active checkout price is the one-time (non-recurring) one. */
+export function isOneTimeCheckout() {
+  return !!env.stripe.oneTimePriceId;
+}
+
 export function isConfigured() {
-  return !!(env.stripe.secretKey && env.stripe.webhookSecret && env.stripe.priceId);
+  return !!(env.stripe.secretKey && env.stripe.webhookSecret && checkoutPriceId());
 }
 
 function authHeader() {
@@ -61,22 +76,51 @@ export async function stripeRequest(path, opts = {}) {
 
 /* ── Checkout Sessions ─────────────────────────────────────────────── */
 
-export function createCheckoutSession({ priceId, email, userId, successUrl, cancelUrl }) {
-  return stripeRequest('/checkout/sessions', {
-    method: 'POST',
-    params: {
-      mode: 'subscription',
-      'line_items[0][price]': priceId,
-      'line_items[0][quantity]': '1',
-      customer_email: email,
-      'subscription_data[metadata][user_id]': userId,
-      client_reference_id: userId,
-      'metadata[user_id]': userId,
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      allow_promotion_codes: 'false',
-    },
-  });
+/**
+ * Creates a Checkout Session.
+ *
+ * Default (and the only mode used by DetectLab today) is `payment`: a
+ * single €5 charge that grants Premium for one calendar month with NO
+ * automatic renewal. `subscription` mode is still reachable via the
+ * `mode` argument so legacy deployments keep working unchanged.
+ *
+ * The authenticated Supabase user id is attached in three places so the
+ * webhook can always resolve it:
+ *   · client_reference_id
+ *   · session metadata
+ *   · PaymentIntent metadata (payment mode) / Subscription metadata
+ *     (legacy subscription mode)
+ */
+export function createCheckoutSession({ priceId, email, userId, successUrl, cancelUrl, mode }) {
+  const checkoutMode = mode || (isOneTimeCheckout() ? 'payment' : 'subscription');
+
+  const params = {
+    mode: checkoutMode,
+    'line_items[0][price]': priceId || checkoutPriceId(),
+    'line_items[0][quantity]': '1',
+    customer_email: email,
+    client_reference_id: userId,
+    'metadata[user_id]': userId,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    allow_promotion_codes: 'false',
+  };
+
+  if (checkoutMode === 'payment') {
+    // One-time purchase: carry the user id onto the PaymentIntent too,
+    // so charge/payment_intent events can be traced back to the account.
+    params['payment_intent_data[metadata][user_id]'] = userId;
+  } else {
+    // Legacy recurring checkout.
+    params['subscription_data[metadata][user_id]'] = userId;
+  }
+
+  return stripeRequest('/checkout/sessions', { method: 'POST', params });
+}
+
+/** Retrieve a Checkout Session (used to re-confirm payment_status). */
+export function retrieveCheckoutSession(id) {
+  return stripeRequest('/checkout/sessions/' + encodeURIComponent(id));
 }
 
 /* ── Subscriptions / Customers ─────────────────────────────────────── */

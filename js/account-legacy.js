@@ -272,6 +272,7 @@
             statusEl.className = 'account-sub-status' + (premium ? ' premium' : ' free');
         }
 
+        // Always show the exact Premium expiration date.
         var expiryEl = document.getElementById('acctSubExpiry');
         if (expiryEl) {
             expiryEl.textContent = '';
@@ -281,12 +282,32 @@
             }
         }
 
+        // Premium is a one-time €5 purchase for one calendar month — say so
+        // instead of implying a recurring subscription. Legacy recurring
+        // subscribers (the only ones with a Stripe subscription on file)
+        // keep their auto-renewal wording and the billing portal.
+        var legacy = (typeof window._dlIsLegacySubscriber === 'function') &&
+            window._dlIsLegacySubscriber(user);
+
+        var noteEl = document.getElementById('acctSubNote');
+        if (noteEl) noteEl.textContent = legacy ? '' : _t('acct_no_renewal');
+
         var btnEl = document.getElementById('acctSubBtn');
         if (btnEl) {
             var label = btnEl.querySelector('.t') || btnEl;
-            // Premium → opens the Stripe billing portal (manage/cancel/renew);
-            // free → goes to checkout. Action is wired via accountSubAction().
-            label.textContent = premium ? _t('acct_manage') : _t('acct_buy_premium');
+            // Legacy recurring subscriber → Stripe billing portal
+            // ("Manage subscription"). One-time purchasers never see that:
+            // there is no renewal to cancel. While their month is still
+            // running they cannot buy another one, so the button is hidden.
+            if (legacy) {
+                label.textContent = _t('acct_manage');
+                btnEl.style.display = '';
+            } else if (premium) {
+                btnEl.style.display = 'none';
+            } else {
+                label.textContent = _t('acct_buy_premium');
+                btnEl.style.display = '';
+            }
         }
     };
 

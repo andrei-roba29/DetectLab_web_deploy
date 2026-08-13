@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   Stripe setup helper — creates the DetectLab Premium product + monthly
-   €5 price and prints the env values you need.
+   Stripe setup helper — creates the DetectLab Premium product + the
+   ONE-TIME €5 price (Premium for one calendar month, no automatic
+   renewal) and prints the env values you need.
 
    Usage (from backend/):
      STRIPE_SECRET_KEY=sk_test_... node scripts/setupStripe.js
@@ -60,7 +61,7 @@ async function main() {
       method: 'POST',
       params: {
         name: 'DetectLab Premium',
-        description: 'Monthly subscription — all premium map layers',
+        description: 'One month of access to all premium map layers (one-time payment)',
         'metadata[detectlab_product]': '1',
       },
     });
@@ -70,12 +71,11 @@ async function main() {
     console.log(`Reusing product ${productId}`);
   }
 
-  // ── Monthly €5 price ────────────────────────────────────────────────
+  // ── One-time €5 price (no recurring interval) ──────────────────────
   let priceId = null;
   const prices = await stripeRequest('/prices', { params: { product: productId, limit: '100' } });
   for (const p of prices.data || []) {
-    if (p.currency === 'eur' && p.unit_amount === 500 &&
-        p.recurring && p.recurring.interval === 'month') {
+    if (p.currency === 'eur' && p.unit_amount === 500 && !p.recurring && p.active !== false) {
       priceId = p.id;
       break;
     }
@@ -86,19 +86,18 @@ async function main() {
       params: {
         product: productId,
         currency: 'eur',
-        unit_amount: '500', // €5.00
-        'recurring[interval]': 'month',
+        unit_amount: '500', // €5.00, charged once
       },
     });
     priceId = price.id;
-    console.log(`Created price: €5.00 / month (${priceId})`);
+    console.log(`Created price: €5.00 one-time (${priceId})`);
   } else {
-    console.log(`Reusing price ${priceId}`);
+    console.log(`Reusing one-time price ${priceId}`);
   }
 
   console.log('\n──────────────────────────────────────────────');
   console.log('Add these to your backend environment (Railway / .env):');
-  console.log(`  STRIPE_PRICE_ID=${priceId}`);
+  console.log(`  STRIPE_ONE_TIME_PRICE_ID=${priceId}`);
   console.log(`  STRIPE_SITE_URL=https://<your-frontend-host>`);
   console.log('');
   console.log('Then configure the webhook:');
@@ -106,9 +105,12 @@ async function main() {
   console.log('               → copy the printed whsec_... into STRIPE_WEBHOOK_SECRET');
   console.log('  Production:  Stripe Dashboard → Developers → Webhooks → Add endpoint');
   console.log('               URL: https://<your-backend-host>/api/payments/webhook');
-  console.log('               Events: checkout.session.completed, invoice.paid,');
-  console.log('                       invoice.payment_failed, customer.subscription.updated,');
-  console.log('                       customer.subscription.deleted');
+  console.log('               Events: checkout.session.completed,');
+  console.log('                       checkout.session.async_payment_succeeded');
+  console.log('                       (legacy subscribers also need: invoice.paid,');
+  console.log('                        invoice.payment_failed,');
+  console.log('                        customer.subscription.updated,');
+  console.log('                        customer.subscription.deleted)');
   console.log('               → reveal the signing secret (whsec_...) and set it as');
   console.log('                 STRIPE_WEBHOOK_SECRET');
   console.log('──────────────────────────────────────────────\n');

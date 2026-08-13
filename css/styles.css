@@ -3119,6 +3119,18 @@
             line-height: 1.45;
         }
 
+        /* "€5 for one month — no automatic renewal" (hidden for legacy
+           recurring subscribers, whose text is emptied by JS). */
+        .account-sub-note {
+            font-size: 0.7rem;
+            color: rgba(245,240,235,0.45);
+            line-height: 1.45;
+        }
+
+        .account-sub-note:empty {
+            display: none;
+        }
+
         .account-sub-row .account-btn {
             padding: 9px 14px;
             font-size: 0.78rem;
