@@ -281,6 +281,27 @@
             padding: 0;
             margin-bottom: 2px;
         }
+
+        /* Event chat / message box */
+        #eventChatModal {
+            position: fixed;
+            inset: 0;
+            z-index: 4500;
+            background: rgba(4,10,22,0.92);
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+        }
+        /* Installed PWA only: the translucent phone status bar sits on top of
+           the chat header and intercepts taps on Close / Add to Calendar.
+           Extra top padding (safe-area + a small fixed buffer) pushes those
+           buttons below the bar; the inset itself is painted #060D1D. */
+        html.is-pwa #eventChatModal,
+        body.is-pwa #eventChatModal {
+            padding-top: calc(16px + max(32px, env(safe-area-inset-top, 0px)));
+            background: #060D1D;
+        }
         `;
         document.head.appendChild(style);
     })();
@@ -3018,7 +3039,6 @@
 
         var modal = document.createElement('div');
         modal.id = 'eventChatModal';
-        modal.style.cssText = 'position: fixed; inset: 0; z-index: 4500; background: rgba(4,10,22,0.92); backdrop-filter: blur(12px); display: flex; flex-direction: column; padding: 16px;';
 
         var box = document.createElement('div');
         box.style.cssText = 'max-width: 600px; width: 100%; margin: 0 auto; height: 100%; display: flex; flex-direction: column; background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.25); border-radius: 12px; overflow: hidden;';
