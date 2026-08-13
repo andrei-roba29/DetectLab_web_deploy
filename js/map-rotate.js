@@ -147,13 +147,25 @@
             if (!pane) return;
             var pos = L.DomUtil.getPosition(pane) || L.point(0, 0);
             var bearing = this._bearing || 0;
-            var pivot = this._pivot();
-            pane.style.transformOrigin = (pivot.x - pos.x) + 'px ' + (pivot.y - pos.y) + 'px';
+            // Leaflet's zoom animation (tiles, SVG/canvas paths, markers,
+            // tooltips) assumes the map pane's transform-origin is 0 0 —
+            // see .leaflet-zoom-animated in leaflet.css. Pinning the origin
+            // to the viewport centre while bearing is 0 made every overlay
+            // scale around the wrong point, so heritage dots, LIDAR rings
+            // and archeo candidates slid off their sites during zoom.
             if (!bearing) {
+                pane.style.transformOrigin = '0px 0px';
                 pane.style[L.DomUtil.TRANSFORM] = L.Browser.any3d
                     ? 'translate3d(' + pos.x + 'px,' + pos.y + 'px,0)'
                     : 'translate(' + pos.x + 'px,' + pos.y + 'px)';
                 return;
+            }
+            // Keep the origin stable for the duration of a CSS zoom so
+            // child zoomanim transforms are not composed against a moving
+            // pivot. Recompute once the animation ends.
+            if (!this._animatingZoom) {
+                var pivot = this._pivot();
+                pane.style.transformOrigin = (pivot.x - pos.x) + 'px ' + (pivot.y - pos.y) + 'px';
             }
             pane.style[L.DomUtil.TRANSFORM] =
                 'translate3d(' + pos.x + 'px,' + pos.y + 'px,0) rotate(' + bearing + 'deg)';

@@ -312,7 +312,25 @@ assert.strictEqual(map.getBearing(), 0, 'bearing of -2.9° snaps to 0°');
 
 map.setBearing(15);
 assert.strictEqual(map.getBearing(), 15, 'bearing outside snap range stays 15°');
+
+// An unrotated map pane must keep Leaflet's 0 0 transform-origin. A
+// centre origin makes tiles and vector overlays (heritage, LIDAR,
+// archeo) scale around the wrong point while zooming, so dots slide
+// off their geographic sites.
+map.setBearing(0);
+assert.strictEqual(
+    String(map._mapPane.style.transformOrigin),
+    '0px 0px',
+    'unrotated map pane must use transform-origin 0 0 so zoom animation stays locked'
+);
+map.setBearing(15);
+const origin15 = String(map._mapPane.style.transformOrigin);
+assert(
+    origin15 !== '0px 0px' && origin15.indexOf('px') !== -1,
+    'rotated map pane may pivot around the viewport centre, got ' + origin15
+);
 console.log('  ✔ snap-to-north works within 3.0°');
+console.log('  ✔ transform-origin is 0 0 when the map is not rotated');
 
 // -------------------------------------------------------------
 // Test 2: Rotation Lock API on L.Map
