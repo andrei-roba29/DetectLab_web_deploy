@@ -39,6 +39,7 @@ export function classifyEvent(event) {
         userId: metadataUserId(obj),
         subscriptionId: obj.subscription || null,
         customerId: obj.customer || null,
+        periodEnd: obj.current_period_end || null,
       };
 
     case 'invoice.paid':
@@ -48,6 +49,7 @@ export function classifyEvent(event) {
         userId: null, // resolved from the subscription's metadata below
         subscriptionId: (obj.subscription) || (obj.subscription_details && obj.subscription_details.id) || null,
         customerId: obj.customer || null,
+        periodEnd: obj.period_end || null,
       };
 
     case 'customer.subscription.updated':
@@ -58,6 +60,7 @@ export function classifyEvent(event) {
         subscriptionId: obj.id || null,
         customerId: obj.customer || null,
         status: obj.status || null,
+        periodEnd: obj.current_period_end || null,
       };
 
     default:
@@ -137,7 +140,7 @@ export function createEventHandler({ stripe, db }) {
     if (!userId) return { handled: false, reason: 'no-user-id' };
 
     const status = sub ? sub.status : (cls.status || null);
-    const periodEnd = sub ? sub.current_period_end : null;
+    const periodEnd = cls.periodEnd || (sub ? sub.current_period_end : null) || null;
 
     await db.upsertSubscription({
       userId,
