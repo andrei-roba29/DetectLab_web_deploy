@@ -4,7 +4,7 @@
 
 // Bump this when a client-side data-sync fix ships so installed PWAs replace
 // stale script responses instead of continuing to run an older event client.
-const CACHE_NAME = 'detectlab-v41-premium-catalogue';
+const CACHE_NAME = 'detectlab-v43-detect-toggle-symmetry';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -45,7 +45,7 @@ const PRECACHE_URLS = [
   'js/auth-forms.js',
   'js/account-legacy.js',
   'js/map-app.js',
-  'js/map-app.js?v=20260812-layers',
+  'js/map-app.js?v=20260813-detectfix',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',
