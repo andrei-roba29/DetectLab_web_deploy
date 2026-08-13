@@ -5869,6 +5869,13 @@
             margin: 0;
         }
 
+        /* Heritage 600 m radius canvas lives as a direct child of the map
+           pane. Pin its zoom-animation origin to 0 0 (same as Leaflet's
+           own renderers) so the circles stay on their sites while zooming. */
+        #detectlab-map .leaflet-map-pane > canvas.leaflet-zoom-animated {
+            transform-origin: 0 0 !important;
+        }
+
         /* Stil pentru imaginile heritage - rotunde și cu contur negru */
         .heritage-circle-icon {
             background: none !important;

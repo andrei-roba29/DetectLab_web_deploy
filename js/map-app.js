@@ -2400,8 +2400,18 @@
 
             var _mapContainer = map.getContainer();
             var _mapPane = _mapContainer.querySelector('.leaflet-map-pane');
+            // leaflet-zoom-animated + zoomanim (below) keep the 600 m radii
+            // glued to their sites while the map scales. Without that class the
+            // canvas sits still in layer space while tiles/vectors CSS-scale,
+            // so every heritage circle appears to slide off its site.
+            _displayCanvas.className = 'leaflet-zoom-animated';
             _displayCanvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:650;';
             _mapPane.appendChild(_displayCanvas);
+
+            // Zoom-animation state for the custom canvas — same fields L.Renderer
+            // stores so _updateTransform can scale around the last drawn view.
+            var _canvasCenter = null;
+            var _canvasZoom = null;
 
             var FLAT_OPACITY = 0.35;   // default visible opacity; slider can adjust
             var STROKE_COLOR = '#C42B2B';
@@ -2419,7 +2429,32 @@
             window._circlesVisible = _circlesVisible;
             window._circleStore = _circleStore;
 
+            // Mirror L.Renderer._updateTransform so the viewport-sized canvas
+            // CSS-scales around the same origin as tiles / SVG / L.canvas
+            // during zoom animation. Called from `zoomanim`; _redrawAll then
+            // paints at the new zoom once the animation ends.
+            function _updateCanvasTransform(center, zoom) {
+                if (_canvasCenter == null || _canvasZoom == null || !_displayCanvas) return;
+                var scale = map.getZoomScale(zoom, _canvasZoom);
+                var viewHalf = map.getSize().multiplyBy(0.5);
+                var currentCenterPoint = map.project(_canvasCenter, zoom);
+                var topLeftOffset = viewHalf.multiplyBy(-scale).add(currentCenterPoint)
+                    .subtract(map._getNewPixelOrigin(center, zoom));
+                if (L.DomUtil.setTransform) {
+                    L.DomUtil.setTransform(_displayCanvas, topLeftOffset, scale);
+                } else {
+                    L.DomUtil.setPosition(_displayCanvas, topLeftOffset);
+                }
+            }
+
             function _redrawAll() {
+                // During CSS zoom animation the map's zoom/pixelOrigin already
+                // sit at the *target* level while tiles are still mid-scale.
+                // Redrawing now would jump every circle to its final pixel
+                // position and make them look like they are sliding. Let
+                // zoomanim scale the last frame instead.
+                if (map._animatingZoom) return;
+
                 var size = map.getSize();
 
                 // Exact same approach as Leaflet's own L.Canvas renderer:
@@ -2430,6 +2465,8 @@
                 //    coords draw at the correct canvas pixel.
                 var topLeft = map.containerPointToLayerPoint([0, 0]);
                 L.DomUtil.setPosition(_displayCanvas, topLeft);
+                _canvasCenter = map.getCenter();
+                _canvasZoom = map.getZoom();
 
                 if (_offscreenCanvas.width !== size.x) _offscreenCanvas.width = size.x;
                 if (_offscreenCanvas.height !== size.y) _offscreenCanvas.height = size.y;
@@ -2475,13 +2512,26 @@
             }
 
             function _metersToPixels(meters, latlng) {
-                var zoom = map.getZoom();
+                // Project a point `meters` east of the site with the same
+                // latLngToLayerPoint the circle centre uses, so the radius
+                // cannot drift from the site when zoom (or CRS scale) changes.
                 var latRad = latlng.lat * Math.PI / 180;
-                var mPerPx = (156543.03392 * Math.cos(latRad)) / Math.pow(2, zoom);
+                var cos = Math.cos(latRad);
+                var lngDelta = meters / (111320 * Math.max(Math.abs(cos), 0.2));
+                var p0 = map.latLngToLayerPoint(latlng);
+                var p1 = map.latLngToLayerPoint(L.latLng(latlng.lat, latlng.lng + lngDelta));
+                var px = Math.abs(p1.x - p0.x);
+                if (px > 0) return px;
+                var zoom = map.getZoom();
+                var mPerPx = (156543.03392 * Math.max(Math.abs(cos), 0.2)) / Math.pow(2, zoom);
                 return meters / mPerPx;
             }
 
-            // Redraw on every map move/zoom — mirrors L.Canvas renderer approach exactly
+            // Redraw on every map move/zoom — mirrors L.Canvas renderer approach exactly.
+            // zoomanim keeps the last frame locked onto the map while it scales.
+            map.on('zoomanim', function (e) {
+                if (e && e.center != null && e.zoom != null) _updateCanvasTransform(e.center, e.zoom);
+            });
             map.on('move zoom viewreset', _redrawAll);
 
             function unproject3857(x, y) {
@@ -5766,6 +5816,14 @@
                     if (s === 1) return { v: dv.getInt8(off), n: 1 };
                     if (s === 2) return { v: dv.getInt16(off), n: 2 };
                     if (s === 3) { var x = (u8[off] << 16) | (u8[off+1] << 8) | u8[off+2]; return { v: x >= 0x800000 ? x - 0x1000000 : x, n: 3 }; }
+                    if (s === 4) return { v: dv.getInt32(off), n: 4 };
+                    if (s === 5) return { v: dv.getInt16(off) * 4294967296 + dv.getUint32(off+2), n: 6 };
+                    if (s === 6 || s === 7) return { v: dv.getFloat64(off), n: 8 };
+                    if (s === 8) return { v: 0, n: 0 };
+                    if (s === 9) return { v: 1, n: 0 };
+                    if (s >= 12 && s % 2 === 0) { var ln = (s - 12) / 2; return { v: buf.slice(off, off + ln), n: ln }; }
+                    if (s >= 13 && s % 2 === 1) {
+                        var tl =                 if (s === 3) { var x = (u8[off] << 16) | (u8[off+1] << 8) | u8[off+2]; return { v: x >= 0x800000 ? x - 0x1000000 : x, n: 3 }; }
                     if (s === 4) return { v: dv.getInt32(off), n: 4 };
                     if (s === 5) return { v: dv.getInt16(off) * 4294967296 + dv.getUint32(off+2), n: 6 };
                     if (s === 6 || s === 7) return { v: dv.getFloat64(off), n: 8 };
