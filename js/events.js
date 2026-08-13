@@ -3065,6 +3065,20 @@
         modal.appendChild(box);
         document.body.appendChild(modal);
 
+        // Make sure the SERVER-side `event_chats` row exists before we read
+        // the message history. `ensure_event_chat_for_event` is security
+        // definer, so it works even when the client-side upsert above was
+        // blocked by RLS. Some deployments gate message reads on the chat
+        // row existing, which used to make previous messages invisible until
+        // the user posted (the insert-guard trigger then created the row).
+        try {
+            if (window.supabaseClient) {
+                await window.supabaseClient.rpc('ensure_event_chat_for_event', { _event_id: eventId });
+            }
+        } catch (e) {
+            console.warn('[Events] ensure_event_chat_for_event failed:', e);
+        }
+
         await loadChatMessages(eventId);
         startEventChatDeadlineTimer(ev);
 
@@ -3089,14 +3103,34 @@
             return;
         }
 
-        var msgs = [];
-        try {
-            if (window.supabaseClient) {
+        // Fetch the full history for this event. Returns the messages plus
+        // whether the server actually answered, so callers can distinguish a
+        // genuinely empty chat from a failed / RLS-blocked read.
+        async function fetchRemoteMessages() {
+            if (!window.supabaseClient) return { msgs: [], remoteOk: false };
+            try {
                 var res = await window.supabaseClient.from('event_chat_messages').select('*').eq('event_id', eventId).order('created_at', { ascending: true });
-                if (!res.error && res.data) msgs = res.data;
+                if (res && !res.error && res.data) return { msgs: res.data, remoteOk: true };
+                if (res && res.error) console.warn('[Events] loadChatMessages remote error:', res.error);
+                return { msgs: [], remoteOk: false };
+            } catch (e) {
+                console.warn('[Events] loadChatMessages remote fetch failed:', e);
+                return { msgs: [], remoteOk: false };
             }
-        } catch (e) {}
+        }
 
+        var fetched = await fetchRemoteMessages();
+        // If the first read returned no messages, retry once before falling
+        // back — the server-side chat row may have just been created, and a
+        // transient failure must not hide an existing conversation behind the
+        // "start the conversation" placeholder.
+        if (fetched.msgs.length === 0) {
+            await new Promise(function (resolve) { setTimeout(resolve, 400); });
+            var retried = await fetchRemoteMessages();
+            if (retried.msgs.length > 0) fetched = retried;
+        }
+
+        var msgs = fetched.msgs;
         if (msgs.length === 0) {
             msgs = getLocalMessages().filter(function(m) { return m.event_id === eventId; });
         }
