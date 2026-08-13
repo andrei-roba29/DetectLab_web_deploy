@@ -729,7 +729,6 @@
             <!-- Logged-in trigger -->
             <button class="pwa-bar-trigger" id="pwaUserTrigger" onclick="togglePwaUserDropdown()" style="display:none">
                 <div class="nav-avatar" id="pwaAvatar" style="width:22px;height:22px;font-size:0.6rem">?</div>
-                <span id="pwaUsername">User</span>
                 <span class="pwa-arrow">▲</span>
             </button>
             <!-- Logged-out trigger -->
@@ -3646,13 +3645,11 @@
                     if (user) {
                         if (userTrigger) userTrigger.style.display = 'flex';
                         if (loginTrigger) loginTrigger.style.display = 'none';
-                        // Update avatar and username
+                        // Update avatar initials
                         var avatar = document.getElementById('pwaAvatar');
-                        var username = document.getElementById('pwaUsername');
                         var email = user.email || '';
                         var initials = email.substring(0, 2).toUpperCase();
                         if (avatar) avatar.textContent = initials;
-                        if (username) username.textContent = email.split('@')[0];
                     } else {
                         if (userTrigger) userTrigger.style.display = 'none';
                         if (loginTrigger) loginTrigger.style.display = 'flex';
