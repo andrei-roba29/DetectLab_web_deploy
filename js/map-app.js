@@ -2147,6 +2147,29 @@
             // labels always paint on top of the red radius circles.
             map.getPane('pane_patrimoniu').style.zIndex = 620;
 
+            // ── CLICK-THROUGH (see the HERITAGE FEATURE HIT TEST below) ──
+            // This pane hosts an L.canvas renderer, i.e. ONE <canvas> element the
+            // size of the whole viewport (Renderer._update sizes it to the map size
+            // plus padding) — not one element per feature.  Leaflet's stylesheet only
+            // neutralises pointer events for `.leaflet-pane > svg path`; it has no
+            // equivalent rule for `.leaflet-pane > canvas`.  Sitting at 620, i.e.
+            // ABOVE the marker pane (600), that canvas therefore became the browser's
+            // hit-test winner over the entire map the moment the heritage layer was
+            // switched on, and every marker underneath it stopped receiving clicks —
+            // including the Events (warrior-helmet) markers, which live in the default
+            // marker pane.  That is why events became unclickable as soon as detection
+            // mode was activated: toggleDetection(true) auto-enables the heritage layer
+            // (heritageChk.click()), which adds this renderer's canvas to the map.  And
+            // it is why turning detection back off did not help: toggleDetection(false)
+            // never turns the heritage layer off again, so the canvas stayed on top.
+            //
+            // Making the pane click-transparent is the same treatment every other
+            // full-viewport surface above the markers already gets in this file (and in
+            // js/lidar-scanner.js, for exactly this reason).  Heritage features stay
+            // clickable: the HERITAGE FEATURE HIT TEST below re-implements the renderer's
+            // own hit test on the map's click event, which now reaches the map again.
+            map.getPane('pane_patrimoniu').style.pointerEvents = 'none';
+
             // Base URL of your DetectLab backend API (see the backend project's
             // README). Deployed on Railway — both this and the local PM2
             // instance point at the same Supabase database, so either backend
@@ -2267,9 +2290,12 @@
                             fillOpacity: 0.85,
                             opacity: 0.85
                         });
-                        marker.on('click', function (e) {
-                            showLocalPopup(lid, f.properties, e.latlng);
-                        });
+                        // The renderer's canvas is click-transparent (see the
+                        // pointerEvents note on pane_patrimoniu), so this feature is
+                        // dispatched by the HERITAGE FEATURE HIT TEST instead of a DOM click.
+                        marker._dlHeritageHit = function (latlng) {
+                            showLocalPopup(lid, f.properties, latlng);
+                        };
                         patrimoniuLayer.addLayer(marker);
                     });
                 });
@@ -2283,9 +2309,9 @@
                             style: { color: '#E60000', weight: 2, fillOpacity: 0, opacity: 0.85 }
                         });
                         gj.eachLayer(function (l) {
-                            l.on('click', function (e) {
-                                showLocalPopup(6, f.properties, e.latlng);
-                            });
+                            l._dlHeritageHit = function (latlng) {
+                                showLocalPopup(6, f.properties, latlng);
+                            };
                             patrimoniuLayer.addLayer(l);
                         });
                     });
@@ -2309,6 +2335,42 @@
                 if (window._detectlabApiFailed) {
                     activatePatrimoniuWmsFallback();
                 }
+            });
+
+            // ── HERITAGE FEATURE HIT TEST ──
+            // pane_patrimoniu is click-transparent (see the pointerEvents note where the
+            // pane is created), so its canvas can no longer steal clicks from the markers
+            // underneath it — but that also means Leaflet's canvas renderer never receives
+            // the DOM click it uses to dispatch feature events.  We therefore run the same
+            // hit test the renderer would have run (Canvas._onClick: walk the layers, keep
+            // the LAST one whose _containsPoint matches, i.e. the one drawn on top) from
+            // the map's own click event.
+            //
+            // This listener is registered on the map, so Leaflet only calls it when the
+            // click did not land on an interactive layer (a marker, a popup, a control).
+            // Events/pins/detectorist markers therefore keep priority over heritage dots,
+            // which matches the previous stacking order (markers were drawn under this
+            // canvas, but were the intended click target).
+            map.on('click', function (e) {
+                if (!map.hasLayer(patrimoniuLayer)) return;   // heritage layer switched off
+                if (!e.latlng || !e.containerPoint) return;
+
+                // Ignore the click that terminates a pan. This is the same guard the
+                // canvas renderer applies in Canvas._onClick, and unlike the mousedown
+                // delta used further down for the WMS query it is touch-safe — which
+                // matters because this app is installed as a PWA.
+                if (typeof map._draggableMoved === 'function' && map._draggableMoved(map)) return;
+
+                // e.layerPoint is the same space _containsPoint works in: Path._project()
+                // stores its geometry via map.latLngToLayerPoint().
+                var point = e.layerPoint;
+                var hit = null;
+                patrimoniuLayer.eachLayer(function (layer) {
+                    if (typeof layer._dlHeritageHit !== 'function') return;
+                    if (typeof layer._containsPoint !== 'function' || !layer._containsPoint(point)) return;
+                    hit = layer;   // keep the last match = the one painted on top
+                });
+                if (hit) hit._dlHeritageHit(e.latlng);
             });
 
             // ── CLICK → WMS GetFeatureInfo → CIMEC popup + 600m radius circle ──
@@ -3086,7 +3148,7 @@
             }
 
             map.on('click', function (e) {
-                return; // superseded: each marker/polygon now handles its own click (see buildPatrimoniuVisuals)
+                return; // superseded: heritage clicks are dispatched by the HERITAGE FEATURE HIT TEST above
                 var ox = e.originalEvent.clientX - _mdX;
                 var oy = e.originalEvent.clientY - _mdY;
                 if (Math.sqrt(ox * ox + oy * oy) > 5) return; // drag
@@ -4845,7 +4907,12 @@
                 active: false,
                 watchId: null,
                 wasInside: false,   // was inside a radius on the last GPS tick?
-                alertUp: false    // is the alert currently on screen?
+                alertUp: false,   // is the alert currently on screen?
+                // What turning detection ON changed on the user's behalf, so turning it
+                // OFF can put it back exactly as it was.  null = detection did not
+                // change that thing (the user had already enabled it themselves), and
+                // in that case OFF must leave it alone rather than switch it off.
+                restore: null
             };
 
             function _playAlarm() {
@@ -4966,6 +5033,28 @@
                         return;
                     }
 
+                    // Remember what the user had set up BEFORE detection starts
+                    // borrowing their layers, so switching detection off can hand it
+                    // all back untouched.  Only recorded on a genuine OFF→ON edge:
+                    // re-entrant ON calls (state restore on resume, the PWA mirror
+                    // switch) must not overwrite the original snapshot with the state
+                    // detection itself produced.
+                    var _heritageChk = document.querySelector('input[onchange*="togglePatrimoniuLayer"]');
+                    if (!_det.restore) {
+                        _det.restore = {
+                            heritageOn: !!(_heritageChk && _heritageChk.checked),
+                            circlesVisible: _circlesVisible,
+                            flatOpacity: FLAT_OPACITY,
+                            canvasDisplay: _displayCanvas.style.display,
+                            sliderValue: (function () {
+                                var s = document.getElementById('patrimoniuOpacitySlider');
+                                return s ? s.value : null;
+                            })(),
+                            liveLocationOn: typeof window._isLiveLocationActive === 'function' &&
+                                window._isLiveLocationActive()
+                        };
+                    }
+
                     // ── Auto-activate live user location on map ──
                     if (typeof window._startLiveLocation === 'function' &&
                         typeof window._isLiveLocationActive === 'function' &&
@@ -4974,7 +5063,7 @@
                     }
 
                     // Auto-enable heritage sites layer + radiuses
-                    var heritageChk = document.querySelector('input[onchange*="togglePatrimoniuLayer"]');
+                    var heritageChk = _heritageChk;
                     if (heritageChk && !heritageChk.checked) {
                         heritageChk.click();   // triggers togglePatrimoniuLayer(true) which calls loadSiteCircles()
                     } else if (!_circlesVisible) {
@@ -5037,6 +5126,53 @@
                         publishDetectorPresence(_detLat, _detLng, false);
                     }
                     
+                    // ── Hand back everything detection borrowed on the way ON ──
+                    // Each item is only reverted if detection is the one that switched
+                    // it on; anything the user had enabled themselves is left exactly
+                    // as they left it.  Without this the heritage layer, its radius
+                    // circles and live location all stayed on for good after a single
+                    // use of the detection switch.
+                    var _r = _det.restore;
+                    _det.restore = null;
+                    if (_r) {
+                        var chk = document.querySelector('input[onchange*="togglePatrimoniuLayer"]');
+                        if (!_r.heritageOn) {
+                            // Detection turned the heritage layer on → turn it back off.
+                            // Drive it through the checkbox so the panel UI, the WMS
+                            // fallback and the heritage images all stay in sync.
+                            if (chk && chk.checked) {
+                                chk.checked = false;
+                                if (typeof window.togglePatrimoniuLayer === 'function') {
+                                    window.togglePatrimoniuLayer(false);
+                                }
+                            } else {
+                                _circlesVisible = _r.circlesVisible;
+                                _displayCanvas.style.display = _r.canvasDisplay;
+                            }
+                            // togglePatrimoniuLayer(true) may have nudged a 0% slider up
+                            // to 25% — put the user's original value back.
+                            var sl = document.getElementById('patrimoniuOpacitySlider');
+                            if (sl && _r.sliderValue !== null && sl.value !== _r.sliderValue) {
+                                sl.value = _r.sliderValue;
+                                var pct = document.getElementById('patrimoniuPct');
+                                if (pct) pct.textContent = _r.sliderValue + '%';
+                            }
+                            FLAT_OPACITY = _r.flatOpacity;
+                            if (typeof _scheduleRedraw === 'function') _scheduleRedraw();
+                        }
+
+                        // Detection auto-started live location → stop it again. If the
+                        // user had it on before, leave it running.
+                        if (!_r.liveLocationOn &&
+                            typeof window._stopLiveLocation === 'function' &&
+                            typeof window._isLiveLocationActive === 'function' &&
+                            window._isLiveLocationActive()) {
+                            // _det.active is already false, so stopTracking() will not
+                            // resurrect detection's own GPS watcher as a fallback.
+                            window._stopLiveLocation();
+                        }
+                    }
+
                     // Reset edge-trigger flags so the alert fires fresh on re-activation.
                     // Keep _detLat/_detLng — they're needed for the immediate recheck when
                     // the switch is turned back on, and harmless to retain while inactive.
