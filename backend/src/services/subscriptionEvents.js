@@ -68,6 +68,43 @@ export function classifyEvent(event) {
   }
 }
 
+/* ── Premium expiry guard (pure) ───────────────────────────────────── */
+
+const DEFAULT_PREMIUM_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Normalise a Stripe period end into a Date.
+ * Stripe sends unix *seconds*; millisecond values are tolerated defensively.
+ * Returns null for anything unusable (null/undefined/NaN/<= 0/invalid).
+ */
+function periodEndToDate(periodEnd) {
+  if (periodEnd === null || periodEnd === undefined || periodEnd === '') return null;
+  const n = typeof periodEnd === 'number' ? periodEnd : Number(periodEnd);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const ms = n > 1e11 ? n : n * 1000; // > ~1973 in ms → already milliseconds
+  const date = new Date(ms);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Resolve the `premium_expires_at` to write for activate / renew / status.
+ *
+ * Premium must NEVER be granted with a missing or already-expired timestamp:
+ * Stripe occasionally omits `current_period_end` (e.g. incomplete invoice
+ * payloads, or subscriptions retrieved before the period is set), and a null
+ * or past value would leave the user on plan='premium' with no access.
+ * When no *future* period end can be determined we fall back to now + 30 days,
+ * which the next `invoice.paid` webhook corrects to the real period end.
+ *
+ * @returns {string} ISO-8601 timestamp, always strictly in the future.
+ */
+export function resolvePremiumExpiry(periodEnd, now = new Date()) {
+  const end = periodEndToDate(periodEnd);
+  if (end && end.getTime() > now.getTime()) return end.toISOString();
+  return new Date(now.getTime() + DEFAULT_PREMIUM_DAYS * DAY_MS).toISOString();
+}
+
 /* ── DB write (single upsert path) ─────────────────────────────────── */
 
 export async function dbFindUserByCustomerId(customerId) {
@@ -104,7 +141,8 @@ export async function dbUpsertSubscription({ userId, action, status, periodEnd, 
   }
 
   // activate / renew / status — grant or extend Premium until period end.
-  const expiresAt = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
+  // Guard: never write a missing or already-past expiry (see resolvePremiumExpiry).
+  const expiresAt = resolvePremiumExpiry(periodEnd);
   await pool.query(
     `insert into public.profiles
        (id, plan, premium_expires_at, updated_at,
@@ -112,7 +150,10 @@ export async function dbUpsertSubscription({ userId, action, status, periodEnd, 
      values ($1::uuid, 'premium', $2::timestamptz, now(), $3, $4, $5)
      on conflict (id) do update set
        plan = 'premium',
-       premium_expires_at = coalesce(excluded.premium_expires_at, public.profiles.premium_expires_at),
+       premium_expires_at = greatest(
+         excluded.premium_expires_at,
+         coalesce(public.profiles.premium_expires_at, excluded.premium_expires_at)
+       ),
        updated_at = now(),
        stripe_customer_id = coalesce(excluded.stripe_customer_id, public.profiles.stripe_customer_id),
        stripe_subscription_id = coalesce(excluded.stripe_subscription_id, public.profiles.stripe_subscription_id),
