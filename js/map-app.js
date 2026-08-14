@@ -1035,10 +1035,18 @@
                 trackBtn.className = 'btn-track';
                 trackBtn.title = 'Înregistrează traseu';
                 trackBtn.setAttribute('aria-label', 'Înregistrează un traseu GPS');
+                // Top-down footprint: a ball-of-foot oval, a separate rounded heel and five
+                // graduated toes. Solid `currentColor` fill so `.btn-track.active` recolours
+                // the whole print to the orange recording state.
                 trackBtn.innerHTML =
-                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-                    '<path d="M3 18l4-4M7 18l4-4M11 18l4-4M15 18l4-4"/>' +
-                    '<path d="M4 12l3-3 3 3 3-3 3 3 3-3 3 3"/>' +
+                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" focusable="false">' +
+                    '<ellipse cx="11.2" cy="11.3" rx="4.15" ry="4.9" transform="rotate(-8 11.2 11.3)"/>' +
+                    '<ellipse cx="12.4" cy="18.8" rx="2.7" ry="2.85" transform="rotate(-4 12.4 18.8)"/>' +
+                    '<ellipse cx="6.7" cy="5.7" rx="1.85" ry="2.2" transform="rotate(20 6.7 5.7)"/>' +
+                    '<ellipse cx="10.25" cy="4.2" rx="1.3" ry="1.6" transform="rotate(8 10.25 4.2)"/>' +
+                    '<ellipse cx="13.05" cy="4.45" rx="1.15" ry="1.4"/>' +
+                    '<ellipse cx="15.3" cy="5.4" rx="1" ry="1.25" transform="rotate(-12 15.3 5.4)"/>' +
+                    '<ellipse cx="17.1" cy="6.8" rx="0.85" ry="1.05" transform="rotate(-20 17.1 6.8)"/>' +
                     '</svg>';
 
                 // Inject it into the same wrapper as btnMeasure (they share the same leaflet-bar div)
@@ -1137,16 +1145,31 @@
                     var trackWatchId = null;
                     var trackStartTime = null;
 
+                    // The recorded trail MUST live in its own high pane. Leaflet's default
+                    // overlayPane sits at z-index 400 — exactly the same level as
+                    // 'pane_satellite', and every historical raster pane (610-651) is higher
+                    // still. Because those panes are created after overlayPane they win the
+                    // paint order, so a polyline added with the default pane was drawn but
+                    // completely hidden behind the imagery: the user saw "no path" while
+                    // moving. 690 keeps the trail above all imagery yet below measurePane
+                    // (700) and popups.
+                    if (!map.getPane('trackPane')) {
+                        map.createPane('trackPane');
+                        map.getPane('trackPane').style.zIndex = 690;
+                    }
+
                     function updateTrackMarkers(lat, lng) {
                         var latLng = [lat, lng];
                         if (!trackStartMarker) {
                             trackStartMarker = L.circleMarker(latLng, {
+                                pane: 'trackPane',
                                 radius: 5, color: '#fff', weight: 2,
                                 fillColor: '#E8772A', fillOpacity: 1, interactive: false
                             }).addTo(map);
                         }
                         if (!trackCurrentMarker) {
                             trackCurrentMarker = L.circleMarker(latLng, {
+                                pane: 'trackPane',
                                 radius: 4, color: '#fff', weight: 2,
                                 fillColor: '#E8772A', fillOpacity: 1, interactive: false
                             }).addTo(map);
@@ -1197,10 +1220,12 @@
                                         trackPolyline.setLatLngs(trackPoints);
                                     } else {
                                         trackPolyline = L.polyline(trackPoints, {
-                                            color: '#E8772A', weight: 4, opacity: 0.9,
+                                            pane: 'trackPane',
+                                            color: '#E8772A', weight: 4, opacity: 0.95,
                                             lineCap: 'round', lineJoin: 'round'
                                         }).addTo(map);
                                     }
+                                    trackPolyline.bringToFront();
                                 }
                                 trackBtn.title = 'Stop recording trail (' + trackPoints.length + ' GPS points)';
 
@@ -1248,60 +1273,83 @@
                         }
 
                         if (auto) {
-                            saveTrackToSupabase(trackPoints, true);
+                            // Snapshot before resetting, for the same async race reason as below.
+                            saveTrackToSupabase(trackPoints.slice(), true);
+                            trackPoints = [];
                             return;
                         }
 
                         // A deliberate stop must always give the user control over whether
                         // their location history is stored.
+                        //
+                        // NOTE: an earlier revision also inserted into a 'trails' table here
+                        // (columns name/points) before falling through to the block below.
+                        // That table does not exist in this project — only 'user_tracks'
+                        // (path/started_at/ended_at) is created by the migrations — so the
+                        // insert always failed silently while its "Trail saved!" alert made
+                        // it look like it had worked. The saved-paths panel reads
+                        // 'user_tracks', which is why nothing ever showed up. Saving now goes
+                        // through the single, correct code path.
                         var shouldSave = window.confirm('Save this trail to your account?');
-                if (shouldSave && window.supabaseClient && trackPoints.length > 1) {
-                    const user = window._authUser && window._authUser();
-                    if (user) {
-                        const payload = {
-                            user_id: user.id,
-                            name: 'Trail ' + new Date().toLocaleDateString(),
-                            points: trackPoints,
-                            created_at: new Date().toISOString()
-                        };
-                        window.supabaseClient.from('trails').insert([payload]).then(({error}) => {
-                            if (error) console.error('Trail save error:', error);
-                            else alert('Trail saved!');
-                        });
-                    }
-                }
+                        // Snapshot the points: saving is async and `trackPoints` is reset
+                        // below, which previously could race the insert to an empty array.
+                        var pointsToSave = trackPoints.slice();
+
                         if (shouldSave) {
-                            saveTrackToSupabase(trackPoints, false);
+                            saveTrackToSupabase(pointsToSave, false);
                         } else {
                             clearTrackLayers();
-                            trackPoints = [];
                         }
+                        trackPoints = [];
                     }
 
                     async function saveTrackToSupabase(points, autoStopped) {
                         try {
                             if (!window.supabaseClient) {
                                 alert('Please sign in to save your trail.');
+                                clearTrackLayers();
                                 return false;
                             }
                             var userRes = await window.supabaseClient.auth.getUser();
-                            if (!userRes.data || !userRes.data.user) {
+                            var user = userRes && userRes.data ? userRes.data.user : null;
+                            if (!user) {
                                 alert('Please sign in to save your trail.');
+                                if (typeof window.openAuth === 'function') window.openAuth('login');
+                                clearTrackLayers();
                                 return false;
                             }
+                            // user_id is defaulted to auth.uid() by the migration, but sending
+                            // it explicitly keeps the insert working on projects where the
+                            // table was created by hand without that default (the RLS policy
+                            // requires auth.uid() = user_id).
                             var payload = {
+                                user_id: user.id,
                                 path: points,
-                                started_at: new Date(trackStartTime).toISOString(),
+                                started_at: new Date(trackStartTime || Date.now()).toISOString(),
                                 ended_at: new Date().toISOString(),
-                                auto_stopped: autoStopped
+                                auto_stopped: !!autoStopped
                             };
                             var result = await window.supabaseClient.from('user_tracks').insert(payload);
                             if (result.error) throw result.error;
-                            console.log('[Track] Path saved to Supabase');
+
+                            console.log('[Track] Path saved to Supabase (' + points.length + ' points)');
+                            alert('Trail saved! Open the saved-locations panel and tick "Memorised paths" to see it.');
+
+                            // Drop the live recording layers and let the saved-paths layer own
+                            // the trail, so a freshly saved trail appears immediately when the
+                            // panel is already open instead of only after a reload.
+                            clearTrackLayers();
+                            if (typeof window._refreshSavedPaths === 'function') {
+                                window._refreshSavedPaths();
+                            }
                             return true;
                         } catch (e) {
                             console.error('[Track] Failed to save path:', e);
-                            alert('We could not save this trail. Please try again.');
+                            // Keep the drawn trail on screen so an unlucky save does not throw
+                            // away a walk the user just recorded.
+                            alert('We could not save this trail: ' +
+                                ((e && e.message) ? e.message : 'unknown error') +
+                                '\nYour trail is still on the map.');
                             return false;
                         }
                     }
@@ -1746,10 +1794,18 @@
                 function createSavedPathPolyline(points) {
                     var normalized = normalizePathPoints(points);
                     if (normalized.length < 2) return null;
+                    // Same reasoning as the live recording layer: without an explicit
+                    // high pane these polylines land on overlayPane (400) and are buried
+                    // under the satellite/historical imagery panes.
+                    if (!map.getPane('trackPane')) {
+                        map.createPane('trackPane');
+                        map.getPane('trackPane').style.zIndex = 690;
+                    }
                     return L.polyline(normalized, {
+                        pane: 'trackPane',
                         color: '#E8772A',
                         weight: 3,
-                        opacity: 0.75
+                        opacity: 0.85
                     });
                 }
 
@@ -1896,13 +1952,38 @@
                         if (!savedPanelActive) return;
 
                         savedPathsLayer.clearLayers();
+                        var drawn = 0;
                         (result.data || []).forEach(function (row) {
                             var poly = createSavedPathPolyline(row.path);
-                            if (poly) savedPathsLayer.addLayer(poly);
+                            if (!poly) return;
+                            drawn++;
+                            var started = row.started_at || row.created_at;
+                            var when = started ? new Date(started).toLocaleString() : 'Unknown date';
+                            var count = poly.getLatLngs().length;
+                            poly.bindPopup('<div class="map-place-popup"><strong>Saved trail</strong><br>' +
+                                escapeHtml(when) + '<br>' + count + ' GPS points</div>');
+                            savedPathsLayer.addLayer(poly);
                         });
                         savedPathsLayer.addTo(map);
                         savedPathsVisible = true;
-                        setSavedStatus((result.data && result.data.length) ? '' : 'No saved paths yet.');
+
+                        var rows = (result.data || []).length;
+                        if (!rows) {
+                            setSavedStatus('No saved paths yet.');
+                        } else if (!drawn) {
+                            // Rows exist but none had 2+ usable points.
+                            setSavedStatus('Saved paths found, but none have enough GPS points to draw.', 'error');
+                        } else {
+                            setSavedStatus('');
+                            // Bring the user to their trails — they are often nowhere near
+                            // the current view, which otherwise looks like "nothing loaded".
+                            try {
+                                var bounds = savedPathsLayer.getBounds();
+                                if (bounds && bounds.isValid()) {
+                                    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+                                }
+                            } catch (e) { /* non-fatal: the trails are drawn regardless */ }
+                        }
                     } catch (err) {
                         console.error('Failed to load saved paths:', err);
                         savedPathsVisible = false;
@@ -1914,6 +1995,14 @@
                         updateSavedSwitches();
                     }
                 }
+
+                // Lets the trail recorder redraw the saved-paths layer right after a
+                // successful save, so a new trail shows up without reopening the panel.
+                window._refreshSavedPaths = function () {
+                    if (savedPanelActive && savedPathsVisible) {
+                        loadAndShowSavedPaths();
+                    }
+                };
 
                 // ── TOGGLE SAVED LOCATIONS + PATHS ──
                 window.toggleSavedCoordinates = async function () {
