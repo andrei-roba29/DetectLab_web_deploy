@@ -1,16 +1,15 @@
-// Regression test for the event-chat "history not visible until I send a
-// message" bug.
+// Regression tests for event-chat messages that only became visible after the
+// recipient sent a message.
 //
-// Symptom: opening an event chat shows no previous messages. As soon as the
-// user posts their first message, the whole history appears.
+// Symptoms: opening an event chat could hide previous messages, and new
+// messages from another participant did not appear live. Sending a message
+// forced a reload and made the missing conversation appear all at once.
 //
-// Root cause: chat message reads were gated (server-side) on state that only
-// exists after the user's first INSERT — e.g. an RLS SELECT policy that
-// requires the `event_chats` row (which the insert-guard trigger creates) or
-// a "only chats I have written in" policy. The fix guarantees the chat row
-// exists before reading (security-definer RPC `ensure_event_chat_for_event`)
-// and re-asserts permissive read policies via migration, plus a retry in
-// `loadChatMessages`.
+// Root causes: chat message reads could be gated (server-side) on state that
+// only exists after the user's first INSERT, and the client never subscribed
+// to INSERT changes at all. The fixes guarantee the chat row exists before
+// reading, re-assert read access, and keep a filtered Supabase Realtime stream
+// (with a short reconnect/poll fallback) active while the modal is open.
 //
 // This test loads the REAL js/events.js in a jsdom-ish sandbox against an
 // in-memory Supabase that can simulate the restrictive deployment (message
@@ -46,7 +45,8 @@ function createServer() {
         // When true, the very first SELECT on event_chat_messages errors
         // (transient failure) and all subsequent reads succeed.
         failFirstMessageRead: false,
-        rpcCalls: []
+        rpcCalls: [],
+        realtimeSubscriptions: []
     };
 }
 
@@ -97,6 +97,20 @@ function createSupabaseClient(server) {
                         const idx = rows.findIndex(r => r[key] === rec[key]);
                         if (idx !== -1 && api._mode === 'upsert') rows[idx] = { ...rows[idx], ...rec };
                         else if (idx === -1) rows.push({ ...rec });
+
+                        if (table === 'event_chat_messages' && idx === -1) {
+                            server.realtimeSubscriptions.slice().forEach(subscription => {
+                                const binding = subscription.binding;
+                                if (!binding || binding.table !== table || binding.event !== 'INSERT') return;
+                                const expectedEventId = String(binding.filter || '').replace(/^event_id=eq\./, '');
+                                if (expectedEventId && expectedEventId !== rec.event_id) return;
+                                Promise.resolve().then(() => subscription.handler({
+                                    eventType: 'INSERT',
+                                    new: { ...rec },
+                                    old: {}
+                                }));
+                            });
+                        }
                     });
                     return Promise.resolve({ data: list, error: null });
                 }
@@ -143,7 +157,7 @@ function createSupabaseClient(server) {
         return api;
     }
 
-    return {
+    const client = {
         from: query,
         rpc(name, params) {
             server.rpcCalls.push(name);
@@ -165,8 +179,36 @@ function createSupabaseClient(server) {
                 return Promise.resolve({ data: { deleted_chats: 0, deleted_messages: 0 }, error: null });
             }
             return Promise.resolve({ data: null, error: { message: 'rpc unavailable' } });
+        },
+        channel(name) {
+            const subscription = {
+                name,
+                binding: null,
+                handler: null,
+                on(type, binding, handler) {
+                    assert.strictEqual(type, 'postgres_changes');
+                    subscription.binding = binding;
+                    subscription.handler = handler;
+                    return subscription;
+                },
+                subscribe(statusHandler) {
+                    server.realtimeSubscriptions.push(subscription);
+                    Promise.resolve().then(() => statusHandler('SUBSCRIBED'));
+                    return subscription;
+                },
+                unsubscribe() {
+                    server.realtimeSubscriptions = server.realtimeSubscriptions.filter(item => item !== subscription);
+                    return Promise.resolve('ok');
+                }
+            };
+            return subscription;
+        },
+        removeChannel(subscription) {
+            server.realtimeSubscriptions = server.realtimeSubscriptions.filter(item => item !== subscription);
+            return Promise.resolve('ok');
         }
     };
+    return client;
 }
 
 /* ── Simulated browser device running the REAL js/events.js ─────────────── */
@@ -383,7 +425,47 @@ function test(name, fn) {
         assert.ok(html.indexOf('Another attendee says hello') !== -1, 'attendee message should be visible after retry');
     });
 
-    // 4. A genuinely empty chat still shows the "start the conversation" state.
+    // 4. THE LIVE-DELIVERY REGRESSION: while the recipient has the chat open,
+    //    another participant's INSERT must render without any action from the
+    //    recipient (especially without sending a message to force a reload).
+    await test('another participant message appears live without the recipient sending', async () => {
+        const server = createServer();
+        const eventId = seedEvent(server);
+        seedAttendee(server, eventId, GUEST);
+
+        const recipient = createDevice(server, GUEST);
+        const initialHtml = await openChat(recipient, eventId);
+        assert.ok(initialHtml.indexOf('Start the conversation') !== -1, 'chat should start empty');
+        assert.strictEqual(server.realtimeSubscriptions.length, 1, 'open chat should have one Realtime subscription');
+        assert.strictEqual(server.realtimeSubscriptions[0].binding.filter, 'event_id=eq.' + eventId,
+            'Realtime subscription must be filtered to the active event');
+
+        const incoming = {
+            id: 'msg-live',
+            event_id: eventId,
+            user_id: CREATOR.id,
+            user_name: CREATOR.name,
+            message: 'This must arrive without a reply',
+            media_url: null,
+            media_type: 'none',
+            created_at: new Date().toISOString()
+        };
+        await createSupabaseClient(server).from('event_chat_messages').insert([incoming]);
+
+        // Let the simulated Realtime delivery and its follow-up SELECT finish.
+        await new Promise(resolve => setImmediate(resolve));
+        await new Promise(resolve => setImmediate(resolve));
+
+        const liveHtml = recipient.byId.get('chatMessagesList').innerHTML;
+        assert.ok(liveHtml.indexOf(CREATOR.name) !== -1, 'live sender should render: ' + liveHtml);
+        assert.ok(liveHtml.indexOf(incoming.message) !== -1, 'live message should render without recipient send');
+        assert.ok(liveHtml.indexOf('Start the conversation') === -1, 'empty state should be replaced');
+
+        recipient.sandbox._closeEventChatModal();
+        assert.strictEqual(server.realtimeSubscriptions.length, 0, 'closing chat should unsubscribe');
+    });
+
+    // 5. A genuinely empty chat still shows the "start the conversation" state.
     await test('genuinely empty chat still shows the start-conversation placeholder', async () => {
         const server = createServer();
         const eventId = seedEvent(server);
