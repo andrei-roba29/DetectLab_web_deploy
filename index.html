@@ -973,7 +973,7 @@
                                 <circle cx="6.5" cy="6.5" r="5" stroke="#B8D8F0" stroke-width="1.4" />
                                 <line x1="10.2" y1="10.2" x2="14" y2="14" stroke="#B8D8F0" stroke-width="1.4" stroke-linecap="round" />
                             </svg>
-                            <input type="text" id="mapSearchInput" class="map-search-input" placeholder="Search city or town…" autocomplete="off">
+                            <input type="text" id="mapSearchInput" class="map-search-input" placeholder="Search place or coordinates…" aria-label="Search a city, town, or latitude and longitude" inputmode="text" autocomplete="off" spellcheck="false">
                             <button class="map-search-clear" id="searchClearBtn" onclick="clearSearch()" title="Clear">✕</button>
                         </div>
                         <ul class="map-search-results" id="mapSearchResults"></ul>
@@ -2891,7 +2891,7 @@
          SRS=EPSG:900913, one corona layer per request, standard 256x256
          Web-Mercator tiles. Must load before map-app.js. -->
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
-    <script src="js/map-app.js?v=20260813-sat60-mobile"></script>
+    <script src="js/map-app.js?v=20260814-coordinate-search"></script>
     <script src="js/vertical-opacity-control.js?v=20260812"></script>
     <script src="js/archeo-potential.js?v=20260803"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
