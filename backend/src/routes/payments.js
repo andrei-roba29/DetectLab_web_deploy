@@ -18,6 +18,7 @@ import { logger } from '../logger.js';
 import { requireUser } from '../middleware/requireUser.js';
 import * as stripeApi from '../services/stripeClient.js';
 import { handleStripeEvent, ONE_TIME_STATUS } from '../services/subscriptionEvents.js';
+import { PROMO_STATUS } from '../services/promoCodes.js';
 
 const router = Router();
 
@@ -120,7 +121,12 @@ router.post('/payments/portal', requireUser, async (req, res) => {
     const customerId = row.stripe_customer_id;
 
     // No recurring subscription on file → nothing for the portal to do.
-    if (!row.stripe_subscription_id || row.stripe_subscription_status === ONE_TIME_STATUS) {
+    // One-time purchases and promo grants both set a non-Stripe status.
+    if (
+      !row.stripe_subscription_id ||
+      row.stripe_subscription_status === ONE_TIME_STATUS ||
+      row.stripe_subscription_status === PROMO_STATUS
+    ) {
       return res.status(400).json({ error: 'no_subscription' });
     }
     if (!customerId) return res.status(400).json({ error: 'no_customer' });

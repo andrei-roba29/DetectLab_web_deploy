@@ -315,6 +315,144 @@ body {
     font-size: 0.85rem;
 }
 
+/* ── Promo code (free trial, no payment) ── */
+.co-promo { margin-top: 18px; }
+
+.co-promo-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+}
+
+.co-promo-divider::before,
+.co-promo-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+/* Quiet link until opened — the €5 button stays the primary action. */
+.co-promo-toggle {
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 4px 0;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: rgba(184, 216, 240, 0.75);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+
+.co-promo-toggle:hover { color: var(--text); }
+
+.co-promo-form {
+    padding: 16px;
+    border: 1px dashed var(--border-strong);
+    border-radius: 12px;
+    background: rgba(184, 216, 240, 0.035);
+}
+
+.co-promo-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 7px;
+}
+
+.co-promo-row {
+    display: flex;
+    gap: 9px;
+    align-items: stretch;
+}
+
+.co-promo-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: rgba(10, 13, 20, 0.6);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.98rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 13px 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.co-promo-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(107, 63, 160, 0.25);
+}
+
+.co-promo-input::placeholder {
+    color: rgba(245, 240, 235, 0.3);
+    font-weight: 500;
+}
+
+.co-promo-input:disabled { opacity: 0.6; }
+
+.co-btn-promo {
+    flex: 0 0 auto;
+    background: linear-gradient(135deg, var(--accent), #4a2a80);
+    color: #fff;
+    padding: 13px 20px;
+    font-size: 0.9rem;
+}
+
+.co-btn-promo:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px rgba(107, 63, 160, 0.4);
+}
+
+.co-promo-hint {
+    margin: 10px 0 0;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--muted);
+}
+
+.co-promo-msg {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.co-promo-ok {
+    background: rgba(46, 204, 113, 0.12);
+    border: 1px solid rgba(46, 204, 113, 0.35);
+    color: #7ee2a8;
+}
+
+.co-promo-err {
+    background: rgba(255, 82, 82, 0.12);
+    border: 1px solid rgba(255, 82, 82, 0.35);
+    color: #ff9d9d;
+}
+
+@media (max-width: 460px) {
+    .co-promo-row { flex-direction: column; }
+    .co-btn-promo { width: 100%; }
+}
+
 /* ── Login required / processing / success ── */
 .co-login-card, .co-success {
     max-width: 480px;

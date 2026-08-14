@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260812-premium-catalogue">
+    <link rel="stylesheet" href="css/styles.css?v=20260814-promo">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -2866,7 +2866,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260813-onetime"></script>
+    <script src="js/translations.js?v=20260814-promo"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -2930,6 +2930,35 @@
                 <button type="button" class="prem-btn prem-btn-buy" onclick="goToCheckout()">
                     <span id="premBuyLabel" class="t" data-key="prem_buy_btn">Buy Premium · €5 for one month</span>
                 </button>
+
+                <!-- PROMO CODE — redeem a free trial instead of paying.
+                     Shown only to logged-in non-premium users; wired in
+                     js/subscriptions.js (POST /api/promo/redeem). -->
+                <div class="prem-promo" id="premPromoWrap">
+                    <button type="button" class="prem-promo-toggle" id="premPromoToggle"
+                            aria-expanded="false" aria-controls="premPromoForm">
+                        <span class="t" data-key="promo_have_code">Have a promo code?</span>
+                    </button>
+                    <div class="prem-promo-form" id="premPromoForm" style="display:none">
+                        <div class="prem-promo-row">
+                            <label class="prem-promo-label" for="premPromoInput">
+                                <span class="t" data-key="promo_label">Promo code</span>
+                            </label>
+                            <div class="prem-promo-input-row">
+                                <input type="text" id="premPromoInput" class="prem-promo-input"
+                                       placeholder="TRIAL24" autocomplete="off" autocapitalize="characters"
+                                       spellcheck="false" maxlength="64">
+                                <button type="button" class="prem-btn prem-btn-primary prem-promo-btn" id="premPromoBtn">
+                                    <span class="t" data-key="promo_redeem_btn">Redeem</span>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="prem-promo-hint t" data-key="promo_hint">Unlock Premium instantly — no payment needed.</p>
+                        <div class="prem-promo-msg prem-promo-ok" id="premPromoOk" style="display:none"></div>
+                        <div class="prem-promo-msg prem-promo-err" id="premPromoErr" style="display:none"></div>
+                    </div>
+                </div>
+
                 <button type="button" class="prem-btn prem-btn-ghost" id="premLaterBtn" onclick="closePremiumModal()">
                     <span class="t" data-key="prem_later">Not now</span>
                 </button>
@@ -3688,8 +3717,8 @@
       </div>
     </div>
 
-<script src="js/account-legacy.js?v=20260813-onetime"></script>
-<script src="js/subscriptions.js?v=20260813-onetime"></script>
+<script src="js/account-legacy.js?v=20260814-promo"></script>
+<script src="js/subscriptions.js?v=20260814-promo"></script>
 
 
 

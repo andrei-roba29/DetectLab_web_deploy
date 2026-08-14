@@ -25,11 +25,14 @@
 
     var LS_PREFIX = 'dl_premium_';   // localStorage key prefix (per user id)
 
-    // Status written by the backend webhook for a one-time purchase.
-    // Anything else (active / past_due / trialing / …) means the account is
-    // a LEGACY recurring subscriber, which is the only case where the
-    // Stripe billing portal ("Manage subscription") makes sense.
+    // Statuses written by DetectLab itself rather than by Stripe's
+    // subscription lifecycle: a one-time €5 purchase, or a redeemed promo
+    // code. Anything else (active / past_due / trialing / …) means the
+    // account is a LEGACY recurring subscriber, which is the only case
+    // where the Stripe billing portal ("Manage subscription") makes sense.
     var ONE_TIME_STATUS = 'one_time_paid';
+    var PROMO_STATUS = 'promo_trial';
+    var NON_SUBSCRIPTION_STATUSES = [ONE_TIME_STATUS, PROMO_STATUS];
 
     /* Adds one calendar month, clamping short months:
        Aug 13 → Sep 13 · Jan 31 → Feb 28/29 · May 31 → Jun 30 */
@@ -211,6 +214,7 @@
         // the buy CTA is hidden until the current month runs out.
         if (buyWrap) buyWrap.style.display = (user && !prem) ? '' : 'none';
         if (laterBtn) laterBtn.style.display = user ? '' : 'none';
+        resetPromoForm();
 
         if (titleEl) titleEl.textContent = t('prem_modal_title');
 
@@ -314,7 +318,7 @@
         var u = user || currentUser();
         if (!u) return false;
         if (!u.stripeSubscriptionId) return false;
-        return u.stripeSubscriptionStatus !== ONE_TIME_STATUS;
+        return NON_SUBSCRIPTION_STATUSES.indexOf(u.stripeSubscriptionStatus) === -1;
     }
 
     window._dlIsLegacySubscriber = isLegacySubscriber;
@@ -343,6 +347,228 @@
             if (typeof window.goToCheckout === 'function') window.goToCheckout();
         }
     };
+
+    /* ── Promo codes ─────────────────────────────────────────────────
+       A promo code unlocks Premium without paying (the first campaign is
+       a 24-hour free trial). The backend owns every rule — validity
+       window, one-per-account, caps — and is the only writer of
+       premium_expires_at; this side just posts the code and re-reads the
+       profile afterwards. Shared by the premium popup and checkout.html.
+       ─────────────────────────────────────────────────────────────── */
+
+    // Same normalisation as the backend, so what the user sees in the
+    // input is exactly what gets validated.
+    function normalizePromoCode(input) {
+        return String(input == null ? '' : input)
+            .trim()
+            .toUpperCase()
+            .replace(/\s+/g, '')
+            .replace(/[^A-Z0-9_-]/g, '')
+            .slice(0, 64);
+    }
+
+    window._dlNormalizePromoCode = normalizePromoCode;
+
+    // Maps a backend error code onto a translated, human message.
+    function promoErrorText(errorCode) {
+        var key = {
+            invalid_code: 'promo_err_invalid',
+            code_expired: 'promo_err_expired',
+            code_not_started: 'promo_err_not_started',
+            code_exhausted: 'promo_err_exhausted',
+            already_redeemed: 'promo_err_already_redeemed',
+            trial_already_used: 'promo_err_trial_used',
+            already_premium: 'promo_err_already_premium',
+            too_many_attempts: 'promo_err_too_many',
+            not_logged_in: 'promo_err_login'
+        }[errorCode] || 'promo_err_generic';
+        return t(key);
+    }
+
+    window._dlPromoErrorText = promoErrorText;
+
+    /**
+     * Redeem a promo code for the logged-in user.
+     *
+     * On success the profile is re-read from Supabase, which fires
+     * `detectlab:authchange` → the premium UI, account panel and layer
+     * locks all update themselves.
+     *
+     * @returns {Promise<{ok:true, expiresAt:Date, durationHours:number}
+     *                 |{ok:false, error:string, message:string}>}
+     *          Never throws — the UI always gets a message to show.
+     */
+    window.redeemPromoCode = async function (rawCode) {
+        var code = normalizePromoCode(rawCode);
+        if (!code) {
+            return { ok: false, error: 'invalid_code', message: promoErrorText('invalid_code') };
+        }
+
+        var user = currentUser();
+        if (!user) {
+            return { ok: false, error: 'not_logged_in', message: promoErrorText('not_logged_in') };
+        }
+
+        var token = await window._dlAccessToken();
+        if (!token) {
+            return { ok: false, error: 'not_logged_in', message: promoErrorText('not_logged_in') };
+        }
+
+        var res, data;
+        try {
+            res = await fetch(window._dlApiBase + '/promo/redeem', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ code: code })
+            });
+            data = await res.json().catch(function () { return {}; });
+        } catch (err) {
+            console.error('[Promo] redeem:', err);
+            return { ok: false, error: 'network', message: promoErrorText('network') };
+        }
+
+        if (!res.ok || !data.ok) {
+            var errCode = data.error || 'generic';
+            return { ok: false, error: errCode, message: promoErrorText(errCode) };
+        }
+
+        var expiresAt = data.premium_expires_at ? new Date(data.premium_expires_at) : null;
+
+        // Optimistic local update, then the authoritative re-read. The
+        // optimistic step keeps the UI correct even if Supabase is slow or
+        // the profiles row is not readable yet.
+        user.plan = 'premium';
+        if (expiresAt) user.premiumExpiresAt = expiresAt.toISOString();
+        if (typeof window._save === 'function') window._save(user);
+        if (expiresAt) {
+            localStorageWrite(user.id, { plan: 'premium', premiumExpiresAt: expiresAt.toISOString() });
+        }
+        window.dispatchEvent(new CustomEvent('detectlab:authchange', { detail: { user: user } }));
+        applyPremiumUI();
+
+        // Authoritative refresh (also fires authchange + applyPremiumUI).
+        if (typeof window.loadUserPremiumProfile === 'function') {
+            try { await window.loadUserPremiumProfile(user.id); } catch (e) {}
+        }
+
+        return {
+            ok: true,
+            code: data.code || code,
+            durationHours: data.duration_hours || null,
+            expiresAt: expiresAt
+        };
+    };
+
+    /* ── Promo form inside the membership popup ──────────────────── */
+
+    function promoEl(id) { return document.getElementById(id); }
+
+    function setPromoMessage(okText, errText) {
+        var okEl = promoEl('premPromoOk');
+        var errEl = promoEl('premPromoErr');
+        if (okEl) {
+            okEl.textContent = okText || '';
+            okEl.style.display = okText ? 'block' : 'none';
+        }
+        if (errEl) {
+            errEl.textContent = errText || '';
+            errEl.style.display = errText ? 'block' : 'none';
+        }
+    }
+
+    // Collapses the promo form back to its "Have a promo code?" link and
+    // clears any leftover message — called every time the popup opens.
+    function resetPromoForm() {
+        var form = promoEl('premPromoForm');
+        var toggle = promoEl('premPromoToggle');
+        var input = promoEl('premPromoInput');
+        if (form) form.style.display = 'none';
+        if (toggle) {
+            toggle.style.display = '';
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+        if (input) input.value = '';
+        setPromoMessage('', '');
+    }
+
+    async function submitPromoFromModal() {
+        var input = promoEl('premPromoInput');
+        var btn = promoEl('premPromoBtn');
+        if (!input) return;
+
+        var code = normalizePromoCode(input.value);
+        input.value = code;
+        if (!code) {
+            setPromoMessage('', promoErrorText('invalid_code'));
+            input.focus();
+            return;
+        }
+
+        setPromoMessage('', '');
+        if (btn) btn.disabled = true;
+        input.disabled = true;
+
+        var result = await window.redeemPromoCode(code);
+
+        if (btn) btn.disabled = false;
+        input.disabled = false;
+
+        if (!result.ok) {
+            setPromoMessage('', result.message);
+            input.focus();
+            input.select();
+            return;
+        }
+
+        // Success: confirm, then close and hand control back to the map so
+        // the layer the user originally tried to open switches on.
+        var msg = t('promo_success').replace(
+            '{date}',
+            result.expiresAt ? formatDate(result.expiresAt) : ''
+        );
+        setPromoMessage(msg, '');
+        input.value = '';
+
+        setTimeout(function () {
+            closePremiumModal();
+            applyPendingPremiumAction();
+        }, 1600);
+    }
+
+    function initPromoForm() {
+        var toggle = promoEl('premPromoToggle');
+        var form = promoEl('premPromoForm');
+        var btn = promoEl('premPromoBtn');
+        var input = promoEl('premPromoInput');
+
+        if (toggle && form) {
+            toggle.addEventListener('click', function () {
+                form.style.display = '';
+                toggle.style.display = 'none';
+                toggle.setAttribute('aria-expanded', 'true');
+                if (input) input.focus();
+            });
+        }
+        if (btn) btn.addEventListener('click', submitPromoFromModal);
+        if (input) {
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitPromoFromModal();
+                }
+            });
+            // Uppercase as they type, so the field always shows the
+            // canonical form the backend will validate.
+            input.addEventListener('input', function () {
+                var pos = input.selectionStart;
+                var next = normalizePromoCode(input.value);
+                if (next !== input.value) {
+                    input.value = next;
+                    try { input.setSelectionRange(pos, pos); } catch (e) {}
+                }
+            });
+        }
+    }
 
     // Account panel button:
     //   · legacy recurring subscriber → Stripe billing portal
@@ -568,6 +794,8 @@
 
     function init() {
         document.addEventListener('click', onDocClickCapture, true);
+
+        initPromoForm();
 
         var panelCheckoutBtn = document.getElementById('premiumPanelCta');
         if (panelCheckoutBtn) {

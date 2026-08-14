@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Cinzel:wght@600;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/checkout.css?v=20260813-onetime">
+    <link rel="stylesheet" href="css/checkout.css?v=20260814-promo">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='15' cy='15' r='13' fill='none' stroke='%23B8D8F0' stroke-width='1.4'/%3E%3Ccircle cx='15' cy='15' r='3.5' fill='%23E8772A'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -81,6 +81,32 @@
                     <div class="co-info" id="coInfo" style="display:none"></div>
                     <div class="co-error" id="coError"></div>
                 </div>
+
+                <!-- ── PROMO CODE — redeem a free trial instead of paying.
+                     Wired in js/checkout.js (POST /api/promo/redeem). ── -->
+                <div class="co-promo" id="coPromoWrap">
+                    <div class="co-promo-divider"><span class="t" data-key="promo_or">or</span></div>
+                    <button type="button" class="co-promo-toggle" id="coPromoToggle"
+                            aria-expanded="false" aria-controls="coPromoForm">
+                        <span class="t" data-key="promo_have_code">Have a promo code?</span>
+                    </button>
+                    <div class="co-promo-form" id="coPromoForm" style="display:none">
+                        <label class="co-promo-label" for="coPromoInput">
+                            <span class="t" data-key="promo_label">Promo code</span>
+                        </label>
+                        <div class="co-promo-row">
+                            <input type="text" id="coPromoInput" class="co-promo-input"
+                                   placeholder="TRIAL24" autocomplete="off" autocapitalize="characters"
+                                   spellcheck="false" maxlength="64">
+                            <button type="button" class="co-btn co-btn-promo" id="coPromoBtn">
+                                <span class="t" data-key="promo_redeem_btn">Redeem</span>
+                            </button>
+                        </div>
+                        <p class="co-promo-hint t" data-key="promo_hint">Unlock Premium instantly — no payment needed.</p>
+                        <div class="co-promo-msg co-promo-ok" id="coPromoOk" style="display:none"></div>
+                        <div class="co-promo-msg co-promo-err" id="coPromoErr" style="display:none"></div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -134,6 +160,25 @@
             </div>
         </section>
 
+        <!-- ── PROMO REDEEMED (free trial unlocked, no payment) ── -->
+        <section class="co-card co-success" id="coPromoSuccessCard" style="display:none">
+            <div class="co-success-check">🎁</div>
+            <h1 class="t" data-key="promo_success_title">Promo code redeemed!</h1>
+            <p class="co-muted t" data-key="promo_success_desc">Premium is unlocked on your account — no payment was taken.</p>
+            <div class="co-success-expiry">
+                <span class="co-muted t" data-key="co_success_expiry">Premium active until</span>
+                <strong id="coPromoSuccessDate">—</strong>
+            </div>
+            <div class="co-success-actions">
+                <a class="co-btn co-btn-primary" href="index.html#map-section">
+                    <span class="t" data-key="promo_go_map">Start exploring the map</span>
+                </a>
+                <a class="co-btn co-btn-ghost" href="index.html?open=account">
+                    <span class="t" data-key="co_go_account">Go to my account</span>
+                </a>
+            </div>
+        </section>
+
         <!-- ── SUCCESS ── -->
         <section class="co-card co-success" id="coSuccessCard" style="display:none">
             <div class="co-success-check">✓</div>
@@ -162,11 +207,11 @@
         <span class="t" data-key="co_footer">DetectLab · Saving history together</span>
     </footer>
 
-    <script src="js/translations.js?v=20260813-onetime"></script>
+    <script src="js/translations.js?v=20260814-promo"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js"></script>
-    <script src="js/auth.js?v=20260813-onetime"></script>
-    <script src="js/subscriptions.js?v=20260813-onetime"></script>
-    <script src="js/checkout.js?v=20260813-onetime"></script>
+    <script src="js/auth.js?v=20260814-promo"></script>
+    <script src="js/subscriptions.js?v=20260814-promo"></script>
+    <script src="js/checkout.js?v=20260814-promo"></script>
 </body>
 </html>

@@ -15,6 +15,11 @@ Stripe** are wired in — including how to go live and receive payouts.
 > **Legacy subscribers** created before the switch are fully preserved:
 > their renewals (`invoice.paid`), cancellations and the Stripe billing
 > portal keep working exactly as before.
+>
+> **Promo codes** are the second way to get Premium: a valid code grants
+> access for a fixed number of hours with no payment. The first campaign
+> is **TRIAL24 — 24 hours free, once per account**. See
+> [Promo codes](#promo-codes-free-trials) below.
 
 ---
 
@@ -38,6 +43,8 @@ Stripe** are wired in — including how to go live and receive payouts.
 | **Stripe webhook** grants Premium in the `profiles` table | `backend/src/routes/payments.js` → `POST /api/payments/webhook` + `backend/src/services/subscriptionEvents.js` |
 | Stripe billing portal — **legacy recurring subscribers only** | `backend/src/routes/payments.js` → `POST /api/payments/portal` (400 `no_subscription` otherwise) |
 | **Manage Account** shows plan + expiration + days left + Manage/Renew button | `js/account-legacy.js` + account panel in `index.html` |
+| **Promo codes**: redeem a code instead of paying, in the membership popup **and** on the checkout page | `index.html` (`#premPromoWrap`), `checkout.html` (`.co-promo`), `js/subscriptions.js`, `js/checkout.js` |
+| Promo redemption is **server-side only**, one per account, enforced by a DB constraint | `backend/src/services/promoCodes.js`, `backend/src/routes/promo.js`, `promo_redemptions` UNIQUE (code, user_id) |
 
 New/changed files (payments):
 - `backend/src/routes/payments.js` — checkout / webhook / portal endpoints
@@ -51,6 +58,14 @@ New/changed files (payments):
 - `backend/scripts/setupStripe.js` — creates the product + **one-time** price and prints your env values
 - `checkout.html`, `js/checkout.js`, `js/subscriptions.js`, `js/account-legacy.js`, `js/translations.js`, `css/checkout.css`, `index.html`, `sw.js`
 - `test-payments.mjs`, `test-premium-subscription.js`
+
+New/changed files (promo codes):
+- `backend/migrations/006_promo_codes.sql` — `promo_codes` + `promo_redemptions` tables, RLS lockdown, seeds `TRIAL24`
+- `supabase/migrations/20260814000000_promo_codes.sql` — same, for `supabase db push`
+- `backend/src/services/promoCodes.js` — normalisation, the redemption decision table (pure) and the locking transaction
+- `backend/src/routes/promo.js` — `POST /api/promo/redeem` + per-account brute-force guard
+- `index.html`, `checkout.html`, `js/subscriptions.js`, `js/checkout.js`, `js/translations.js`, `css/styles.css`, `css/checkout.css`
+- `test-promo-codes.mjs`
 
 ## How the flow works
 
@@ -187,12 +202,14 @@ Pages URL). If left empty, the backend falls back to the request's
 
 ### 6. Apply the database migration
 ```bash
-cd backend && npm run migrate          # Stripe columns, RLS policies, event dedupe table
+cd backend && npm run migrate          # Stripe columns, RLS policies, event dedupe table, promo codes
 ```
-or run `supabase/migrations/20260812020000_stripe_payment_fields.sql` and
-`supabase/migrations/20260813010000_one_time_premium.sql` in the Supabase
-SQL editor. The latter creates `public.stripe_processed_events`, which the
-webhook needs for replay protection.
+or run `supabase/migrations/20260812020000_stripe_payment_fields.sql`,
+`supabase/migrations/20260813010000_one_time_premium.sql` and
+`supabase/migrations/20260814000000_promo_codes.sql` in the Supabase SQL
+editor. The second creates `public.stripe_processed_events`, which the
+webhook needs for replay protection; the third creates the promo-code
+tables and seeds the `TRIAL24` free trial.
 
 ### 7. Test end-to-end (test mode)
 With `sk_test_...` keys set:
@@ -216,6 +233,145 @@ With `sk_test_...` keys set:
 - Revenue appears in **Stripe Dashboard → Balances**, then is paid out
   to your RO IBAN on the payout schedule.
 
+## Promo codes (free trials)
+
+A promo code is the **no-payment path to Premium**. Redeeming a valid code
+writes exactly the same `plan` / `premium_expires_at` fields the Stripe
+webhook writes — the rest of the app cannot tell the difference, so every
+premium layer unlocks immediately and expires on its own.
+
+### The first campaign: `TRIAL24`
+
+| | |
+|---|---|
+| Code | `TRIAL24` |
+| Grants | **24 hours** of Premium |
+| Per account | **once, ever** (see *trial vs. bonus* below) |
+| Code validity | **one month** from the moment the migration first ran |
+| Global cap | none (`max_redemptions = null`) |
+
+It is seeded by `backend/migrations/006_promo_codes.sql`, so applying the
+migration is all that is needed to make it live.
+
+### Where users redeem
+
+Both entry points call the same endpoint and show the same messages:
+
+- **Membership popup** (`#premiumModal` → *Have a promo code?*) — the box
+  sits under the €5 buy button, collapsed by default so the paid product
+  stays the primary action. On success the popup shows the new expiry,
+  waits ~1.6 s, closes itself and **replays whatever the user was trying to
+  do** (e.g. the premium layer they clicked is switched on).
+- **Checkout page** (`checkout.html` → *Have a promo code?*) — same box
+  under the pay button. On success the page swaps to a dedicated
+  “Promo code redeemed!” card with a *Start exploring the map* button.
+  `checkout.html?promo=TRIAL24` (or `?code=`) deep-links with the field
+  pre-filled and the box already open, which is what a marketing link
+  should point at.
+
+Input is normalised on both sides (`normalizeCode` / `_dlNormalizePromoCode`):
+uppercased, whitespace stripped, anything outside `A-Z 0-9 - _` removed. So
+`" trial 24 "` and `trial24` both work.
+
+### API
+
+```
+POST /api/promo/redeem        Authorization: Bearer <supabase access token>
+{ "code": "TRIAL24" }
+
+200 { ok: true, code: "TRIAL24", duration_hours: 24,
+      premium_expires_at: "2026-08-15T12:00:00.000Z" }
+```
+
+Errors are `{ "error": "<code>" }`; the frontend maps each one to a
+localized message (`promo_err_*` keys).
+
+| Status | `error` | Meaning |
+|---|---|---|
+| 400 | `invalid_code` | empty / malformed input |
+| 404 | `invalid_code` | unknown or deactivated code |
+| 409 | `code_not_started` | campaign has not opened yet |
+| 409 | `code_expired` | campaign is over |
+| 409 | `code_exhausted` | global cap reached |
+| 409 | `already_redeemed` | this account already used **this** code |
+| 409 | `trial_already_used` | this account already used its free trial |
+| 409 | `already_premium` | Premium is still active |
+| 429 | `too_many_attempts` | 10 failed guesses in 10 min, per account |
+| 500 | `redeem_failed` | unexpected server error |
+
+### Rules & why they exist
+
+- **One redemption per account** is enforced by
+  `UNIQUE (code, user_id)` on `promo_redemptions`, not by app logic — a
+  double-clicked button or two parallel tabs cannot both win. The insert
+  uses `on conflict … do nothing`, so a lost race returns a clean 409.
+- **The whole redemption is one transaction** that starts with
+  `select … from promo_codes … for update`. Concurrent redemptions of a
+  capped code are serialised, so `redeemed_count` can never exceed
+  `max_redemptions`.
+- **`kind = 'trial'` → one free trial per account *ever*.** Publishing
+  `TRIAL24B` next month does not hand a second free day to everyone who
+  already tried the product. Use **`kind = 'bonus'`** for campaigns that
+  should be repeatable per code (a bonus is refused only if that exact
+  code was already used by the account).
+- **A trial is refused while Premium is active** (`already_premium`) so a
+  paying user does not burn their single free day on top of a paid month.
+  A **bonus stacks**: it is added on top of the current expiry.
+- **A grant never shortens existing Premium** — the profile update uses
+  the same `greatest(...)` guard as the Stripe webhook.
+- **Only the backend can read codes or write redemptions.** Both tables
+  have RLS enabled with **no policies**, so anon/authenticated Supabase
+  clients get zero rows; the API reaches them over a direct Postgres
+  connection, which bypasses RLS. The browser can never self-grant Premium
+  and cannot enumerate valid codes.
+- **Promo Premium is not a subscription.** It sets
+  `stripe_subscription_status = 'promo_trial'`, which — like
+  `'one_time_paid'` — is excluded from the “Manage subscription” button
+  and from `POST /api/payments/portal` (400 `no_subscription`).
+
+### Managing codes from Supabase
+
+Everything is plain SQL in the Supabase dashboard — there is no admin UI
+or CLI script by design.
+
+```sql
+-- See the campaigns and how they're doing
+select code, kind, duration_hours, starts_at, expires_at,
+       max_redemptions, redeemed_count, active
+  from public.promo_codes order by created_at desc;
+
+-- Extend / end the current campaign
+update public.promo_codes set expires_at = '2026-12-31T23:59:59Z' where code = 'TRIAL24';
+update public.promo_codes set active = false                      where code = 'TRIAL24';
+
+-- A new 7-day bonus, capped at 500 redemptions, running for two weeks
+insert into public.promo_codes
+  (code, description, kind, duration_hours, starts_at, expires_at, max_redemptions)
+values
+  ('SUMMER7', 'Summer campaign - 7 days of Premium', 'bonus', 168,
+   now(), now() + interval '14 days', 500);
+
+-- Who redeemed what
+select code, user_id, granted_until, redeemed_at
+  from public.promo_redemptions order by redeemed_at desc limit 50;
+
+-- Let one specific account redeem a code again (support/testing)
+delete from public.promo_redemptions where code = 'TRIAL24' and user_id = '<uuid>';
+```
+
+> `redeemed_count` is maintained by the API. If you delete redemption rows
+> by hand, correct it too:
+> `update public.promo_codes c set redeemed_count = (select count(*) from public.promo_redemptions r where r.code = c.code);`
+
+### Applying the migration
+
+```bash
+cd backend && npm run migrate     # runs 006_promo_codes.sql
+```
+or paste `supabase/migrations/20260814000000_promo_codes.sql` into the
+Supabase SQL editor. It is idempotent and the `TRIAL24` seed uses
+`on conflict do nothing`, so re-running it will not reset the campaign.
+
 ## ⚠️ Security notes
 
 - **The Stripe webhook is the ONLY writer of `plan`/`premium_expires_at`.**
@@ -231,6 +387,12 @@ With `sk_test_...` keys set:
 - Stripe webhook requests are **signature-verified** (HMAC-SHA256) before
   any DB write; the checkout endpoint requires a **valid Supabase token**
   and re-checks the user server-side.
+- **Promo codes never reach the browser.** `promo_codes` and
+  `promo_redemptions` have RLS enabled with no policies, so the only way
+  to redeem is `POST /api/promo/redeem` with a valid Supabase token. Wrong
+  guesses are rate-limited (10 failures per account per 10 minutes) and
+  unknown codes always answer the same `invalid_code`, so the endpoint
+  cannot be used to enumerate live campaigns.
 
 ## Local dev checklist
 
@@ -240,6 +402,10 @@ With `sk_test_...` keys set:
    put the printed secret in `STRIPE_WEBHOOK_SECRET`.
 4. `npm run dev` in `backend/`, serve the site root (`python3 -m http.server`),
    open `checkout.html`, pay with test card `4242 4242 4242 4242`.
+5. To exercise the free path instead, open `checkout.html?promo=TRIAL24`
+   (or the *Have a promo code?* box in the membership popup) and redeem.
+   To try again on the same account:
+   `delete from public.promo_redemptions where user_id = '<uuid>';`
 
 ## Translations
 
@@ -257,10 +423,23 @@ automatic-renewal / cancel-anytime wording was replaced everywhere by:
 `test-premium-subscription.js` asserts that no cancel-anytime /
 auto-renewal / `/month` wording survives in either language.
 
+The promo-code UI adds the `promo_*` family (19 keys in each language) —
+the box labels plus one message per API error code, so the user always
+gets a specific reason rather than “something went wrong”:
+
+| | English | Romanian |
+|---|---|---|
+| Toggle | *Have a promo code?* | *Ai un cod promoțional?* |
+| Button | *Redeem* | *Activează* |
+| Hint | *Unlock Premium instantly — no payment needed.* | *Deblochează Premium instant — fără plată.* |
+| Success | *Code redeemed! Premium is active until {date}.* | *Cod activat! Premium este activ până pe {date}.* |
+| Trial used | *Your account has already used its free trial.* | *Contul tău a folosit deja perioada gratuită de probă.* |
+
 ## Tests
 
 ```bash
-node test-payments.mjs              # 82 assertions — backend
+node test-payments.mjs              # 82 assertions — backend (Stripe)
+node test-promo-codes.mjs           # 84 assertions — backend (promo codes)
 node test-premium-subscription.js   # 72 assertions — frontend (needs `npm i jsdom`)
 ```
 
@@ -271,6 +450,15 @@ including end-of-month clamping**, **event-replay idempotency**, legacy
 subscription compatibility, Checkout Session parameters (mode `payment`,
 one-time price, user id in `client_reference_id` / session metadata /
 PaymentIntent metadata, no `subscription_data`) and the auth middleware.
+
+`test-promo-codes.mjs` covers code normalisation (including junk/SQL-ish
+input), expiry maths (trial from now vs. bonus stacked on live Premium,
+bad durations), the full `evaluateRedemption` decision table with its
+check *order* (an unknown code never leaks “already redeemed”), and the
+whole redemption transaction against a stubbed pg client: the happy path
+writes redemption + count + grant with `greatest()` and `for update`,
+every refusal writes **nothing**, and a lost `UNIQUE` race returns
+`already_redeemed` without granting Premium twice.
 
 `test-premium-subscription.js` covers pricing wording, the browseable
 locked catalogue, layer gating, the Stripe redirect flow, and the one-time
