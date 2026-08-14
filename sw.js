@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v48-coordinate-search';
+const CACHE_NAME = 'detectlab-v49-useful-information';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -76,6 +76,7 @@ const PRECACHE_URLS = [
   'css/checkout.css?v=20260813-onetime',
   // Promo codes (free-trial redemption in the popup + checkout page).
   'js/translations.js?v=20260814-promo',
+  'js/translations.js?v=20260814-useful-info',
   'js/subscriptions.js?v=20260814-promo',
   'js/checkout.js?v=20260814-promo',
   'js/account-legacy.js?v=20260814-promo',

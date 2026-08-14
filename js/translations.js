@@ -1,7 +1,7 @@
         // ── TRANSLATIONS ──
         const translations = {
             en: {
-                nav_apm: 'What is APM', nav_map: 'Explore Map', nav_how: 'How it Works', nav_pricing: 'Pricing', nav_cta: 'Get Access',
+                nav_apm: 'What is APM', nav_map: 'Explore Map', nav_how: 'How it Works', nav_pricing: 'Pricing', nav_useful: 'Useful Information', nav_cta: 'Get Access',
                 hero_badge: 'Archaeology × Artificial Intelligence', hero_tagline: 'Saving History Together',
                 hero_desc: 'An Archaeological Prediction Model that automatically identifies high-potential zones for ancient settlements — using topographic, geological, and hydrographic data collected since the dawn of civilization.',
                 hero_btn1: '🗺 Explore the Map', hero_btn2: 'View Membership Plans', scroll: 'Scroll to discover',
@@ -222,7 +222,7 @@
                 ios_bld_search_help_zoom_out: 'Zoom out more',
             },
             ro: {
-                nav_apm: 'Ce este APM', nav_map: 'Explorează Harta', nav_how: 'Cum Funcționează', nav_pricing: 'Prețuri', nav_cta: 'Obține Acces',
+                nav_apm: 'Ce este APM', nav_map: 'Explorează Harta', nav_how: 'Cum Funcționează', nav_pricing: 'Prețuri', nav_useful: 'Informații Utile', nav_cta: 'Obține Acces',
                 hero_badge: 'Arheologie × Inteligență Artificială', hero_tagline: 'Salvăm Istoria Împreună',
                 hero_desc: 'Un Model de Predicție Arheologică care identifică automat zonele cu potențial ridicat pentru așezări antice — folosind date topografice, geologice și hidrografice colectate de la începuturile civilizației.',
                 hero_btn1: '🗺 Explorează Harta', hero_btn2: 'Vezi Planurile de Abonament', scroll: 'Derulează pentru a descoperi',
@@ -523,6 +523,12 @@
             document.querySelectorAll('.t[data-key]').forEach(el => {
                 const key = el.getAttribute('data-key');
                 if (T[key] !== undefined) el.innerHTML = T[key];
+            });
+            // The SEO guide has one indexable URL per language. Keep every
+            // website-only navigation entry pointed at the matching version.
+            document.querySelectorAll('[data-useful-info-link]').forEach(el => {
+                el.href = lang === 'en' ? 'useful-information.html' : 'informatii-utile.html';
+                el.hreflang = lang;
             });
             syncLanguageSelectors(lang);
             updateBillingDisplay();
