@@ -41,52 +41,60 @@
 
     /* ── Views ───────────────────────────────────────────────────── */
 
+    // Every view helper hides all the other cards, so adding a card means
+    // adding it to this list once.
+    var ALL_CARDS = [
+        'coLoginCard', 'coCheckoutCard', 'coRedirectCard', 'coProcessingCard',
+        'coPendingCard', 'coAlreadyCard', 'coSuccessCard', 'coPromoSuccessCard'
+    ];
+
+    function showOnly(id) {
+        ALL_CARDS.forEach(function (cardId) {
+            if (cardId !== id) hide(cardId);
+        });
+        show(id);
+    }
+
     function showLoginRequired() {
-        hide('coCheckoutCard'); hide('coRedirectCard'); hide('coProcessingCard');
-        hide('coPendingCard'); hide('coAlreadyCard'); hide('coSuccessCard');
-        show('coLoginCard');
+        showOnly('coLoginCard');
     }
 
     function showCheckout() {
-        hide('coLoginCard'); hide('coRedirectCard'); hide('coProcessingCard');
-        hide('coPendingCard'); hide('coAlreadyCard'); hide('coSuccessCard');
-        show('coCheckoutCard');
+        showOnly('coCheckoutCard');
     }
 
     function showRedirecting() {
-        hide('coLoginCard'); hide('coCheckoutCard'); hide('coProcessingCard');
-        hide('coPendingCard'); hide('coAlreadyCard'); hide('coSuccessCard');
-        show('coRedirectCard');
+        showOnly('coRedirectCard');
     }
 
     function showProcessing() {
-        hide('coLoginCard'); hide('coCheckoutCard'); hide('coRedirectCard');
-        hide('coPendingCard'); hide('coAlreadyCard'); hide('coSuccessCard');
-        show('coProcessingCard');
+        showOnly('coProcessingCard');
     }
 
     function showPending() {
-        hide('coLoginCard'); hide('coCheckoutCard'); hide('coRedirectCard');
-        hide('coProcessingCard'); hide('coAlreadyCard'); hide('coSuccessCard');
-        show('coPendingCard');
+        showOnly('coPendingCard');
     }
 
     function showAlready(expiresAt) {
-        hide('coLoginCard'); hide('coCheckoutCard'); hide('coRedirectCard');
-        hide('coProcessingCard'); hide('coPendingCard'); hide('coSuccessCard');
-        show('coAlreadyCard');
+        showOnly('coAlreadyCard');
         var d = $('coAlreadyDate');
         if (d) d.textContent = formatDate(expiresAt || currentExpiry());
         applyManageVisibility();
     }
 
     function showSuccess(expiresAt) {
-        hide('coLoginCard'); hide('coCheckoutCard'); hide('coRedirectCard');
-        hide('coProcessingCard'); hide('coPendingCard'); hide('coAlreadyCard');
-        show('coSuccessCard');
+        showOnly('coSuccessCard');
         var d = $('coSuccessDate');
         if (d) d.textContent = formatDate(expiresAt);
         applyManageVisibility();
+    }
+
+    // Free trial / promo unlocked — deliberately a separate card from the
+    // paid success one: no receipt, no "you were charged" wording.
+    function showPromoSuccess(expiresAt) {
+        showOnly('coPromoSuccessCard');
+        var d = $('coPromoSuccessDate');
+        if (d) d.textContent = formatDate(expiresAt);
     }
 
     function currentExpiry() {
@@ -197,6 +205,132 @@
         }
     }
 
+    /* ── Promo code ──────────────────────────────────────────────────
+       Redeeming a valid code unlocks Premium with no payment. All the
+       rules live in the backend (POST /api/promo/redeem); the shared
+       client wrapper is window.redeemPromoCode() in js/subscriptions.js,
+       which also refreshes the profile afterwards.
+       ─────────────────────────────────────────────────────────────── */
+
+    function setPromoMessage(okText, errText) {
+        var okEl = $('coPromoOk');
+        var errEl = $('coPromoErr');
+        if (okEl) {
+            okEl.textContent = okText || '';
+            okEl.style.display = okText ? 'block' : 'none';
+        }
+        if (errEl) {
+            errEl.textContent = errText || '';
+            errEl.style.display = errText ? 'block' : 'none';
+        }
+    }
+
+    function normalizePromoCode(value) {
+        if (typeof window._dlNormalizePromoCode === 'function') {
+            return window._dlNormalizePromoCode(value);
+        }
+        return String(value == null ? '' : value)
+            .trim().toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9_-]/g, '').slice(0, 64);
+    }
+
+    // Set while a redemption is in flight: window.redeemPromoCode() fires
+    // `detectlab:authchange` as soon as Premium is granted, and the
+    // listener below would otherwise flash the "already Premium" card
+    // before we get to show the promo success one.
+    var promoInFlight = false;
+
+    async function redeemPromo() {
+        var input = $('coPromoInput');
+        var btn = $('coPromoBtn');
+        if (!input) return;
+
+        var code = normalizePromoCode(input.value);
+        input.value = code;
+
+        if (!code) {
+            setPromoMessage('', t('promo_err_invalid'));
+            input.focus();
+            return;
+        }
+        if (typeof window.redeemPromoCode !== 'function') {
+            setPromoMessage('', t('promo_err_generic'));
+            return;
+        }
+
+        setPromoMessage('', '');
+        setError(''); setInfo('');
+        if (btn) btn.disabled = true;
+        input.disabled = true;
+        promoInFlight = true;
+
+        var result;
+        try {
+            result = await window.redeemPromoCode(code);
+        } finally {
+            promoInFlight = false;
+            if (btn) btn.disabled = false;
+            input.disabled = false;
+        }
+
+        if (!result.ok) {
+            // The user is already Premium (e.g. bought a month in another
+            // tab) → send them to the card that explains that state.
+            if (result.error === 'already_premium') {
+                showAlready(currentExpiry());
+                return;
+            }
+            setPromoMessage('', result.message);
+            input.focus();
+            input.select();
+            return;
+        }
+
+        showPromoSuccess(result.expiresAt || currentExpiry());
+    }
+
+    function initPromo() {
+        var toggle = $('coPromoToggle');
+        var form = $('coPromoForm');
+        var btn = $('coPromoBtn');
+        var input = $('coPromoInput');
+
+        if (toggle && form) {
+            toggle.addEventListener('click', function () {
+                form.style.display = '';
+                toggle.style.display = 'none';
+                toggle.setAttribute('aria-expanded', 'true');
+                if (input) input.focus();
+            });
+        }
+        if (btn) btn.addEventListener('click', redeemPromo);
+        if (input) {
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    redeemPromo();
+                }
+            });
+            input.addEventListener('input', function () {
+                var pos = input.selectionStart;
+                var next = normalizePromoCode(input.value);
+                if (next !== input.value) {
+                    input.value = next;
+                    try { input.setSelectionRange(pos, pos); } catch (e) {}
+                }
+            });
+        }
+
+        // Deep link: checkout.html?promo=TRIAL24 pre-fills and opens the
+        // form (handy for campaign links in emails / social posts).
+        var fromUrl = normalizePromoCode(getParam('promo') || getParam('code'));
+        if (fromUrl && input && toggle && form) {
+            input.value = fromUrl;
+            form.style.display = '';
+            toggle.style.display = 'none';
+            toggle.setAttribute('aria-expanded', 'true');
+        }
+    }
+
     /* ── Billing portal (manage / cancel / renew) ────────────────── */
 
     async function openPortal() {
@@ -271,6 +405,8 @@
         var payBtn = $('coPayBtn');
         if (payBtn) payBtn.addEventListener('click', payNow);
 
+        initPromo();
+
         var checkAgain = $('coCheckAgainBtn');
         if (checkAgain) {
             checkAgain.addEventListener('click', async function () {
@@ -310,6 +446,7 @@
         }
 
         window.addEventListener('detectlab:authchange', function () {
+            if (promoInFlight) return; // redeemPromo() decides the next view
             var card = $('coCheckoutCard');
             var onCheckoutCard = card && card.style.display !== 'none';
             if (onCheckoutCard && hasUnexpiredPremium()) showAlready(currentExpiry());

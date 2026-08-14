@@ -4,7 +4,7 @@
 
 // Bump this when a client-side data-sync fix ships so installed PWAs replace
 // stale script responses instead of continuing to run an older event client.
-const CACHE_NAME = 'detectlab-v45-sat60-mobile';
+const CACHE_NAME = 'detectlab-v46-promo-codes';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -73,6 +73,14 @@ const PRECACHE_URLS = [
   'js/account-legacy.js?v=20260813-onetime',
   'js/auth.js?v=20260813-onetime',
   'css/checkout.css?v=20260813-onetime',
+  // Promo codes (free-trial redemption in the popup + checkout page).
+  'js/translations.js?v=20260814-promo',
+  'js/subscriptions.js?v=20260814-promo',
+  'js/checkout.js?v=20260814-promo',
+  'js/account-legacy.js?v=20260814-promo',
+  'js/auth.js?v=20260814-promo',
+  'css/checkout.css?v=20260814-promo',
+  'css/styles.css?v=20260814-promo',
   'checkout.html',
   'images/sonar_loading_animation.webp',
   'images/sonar_loading_animation.webp?v=20260729',
