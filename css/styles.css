@@ -3443,24 +3443,28 @@
             position: relative;
             width: 48px;
             height: 92px;
-            border-radius: 24px;
-            background: rgba(10, 25, 48, 0.90);
-            border: 1px solid rgba(184, 216, 240, 0.22);
-            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.48);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            border-radius: 14px;
+            background:
+                radial-gradient(circle at 50% 0%, rgba(107, 63, 160, 0.18), transparent 60%),
+                linear-gradient(180deg, rgba(10, 25, 48, 0.92), rgba(6, 14, 30, 0.95));
+            border: 1px solid rgba(107, 63, 160, 0.35);
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             overflow: hidden;
             cursor: pointer;
             transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
         }
         .detectlab-compass-track:hover {
-            border-color: rgba(184, 216, 240, 0.42);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55), 0 0 12px rgba(107, 63, 160, 0.28);
+            border-color: rgba(160, 112, 232, 0.6);
+            box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55), 0 0 14px rgba(107, 63, 160, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
         }
         .detectlab-compass-track.is-locked {
-            border-color: rgba(232, 119, 42, 0.65);
-            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 12px rgba(232, 119, 42, 0.25);
-            background: rgba(14, 22, 38, 0.94);
+            border-color: rgba(107, 63, 160, 0.75);
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 14px rgba(107, 63, 160, 0.4);
+            background:
+                radial-gradient(circle at 50% 100%, rgba(107, 63, 160, 0.25), transparent 60%),
+                linear-gradient(180deg, rgba(14, 22, 38, 0.94), rgba(10, 16, 34, 0.96));
         }
         .detectlab-compass-lock-dock {
             position: absolute;
@@ -3472,7 +3476,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            border-radius: 50%;
+            border-radius: 12px;
             color: rgba(184, 216, 240, 0.6);
             pointer-events: auto;
             z-index: 1;
@@ -3496,7 +3500,7 @@
         }
         .dl-lock-icon-locked {
             display: none;
-            stroke: #E8772A;
+            stroke: #C4A0F0;
         }
         .detectlab-compass-track.is-locked .dl-lock-icon-unlocked {
             display: none;
@@ -3506,16 +3510,16 @@
         }
         .dl-lock-dock-label {
             font-family: 'Outfit', sans-serif;
-            font-size: 7.5px;
+            font-size: 7px;
             font-weight: 700;
-            letter-spacing: 0.08em;
-            color: rgba(184, 216, 240, 0.55);
+            letter-spacing: 0.1em;
+            color: rgba(184, 216, 240, 0.5);
             margin-top: 1px;
             line-height: 1;
             text-transform: uppercase;
         }
         .detectlab-compass-track.is-locked .dl-lock-dock-label {
-            color: #E8772A;
+            color: #C4A0F0;
         }
         .detectlab-compass-guide {
             position: absolute;
@@ -3524,7 +3528,7 @@
             transform: translate(-50%, -50%);
             pointer-events: none;
             z-index: 0;
-            color: rgba(184, 216, 240, 0.3);
+            color: rgba(160, 112, 232, 0.3);
             font-size: 11px;
             line-height: 1;
         }
@@ -3534,7 +3538,7 @@
         }
         .detectlab-compass-track.is-locked .dl-guide-arrow {
             transform: rotate(180deg);
-            color: rgba(232, 119, 42, 0.5);
+            color: rgba(196, 160, 240, 0.55);
         }
         .detectlab-compass-btn {
             position: absolute;
@@ -3546,14 +3550,14 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(12, 28, 54, 0.96);
-            border: 1px solid rgba(184, 216, 240, 0.28);
-            border-radius: 50%;
+            background: linear-gradient(145deg, rgba(13, 43, 94, 0.95), rgba(10, 25, 48, 0.98));
+            border: 1px solid rgba(107, 63, 160, 0.45);
+            border-radius: 12px;
             color: #B8D8F0;
             cursor: grab;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             z-index: 2;
             transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.15), background 0.2s, border-color 0.2s, box-shadow 0.2s;
             touch-action: none;
@@ -3563,9 +3567,10 @@
             cursor: grabbing;
         }
         .detectlab-compass-btn:hover {
-            background: rgba(107, 63, 160, 0.85);
-            border-color: rgba(184, 216, 240, 0.55);
+            background: linear-gradient(145deg, rgba(107, 63, 160, 0.85), rgba(74, 40, 128, 0.9));
+            border-color: rgba(196, 160, 240, 0.7);
             color: #fff;
+            box-shadow: 0 4px 14px rgba(107, 63, 160, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
         .detectlab-compass-btn:active {
             transform: scale(0.96);
@@ -3575,9 +3580,9 @@
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(196, 43, 43, 0.35);
         }
         .detectlab-compass-btn.is-locked {
-            border-color: rgba(232, 119, 42, 0.85);
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), 0 0 8px rgba(232, 119, 42, 0.4);
-            background: rgba(20, 30, 48, 0.96);
+            border-color: rgba(107, 63, 160, 0.85);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), 0 0 10px rgba(107, 63, 160, 0.45);
+            background: linear-gradient(145deg, rgba(107, 63, 160, 0.35), rgba(13, 43, 94, 0.9));
         }
         .dl-compass-mini-lock {
             position: absolute;
@@ -3585,7 +3590,7 @@
             right: 2px;
             width: 13px;
             height: 13px;
-            background: #E8772A;
+            background: linear-gradient(135deg, #6B3FA0, #8a5fd0);
             border-radius: 50%;
             color: #fff;
             display: flex;
@@ -3595,7 +3600,7 @@
             transform: scale(0.4);
             transition: opacity 0.2s, transform 0.2s;
             pointer-events: none;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 1px 4px rgba(107, 63, 160, 0.6);
         }
         .detectlab-compass-btn.is-locked .dl-compass-mini-lock {
             opacity: 1;
@@ -3615,8 +3620,8 @@
             height: 100%;
         }
         .dl-compass-ring {
-            fill: rgba(184, 216, 240, 0.06);
-            stroke: rgba(184, 216, 240, 0.45);
+            fill: rgba(107, 63, 160, 0.08);
+            stroke: rgba(196, 160, 240, 0.5);
             stroke-width: 1.4;
         }
         .dl-compass-hub {
@@ -3626,7 +3631,7 @@
             fill: #C42B2B;
         }
         .dl-compass-needle-s {
-            fill: rgba(184, 216, 240, 0.72);
+            fill: rgba(196, 160, 240, 0.72);
         }
         .dl-compass-n {
             fill: #F5F0EB;
