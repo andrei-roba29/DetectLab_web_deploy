@@ -348,6 +348,45 @@
             }
             window.uatHasBuildingNear = uatHasBuildingNear;
 
+            // Parse the same decimal latitude/longitude format shown and copied by
+            // DetectLab pins: "45.123456, 24.123456".  The comma separates the two
+            // values; latitude always comes first.  Keep syntax detection separate
+            // from range validation so a coordinate-looking typo gets a useful
+            // message instead of being sent through the place-name search.
+            function parseCoordinateQuery(value) {
+                var match = String(value || '').trim().match(
+                    /^([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))$/
+                );
+                if (!match) return null;
+
+                var lat = Number(match[1]);
+                var lon = Number(match[2]);
+                return {
+                    lat: lat,
+                    lon: lon,
+                    valid: isFinite(lat) && isFinite(lon) &&
+                        lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180
+                };
+            }
+
+            function coordinateSearchItem(value) {
+                var coordinates = parseCoordinateQuery(value);
+                if (!coordinates || !coordinates.valid) return coordinates;
+
+                var formatted = coordinates.lat.toFixed(6) + ', ' + coordinates.lon.toFixed(6);
+                return {
+                    lat: coordinates.lat,
+                    lon: coordinates.lon,
+                    display_name: formatted,
+                    fclass: 'Coordinates / Coordonate',
+                    isCoordinate: true
+                };
+            }
+
+            // Expose the parser for lightweight regression tests and other map UI
+            // integrations without coupling them to the place-name data source.
+            window._parseMapCoordinateQuery = parseCoordinateQuery;
+
             // Funcția principală de search
             function doSearch(q) {
                 var ul = document.getElementById('mapSearchResults');
@@ -355,6 +394,20 @@
 
                 if (searchTerm.length < 2) {
                     closeResults();
+                    return;
+                }
+
+                // Coordinate searches are local and immediate: do not download or
+                // wait for OSM place data when the user pastes coordinates from a pin.
+                var coordinateItem = coordinateSearchItem(searchTerm);
+                if (coordinateItem && coordinateItem.valid === false) {
+                    ul.innerHTML = '<li class="map-search-msg">Invalid coordinates. Latitude must be −90 to 90 and longitude −180 to 180.</li>';
+                    ul.classList.add('open');
+                    selectedIndex = -1;
+                    return;
+                }
+                if (coordinateItem) {
+                    displaySearchResults([coordinateItem], searchTerm);
                     return;
                 }
 
@@ -516,6 +569,14 @@
                     if (clear) clear.classList.toggle('visible', val.length > 0);
                     clearTimeout(searchDebounce);
                     if (val.length < 2) { closeResults(); return; }
+
+                    // Pasted pin coordinates need no remote data, so show the result
+                    // immediately instead of making the user wait for place-search
+                    // debouncing. Invalid coordinate ranges are explained immediately.
+                    if (parseCoordinateQuery(val)) {
+                        doSearch(val);
+                        return;
+                    }
                     searchDebounce = setTimeout(function () { doSearch(val); }, 350);
                 });
 
@@ -523,7 +584,39 @@
                     var items = document.querySelectorAll('#mapSearchResults li[data-idx]');
                     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(selectedIndex + 1, items); }
                     if (e.key === 'ArrowUp') { e.preventDefault(); setActive(selectedIndex - 1, items); }
-                    if (e.key === 'Enter') { e.preventDefault(); if (selectedIndex >= 0 && items[selectedIndex]) items[selectedIndex].click(); }
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+
+                        // A pasted pin coordinate should work immediately on Enter,
+                        // even if the input debounce has not rendered its result yet.
+                        // Check it before any highlighted item, which may belong to the
+                        // previous input value while the user is typing quickly.
+                        var coordinateItem = coordinateSearchItem(searchInput.value);
+                        if (coordinateItem && coordinateItem.valid !== false) {
+                            clearTimeout(searchDebounce);
+                            selectResult(coordinateItem);
+                            return;
+                        }
+                        if (coordinateItem && coordinateItem.valid === false) {
+                            clearTimeout(searchDebounce);
+                            doSearch(searchInput.value);
+                            return;
+                        }
+
+                        if (selectedIndex >= 0 && items[selectedIndex]) {
+                            items[selectedIndex].click();
+                            return;
+                        }
+
+                        // Make Enter useful for place searches too: choose the only
+                        // visible result, or run the pending search immediately.
+                        if (items.length === 1) {
+                            items[0].click();
+                        } else {
+                            clearTimeout(searchDebounce);
+                            doSearch(searchInput.value);
+                        }
+                    }
                     if (e.key === 'Escape') { closeResults(); }
                 });
             }

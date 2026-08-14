@@ -1,10 +1,10 @@
 /* ============================================================
-   DetectLab — Service Worker v1.4.3
+   DetectLab — Service Worker v1.4.4
    ============================================================ */
 
-// Bump this when a client-side data-sync fix ships so installed PWAs replace
-// stale script responses instead of continuing to run an older event client.
-const CACHE_NAME = 'detectlab-v47-event-chat-realtime';
+// Bump this when a client-side feature or data-sync fix ships so installed
+// PWAs replace stale scripts instead of continuing to run an older client.
+const CACHE_NAME = 'detectlab-v48-coordinate-search';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -46,7 +46,7 @@ const PRECACHE_URLS = [
   'js/auth-forms.js',
   'js/account-legacy.js',
   'js/map-app.js',
-  'js/map-app.js?v=20260813-sat60-mobile',
+  'js/map-app.js?v=20260814-coordinate-search',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',
