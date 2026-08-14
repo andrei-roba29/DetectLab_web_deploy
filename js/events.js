@@ -308,6 +308,89 @@
             padding-top: calc(16px + max(32px, env(safe-area-inset-top, 0px)));
             background: #060D1D;
         }
+
+        /* Join anonymous event bar (search-bar look) */
+        .anon-join-bar {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(184,216,240,0.14);
+            border-radius: 12px;
+            padding: 12px;
+        }
+        .anon-join-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: rgba(184,216,240,0.9);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .anon-join-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .anon-join-input-wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(184,216,240,0.25);
+            border-radius: 999px;
+            padding: 8px 14px;
+            transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .anon-join-input-wrap:focus-within {
+            border-color: rgba(196,160,240,0.7);
+            box-shadow: 0 0 0 2px rgba(107,63,160,0.25);
+        }
+        .anon-join-input-wrap .anon-join-icon {
+            opacity: 0.6;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        .anon-join-input {
+            flex: 1;
+            min-width: 0;
+            background: none;
+            border: none;
+            outline: none;
+            color: #F5F0EB;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.88rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        .anon-join-input::placeholder {
+            letter-spacing: normal;
+            text-transform: none;
+            color: rgba(245,240,235,0.45);
+        }
+        .anon-join-btn {
+            border: 1px solid rgba(196,160,240,0.5);
+            background: linear-gradient(135deg, #0D2B5E, #6B3FA0);
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            font-size: 0.78rem;
+            letter-spacing: 0.06em;
+            border-radius: 999px;
+            padding: 9px 18px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .anon-join-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.4); }
+        .anon-join-btn:disabled { opacity: 0.6; cursor: default; transform: none; box-shadow: none; }
+        .anon-join-error {
+            font-size: 0.72rem;
+            color: #ff8a8a;
+            min-height: 0;
+        }
+        .anon-join-error:empty { display: none; }
         `;
         document.head.appendChild(style);
     })();
@@ -609,6 +692,54 @@
         try { await reconcileMyLocalInquiries(user.id); } catch (e) {}
 
         if (removed.length > 0) handleAttendanceRemovals(removed);
+        // Re-render even without removals: newly mirrored attendance rows can
+        // make an anonymous event visible (translucent) on this device.
+        else refreshEventsMap(true);
+    }
+
+    // ── ANONYMOUS EVENTS ──
+    // Anonymous events never render on the map for outsiders. The creator and
+    // anyone who joined via the event code see them with the same helmet
+    // symbol, but translucent. Joining is instant (no inquiry/approval): the
+    // user types the code in the "Join an anonymous event" bar in the Events
+    // panel and is added directly as an attendee; the creator gets notified.
+
+    function generateEventCode() {
+        // 6 chars, unambiguous alphabet (no 0/O/1/I/L).
+        var alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+        var out = '';
+        try {
+            var buf = new Uint32Array(6);
+            window.crypto.getRandomValues(buf);
+            for (var i = 0; i < 6; i++) out += alphabet[buf[i] % alphabet.length];
+            return out;
+        } catch (e) {}
+        for (var j = 0; j < 6; j++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+        return out;
+    }
+
+    function normalizeEventCode(raw) {
+        return String(raw || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    }
+
+    function isAnonymousEvent(ev) {
+        return !!(ev && (ev.is_anonymous === true || ev.is_anonymous === 'true'));
+    }
+
+    function isLocalAttendeeOf(eventId, user) {
+        if (!eventId || !user || !user.id) return false;
+        return getLocalAttendees().some(function (a) {
+            return a && a.event_id === eventId && a.user_id === user.id;
+        });
+    }
+
+    // Visibility rule for map markers: anonymous events are only visible to
+    // their creator and to users who already joined (via code).
+    function canSeeEventOnMap(ev, user) {
+        if (!isAnonymousEvent(ev)) return true;
+        if (!user) return false;
+        if (isEventOwnedByUser(ev, user)) return true;
+        return isLocalAttendeeOf(ev.id, user);
     }
 
     function genUuid() {
@@ -992,14 +1123,23 @@
                 longitude: Number(ev.longitude),
                 event_date: ev.event_date,
                 max_attendees: ev.max_attendees || null,
+                is_anonymous: !!ev.is_anonymous,
+                event_code: ev.event_code || null,
                 created_at: ev.created_at || new Date().toISOString()
             };
             var res = await window.supabaseClient.from('events').upsert([payload], { onConflict: 'id' });
             if (res && res.error) {
                 if (isMissingColumnError(res.error)) {
-                    // Schema drift: the live `events` table is missing pin_id / category / creator_email.
+                    // Schema drift: the live `events` table is missing newer columns.
                     // Retry with the base columns that exist on the older table so the event row
                     // actually lands in the DB and join requests can reference it.
+                    if (ev.is_anonymous) {
+                        // NEVER sync an anonymous event through the base payload:
+                        // without the is_anonymous column it would become a public
+                        // event visible on everyone's map.
+                        console.error('[Events] Server events table is missing the is_anonymous/event_code columns; anonymous event kept local-only. Apply migration 20260814020000_anonymous_events.sql.');
+                        return { ok: false, reason: 'schema-missing-anonymous', error: res.error };
+                    }
                     console.warn('[Events] Server events table is missing newer columns; retrying with base columns. Apply migration 20260811010000_fix_events_schema_drift.sql for full sync. Detail:', res.error.message);
                     var basePayload = {
                         id: ev.id,
@@ -1193,7 +1333,13 @@
 
         eventsLayer.clearLayers();
 
+        var currentUser = getCurrentUser();
+
         eventsData.forEach(function (ev) {
+            // Anonymous events stay off the map for everyone except the
+            // creator and users who already joined via the event code.
+            if (!canSeeEventOnMap(ev, currentUser)) return;
+
             var color = getEventColor(ev.event_date);
             var helmetSvg = '<svg width="28" height="28" viewBox="0 0 24 24" fill="' + color + '" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
                 '<path d="M12 2C8 2 5 5 5 9v4c0 3 2 5 4 6v2h6v-2c2-1 4-3 4-6V9c0-4-3-7-7-7z"/>' +
@@ -1202,8 +1348,10 @@
                 '<path d="M10 14l2 3 2-3" stroke="#fff" stroke-width="1.5"/>' +
                 '</svg>';
 
+            // Same symbol, translucent, for anonymous events.
+            var anonStyle = isAnonymousEvent(ev) ? ' opacity: 0.45;' : '';
             var icon = L.divIcon({
-                html: '<div style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); cursor: pointer;">' + helmetSvg + '</div>',
+                html: '<div style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); cursor: pointer;' + anonStyle + '">' + helmetSvg + '</div>',
                 className: 'warrior-helmet-marker',
                 iconSize: [28, 28],
                 iconAnchor: [14, 14]
@@ -1235,7 +1383,16 @@
             alreadyAttending = localAtts.some(function(a) { return a.event_id === ev.id && a.user_id === user.id; });
         }
 
+        var anonBadge = '';
+        if (isAnonymousEvent(ev)) {
+            anonBadge = '<div style="display:inline-block; background: rgba(107,63,160,0.25); border: 1px solid rgba(196,160,240,0.45); border-radius: 4px; color: #c4a0f0; font-size: 0.66rem; font-weight: 700; padding: 2px 6px; margin-bottom: 5px;">🕶 Eveniment anonim / Anonymous event</div>';
+            if (isCreator && ev.event_code) {
+                anonBadge += '<div style="font-size: 0.72rem; color: #E8D0FF; margin-bottom: 5px;">🔑 Cod / Code: <strong style="letter-spacing:0.1em;">' + escapeHtml(ev.event_code) + '</strong></div>';
+            }
+        }
+
         var html = '<div style="min-width: 220px; font-family: \'Outfit\', sans-serif;">' +
+            anonBadge +
             '<div style="font-weight: 700; font-size: 0.95rem; color: #F5F0EB; margin-bottom: 4px;">' + escapeHtml(ev.title) + '</div>' +
             '<div style="font-size: 0.76rem; color: rgba(184,216,240,0.8); margin-bottom: 6px;">' + escapeHtml(ev.description || '') + '</div>' +
             '<div style="font-size: 0.72rem; color: ' + color + '; font-weight: 600; margin-bottom: 4px;">📅 ' + dateStr + '</div>' +
@@ -1310,6 +1467,15 @@
             '<div><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Categorie' : 'Category') + '</label><select id="ceCategory" style="width:100%; padding:8px; background:rgba(10,20,42,0.95); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.82rem;"><option value="Metal Detecting">Metal Detecting</option><option value="Treasure Hunt">Treasure Hunt</option><option value="Archaeology">Archaeology</option><option value="Community Meetup">Community Meetup</option><option value="Other">Other</option></select></div>' +
             '<div><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Max participanți' : 'Max attendees') + '</label><input type="number" id="ceMax" min="1" placeholder="' + (isRo ? 'Fără limită' : 'No limit') + '" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;"></div>' +
             '</div>' +
+            '<div style="margin-bottom:12px; background:rgba(107,63,160,0.12); border:1px solid rgba(196,160,240,0.3); border-radius:6px; padding:10px;">' +
+            '<label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size:0.78rem;">' +
+            '<input type="checkbox" id="ceAnonymous" style="margin-top:2px; accent-color:#6B3FA0; cursor:pointer;">' +
+            '<span><strong>🕶 ' + (isRo ? 'Eveniment anonim' : 'Anonymous event') + '</strong><br>' +
+            '<span style="font-size:0.7rem; opacity:0.75;">' + (isRo
+                ? 'Nu apare pe hartă. Participanții intră instant cu un cod de eveniment, fără cerere de participare.'
+                : 'Does not appear on the map. Participants join instantly with an event code, no join request needed.') + '</span></span>' +
+            '</label>' +
+            '</div>' +
             '<div id="ceError" style="font-size:0.76rem; color:#ff8a8a; margin-bottom:10px;"></div>' +
             '<div style="display:flex; gap:10px;"><button type="button" id="ceSubmitBtn" style="flex:1; background:#6B3FA0; border:none; border-radius:6px; color:#fff; font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Salvează Evenimentul' : 'Save Event') + '</button><button type="button" id="ceCancelBtn" style="background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; padding:10px; cursor:pointer;">' + (isRo ? 'Anulează' : 'Cancel') + '</button></div>' +
             '</div>';
@@ -1326,6 +1492,8 @@
             var timeVal = document.getElementById('ceTime').value || '10:00';
             var categoryVal = document.getElementById('ceCategory').value;
             var maxStr = document.getElementById('ceMax').value;
+            var anonEl = document.getElementById('ceAnonymous');
+            var isAnonymous = !!(anonEl && anonEl.checked);
             var errEl = document.getElementById('ceError');
 
             if (!title || !dateVal) {
@@ -1376,6 +1544,8 @@
                 longitude: Number(lng),
                 event_date: eventDate.toISOString(),
                 max_attendees: maxStr ? parseInt(maxStr, 10) : null,
+                is_anonymous: isAnonymous,
+                event_code: isAnonymous ? generateEventCode() : null,
                 created_at: new Date().toISOString()
             };
 
@@ -1394,10 +1564,20 @@
             modal.remove();
 
             if (savedToServer && savedToServer.ok) {
-                alert(isRo ? 'Eveniment creat cu succes!' : 'Event created successfully!');
+                if (isAnonymous && newEvent.event_code) {
+                    alert(isRo
+                        ? 'Eveniment anonim creat cu succes!\n\n🔑 Codul evenimentului: ' + newEvent.event_code + '\n\nTrimite acest cod persoanelor pe care vrei să le inviți. Ele îl pot introduce în bara „Participă la un eveniment anonim” din secțiunea Evenimente.'
+                        : 'Anonymous event created successfully!\n\n🔑 Event code: ' + newEvent.event_code + '\n\nShare this code with the people you want to invite. They can enter it in the "Join an anonymous event" bar in the Events section.');
+                } else {
+                    alert(isRo ? 'Eveniment creat cu succes!' : 'Event created successfully!');
+                }
                 if (savedToServer.partial) {
                     console.warn('[Events] Event synced without pin_id/category/creator_email (older server schema).');
                 }
+            } else if (isAnonymous && savedToServer && savedToServer.reason === 'schema-missing-anonymous') {
+                alert(isRo
+                    ? '⚠️ Evenimentul anonim a fost creat doar local: serverul nu suportă încă evenimente anonime (migrația lipsește). Ceilalți nu se vor putea alătura cu codul până la actualizarea serverului.\n\n🔑 Codul evenimentului: ' + newEvent.event_code
+                    : '⚠️ The anonymous event was created locally only: the server does not support anonymous events yet (missing migration). Others cannot join with the code until the server is updated.\n\n🔑 Event code: ' + newEvent.event_code);
             } else {
                 alert(isRo
                     ? 'Eveniment creat local. Alți utilizatori nu îl vor vedea până când conexiunea la server nu este restabilită.'
@@ -1747,6 +1927,201 @@
         });
     };
 
+    // ── JOIN ANONYMOUS EVENT BY CODE ──
+    // No inquiry / approval round-trip: the user is added to event_attendees
+    // immediately and the creator receives a notification.
+    window._joinAnonymousEvent = async function () {
+        var isRo = (window._currentLang && window._currentLang() === 'ro');
+        var input = document.getElementById('anonJoinInput');
+        var errEl = document.getElementById('anonJoinError');
+        var btn = document.getElementById('anonJoinBtn');
+        var setErr = function (msg) { if (errEl) errEl.textContent = msg; };
+        setErr('');
+
+        var user = getCurrentUser();
+        if (!user || !user.id) {
+            if (typeof window.openAuth === 'function') window.openAuth('login');
+            return;
+        }
+
+        var code = normalizeEventCode(input ? input.value : '');
+        if (!code) {
+            setErr(isRo ? 'Introdu codul evenimentului.' : 'Enter the event code.');
+            return;
+        }
+
+        if (btn) { btn.disabled = true; btn.textContent = isRo ? 'SE CAUTĂ…' : 'SEARCHING…'; }
+        var restoreBtn = function () {
+            if (btn) { btn.disabled = false; btn.textContent = isRo ? 'PARTICIPĂ' : 'JOIN'; }
+        };
+
+        // Find the event by code: server first, local cache as fallback.
+        var ev = null;
+        try {
+            if (window.supabaseClient) {
+                var res = await window.supabaseClient
+                    .from('events')
+                    .select('*')
+                    .eq('event_code', code)
+                    .limit(1);
+                if (res && !res.error && Array.isArray(res.data) && res.data[0]) {
+                    ev = res.data[0];
+                } else if (res && res.error) {
+                    console.warn('[Events] Anonymous event lookup failed:', res.error);
+                }
+            }
+        } catch (e) {
+            console.warn('[Events] Anonymous event lookup error:', e);
+        }
+        if (!ev) {
+            var allLocal = eventsData.slice();
+            getLocalEvents().forEach(function (le) {
+                if (le && !allLocal.some(function (x) { return x.id === le.id; })) allLocal.push(le);
+            });
+            ev = allLocal.find(function (e) {
+                return e && e.event_code && normalizeEventCode(e.event_code) === code;
+            }) || null;
+        }
+
+        if (!ev) {
+            restoreBtn();
+            setErr(isRo ? 'Niciun eveniment găsit cu acest cod.' : 'No event found with this code.');
+            return;
+        }
+
+        if (isEventExpired(ev.event_date)) {
+            restoreBtn();
+            setErr(isRo ? 'Acest eveniment a expirat.' : 'This event has expired.');
+            return;
+        }
+
+        if (isEventOwnedByUser(ev, user)) {
+            restoreBtn();
+            setErr(isRo ? 'Ești creatorul acestui eveniment.' : 'You are the creator of this event.');
+            return;
+        }
+
+        // Already an attendee?
+        var alreadyAttendee = isLocalAttendeeOf(ev.id, user);
+        if (!alreadyAttendee) {
+            try {
+                if (window.supabaseClient) {
+                    var attRes = await window.supabaseClient
+                        .from('event_attendees')
+                        .select('id')
+                        .eq('event_id', ev.id)
+                        .eq('user_id', user.id)
+                        .limit(1);
+                    if (attRes && !attRes.error && Array.isArray(attRes.data) && attRes.data.length > 0) {
+                        alreadyAttendee = true;
+                    }
+                }
+            } catch (e) {}
+        }
+        if (alreadyAttendee) {
+            restoreBtn();
+            setErr(isRo ? 'Participi deja la acest eveniment.' : 'You are already attending this event.');
+            return;
+        }
+
+        // Max attendees limit
+        if (ev.max_attendees) {
+            try {
+                var counts = await fetchAttendeeCounts([ev.id]);
+                if ((counts[ev.id] || 0) >= Number(ev.max_attendees)) {
+                    restoreBtn();
+                    setErr(isRo ? 'Evenimentul a atins numărul maxim de participanți.' : 'The event has reached its maximum number of attendees.');
+                    return;
+                }
+            } catch (e) {}
+        }
+
+        // 1-event-per-day rule (same as approved joins)
+        var conflictMsg = await checkAttendanceConflict(user.id, ev.event_date, ev.id);
+        if (conflictMsg) {
+            restoreBtn();
+            setErr(conflictMsg);
+            return;
+        }
+
+        // Make sure the event is in the local caches so the map/calendar can
+        // render it for this (now participating) user.
+        if (!eventsData.some(function (x) { return x.id === ev.id; })) {
+            eventsData.push(ev);
+            saveLocalEvents(eventsData);
+        }
+
+        var attendee = {
+            id: genUuid(),
+            event_id: ev.id,
+            user_id: user.id,
+            user_name: user.name || (user.email ? user.email.split('@')[0] : 'User'),
+            joined_at: new Date().toISOString()
+        };
+
+        var joinedOnServer = false;
+        try {
+            if (window.supabaseClient) {
+                var insRes = await window.supabaseClient.from('event_attendees').insert([attendee]);
+                if (insRes && insRes.error) {
+                    console.error('[Events] Anonymous join insert failed:', insRes.error);
+                } else {
+                    joinedOnServer = true;
+                }
+            }
+        } catch (e) {
+            console.error('[Events] Anonymous join insert error:', e);
+        }
+
+        // Mirror locally so the user is a participant immediately.
+        var atts = getLocalAttendees();
+        if (!atts.some(function (a) { return a.event_id === ev.id && a.user_id === user.id; })) {
+            atts.push(attendee);
+            saveLocalAttendees(atts);
+        }
+
+        // Notify the creator that someone joined their anonymous event.
+        if (joinedOnServer || !window.supabaseClient) {
+            try {
+                await createOutcomeNotification({
+                    userId: ev.creator_id,
+                    eventId: ev.id,
+                    inquiryId: null,
+                    senderId: user.id,
+                    senderName: attendee.user_name,
+                    message: isRo
+                        ? '🎟 ' + attendee.user_name + ' s-a alăturat evenimentului tău anonim «' + (ev.title || '') + '» folosind codul de participare.'
+                        : '🎟 ' + attendee.user_name + ' joined your anonymous event "' + (ev.title || '') + '" using the join code.'
+                });
+            } catch (e) {
+                console.error('[Events] Failed to notify creator about anonymous join:', e);
+            }
+        }
+
+        // Chat becomes available right away.
+        try { await syncEventChatState(ev.id); } catch (e) {}
+
+        refreshEventsMap(true);
+        try { if (window._updateEventBadges) window._updateEventBadges(); } catch (e) {}
+        try {
+            var attendingMap = await getAttendingMapAsync();
+            renderCalendar(attendingMap);
+        } catch (e) {}
+
+        if (input) input.value = '';
+        restoreBtn();
+
+        if (window.supabaseClient && !joinedOnServer) {
+            alert(isRo
+                ? '⚠️ Participarea a fost salvată doar pe acest dispozitiv — serverul a respins operațiunea. Creatorul nu a fost notificat. Verifică consola browserului (F12).'
+                : '⚠️ Your participation was only saved on this device — the server rejected the change. The creator was not notified. Check the browser console (F12).');
+        } else {
+            alert(isRo
+                ? '✅ Te-ai alăturat evenimentului «' + (ev.title || '') + '»! Creatorul a fost notificat, iar evenimentul apare acum (translucid) pe harta ta.'
+                : '✅ You joined the event "' + (ev.title || '') + '"! The creator was notified and the event now appears (translucent) on your map.');
+        }
+    };
+
     // Manage Event / Creator Panel
     window._manageEvent = function (eventId) {
         var ev = eventsData.find(function (e) { return e.id === eventId; });
@@ -1764,8 +2139,17 @@
         var modalBox = document.createElement('div');
         modalBox.style.cssText = 'background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.25); border-radius: 12px; width: 100%; max-width: 500px; max-height: 85vh; overflow-y: auto; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.6);';
         
+        var meAnonInfo = '';
+        if (isAnonymousEvent(ev)) {
+            meAnonInfo = '<div style="background:rgba(107,63,160,0.18); border:1px solid rgba(196,160,240,0.4); border-radius:6px; padding:8px 12px; margin-bottom:12px; font-size:0.78rem; color:#E8D0FF;">' +
+                '🕶 ' + (isRo ? 'Eveniment anonim (nu apare pe hartă).' : 'Anonymous event (hidden from the map).') +
+                (ev.event_code ? ('<br>🔑 ' + (isRo ? 'Cod de participare:' : 'Join code:') + ' <strong style="letter-spacing:0.12em; font-size:0.9rem;">' + escapeHtml(ev.event_code) + '</strong>') : '') +
+                '</div>';
+        }
+
         modalBox.innerHTML = '<h3 style="margin-top:0; font-size:1.1rem; color:var(--sky); font-family:\'Cinzel\',serif;">' + escapeHtml(ev.title) + '</h3>' +
             '<div style="font-size:0.78rem; opacity:0.7; margin-bottom:12px;">📅 ' + formatDate(ev.event_date) + '</div>' +
+            meAnonInfo +
             '<div style="display:flex; gap:10px; margin-bottom:16px;">' +
             '<button type="button" id="meDeleteBtn" style="background:rgba(196,43,43,0.3); border:1px solid rgba(196,43,43,0.6); border-radius:6px; color:#ff8a8a; padding:6px 12px; font-size:0.76rem; cursor:pointer; font-weight:600;">' + (isRo ? 'Șterge Evenimentul' : 'Delete Event') + '</button>' +
             '<button type="button" id="meCloseBtn" style="background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; padding:6px 12px; font-size:0.76rem; cursor:pointer;">' + (isRo ? 'Închide' : 'Close') + '</button>' +
@@ -2354,6 +2738,10 @@
         // current user and has an outcome status, this is about THEIR request. This needs
         // no schema change and is robust against the deployed DB lagging the latest migration.
         var kind = 'inquiry';
+        // Notifications without a related inquiry are purely informational
+        // (anonymous-event join announcements, kick-out notices): there is
+        // nothing to accept or decline.
+        if (!notif.inquiry_id) kind = 'info';
         try {
             if (notif.inquiry_id) {
                 if (window.supabaseClient) {
@@ -2409,6 +2797,36 @@
             });
             if (closeBtn) closeBtn.addEventListener('click', dismissAccepted);
             modal.addEventListener('click', function (e) { if (e.target === modal) dismissAccepted(); });
+            return;
+        }
+
+        if (kind === 'info') {
+            modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.3); border-radius: 12px; width: 100%; max-width: 420px; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.7); animation: pwaDropUp 0.3s ease;">' +
+                '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:1.4rem;">🔔</span><h3 style="margin:0; font-size:1.1rem; color:var(--sky); font-family:\'Cinzel\',serif;">' + (isRo ? 'Notificare Eveniment' : 'Event Notification') + '</h3></div>' +
+                '<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(184,216,240,0.2); border-radius:6px; padding:10px; font-size:0.84rem; margin-bottom:14px;">' + escapeHtml(notif.message || '') + '</div>' +
+                '<div style="display:flex; gap:10px;">' +
+                (notif.event_id ? '<button type="button" id="notifInfoManageBtn" style="flex:1; background:#0D2B5E; border:1px solid rgba(184,216,240,0.3); border-radius:6px; color:var(--sky); font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Vezi Evenimentul' : 'View Event') + '</button>' : '') +
+                '<button type="button" id="notifCloseBtn" style="flex:1; background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Închide' : 'Close') + '</button></div>' +
+                '</div>';
+
+            document.body.appendChild(modal);
+            var dismissInfo = async function () { await markNotifRead(notif.id); modal.remove(); };
+            var closeBtnInfo = modal.querySelector('#notifCloseBtn');
+            if (closeBtnInfo) closeBtnInfo.addEventListener('click', dismissInfo);
+            var manageBtnInfo = modal.querySelector('#notifInfoManageBtn');
+            if (manageBtnInfo) manageBtnInfo.addEventListener('click', async function () {
+                manageBtnInfo.disabled = true;
+                await markNotifRead(notif.id);
+                modal.remove();
+                var evInfo = getEventById(notif.event_id);
+                var userInfo = getCurrentUser();
+                if (evInfo && isEventOwnedByUser(evInfo, userInfo) && typeof window._manageEvent === 'function') {
+                    window._manageEvent(notif.event_id);
+                } else if (typeof window._openEventChat === 'function') {
+                    window._openEventChat(notif.event_id);
+                }
+            });
+            modal.addEventListener('click', function (e) { if (e.target === modal) dismissInfo(); });
             return;
         }
 
@@ -2929,6 +3347,17 @@
                     '<div class="cal-selected-events" id="calSelectedEvents"><div style="font-size:0.8rem;opacity:0.6;">'+(isRo?'Se încarcă evenimentele…':'Loading events…')+'</div></div>'+
                     '<div class="cal-footer">'+
                         '<button class="cal-chats-btn" id="calChatsBtn" type="button" onclick="window._openChatsFromCalendar()"><span>💬 '+(isRo?'Chat-uri Evenimente':'Event Chats')+'</span><span id="calChatsCount" style="opacity:0.9;font-size:0.8rem;"></span><span class="event-notif-badge hidden" id="calChatsBadge">0</span></button>'+
+                        '<div class="anon-join-bar">'+
+                            '<div class="anon-join-label">🕶 '+(isRo?'Participă la un eveniment anonim':'Join an anonymous event')+'</div>'+
+                            '<div class="anon-join-row">'+
+                                '<div class="anon-join-input-wrap">'+
+                                    '<span class="anon-join-icon">🔍</span>'+
+                                    '<input type="text" class="anon-join-input" id="anonJoinInput" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="'+(isRo?'Introdu codul evenimentului…':'Enter the event code…')+'">'+
+                                '</div>'+
+                                '<button type="button" class="anon-join-btn" id="anonJoinBtn">'+(isRo?'PARTICIPĂ':'JOIN')+'</button>'+
+                            '</div>'+
+                            '<div class="anon-join-error" id="anonJoinError"></div>'+
+                        '</div>'+
                     '</div>'+
                 '</div>'+
 
@@ -2945,6 +3374,20 @@
         calCurrent = new Date();
         calSelectedDateStr = formatYMD(new Date());
         calViewMode = 'calendar';
+
+        // Join an anonymous event bar
+        var anonJoinBtn = document.getElementById('anonJoinBtn');
+        var anonJoinInput = document.getElementById('anonJoinInput');
+        if (anonJoinBtn) anonJoinBtn.addEventListener('click', function () { window._joinAnonymousEvent(); });
+        if (anonJoinInput) {
+            anonJoinInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') window._joinAnonymousEvent();
+            });
+            anonJoinInput.addEventListener('input', function () {
+                var errEl = document.getElementById('anonJoinError');
+                if (errEl) errEl.textContent = '';
+            });
+        }
 
         try {
             await fetchEvents();
