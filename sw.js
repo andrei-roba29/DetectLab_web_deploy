@@ -1,10 +1,10 @@
 /* ============================================================
-   DetectLab — Service Worker v1.4.2
+   DetectLab — Service Worker v1.4.3
    ============================================================ */
 
 // Bump this when a client-side data-sync fix ships so installed PWAs replace
 // stale script responses instead of continuing to run an older event client.
-const CACHE_NAME = 'detectlab-v46-promo-codes';
+const CACHE_NAME = 'detectlab-v47-event-chat-realtime';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -39,6 +39,7 @@ const PRECACHE_URLS = [
   'js/leaflet-measure.js',
   'js/Autolinker.min.js',
   'js/supabase.js',
+  'js/events.js?v=20260814-chat-realtime',
   'js/auth.js',
   'js/auth.js?v=20260729',
   'js/auth.js?v=20260730',

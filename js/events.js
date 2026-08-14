@@ -15,6 +15,12 @@
     let eventsData = [];
     let activeChatEventId = null;
     let activeChatDeadlineTimer = null;
+    let activeChatRealtimeChannel = null;
+    let activeChatRefreshTimer = null;
+    let activeChatRefreshPromise = null;
+    let activeChatRefreshEventId = null;
+    let activeChatRefreshQueued = false;
+    let activeChatRealtimeGeneration = 0;
 
     // ── CHAT LAST SEEN TRACKING ──
     function getChatLastSeenMap() {
@@ -710,7 +716,9 @@
 
     window._closeEventChatModal = function () {
         clearActiveChatDeadlineTimer();
+        stopActiveChatLiveUpdates();
         activeChatEventId = null;
+        activeChatRefreshQueued = false;
         var modal = document.getElementById('eventChatModal');
         if (modal) modal.remove();
     };
@@ -2983,6 +2991,165 @@
 
 
     // ── EVENT CHAT SYSTEM ──
+    // Keep a small local mirror of messages received through Realtime. This
+    // gives the renderer an immediate fallback if the follow-up SELECT is
+    // briefly delayed or the device loses its connection at that moment.
+    function upsertLocalChatMessage(message) {
+        if (!message || !message.event_id) return;
+        var messages = getLocalMessages();
+        var idx = messages.findIndex(function (existing) {
+            return message.id && existing.id === message.id;
+        });
+        if (idx === -1) messages.push(message);
+        else messages[idx] = Object.assign({}, messages[idx], message);
+        saveLocalMessages(messages);
+    }
+
+    function cacheRemoteChatMessages(eventId, messages) {
+        if (!eventId || !Array.isArray(messages) || messages.length === 0) return;
+        var localMessages = getLocalMessages();
+        var indexesById = {};
+        localMessages.forEach(function (message, index) {
+            if (message && message.id) indexesById[message.id] = index;
+        });
+        messages.forEach(function (message) {
+            if (!message || message.event_id !== eventId) return;
+            var idx = message.id ? indexesById[message.id] : undefined;
+            if (typeof idx === 'number') {
+                localMessages[idx] = Object.assign({}, localMessages[idx], message);
+            } else {
+                localMessages.push(message);
+                if (message.id) indexesById[message.id] = localMessages.length - 1;
+            }
+        });
+        saveLocalMessages(localMessages);
+    }
+
+    // Serialize refreshes so an older SELECT cannot finish after a newer one
+    // and overwrite the chat with stale markup. Realtime events received while
+    // a refresh is running queue one more read.
+    async function refreshActiveChatMessages(eventId) {
+        if (!eventId || activeChatEventId !== eventId) return;
+
+        if (activeChatRefreshPromise) {
+            if (activeChatRefreshEventId === eventId) {
+                activeChatRefreshQueued = true;
+                return activeChatRefreshPromise;
+            }
+            // A previous chat may still be finishing a request after its modal
+            // was closed. Wait for it, then refresh the newly opened chat.
+            try { await activeChatRefreshPromise; } catch (e) {}
+            if (activeChatEventId !== eventId) return;
+        }
+
+        activeChatRefreshEventId = eventId;
+        activeChatRefreshQueued = false;
+        activeChatRefreshPromise = loadChatMessages(eventId);
+        try {
+            await activeChatRefreshPromise;
+            if (activeChatEventId === eventId && !document.hidden && document.getElementById('eventChatModal')) {
+                try { setLastSeen(eventId); } catch (e) {}
+            }
+        } catch (e) {
+            console.warn('[Events] Could not refresh active event chat:', e);
+        } finally {
+            activeChatRefreshPromise = null;
+            activeChatRefreshEventId = null;
+        }
+
+        if (activeChatRefreshQueued && activeChatEventId === eventId) {
+            activeChatRefreshQueued = false;
+            return refreshActiveChatMessages(eventId);
+        }
+    }
+
+    function stopActiveChatLiveUpdates() {
+        activeChatRealtimeGeneration += 1;
+        if (activeChatRefreshTimer) {
+            clearInterval(activeChatRefreshTimer);
+            activeChatRefreshTimer = null;
+        }
+
+        var channel = activeChatRealtimeChannel;
+        activeChatRealtimeChannel = null;
+        if (!channel) return;
+
+        try {
+            if (window.supabaseClient && typeof window.supabaseClient.removeChannel === 'function') {
+                window.supabaseClient.removeChannel(channel);
+            } else if (typeof channel.unsubscribe === 'function') {
+                channel.unsubscribe();
+            }
+        } catch (e) {
+            console.warn('[Events] Could not close event chat Realtime channel:', e);
+        }
+    }
+
+    function startActiveChatLiveUpdates(eventId) {
+        stopActiveChatLiveUpdates();
+        if (!eventId || activeChatEventId !== eventId) return;
+
+        var generation = activeChatRealtimeGeneration;
+        var client = window.supabaseClient;
+
+        // Realtime is the primary path. The short poll is an intentional
+        // safety net for mobile websocket suspension, temporary disconnects,
+        // and deployments where the Realtime publication has not refreshed
+        // yet. It only runs while a chat modal is open.
+        activeChatRefreshTimer = setInterval(function () {
+            if (generation !== activeChatRealtimeGeneration || activeChatEventId !== eventId) return;
+            if (document.hidden) return;
+            refreshActiveChatMessages(eventId);
+        }, 2500);
+
+        if (!client || typeof client.channel !== 'function') return;
+
+        try {
+            var channel = client
+                .channel('event-chat-' + eventId + '-' + generation)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'event_chat_messages',
+                        filter: 'event_id=eq.' + eventId
+                    },
+                    function (payload) {
+                        if (generation !== activeChatRealtimeGeneration || activeChatEventId !== eventId) return;
+                        var message = payload && payload.new;
+                        if (!message || message.event_id !== eventId) return;
+
+                        // Cache before fetching so the incoming message can be
+                        // rendered even if the immediate SELECT has a transient
+                        // failure. Dedupe by id also handles our own INSERT.
+                        upsertLocalChatMessage(message);
+                        if (!document.hidden && document.getElementById('eventChatModal')) {
+                            try { setLastSeen(eventId); } catch (e) {}
+                        }
+                        refreshActiveChatMessages(eventId);
+                        try { if (window._updateEventBadges) window._updateEventBadges(); } catch (e) {}
+                    }
+                );
+
+            activeChatRealtimeChannel = channel;
+            channel.subscribe(function (status) {
+                if (generation !== activeChatRealtimeGeneration || activeChatEventId !== eventId) return;
+                if (status === 'SUBSCRIBED') {
+                    // Close the SELECT/subscription race: once the server says
+                    // the stream is live, read once more for any message sent
+                    // while the channel was connecting.
+                    refreshActiveChatMessages(eventId);
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.warn('[Events] Event chat Realtime unavailable; live polling remains active.');
+                }
+            });
+        } catch (e) {
+            activeChatRealtimeChannel = null;
+            console.warn('[Events] Could not start event chat Realtime; live polling remains active:', e);
+        }
+    }
+
     window._openEventChat = async function (eventId) {
         await maybeCleanupExpiredEventChats();
 
@@ -3032,6 +3199,8 @@
             return;
         }
 
+        clearActiveChatDeadlineTimer();
+        stopActiveChatLiveUpdates();
         activeChatEventId = eventId;
 
         var existing = document.getElementById('eventChatModal');
@@ -3065,6 +3234,11 @@
         modal.appendChild(box);
         document.body.appendChild(modal);
 
+        // Subscribe before the initial history read. A second read runs when
+        // the channel reaches SUBSCRIBED, which prevents messages sent during
+        // channel setup from falling through a timing gap.
+        startActiveChatLiveUpdates(eventId);
+
         // Make sure the SERVER-side `event_chats` row exists before we read
         // the message history. `ensure_event_chat_for_event` is security
         // definer, so it works even when the client-side upsert above was
@@ -3079,7 +3253,7 @@
             console.warn('[Events] ensure_event_chat_for_event failed:', e);
         }
 
-        await loadChatMessages(eventId);
+        await refreshActiveChatMessages(eventId);
         startEventChatDeadlineTimer(ev);
 
         var chatInput = document.getElementById('chatInput');
@@ -3131,9 +3305,14 @@
         }
 
         var msgs = fetched.msgs;
-        if (msgs.length === 0) {
+        if (msgs.length > 0) {
+            cacheRemoteChatMessages(eventId, msgs);
+        } else {
             msgs = getLocalMessages().filter(function(m) { return m.event_id === eventId; });
         }
+        msgs = msgs.slice().sort(function (a, b) {
+            return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+        });
 
         var html = '';
         if (msgs.length === 0) {
@@ -3211,7 +3390,7 @@
         input.value = '';
         try { setLastSeen(activeChatEventId); } catch (e) {}
         try { if (window._updateEventBadges) window._updateEventBadges(); } catch (e) {}
-        loadChatMessages(activeChatEventId);
+        refreshActiveChatMessages(activeChatEventId);
     };
 
     window._handleChatMedia = async function (input) {
@@ -3264,7 +3443,7 @@
             msgs.push(msg);
             saveLocalMessages(msgs);
 
-            loadChatMessages(activeChatEventId);
+            refreshActiveChatMessages(activeChatEventId);
         };
         reader.readAsDataURL(file);
     };
@@ -3329,7 +3508,24 @@
         setInterval(pollSharedEventState, 30000);
         // Also refresh as soon as the user comes back to the tab.
         document.addEventListener('visibilitychange', function () {
-            if (!document.hidden) pollSharedEventState();
+            if (!document.hidden) {
+                pollSharedEventState();
+                if (activeChatEventId) {
+                    var eventId = activeChatEventId;
+                    try { setLastSeen(eventId); } catch (e) {}
+                    // Mobile browsers commonly suspend websocket connections
+                    // in the background. Recreate the filtered channel and
+                    // immediately catch up when the chat becomes visible.
+                    startActiveChatLiveUpdates(eventId);
+                    refreshActiveChatMessages(eventId);
+                }
+            }
+        });
+        window.addEventListener('online', function () {
+            if (!activeChatEventId) return;
+            var eventId = activeChatEventId;
+            startActiveChatLiveUpdates(eventId);
+            refreshActiveChatMessages(eventId);
         });
         // Observe DOM changes for dynamically created user menus (PWA dropdowns)
         if (window.MutationObserver) {
@@ -3340,6 +3536,9 @@
 
     // Rebuild event markers and check notifications when auth state changes (login / logout / token refresh)
     window.addEventListener('detectlab:authchange', async function () {
+        if (!getCurrentUser() && activeChatEventId) {
+            window._closeEventChatModal();
+        }
         await fetchEvents();
         try { await syncMyEventStateFromServer(); } catch (e) {}
         refreshEventsMap(true);
