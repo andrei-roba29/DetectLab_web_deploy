@@ -790,12 +790,8 @@
         saveLocalMessages(getLocalMessages().filter(function (msg) { return msg.event_id !== eventId; }));
     }
 
-    function cleanupExpiredLocalChats() {
+    function cleanupExpiredLocalEvents() {
         var expiredMap = {};
-        getLocalChats().forEach(function (chat) {
-            if (!isActiveEventChat(chat)) expiredMap[chat.event_id] = true;
-        });
-
         var knownEvents = eventsData.slice();
         getLocalEvents().forEach(function (ev) {
             if (!knownEvents.some(function (existing) { return existing.id === ev.id; })) {
@@ -804,6 +800,24 @@
         });
         knownEvents.forEach(function (ev) {
             if (ev && ev.id && isEventExpired(ev.event_date)) expiredMap[ev.id] = true;
+        });
+
+        var expiredEventIds = Object.keys(expiredMap);
+        if (expiredEventIds.length === 0) return expiredEventIds;
+
+        // Remove the event itself and every cached child row. This also prevents
+        // an expired offline event from being uploaded on the next fetch.
+        eventsData = eventsData.filter(function (ev) {
+            return !(ev && expiredMap[ev.id]);
+        });
+        purgeLocalEventArtifacts(expiredEventIds);
+        return expiredEventIds;
+    }
+
+    function cleanupExpiredLocalChats() {
+        var expiredMap = {};
+        getLocalChats().forEach(function (chat) {
+            if (!isActiveEventChat(chat)) expiredMap[chat.event_id] = true;
         });
 
         var expiredEventIds = Object.keys(expiredMap);
@@ -854,6 +868,43 @@
         if (modal) modal.remove();
     };
 
+    async function cleanupExpiredRemoteEvents() {
+        if (!window.supabaseClient) return;
+
+        // The database function atomically adds deletion tombstones and removes
+        // each expired event. Its cascades clean attendees, inquiries, chats,
+        // messages, and notifications as one operation.
+        try {
+            var rpcRes = await window.supabaseClient.rpc('cleanup_expired_events');
+            if (!rpcRes || !rpcRes.error) return;
+        } catch (e) {}
+
+        // Compatibility fallback while the latest migration is being deployed.
+        // Record tombstones before deleting so stale clients cannot resurrect an
+        // event from localStorage.
+        try {
+            var expiredRes = await window.supabaseClient
+                .from('events')
+                .select('id')
+                .lte('event_date', new Date().toISOString());
+            if (!expiredRes || expiredRes.error || !Array.isArray(expiredRes.data)) return;
+            var expiredIds = expiredRes.data.map(function (row) { return row.id; }).filter(Boolean);
+            if (expiredIds.length === 0) return;
+
+            for (var i = 0; i < expiredIds.length; i++) {
+                await recordEventDeletion(expiredIds[i]);
+            }
+            await window.supabaseClient.from('event_chat_messages').delete().in('event_id', expiredIds);
+            await window.supabaseClient.from('event_chats').delete().in('event_id', expiredIds);
+            await window.supabaseClient.from('event_attendees').delete().in('event_id', expiredIds);
+            await window.supabaseClient.from('event_inquiries').delete().in('event_id', expiredIds);
+            await window.supabaseClient.from('event_notifications').delete().in('event_id', expiredIds);
+            await window.supabaseClient.from('events').delete().in('id', expiredIds);
+        } catch (e) {
+            console.warn('[Events] Could not clean up expired events:', e);
+        }
+    }
+
     async function cleanupExpiredRemoteChats() {
         if (!window.supabaseClient) return;
 
@@ -880,10 +931,14 @@
 
     var lastEventChatCleanupAt = 0;
     async function maybeCleanupExpiredEventChats(force) {
+        var expiredEventIds = cleanupExpiredLocalEvents();
         cleanupExpiredLocalChats();
+        if (expiredEventIds.length > 0) refreshEventsMap(true);
+
         var now = Date.now();
         if (!force && now - lastEventChatCleanupAt < 60000) return;
         lastEventChatCleanupAt = now;
+        await cleanupExpiredRemoteEvents();
         await cleanupExpiredRemoteChats();
     }
 
@@ -1364,7 +1419,22 @@
             console.warn('Supabase fetchEvents error, using local:', err);
         }
         var deletedIds = await fetchDeletedEventIds();
+
+        // Expired cached events are terminal: discard them before the merge so
+        // they can never be mistaken for unsynced offline creations and uploaded
+        // again. Also hide expired server rows immediately while cron/RPC removes
+        // them permanently.
+        cleanupExpiredLocalEvents();
         var local = getLocalEvents();
+        if (remote !== null) {
+            var expiredRemoteIds = [];
+            remote = remote.filter(function (ev) {
+                var expired = !!(ev && ev.id && isEventExpired(ev.event_date));
+                if (expired) expiredRemoteIds.push(ev.id);
+                return !expired;
+            });
+            if (expiredRemoteIds.length > 0) purgeLocalEventArtifacts(expiredRemoteIds);
+        }
 
         if (remote !== null) {
             // The server answered, so it is authoritative about which events exist.
