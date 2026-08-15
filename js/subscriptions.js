@@ -90,6 +90,9 @@
             new Date(rec.premiumExpiresAt).getTime() > Date.now());
     }
 
+    // Shared read-only entitlement check for standalone Premium tools.
+    window._dlIsPremium = isPremium;
+
     // Expiration Date (or null for free users).
     function getExpiryDate() {
         var u = currentUser();
