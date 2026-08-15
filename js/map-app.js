@@ -4854,6 +4854,74 @@
                     var deadline = setTimeout(function () { finish(false); }, timeoutMs || 25000);
                 });
             }
+            // ── OFFLINE DETECTORISTS ───────────────────────────────────────
+            // Draw a black/white bubble for every user who is NOT broadcasting
+            // live right now but whose last known broad location (nearest
+            // city/town) sits in the SAME COUNTY as our own last location.
+            // The bubble is placed on their last known coordinates.
+            // Returns how many bubbles were added.
+            async function addOfflineDetectorBubbles(liveUserIds, user) {
+                try {
+                    var LL = window.DetectLabLastLocation;
+                    if (!LL) return 0;
+
+                    // Make sure OUR OWN last location is up to date first, so we
+                    // know which county to match against even on a fresh device.
+                    if (_detLat !== null && _detLng !== null) {
+                        try { await LL.recordLastLocation(_detLat, _detLng); } catch (e) {}
+                    }
+
+                    var mine = LL.getMyLastLocation();
+                    var myCounty = mine && mine.county;
+                    if (!myCounty && _detLat !== null && _detLng !== null) {
+                        var place = await LL.resolveBroadLocation(_detLat, _detLng);
+                        myCounty = place && place.county;
+                    }
+                    if (!myCounty) return 0;
+
+                    var rows = await LL.fetchLastLocations();
+                    var added = 0;
+                    rows.forEach(function (row) {
+                        if (!row || !row.user_id) return;
+                        if (user && row.user_id === user.id) return;         // that's us
+                        if (liveUserIds && liveUserIds[row.user_id]) return; // already an orange live pin
+                        if (!LL.sameCounty(row.county, myCounty)) return;
+                        var lat = Number(row.latitude), lng = Number(row.longitude);
+                        if (!isFinite(lat) || !isFinite(lng)) return;
+
+                        var name = String(row.full_name || 'Detectorist');
+                        var safeName = name.replace(/[<>&"]/g, '');
+                        var icon = L.divIcon({
+                            className: '',
+                            html: '<div class="detector-offline-marker" title="' + safeName + ' — offline">' +
+                                nearbyInitials(name) + '</div>',
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 16]
+                        });
+                        var where = String(row.label || row.city || row.county || '').replace(/[<>&]/g, '');
+                        var seenAt = '';
+                        try {
+                            if (row.updated_at) seenAt = new Date(row.updated_at).toLocaleString();
+                        } catch (e) {}
+                        // zIndexOffset below the live pins (1100): a live detectorist
+                        // standing at the same spot must stay clickable first.
+                        L.marker([lat, lng], { icon: icon, interactive: true, zIndexOffset: 900 })
+                            .bindPopup('<div class="map-place-popup">' +
+                                '<strong>' + safeName + '</strong>' +
+                                '<div style="font-size:0.72rem; opacity:0.75; margin:2px 0 4px;">⚪ Offline — ultima locație cunoscută / last known location</div>' +
+                                (where ? '<div style="font-size:0.76rem;">📍 ' + where + '</div>' : '') +
+                                (seenAt ? '<div style="font-size:0.7rem; opacity:0.6;">🕘 ' + seenAt + '</div>' : '') +
+                                '</div>')
+                            .addTo(nearbyLayer);
+                        added++;
+                    });
+                    return added;
+                } catch (e) {
+                    console.warn('[Nearby] offline bubbles failed:', e && e.message ? e.message : e);
+                    return 0;
+                }
+            }
+
             window.searchNearbyDetectors = async function() {
                 var status=document.getElementById('nearbyStatus'); var user=nearbyUser();
                 if(!user) { status.innerHTML='Trebuie să fii autentificat pentru această funcție.<br><small>You must be logged in to use this feature.</small>'; return; }
@@ -4953,6 +5021,10 @@
 
                     nearbyLayer.clearLayers();
                     var total = rows.length, found = 0;
+                    // Track who is LIVE so the offline pass never draws a second
+                    // (black/white) bubble for somebody already shown in orange.
+                    var liveUserIds = {};
+                    rows.forEach(function (row) { if (row && row.user_id) liveUserIds[row.user_id] = true; });
                     rows.forEach(function(row){
                         // Skip only OUR device (allow two devices of the same account to see
                         // each other on the new schema; fall back to user match on legacy schema).
@@ -4970,8 +5042,18 @@
                                 .addTo(nearbyLayer);
                         }
                     });
-                    if (found) {
-                        status.innerHTML = found + ' detectorist(i) găsit(i) în apropiere.<br><small>' + found + ' detectorist(s) found nearby.</small>';
+                    // ── OFFLINE DETECTORISTS (black/white bubbles) ──
+                    // Users who are not broadcasting right now but whose LAST known
+                    // broad location (nearest city/town) is in the SAME COUNTY as us.
+                    var offlineFound = await addOfflineDetectorBubbles(liveUserIds, user);
+
+                    if (found || offlineFound) {
+                        var liveTxtRo = found + ' detectorist(i) activ(i) în apropiere';
+                        var liveTxtEn = found + ' active detectorist(s) nearby';
+                        var offTxtRo = offlineFound ? ' și ' + offlineFound + ' offline în județ' : '';
+                        var offTxtEn = offlineFound ? ' and ' + offlineFound + ' offline in your county' : '';
+                        status.innerHTML = liveTxtRo + offTxtRo + '.<br><small>' + liveTxtEn + offTxtEn + '.</small>' +
+                            (offlineFound ? '<br><small style="opacity:0.7;">⚪ Bulele alb-negru = ultima locație cunoscută. / Black &amp; white bubbles = last known location.</small>' : '');
                         var layers = nearbyLayer.getLayers();
                         // IMPORTANT: never let fitBounds zoom past the satellite base map's
                         // limit (maxNativeZoom 19). With only 1-2 nearby pins, an uncapped
@@ -5037,6 +5119,16 @@
                 } catch(e) {
                     console.warn('[Presence] publish failed:', e && e.message ? e.message : e);
                 }
+                // ── Remember the BROAD last location (nearest city/town + county) ──
+                // Independent of `visible`: even when the user hides from live
+                // search we still know roughly where they were, so they can be
+                // shown as an offline (black/white) bubble and be notified about
+                // events created in their county. Throttled internally.
+                try {
+                    if (window.DetectLabLastLocation) {
+                        window.DetectLabLastLocation.recordLastLocation(lat, lng);
+                    }
+                } catch (e) {}
             }
 
             // ── FULLSCREEN ──

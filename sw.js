@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v50-library-of-babel';
+const CACHE_NAME = 'detectlab-v51-last-location';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -40,6 +40,8 @@ const PRECACHE_URLS = [
   'js/Autolinker.min.js',
   'js/supabase.js',
   'js/events.js?v=20260814-chat-realtime',
+  'js/events.js?v=20260815-last-location',
+  'js/last-location.js?v=20260815-last-location',
   'js/auth.js',
   'js/auth.js?v=20260729',
   'js/auth.js?v=20260730',
@@ -47,6 +49,7 @@ const PRECACHE_URLS = [
   'js/account-legacy.js',
   'js/map-app.js',
   'js/map-app.js?v=20260814-coordinate-search',
+  'js/map-app.js?v=20260815-last-location',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',

@@ -1170,6 +1170,137 @@
         }
     }
 
+    /* ══════════════════════════════════════════════════════════════════
+       "AN EVENT WAS CREATED NEAR YOU" NOTIFICATIONS
+       ------------------------------------------------------------------
+       After an event is created we resolve the event's broad location
+       (nearest city/town + county) and notify every user whose LAST known
+       location is in that same county, or within 50 km of the event, so
+       people just across a county border are caught too.
+
+       The notification carries kind = 'nearby_event' so the modal renders a
+       "See event" button that zooms the map onto that exact event.
+       ══════════════════════════════════════════════════════════════════ */
+
+    var NEARBY_EVENT_RADIUS_KM = 50;
+
+    function nearbyEventMessage(creatorName, placeLabel) {
+        var name = creatorName || 'un detectorist';
+        var ro = 'Un eveniment a fost creat în apropiere de tine de ' + name;
+        var en = 'An event was created near you by ' + name;
+        if (placeLabel) {
+            ro += ' (' + placeLabel + ')';
+            en += ' (' + placeLabel + ')';
+        }
+        return ro + ' / ' + en;
+    }
+
+    async function notifyUsersNearEvent(ev) {
+        try {
+            var LL = window.DetectLabLastLocation;
+            if (!LL || !ev || !window.supabaseClient) return 0;
+
+            var evLat = Number(ev.latitude), evLng = Number(ev.longitude);
+            if (!isFinite(evLat) || !isFinite(evLng)) return 0;
+
+            // Anonymous events are hidden from the map by design — never
+            // broadcast their existence to a whole county.
+            if (isAnonymousEvent(ev)) return 0;
+
+            var place = await LL.resolveBroadLocation(evLat, evLng);
+            var evCounty = place && place.county;
+            var placeLabel = (place && (place.city || place.label)) || '';
+
+            var rows = await LL.fetchLastLocations();
+            if (!rows.length) return 0;
+
+            var creatorName = ev.creator_name || 'User';
+            var message = nearbyEventMessage(creatorName, placeLabel);
+            var nowIso = new Date().toISOString();
+
+            var recipients = rows.filter(function (r) {
+                if (!r || !r.user_id) return false;
+                if (r.user_id === ev.creator_id) return false;   // never notify the creator
+                if (evCounty && LL.sameCounty(r.county, evCounty)) return true;
+                return LL.distanceKm(Number(r.latitude), Number(r.longitude), evLat, evLng) <= NEARBY_EVENT_RADIUS_KM;
+            });
+            if (!recipients.length) return 0;
+
+            var notifications = recipients.map(function (r) {
+                return {
+                    id: genUuid(),
+                    user_id: r.user_id,
+                    event_id: ev.id,
+                    inquiry_id: null,
+                    sender_id: ev.creator_id,
+                    sender_name: creatorName,
+                    message: message,
+                    kind: 'nearby_event',
+                    read: false,
+                    created_at: nowIso
+                };
+            });
+
+            var res = await window.supabaseClient.from('event_notifications').insert(notifications);
+            if (res && res.error) {
+                // Older deployments have no `kind` column: retry without it. The
+                // modal falls back to detecting these by message + event_id.
+                if (isMissingColumnError(res.error)) {
+                    var base = notifications.map(function (n) {
+                        var copy = {}; for (var k in n) { if (k !== 'kind') copy[k] = n[k]; }
+                        return copy;
+                    });
+                    var retry = await window.supabaseClient.from('event_notifications').insert(base);
+                    if (retry && retry.error) {
+                        console.warn('[Events] Could not notify nearby users:', retry.error.message || retry.error);
+                        return 0;
+                    }
+                    console.warn('[Events] Nearby-event notifications sent without `kind` (apply migration 20260815000000_user_last_locations.sql).');
+                    return base.length;
+                }
+                console.warn('[Events] Could not notify nearby users:', res.error.message || res.error);
+                return 0;
+            }
+            console.log('[Events] Notified ' + notifications.length + ' user(s) near the new event.');
+            return notifications.length;
+        } catch (e) {
+            console.warn('[Events] notifyUsersNearEvent failed:', e && e.message ? e.message : e);
+            return 0;
+        }
+    }
+
+    // Zoom the map onto a specific event and open its popup ("See event").
+    window._zoomToEvent = function (eventId) {
+        var map = window._dlMap || window.map;
+        if (!map || !eventId) return false;
+        var ev = getEventById(eventId);
+        if (!ev) return false;
+        var lat = Number(ev.latitude), lng = Number(ev.longitude);
+        if (!isFinite(lat) || !isFinite(lng)) return false;
+
+        // Exit any fullscreen overlay panel that would hide the map.
+        try {
+            var panel = document.getElementById('eventsManagerPanel');
+            if (panel) panel.remove();
+        } catch (e) {}
+
+        // maxZoom 17 keeps us inside the satellite base map's native zoom range
+        // (see the nearby-detectorists fitBounds comment) so tiles keep rendering.
+        try { map.flyTo([lat, lng], 16, { duration: 0.9 }); }
+        catch (e) { map.setView([lat, lng], 16); }
+
+        // Open the event's popup once the fly animation settled.
+        setTimeout(function () {
+            try {
+                if (!eventsLayer) return;
+                eventsLayer.eachLayer(function (layer) {
+                    if (layer && layer._dlEventId === eventId && layer.openPopup) layer.openPopup();
+                });
+            } catch (e) {}
+        }, 1000);
+        return true;
+    };
+
     // Fetch the set of event ids that were explicitly deleted (tombstones). Any
     // event in this set must be purged from local caches and must never be
     // re-synced, otherwise a creator-deleted event would be resurrected for
@@ -1562,6 +1693,13 @@
             }
             refreshEventsMap();
             modal.remove();
+
+            // Tell everyone whose last known location is in this event's county
+            // (or within 50 km) that an event was created near them. Fire and
+            // forget — the creator must not wait on reverse geocoding.
+            if (savedToServer && savedToServer.ok) {
+                notifyUsersNearEvent(newEvent);
+            }
 
             if (savedToServer && savedToServer.ok) {
                 if (isAnonymous && newEvent.event_code) {
@@ -2742,6 +2880,14 @@
         // (anonymous-event join announcements, kick-out notices): there is
         // nothing to accept or decline.
         if (!notif.inquiry_id) kind = 'info';
+        // "An event was created near you": marked with kind = 'nearby_event'.
+        // Deployments whose event_notifications table predates the `kind`
+        // column are detected from the message text instead.
+        if (notif.kind === 'nearby_event' ||
+            (!notif.inquiry_id && notif.event_id &&
+             /created near you|creat în apropiere|creat in apropiere/i.test(notif.message || ''))) {
+            kind = 'nearby_event';
+        }
         try {
             if (notif.inquiry_id) {
                 if (window.supabaseClient) {
@@ -2797,6 +2943,47 @@
             });
             if (closeBtn) closeBtn.addEventListener('click', dismissAccepted);
             modal.addEventListener('click', function (e) { if (e.target === modal) dismissAccepted(); });
+            return;
+        }
+
+        if (kind === 'nearby_event') {
+            // "An event was created near you by X" / "Un eveniment a fost creat
+            // în apropiere de tine de X" + a button that zooms onto the event.
+            var senderName = escapeHtml(notif.sender_name || (isRo ? 'un detectorist' : 'a detectorist'));
+            var headline = isRo
+                ? 'Un eveniment a fost creat în apropiere de tine de <strong>' + senderName + '</strong>'
+                : 'An event was created near you by <strong>' + senderName + '</strong>';
+
+            modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(230,168,23,0.45); border-radius: 12px; width: 100%; max-width: 420px; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.7); animation: pwaDropUp 0.3s ease;">' +
+                '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:1.4rem;">📍</span><h3 style="margin:0; font-size:1.1rem; color:#E6A817; font-family:\'Cinzel\',serif;">' + (isRo ? 'Eveniment în apropiere' : 'Event Near You') + '</h3></div>' +
+                '<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(184,216,240,0.2); border-radius:6px; padding:10px; font-size:0.86rem; margin-bottom:14px; line-height:1.5;">' + headline + '</div>' +
+                '<div style="display:flex; gap:10px;">' +
+                '<button type="button" id="notifSeeEventBtn" style="flex:1; background:#E6A817; border:none; border-radius:6px; color:#182126; font-weight:700; padding:10px; cursor:pointer;">🔍 ' + (isRo ? 'Vezi evenimentul' : 'See event') + '</button>' +
+                '<button type="button" id="notifCloseBtn" style="background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; font-weight:600; padding:10px 14px; cursor:pointer;">' + (isRo ? 'Închide' : 'Close') + '</button>' +
+                '</div></div>';
+
+            document.body.appendChild(modal);
+
+            var dismissNearby = async function () { await markNotifRead(notif.id); modal.remove(); };
+            var closeNearbyBtn = modal.querySelector('#notifCloseBtn');
+            if (closeNearbyBtn) closeNearbyBtn.addEventListener('click', dismissNearby);
+            var seeBtn = modal.querySelector('#notifSeeEventBtn');
+            if (seeBtn) seeBtn.addEventListener('click', async function () {
+                seeBtn.disabled = true;
+                await markNotifRead(notif.id);
+                modal.remove();
+                // The event may not be in the local cache yet on a fresh device.
+                if (!getEventById(notif.event_id)) {
+                    try { await fetchEvents(); } catch (e) {}
+                }
+                var zoomed = window._zoomToEvent(notif.event_id);
+                if (!zoomed) {
+                    alert(isRo
+                        ? 'Evenimentul nu mai este disponibil.'
+                        : 'This event is no longer available.');
+                }
+            });
+            modal.addEventListener('click', function (e) { if (e.target === modal) dismissNearby(); });
             return;
         }
 
@@ -3994,5 +4181,8 @@
     // Expose init and methods
     window._initEventsLayer = initEventsLayer;
     window._checkEventNotifications = checkNotifications;
+    // Exposed for the nearby-event notification regression test and so other
+    // modules can re-broadcast an event to its county if needed.
+    window._notifyUsersNearEvent = notifyUsersNearEvent;
     window._fetchEvents = fetchEvents;
 })();
