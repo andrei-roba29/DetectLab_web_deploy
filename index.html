@@ -2586,12 +2586,12 @@
                         <div class="account-sub-info">
                             <div class="account-sub-status" id="acctSubStatus">FREE</div>
                             <div class="account-sub-expiry" id="acctSubExpiry"></div>
-                            <div class="account-sub-note t" id="acctSubNote" data-key="acct_no_renewal">€5 for one month — no automatic renewal</div>
+                            <div class="account-sub-note t" id="acctSubNote" data-key="acct_no_renewal">€5 <small class="vat-note">+TVA</small> for one month — no automatic renewal</div>
                         </div>
                         <!-- accountSubAction(): legacy recurring subscribers get the
                              Stripe billing portal; everyone else goes to checkout. -->
                         <button class="account-btn primary" id="acctSubBtn" onclick="accountSubAction()">
-                            <span class="t" data-key="acct_buy_premium">Buy Premium · €5 for one month</span>
+                            <span class="t" data-key="acct_buy_premium">Buy Premium · €5 <small class="vat-note">+TVA</small> for one month</span>
                         </button>
                     </div>
 
@@ -2812,9 +2812,9 @@
                     <div class="plan-badge t" data-key="badge_popular">Most Popular</div>
                     <p class="plan-tier silver t" data-key="tier_silver">Silver</p>
                     <h3 class="plan-name t" data-key="plan_monthly">One month</h3>
-                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="silverPrice">5</span><span class="period" id="silverPeriod">/one month</span></div>
+                    <div class="plan-price"><span class="currency">€</span><span class="amount" id="silverPrice">5</span><small class="vat-note vat-note-price">+TVA</small><span class="period" id="silverPeriod">/one month</span></div>
                     <p class="plan-billing-note t" id="silverNote" data-key="note_monthly">One-time payment</p>
-                    <p class="plan-billing-note t" data-key="prem_price_line">€5 for one month — no automatic renewal</p>
+                    <p class="plan-billing-note t" data-key="prem_price_line">€5 <small class="vat-note">+TVA</small> for one month — no automatic renewal</p>
                     <div class="plan-divider"></div>
                     <ul class="plan-features">
                     </ul>
@@ -2962,7 +2962,7 @@
             <div id="premBody"></div>
             <div class="prem-buy-wrap" id="premBuyWrap">
                 <button type="button" class="prem-btn prem-btn-buy" onclick="goToCheckout()">
-                    <span id="premBuyLabel" class="t" data-key="prem_buy_btn">Buy Premium · €5 for one month</span>
+                    <span id="premBuyLabel" class="t" data-key="prem_buy_btn">Buy Premium · €5 <small class="vat-note">+TVA</small> for one month</span>
                 </button>
 
                 <!-- PROMO CODE — redeem a free trial instead of paying.
@@ -3161,7 +3161,7 @@
 
                 <h2>Premium Access</h2>
                 <p>
-                    Premium access is sold as a <strong>single, one-time payment of €5 that
+                    Premium access is sold as a <strong>single, one-time payment of €5 <small class="vat-note">+TVA</small> that
                     grants access for one calendar month</strong>. There is
                     <strong>no automatic renewal</strong> and no recurring subscription:
                     you are charged once, access ends on the expiration date shown in your

@@ -290,7 +290,7 @@
             window._dlIsLegacySubscriber(user);
 
         var noteEl = document.getElementById('acctSubNote');
-        if (noteEl) noteEl.textContent = legacy ? '' : _t('acct_no_renewal');
+        if (noteEl) noteEl.innerHTML = legacy ? '' : _t('acct_no_renewal');
 
         var btnEl = document.getElementById('acctSubBtn');
         if (btnEl) {
@@ -305,7 +305,7 @@
             } else if (premium) {
                 btnEl.style.display = 'none';
             } else {
-                label.textContent = _t('acct_buy_premium');
+                label.innerHTML = _t('acct_buy_premium');
                 btnEl.style.display = '';
             }
         }
