@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v49-useful-information';
+const CACHE_NAME = 'detectlab-v50-library-of-babel';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -55,6 +55,8 @@ const PRECACHE_URLS = [
   'js/lidar-scanner.js?v=20260812-scanner-above-lidar',
   'css/styles.css?v=20260811-lidar-perf',
   'css/styles.css?v=20260812-vertical-opacity',
+  'css/library-of-babel.css?v=20260815',
+  'js/library-of-babel.js?v=20260815',
   'js/vertical-opacity-control.js',
   'js/vertical-opacity-control.js?v=20260812',
   'js/auth.js?v=20260812-vertical-opacity',

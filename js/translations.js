@@ -53,6 +53,7 @@
                 prem_panel_desc: 'Become a Premium member to unlock every layer and tool.',
                 prem_panel_cta: 'Become a premium member',
                 prem_layer_locked_label: 'Premium layer locked',
+                babel_title: 'Library of Babel',
                 // ── Checkout page ──
                 co_back_map: 'Back to map',
                 co_login_title: 'Log in to continue',
@@ -274,6 +275,7 @@
                 prem_panel_desc: 'Devino membru Premium pentru a debloca toate straturile și instrumentele.',
                 prem_panel_cta: 'Devino membru premium',
                 prem_layer_locked_label: 'Strat premium blocat',
+                babel_title: 'Biblioteca din Babel',
                 // ── Checkout page ──
                 co_back_map: 'Înapoi la hartă',
                 co_login_title: 'Autentifică-te pentru a continua',
