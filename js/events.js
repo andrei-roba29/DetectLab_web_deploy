@@ -1957,6 +1957,7 @@
 
         // Find the event by code: server first, local cache as fallback.
         var ev = null;
+        var lookupMissingColumn = false;
         try {
             if (window.supabaseClient) {
                 var res = await window.supabaseClient
@@ -1968,6 +1969,11 @@
                     ev = res.data[0];
                 } else if (res && res.error) {
                     console.warn('[Events] Anonymous event lookup failed:', res.error);
+                    // The server could not answer by event_code. If the column is
+                    // missing from the live `events` table (migration not applied),
+                    // every anonymous event stays local-only and joining can never
+                    // work — surface that instead of a misleading "not found".
+                    if (isMissingColumnError(res.error)) lookupMissingColumn = true;
                 }
             }
         } catch (e) {
@@ -1985,6 +1991,12 @@
 
         if (!ev) {
             restoreBtn();
+            if (lookupMissingColumn) {
+                setErr(isRo
+                    ? 'Serverul nu suportă încă evenimente anonime (coloanele lipsesc din tabelul „events”). Aplică migrația 20260814020000_anonymous_events.sql.'
+                    : 'The server does not support anonymous events yet (missing columns on the "events" table). Apply migration 20260814020000_anonymous_events.sql.');
+                return;
+            }
             setErr(isRo ? 'Niciun eveniment găsit cu acest cod.' : 'No event found with this code.');
             return;
         }

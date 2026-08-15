@@ -114,6 +114,16 @@ function createSupabaseClient(server) {
                     return Promise.resolve({ data: [], error: null });
                 }
 
+                // A live table missing the event_code column rejects a lookup by
+                // code with PGRST204, exactly like the join path would see.
+                if (table === 'events' && server.missingAnonymousColumns &&
+                    filters.some(f => f.col === 'event_code')) {
+                    return Promise.resolve({
+                        data: null,
+                        error: { code: 'PGRST204', message: "Could not find the 'event_code' column of 'events' in the schema cache" }
+                    });
+                }
+
                 let out = rows.filter(r => matches(r, filters)).map(r => ({ ...r }));
                 if (limitN !== null) out = out.slice(0, limitN);
                 if (single) {
@@ -428,12 +438,33 @@ async function testNoPublicLeakOnOldSchema() {
     console.log('  ✔ no public leak: anonymous events are never synced via the base payload');
 }
 
+async function testJoinSurfacesMigrationErrorOnOldSchema() {
+    // Old server schema (no event_code column): a join-by-code lookup fails with
+    // PGRST204 instead of a clean "no rows". The join bar must say the migration
+    // is missing rather than the misleading "no event found with this code".
+    const server = createServer();
+    server.missingAnonymousColumns = true;
+    // No event is seeded — mirroring the real bug where the anonymous event was
+    // never written to the DB, so a guest can never find it locally either.
+
+    const guest = createDevice(server, GUEST);
+    guest.sandbox.document.getElementById('anonJoinInput').value = 'K7KQ4D';
+    await guest.sandbox._joinAnonymousEvent();
+
+    const err = guest.sandbox.document.getElementById('anonJoinError').textContent;
+    assert.ok(/20260814020000/.test(err), 'join on an old schema must name the missing migration, got: ' + err);
+    assert.strictEqual(server.tables.event_attendees.length, 0, 'failed lookup must add no attendee');
+
+    console.log('  ✔ join on old schema surfaces the missing-migration error');
+}
+
 (async function main() {
     console.log('Anonymous events regression tests');
     await testVisibility();
     await testJoinByCode();
     await testWrongCodeAndCreatorSelfJoin();
     await testNoPublicLeakOnOldSchema();
+    await testJoinSurfacesMigrationErrorOnOldSchema();
     console.log('All anonymous event tests passed ✔');
 })().catch(err => {
     console.error('\n✘ TEST FAILED');
