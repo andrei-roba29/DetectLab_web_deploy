@@ -73,13 +73,13 @@ async function testPricing() {
 
     // ── One-time wording: no monthly-subscription / auto-renew / cancel-anytime ──
     const T = w.__translations;
-    ok(T.en.prem_price_line === '€5 for one month — no automatic renewal',
+    ok(T.en.prem_price_line === '€5 <small class="vat-note">+TVA</small> for one month — no automatic renewal',
         'EN price line: "€5 for one month — no automatic renewal"');
-    ok(T.ro.prem_price_line === '5 € pentru o lună — fără reînnoire automată',
+    ok(T.ro.prem_price_line === '5 € <small class="vat-note">+TVA</small> pentru o lună — fără reînnoire automată',
         'RO price line: "5 € pentru o lună — fără reînnoire automată"');
-    ok(T.en.co_renews === '€5 for one month — no automatic renewal',
+    ok(T.en.co_renews === '€5 <small class="vat-note">+TVA</small> for one month — no automatic renewal',
         'EN checkout summary uses the one-time wording');
-    ok(T.ro.co_renews === '5 € pentru o lună — fără reînnoire automată',
+    ok(T.ro.co_renews === '5 € <small class="vat-note">+TVA</small> pentru o lună — fără reînnoire automată',
         'RO checkout summary uses the one-time wording');
 
     const renewalWords = /(cancel anytime|renews automatically|every month|\/month|anulezi oricând|reînnoiește automat|în fiecare lună|\/lună)/i;
@@ -459,7 +459,7 @@ async function testOneTimeUi() {
             acct_manage: 'Gestionează abonamentul',
             acct_buy_premium: 'Cumpără Premium · 5 € pentru o lună',
             acct_no_sub: 'Premium inactiv',
-            acct_no_renewal: '5 € pentru o lună — fără reînnoire automată',
+            acct_no_renewal: '5 € <small class="vat-note">+TVA</small> pentru o lună — fără reînnoire automată',
             acct_expires_on: 'Expiră pe', acct_premium_until: 'Premium până pe {date}',
             acct_days_left: '{n} zile rămase', acct_day_left: '{n} zi rămasă',
         } };
@@ -478,7 +478,7 @@ async function testOneTimeUi() {
             'account panel: one-time purchaser sees no "Manage subscription" button');
         ok(w.document.getElementById('acctSubExpiry').textContent.indexOf('Expiră pe') !== -1,
             'account panel keeps showing the exact Premium expiration date');
-        ok(w.document.getElementById('acctSubNote').textContent === '5 € pentru o lună — fără reînnoire automată',
+        ok(w.document.getElementById('acctSubNote').textContent === '5 € +TVA pentru o lună — fără reînnoire automată',
             'account panel states there is no automatic renewal');
 
         // Legacy recurring subscriber → the portal button comes back.

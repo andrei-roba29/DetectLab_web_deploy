@@ -264,7 +264,7 @@
             '  <div class="prem-feature">🏛️ <span>' + esc(t('prem_feat_archeo')) + '</span></div>' +
             '  <div class="prem-feature">⚔️ <span>' + esc(t('prem_feat_roman')) + '</span></div>' +
             '</div>' +
-            '<div class="prem-price-line">' + esc(t('prem_price_line')) + '</div>';
+            '<div class="prem-price-line">' + t('prem_price_line') + '</div>';
     }
 
     function esc(s) {
