@@ -38,6 +38,10 @@ export const env = {
   supabaseUrl: process.env.SUPABASE_URL || '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
 
+  // Protects national-ingestion and review administration endpoints.
+  ingestionAdminKey: process.env.INGESTION_ADMIN_KEY || '',
+  evidenceWorkerEnabled: process.env.EVIDENCE_WORKER_ENABLED === 'true',
+
   // ── Stripe (real payments) ────────────────────────────────────────────
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
