@@ -11,6 +11,7 @@ import paymentsRouter from './routes/payments.js';
 import promoRouter from './routes/promo.js';
 import evidenceRouter from './routes/evidence.js';
 import { startScheduler } from './jobs/scheduler.js';
+import { startEvidenceWorker } from './services/evidence/ingestionWorker.js';
 
 const app = express();
 
@@ -46,4 +47,5 @@ app.use((err, req, res, next) => {
 app.listen(env.port, () => {
   logger.info({ port: env.port }, 'DetectLab API listening');
   startScheduler();
+  if (env.evidenceWorkerEnabled) startEvidenceWorker();
 });

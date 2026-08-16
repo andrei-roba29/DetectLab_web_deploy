@@ -5,6 +5,21 @@ import pdf from 'pdf-parse/lib/pdf-parse.js';
 const ORIGIN = 'https://biblioteca-digitala.ro';
 const USER_AGENT = 'DetectLab-Archaeological-Evidence-Engine/1.0 (+https://detectlab.ro)';
 const MAX_PDF_BYTES = 35 * 1024 * 1024;
+const MIN_REQUEST_INTERVAL_MS = Number(process.env.BIBLIOTECA_REQUEST_INTERVAL_MS || 1200);
+let nextRequestAt = 0;
+let requestChain = Promise.resolve();
+
+// One process-wide request lane. This deliberately trades throughput for
+// politeness; national ingestion runs progressively and is resumable.
+async function waitForSourceSlot() {
+  const turn = requestChain.then(async () => {
+    const wait = Math.max(0, nextRequestAt - Date.now());
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    nextRequestAt = Date.now() + MIN_REQUEST_INTERVAL_MS;
+  });
+  requestChain = turn.catch(() => {});
+  await turn;
+}
 
 function decodeHtml(value = '') {
   const named = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ș: 'ș', ţ: 'ţ' };
@@ -29,6 +44,7 @@ function absolute(href = '') {
 async function sourceFetch(url, { timeoutMs = 20000, maxBytes = 4 * 1024 * 1024 } = {}) {
   const safe = absolute(url);
   if (!safe) throw new Error('Blocked non-biblioteca-digitala.ro URL');
+  await waitForSourceSlot();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

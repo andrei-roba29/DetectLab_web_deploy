@@ -9,6 +9,8 @@
     "dev": "node --watch src/app.js",
     "migrate": "node scripts/runMigrations.js",
     "sync": "node scripts/runSyncOnce.js",
+    "import:siruta": "node scripts/importSiruta.js",
+    "ingest:once": "node scripts/runEvidenceWorkerOnce.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
