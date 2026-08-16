@@ -95,21 +95,24 @@ function captionCandidates(pages, locality, claimIdValue) {
   return images.slice(0, 6);
 }
 
-function extractClaims(document, pages, locality, aliases, extractionStatus) {
+export function extractClaims(document, pages, locality, aliases, extractionStatus) {
   const claims = [];
   const candidates = [];
-  pages.forEach((page) => sentenceWindows(page.text, aliases).forEach((window) => candidates.push({ ...window, pdfPage: page.pdfPage, ocr: page.ocr })));
+  pages.forEach((page) => sentenceWindows(page.text, aliases).forEach((window) => candidates.push({ ...window, pdfPage: page.pdfPage, printedPage: page.printedPage, pageTextChecksum: page.textChecksum, pageCharacterCount: page.characterCount, ocr: page.ocr })));
   if (!candidates.length && document.abstract && hasAlias(document.abstract, aliases)) candidates.push({ sentence: document.abstract, context: document.abstract, pdfPage: null, ocr: false, abstract: true });
   for (const item of candidates) {
     const mention = classifyMention(item.context, document.title, document.descriptors, aliases);
-    if (!arch.test(item.context) && mention.score < .2) continue;
+    const evidentiaryRoles = new Set(['ARCHAEOLOGICAL_TARGET','FINDSPOT','EXCAVATION_LOCATION','SURVEY_LOCATION','HISTORICAL_LOCATION','ARCHAEOLOGICAL_CONTEXT']);
+    // Negative/contextual-only roles must never become archaeological claims
+    // for that locality; they can be retained separately by a discovery pass.
+    if (!evidentiaryRoles.has(mention.role) || mention.score < .2 || !arch.test(item.context)) continue;
     const evidence = item.sentence.slice(0, 900).trim();
     const cat = category(item.context);
     const id = claimId(locality, evidence);
     claims.push({
       id, claim: makeClaim(locality, cat, evidence), category: cat, periods: periods(item.context, document.descriptors),
       locations: [{ name: locality, originalName: aliases.find((a) => hasAlias(evidence, [a])) || locality, role: mention.role, confidence: mention.score, attributionReason: `Localitatea apare într-un context clasificat ${mention.role}; semnalele din titlu, descriptori și fragment au produs scorul ${mention.score.toFixed(2)}.` }],
-      evidence: [{ excerpt: evidence, contextWindow: item.context.slice(0, 1400), printedPage: null, pdfPage: item.pdfPage, documentUrl: document.url, pageUrl: null, sourceUrl: document.pdfUrl || document.url, extractionMethod: item.abstract ? 'ABSTRACT' : item.ocr ? 'OCR' : 'PDF_TEXT', confidence: mention.score }],
+      evidence: [{ excerpt: evidence, contextWindow: item.context.slice(0, 1400), printedPage: item.printedPage || null, pdfPage: item.pdfPage, pageTextChecksum: item.pageTextChecksum || null, pageCharacterCount: item.pageCharacterCount || null, documentUrl: document.url, pageUrl: null, sourceUrl: document.pdfUrl || document.url, extractionMethod: item.abstract ? 'ABSTRACT' : item.ocr ? 'OCR' : 'PDF_TEXT', confidence: mention.score }],
       source: { sourceId: document.documentId, title: document.title, authors: document.authors, year: document.year, publication: document.publication, volume: document.volume, url: document.url, pdfUrl: document.pdfUrl, provider: 'Biblioteca Digitală a Publicațiilor Culturale / ProEuropeana', providerOrigin: 'https://biblioteca-digitala.ro' },
       images: captionCandidates(pages.filter((p) => p.pdfPage === item.pdfPage), locality, id), confidence: mention.score, confidenceLevel: mention.confidence,
       fullyVerified: Boolean(evidence && (item.pdfPage || item.abstract) && document.url), conflictingSources: false,
@@ -135,7 +138,7 @@ export async function researchLocality({ locality, county = null, aliases: suppl
     // Analyse only the strongest first candidates synchronously; all metadata
     // remains in the response and can be queued by a future background worker.
     if (includeFullText && index < 6 && metadataRelevant && article.pdfUrl) {
-      try { extracted = await extractPdfPages(article.pdfUrl); } catch (error) { extracted = { pages: [], status: 'PDF_EXTRACTION_FAILED', error: error.message }; }
+      try { extracted = await extractPdfPages(article.pdfUrl, article.pagination); } catch (error) { extracted = { pages: [], status: 'PDF_EXTRACTION_FAILED', error: error.message }; }
     }
     const claims = extractClaims(article, extracted.pages, locality, aliases, extracted.status);
     return { ...article, extractionStatus: extracted.status, extractionError: extracted.error || null, claims };

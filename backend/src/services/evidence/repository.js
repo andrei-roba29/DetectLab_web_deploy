@@ -26,8 +26,8 @@ async function upsertDocument(client, source) {
 async function pageId(client, documentId, item) {
   if (!item.pdfPage) return null;
   const { rows: [page] } = await client.query(`INSERT INTO knowledge.document_pages(document_id,pdf_page,printed_page,text_checksum,character_count,extraction_method,ocr_status)
-    VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(document_id,pdf_page) DO UPDATE SET printed_page=COALESCE(EXCLUDED.printed_page,knowledge.document_pages.printed_page),text_checksum=EXCLUDED.text_checksum,character_count=EXCLUDED.character_count,extraction_method=EXCLUDED.extraction_method RETURNING id`,
-    [documentId, item.pdfPage, item.printedPage, hash(item.excerpt), item.excerpt?.length || 0, item.extractionMethod, item.extractionMethod === 'OCR' ? 'COMPLETED' : 'NOT_REQUIRED']);
+    VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(document_id,pdf_page) DO UPDATE SET printed_page=COALESCE(EXCLUDED.printed_page,knowledge.document_pages.printed_page),text_checksum=COALESCE(EXCLUDED.text_checksum,knowledge.document_pages.text_checksum),character_count=GREATEST(COALESCE(EXCLUDED.character_count,0),COALESCE(knowledge.document_pages.character_count,0)),extraction_method=COALESCE(EXCLUDED.extraction_method,knowledge.document_pages.extraction_method) RETURNING id`,
+    [documentId, item.pdfPage, item.printedPage, item.pageTextChecksum || (item.excerpt ? hash(item.excerpt) : null), item.pageCharacterCount || item.excerpt?.length || null, item.extractionMethod, item.extractionMethod === 'OCR' ? 'COMPLETED' : 'NOT_REQUIRED']);
   return page.id;
 }
 
@@ -59,7 +59,7 @@ export async function persistResearchResult(localityId, result, { runId = null }
           [localityId, documentId, storedPageId, location.originalName || result.locality.currentName, item.contextWindow, location.role || 'UNKNOWN', location.confidence || 0]);
       }
       for (const figure of claim.images || []) {
-        const figurePage = figure.pdfPage ? await pageId(client, documentId, { pdfPage: figure.pdfPage, printedPage: figure.printedPage, excerpt: figure.caption, extractionMethod: 'PDF_TEXT' }) : null;
+        const figurePage = figure.pdfPage ? await pageId(client, documentId, { pdfPage: figure.pdfPage, printedPage: figure.printedPage, excerpt: null, extractionMethod: 'PDF_TEXT' }) : null;
         await client.query(`INSERT INTO knowledge.figures(document_id,page_id,claim_id,figure_number,caption,figure_type,relevance_confidence,source_url,republication_allowed) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
           [documentId, figurePage, storedClaim.id, figure.figureNumber, figure.caption, figure.type, figure.confidence, source.pdfUrl || source.url, figure.imageRepublicationAllowed || false]);
       }

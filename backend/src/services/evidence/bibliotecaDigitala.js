@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 // Import the library entry directly: pdf-parse's package root executes its
 // bundled demo when loaded from some ESM runtimes.
 import pdf from 'pdf-parse/lib/pdf-parse.js';
@@ -119,16 +120,23 @@ export async function getArticle(candidate) {
   };
 }
 
-export async function extractPdfPages(pdfUrl) {
+export async function extractPdfPages(pdfUrl, pagination = null) {
   if (!pdfUrl) return { pages: [], status: 'NO_PDF' };
   const { buffer } = await sourceFetch(pdfUrl, { timeoutMs: 45000, maxBytes: MAX_PDF_BYTES });
   const pages = [];
+  const range = String(pagination || '').match(/(\d+)\s*[-–]\s*(\d+)/);
   await pdf(buffer, {
     max: 180,
     pagerender: async (pageData) => {
       const content = await pageData.getTextContent({ normalizeWhitespace: true, disableCombineTextItems: false });
       const pageText = content.items.map((item) => item.str).join(' ').replace(/\s+/g, ' ').trim();
-      pages.push({ pdfPage: pages.length + 1, text: pageText, ocr: false });
+      const pdfPage = pages.length + 1;
+      const expectedPrinted = range ? Number(range[1]) + pdfPage - 1 : null;
+      // A printed page is accepted only when its expected label is visible near
+      // a page boundary. We never silently assume PDF page == printed page.
+      const boundary = `${pageText.slice(0, 180)} ${pageText.slice(-180)}`;
+      const printedPage = expectedPrinted && new RegExp(`(?:^|\\D)${expectedPrinted}(?:\\D|$)`).test(boundary) ? String(expectedPrinted) : null;
+      pages.push({ pdfPage, printedPage, text: pageText, textChecksum: crypto.createHash('sha256').update(pageText).digest('hex'), characterCount: pageText.length, ocr: false });
       return pageText;
     },
   });
