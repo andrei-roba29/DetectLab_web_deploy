@@ -155,15 +155,32 @@ async function main() {
   try {
     const raw = await fs.readFile(source.file);
     let decoded = new TextDecoder('utf-8').decode(raw);
-    if ((decoded.match(/�/g)||[]).length > 5) decoded = new TextDecoder('windows-1250').decode(raw);
+    if ((decoded.match(//g)||[]).length > 5) decoded = new TextDecoder('windows-1250').decode(raw);
     const rows = parseCsv(decoded.replace(/^\uFEFF/,''));
     const headers = rows.shift().map((h)=>h.trim().toUpperCase());
     const records = rows.map((values)=>Object.fromEntries(headers.map((h,i)=>[h,(values[i]||'').trim()])));
     const nodes = new Map(records.map((r)=>[String(pick(r,['SIRUTA','COD_SIRUTA','COD'])||''),r]));
+        const countyByCode = {};
+    for (const r of records) {
+      if (Number(pick(r, ['NIV','NIVEL'])) === 1) {
+        const code = pick(r, ['CODJUD','JUD']);
+        const raw = pick(r, ['DENLOC','DENUMIRE','NUME']);
+        if (code && raw) {
+          countyByCode[code] = String(raw).replace(/^(judeţul|judetul)\s+/i, '').trim();
+        }
+      }
+    }
+    for (const r of records) {
+      const code = pick(r, ['JUD']);
+      const raw = pick(r, ['DENLOC','DENUMIRE','NUME']);
+      if (code && raw && !countyByCode[code] && Number(pick(r, ['NIV','NIVEL'])) === 1) {
+        countyByCode[code] = String(raw).replace(/^(judeţul|judetul)\s+/i, '').trim();
+      }
+    }
     function ancestor(record, wantedLevel) { let current=record,guard=0; while(current&&guard++<8){if(Number(pick(current,['NIV','NIVEL']))===wantedLevel)return current;current=nodes.get(String(pick(current,['SIRSUP','PARINTE','COD_SUP'])||''));} return null; }
     const prepared = records.map((r)=>{
       const level=Number(pick(r,['NIV','NIVEL'])||0), countyNode=ancestor(r,1),uatNode=ancestor(r,2);
-      const name=pick(r,['DENLOC','DENUMIRE','NUME']); const county=pick(r,['DENJUD','JUDET'])||pick(countyNode||{},['DENLOC','DENUMIRE','NUME']);
+      const name=pick(r,['DENLOC','DENUMIRE','NUME']);         const county=pick(r,['DENJUD','JUDET'])||countyByCode[pick(r,['CODJUD','JUD'])]||(pick(countyNode||{},['DENLOC','DENUMIRE','NUME'])||'').replace(/^(judeţul|judetul)\s+/i,'').trim();
       return {siruta:String(pick(r,['SIRUTA','COD_SIRUTA','COD'])||''),name,normalized:normalize(name),countyCode:pick(r,['CODJUD','JUD']),county,parent:String(pick(r,['SIRSUP','PARINTE','COD_SUP'])||'')||null,uat:pick(uatNode||{},['DENLOC','DENUMIRE','NUME']),type:localityType(pick(r,['TIP','TIP_LOCALITATE'])),level,lat:Number(pick(r,['LAT','LATITUDINE']))||null,lon:Number(pick(r,['LON','LONG','LONGITUDINE']))||null,pilot:pilot.has(`${normalize(county)}|${normalize(name)}`)};
     }).filter((r)=>r.siruta&&r.name&&r.county&&r.level>=2);
     await withTransaction(async(client)=>{
