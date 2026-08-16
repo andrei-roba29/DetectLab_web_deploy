@@ -155,7 +155,7 @@ async function main() {
   try {
     const raw = await fs.readFile(source.file);
     let decoded = new TextDecoder('utf-8').decode(raw);
-    if ((decoded.match(//g)||[]).length > 5) decoded = new TextDecoder('windows-1250').decode(raw);
+    if ((decoded.match(/\uFFFD/g)||[]).length > 5) decoded = new TextDecoder('windows-1250').decode(raw);
     const rows = parseCsv(decoded.replace(/^\uFEFF/,''));
     const headers = rows.shift().map((h)=>h.trim().toUpperCase());
     const records = rows.map((values)=>Object.fromEntries(headers.map((h,i)=>[h,(values[i]||'').trim()])));
