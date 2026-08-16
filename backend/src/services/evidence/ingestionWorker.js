@@ -64,7 +64,7 @@ async function failJob(job, error) {
     await client.query(`UPDATE knowledge.ingestion_jobs SET status=$2,last_error=$3,available_at=now()+($4||' seconds')::interval,locked_at=NULL,locked_by=NULL,finished_at=CASE WHEN $2='FAILED' THEN now() ELSE NULL END WHERE id=$1`, [job.id, retry ? 'RETRY' : 'FAILED', String(error.message || error).slice(0, 2000), delaySeconds]);
     await client.query(`UPDATE knowledge.extraction_runs SET failures=failures+1,heartbeat_at=now(),error_message=$2 WHERE id=$1`, [job.run_id, String(error.message || error).slice(0, 2000)]);
     await client.query(`UPDATE knowledge.localities SET ingestion_status=$2 WHERE id=$1`, [job.locality_id, retry ? 'QUEUED' : 'FAILED']);
-    await client.query(`INSERT INTO knowledge.review_queue(entity_type,entity_id,locality_id,reason,severity,payload) VALUES('INGESTION_JOB',$1,$2,'PROCESSING_FAILED','HIGH',$3) ON CONFLICT DO UPDATE SET payload=EXCLUDED.payload,created_at=now()`, [String(job.id), job.locality_id, JSON.stringify({ error: error.message, attempt })]);
+    await client.query(`INSERT INTO knowledge.review_queue(entity_type,entity_id,locality_id,reason,severity,payload) VALUES('INGESTION_JOB',$1,$2,'PROCESSING_FAILED','HIGH',$3) ON CONFLICT (entity_type, entity_id, reason) DO UPDATE SET payload=EXCLUDED.payload,created_at=now()`, [String(job.id), job.locality_id, JSON.stringify({ error: error.message, attempt })]);
   });
   logger.warn({ jobId: job.id, err: error, retry, delaySeconds }, 'Evidence ingestion locality failed');
 }
