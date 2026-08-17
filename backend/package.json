@@ -10,6 +10,7 @@
     "migrate": "node scripts/runMigrations.js",
     "sync": "node scripts/runSyncOnce.js",
     "import:siruta": "node scripts/importSiruta.js",
+    "export:siruta-dict": "node scripts/exportSirutaDictionary.js",
     "ingest:once": "node scripts/runEvidenceWorkerOnce.js",
     "test": "node --test test/*.test.js"
   },
