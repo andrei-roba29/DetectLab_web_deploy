@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v52-babel-layer';
+const CACHE_NAME = 'detectlab-v53-sat60-premium-layer';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -50,6 +50,7 @@ const PRECACHE_URLS = [
   'js/map-app.js',
   'js/map-app.js?v=20260814-coordinate-search',
   'js/map-app.js?v=20260815-last-location',
+  'js/map-app.js?v=20260819-sat60-premium-layer',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',
@@ -85,6 +86,7 @@ const PRECACHE_URLS = [
   'js/translations.js?v=20260814-promo',
   'js/translations.js?v=20260814-useful-info',
   'js/subscriptions.js?v=20260814-promo',
+  'js/subscriptions.js?v=20260819-sat60-premium-layer',
   'js/checkout.js?v=20260814-promo',
   'js/account-legacy.js?v=20260814-promo',
   'js/auth.js?v=20260814-promo',

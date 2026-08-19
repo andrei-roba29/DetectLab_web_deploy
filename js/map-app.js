@@ -9994,12 +9994,11 @@
                 }
 
                 window.toggleSatellite60sMap = function (on) {
+                    // Strat premium de sine stătător: switch-ul lui nu mai
+                    // pornește grupul "Historical Maps" (nu mai e substrat
+                    // al acestuia) și nu mai e oprit de switch-ul mare al
+                    // grupului — see HIST_PREMIUM_SUBLAYER_TOGGLES.
                     if (on) {
-                        var histPremToggle = document.getElementById("histPremiumToggle");
-                        if (histPremToggle && !histPremToggle.checked) {
-                            histPremToggle.checked = true;
-                            window.toggleHistPremiumLayer(true);
-                        }
                         ensureSat60Layers();
                         if (!map.hasLayer(_sat60MapLayer)) {
                             _sat60MapLayer.addTo(map);
@@ -10047,6 +10046,9 @@
             // Substraturile grupului "Harti istorice / Historical maps" (premium).
             // Când switch-ul mare e oprit, toate switch-urile astea (și straturile
             // lor de pe hartă) trebuie oprite automat — vezi bug-ul raportat.
+            // NOTE: "Satellite imagery 60's" nu mai e aici — e acum un strat
+            // premium de sine stătător (top-level), cu propriul switch, nu un
+            // substrat al grupului Historical Maps.
             var HIST_PREMIUM_SUBLAYER_TOGGLES = [
                 { id: 'josephineToggle', fnName: 'toggleJosephineLayer' },
                 { id: 'bucovinaMapToggle', fnName: 'toggleBucovinaMap' },
@@ -10057,7 +10059,6 @@
                 { id: 'polishTactical1933MapToggle', fnName: 'togglePolishTactical1933Map' },
                 { id: 'ww1MapToggle', fnName: 'toggleWw1Map' },
                 { id: 'ww2MapToggle', fnName: 'toggleWw2Map' },
-                { id: 'satellite60sToggle', fnName: 'toggleSatellite60sMap' },
                 { id: 'banatMapToggle', fnName: 'toggleBanatMap' }
             ];
 

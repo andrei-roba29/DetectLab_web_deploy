@@ -2361,42 +2361,50 @@
                                        oninput="setBanatMapOpacity(this.value)">
                             </div>
 
-                            <!-- Satellite Imagery 60's -->
-                            <div id="satellite60sRow">
-                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
-                                    <span style="display:flex;align-items:center;gap:5px;">
-                                        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
-                                        <span class="t" data-key="layer_satellite60s">Satellite imagery 60's</span>
-                                    </span>
-                                    <label class="apm-toggle-switch" title="Toggle Satellite imagery 60's" style="transform:scale(0.85);transform-origin:right center;">
-                                        <input type="checkbox" id="satellite60sToggle" onchange="toggleSatellite60sMap(this.checked)">
-                                        <span class="apm-toggle-track"></span>
-                                    </label>
-                                </div>
-                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
-                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
-                                        <span style="font-size:0.72rem;opacity:0.6">Opacity</span>
-                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
-                                    </span>
-                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
-                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Satellite imagery 60\'s','© Corona 1960s (CAST UARK)')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
-                                        <span class="pct" id="satellite60sMapPct">85%</span>
-                                    </span>
-                                </div>
-                                <input type="range" class="transp-slider" id="satellite60sMapOpacitySlider"
-                                       min="0" max="100" value="85"
-                                       oninput="setSatellite60sMapOpacity(this.value)">
-
-                                <!-- Tiles are fetched automatically by the
-                                     map when the layer is on and the zoom is
-                                     high enough (pass mosaics from z8, frames
-                                     from z12), exactly like the original
-                                     Corona Atlas. No extra controls here. -->
-                            </div>
-
                         </div><!-- /histPremiumSubLayers -->
 
                     </div><!-- /histPremium transp-layer-row -->
+
+                    <!-- Satellite imagery 60's (CORONA) — standalone premium layer -->
+                    <div class="transp-layer-row" data-category="premium" id="satellite60sRow">
+                        <div class="transp-layer-label" style="margin-bottom:6px">
+                            <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+                                    <circle cx="6.5" cy="6.5" r="4.6" fill="none" stroke="#ffc832" stroke-width="0.9" />
+                                    <circle cx="6.5" cy="6.5" r="2.3" fill="rgba(255,200,50,0.35)" stroke="#ffc832" stroke-width="0.7" />
+                                    <line x1="9.8" y1="9.8" x2="11.6" y2="11.6" stroke="#ffc832" stroke-width="0.9" stroke-linecap="round" />
+                                    <circle cx="6.5" cy="6.5" r="0.8" fill="#ffc832" />
+                                </svg>
+                                <span class="t" data-key="layer_satellite60s" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Satellite imagery 60's</span>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
+                                <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px">PREMIUM</span>
+                                <label class="apm-toggle-switch" title="Toggle Satellite imagery 60's">
+                                    <input type="checkbox" id="satellite60sToggle" onchange="toggleSatellite60sMap(this.checked)">
+                                    <span class="apm-toggle-track"></span>
+                                </label>
+                            </span>
+                        </div>
+
+                        <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="layer_opacity_label">Opacity</span>
+                            </span>
+                            <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Satellite imagery 60\'s','© Corona 1960s (CAST UARK)')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                <span class="pct" id="satellite60sMapPct">85%</span>
+                            </span>
+                        </div>
+                        <input type="range" class="transp-slider" id="satellite60sMapOpacitySlider"
+                               min="0" max="100" value="85"
+                               oninput="setSatellite60sMapOpacity(this.value)">
+
+                        <!-- Tiles are fetched automatically by the map when
+                             the layer is on and the zoom is high enough
+                             (pass mosaics from z8, frames from z12), exactly
+                             like the original Corona Atlas. No extra
+                             controls here. -->
+                    </div>
 
                     <!-- LIDAR Scanner — premium CSV point scan -->
                     <div class="transp-layer-row lidar-scanner-row" data-category="premium" id="lidarScannerRow">
@@ -2917,7 +2925,7 @@
          SRS=EPSG:900913, one corona layer per request, standard 256x256
          Web-Mercator tiles. Must load before map-app.js. -->
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
-    <script src="js/map-app.js?v=20260815-last-location"></script>
+    <script src="js/map-app.js?v=20260819-sat60-premium-layer"></script>
     <script src="js/vertical-opacity-control.js?v=20260812"></script>
     <script src="js/archeo-potential.js?v=20260803"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
@@ -3758,7 +3766,7 @@
     </div>
 
 <script src="js/account-legacy.js?v=20260814-promo"></script>
-<script src="js/subscriptions.js?v=20260814-promo"></script>
+<script src="js/subscriptions.js?v=20260819-sat60-premium-layer"></script>
 
 
 

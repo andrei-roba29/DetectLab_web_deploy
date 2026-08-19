@@ -687,7 +687,8 @@
         'toggleArcheoPotentialLayer',
         'toggleLidarScannerLayer',
         'setLidarActive',
-        'toggleHistPremiumMap'      // safe no-op if absent
+        'toggleHistPremiumMap',      // safe no-op if absent
+        'toggleSatellite60sMap'     // standalone premium layer (CORONA 60's)
     ];
 
     function wrapPremiumToggles() {
