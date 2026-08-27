@@ -4,6 +4,8 @@ import compression from 'compression';
 import pinoHttp from 'pino-http';
 import { env } from './config/env.js';
 import { logger } from './logger.js';
+import { pool } from './config/db.js';
+import { runMigrations } from '../scripts/runMigrations.js';
 import sitesRouter from './routes/sites.js';
 import layersRouter from './routes/layers.js';
 import clasateRouter from './routes/clasate.js';
@@ -44,8 +46,35 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(env.port, () => {
-  logger.info({ port: env.port }, 'DetectLab API listening');
-  startScheduler();
-  if (env.evidenceWorkerEnabled) startEvidenceWorker();
+/**
+ * The evidence pipeline depends on the `knowledge.*` schema (migration 007).
+ * A fresh deploy that only runs `npm start` (node src/app.js) would otherwise
+ * hit `relation "knowledge.localities" does not exist` on every evidence
+ * search and return a bare HTTP 500. On boot we check whether the schema
+ * already exists; only when it is missing do we run the idempotent migration
+ * set once. Failure here is non-fatal: the rest of the API (ArcGIS sites,
+ * payments, …) keeps serving, and evidence requests surface a clear error.
+ */
+async function ensureDatabaseSchema() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT to_regclass('knowledge.localities') AS evidence_schema`
+    );
+    if (rows[0]?.evidence_schema) {
+      logger.info('Evidence schema present; skipping migrations');
+      return;
+    }
+    logger.info('Evidence schema missing — applying migrations before serving');
+    await runMigrations(pool);
+  } catch (err) {
+    logger.error({ err }, 'ensureDatabaseSchema failed; continuing without migrations');
+  }
+}
+
+ensureDatabaseSchema().finally(() => {
+  app.listen(env.port, () => {
+    logger.info({ port: env.port }, 'DetectLab API listening');
+    startScheduler();
+    if (env.evidenceWorkerEnabled) startEvidenceWorker();
+  });
 });

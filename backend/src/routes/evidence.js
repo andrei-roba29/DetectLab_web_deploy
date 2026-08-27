@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { env } from '../config/env.js';
 import { researchLocality } from '../services/evidence/engine.js';
+import { SourceUnavailableError } from '../services/evidence/bibliotecaDigitala.js';
 import { createRun, setRunStatus } from '../services/evidence/ingestionWorker.js';
 import { findLocality, getClaim, getDossier, getEvidence, getLocality, getLocalityArchaeology, getLocalityDocuments, getLocalityEvidence, getPersistentBundle, persistResearchResult } from '../services/evidence/repository.js';
 
@@ -34,7 +35,14 @@ router.post('/evidence/search', async (req, res, next) => {
     await persistResearchResult(locality.id,result);
     res.set('X-DetectLab-Storage','newly-persisted');
     res.status(201).json(await getPersistentBundle(locality.id));
-  } catch(error){if(error?.name==='AbortError')return res.status(504).json({error:'source_timeout',source:'https://biblioteca-digitala.ro/'});next(error);}
+  } catch(error){
+    // The exclusive publication source is the only external dependency of the
+    // research path. When it is unreachable or refuses a request, surface an
+    // actionable 502 (source_unavailable) instead of a bare 500.
+    if (error?.name === 'AbortError') return res.status(504).json({ error: 'source_timeout', source: 'https://biblioteca-digitala.ro/', message: 'Sursa de publicații a răspuns prea lent.' });
+    if (error instanceof SourceUnavailableError) return res.status(502).json({ error: 'source_unavailable', source: 'https://biblioteca-digitala.ro/', message: 'Sursa de publicații biblioteca-digitala.ro este momentan indisponibilă. Încearcă din nou mai târziu.' });
+    next(error);
+  }
 });
 
 router.get('/localities/:id/dossier', async(req,res,next)=>{try{if(!numericId(req.params.id))return res.status(400).json({error:'invalid_id'});const dossier=await getDossier(req.params.id);dossier?res.json({localityId:req.params.id,dossier}):res.status(404).json({error:'not_found'});}catch(e){next(e);}});

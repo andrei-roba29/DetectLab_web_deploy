@@ -20,6 +20,8 @@
             button: 'Cercetează zona', zoom: 'Zoom in mai mult',
             locating: 'Identificăm localitatea…', search: 'Cercetăm sursele și analizăm documentele…',
             failed: 'Cercetarea nu a putut fi finalizată.',
+            sourceUnavailable: 'Sursa de publicații biblioteca-digitala.ro este momentan indisponibilă. Încearcă din nou mai târziu.',
+            sourceTimeout: 'Sursa de publicații a răspuns prea lent. Încearcă din nou.',
             no: 'Nu au fost identificate claim-uri arheologice verificabile. Încearcă aliasuri istorice.',
             locality: 'Localitate', county: 'Județ (opțional)', aliases: 'Aliasuri istorice (separate prin virgulă)', run: 'Cercetează',
             sourcePolicy: 'Dovezi: Biblioteca Digitală / ProEuropeana · Identitate: INS SIRUTA',
@@ -76,6 +78,8 @@
             button: 'Research area', zoom: 'Zoom in more',
             locating: 'Identifying locality…', search: 'Searching sources and analysing documents…',
             failed: 'Research could not be completed.',
+            sourceUnavailable: 'The publication source biblioteca-digitala.ro is temporarily unavailable. Please try again later.',
+            sourceTimeout: 'The publication source responded too slowly. Please try again.',
             no: 'No verifiable archaeological claims were identified. Try historical aliases.',
             locality: 'Locality', county: 'County (optional)', aliases: 'Historical aliases (comma-separated)', run: 'Research',
             sourcePolicy: 'Evidence: Digital Library / ProEuropeana · Identity: INS SIRUTA',
@@ -204,7 +208,10 @@
         } catch (e) {
             if (e.data && e.data.error === 'ambiguous_locality' && e.data.matches && e.data.matches.length) { renderAmbiguous(e.data.matches); }
             else {
-                document.getElementById('babelBody').innerHTML = '<div class="babel-state"><p>' + esc(t('failed')) + '</p><small>' + esc(e.message) + '</small><button class="evidence-retry" id="evidenceRetry">' + esc(t('run')) + '</button></div>';
+                var srcErr = e.data && (e.data.error === 'source_unavailable' || e.data.error === 'source_timeout');
+                var heading = srcErr ? (e.data.error === 'source_timeout' ? t('sourceTimeout') : t('sourceUnavailable')) : t('failed');
+                var detail = srcErr ? (e.data.message || '') : (e.message || '');
+                document.getElementById('babelBody').innerHTML = '<div class="babel-state"><p>' + esc(heading) + '</p>' + (detail ? '<small>' + esc(detail) + '</small>' : '') + '<button class="evidence-retry" id="evidenceRetry">' + esc(t('run')) + '</button></div>';
                 var retry = document.getElementById('evidenceRetry');
                 if (retry) retry.onclick = function () { form({ name: locality || '', county: county || '' }); };
             }

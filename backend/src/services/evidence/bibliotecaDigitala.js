@@ -10,6 +10,19 @@ const MIN_REQUEST_INTERVAL_MS = Number(process.env.BIBLIOTECA_REQUEST_INTERVAL_M
 let nextRequestAt = 0;
 let requestChain = Promise.resolve();
 
+/**
+ * Raised whenever the exclusive publication source cannot be reached or
+ * refuses a request (DNS/TLS/network failure, HTTP error, blocked redirect).
+ * The evidence route maps this to a 502 Bad Gateway with an actionable
+ * message instead of a bare HTTP 500 ("Internal server error").
+ */
+export class SourceUnavailableError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'SourceUnavailableError';
+  }
+}
+
 // One process-wide request lane. This deliberately trades throughput for
 // politeness; national ingestion runs progressively and is resumable.
 async function waitForSourceSlot() {
@@ -44,21 +57,28 @@ function absolute(href = '') {
 
 async function sourceFetch(url, { timeoutMs = 20000, maxBytes = 4 * 1024 * 1024 } = {}) {
   const safe = absolute(url);
-  if (!safe) throw new Error('Blocked non-biblioteca-digitala.ro URL');
+  if (!safe) throw new SourceUnavailableError('Blocked non-biblioteca-digitala.ro URL');
   await waitForSourceSlot();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(safe, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/pdf;q=0.9,*/*;q=0.5' },
-      redirect: 'follow', signal: controller.signal,
-    });
-    if (!absolute(response.url)) throw new Error('Blocked redirect outside biblioteca-digitala.ro');
-    if (!response.ok) throw new Error(`Source returned HTTP ${response.status}`);
+    let response;
+    try {
+      response = await fetch(safe, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/pdf;q=0.9,*/*;q=0.5' },
+        redirect: 'follow', signal: controller.signal,
+      });
+    } catch (err) {
+      // Preserve AbortError (timeout) — the route maps it to 504.
+      if (err && err.name === 'AbortError') throw err;
+      throw new SourceUnavailableError(`Nu s-a putut contacta ${ORIGIN}: ${err?.message || 'eroare de rețea'}`);
+    }
+    if (!absolute(response.url)) throw new SourceUnavailableError('Blocked redirect outside biblioteca-digitala.ro');
+    if (!response.ok) throw new SourceUnavailableError(`Source returned HTTP ${response.status}`);
     const length = Number(response.headers.get('content-length') || 0);
-    if (length > maxBytes) throw new Error('Source document exceeds the safe download limit');
+    if (length > maxBytes) throw new SourceUnavailableError('Source document exceeds the safe download limit');
     const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length > maxBytes) throw new Error('Source document exceeds the safe download limit');
+    if (buffer.length > maxBytes) throw new SourceUnavailableError('Source document exceeds the safe download limit');
     return { buffer, contentType: response.headers.get('content-type') || '', url: response.url };
   } finally { clearTimeout(timer); }
 }
