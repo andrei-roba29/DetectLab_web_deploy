@@ -77,7 +77,14 @@
             CELL_M: 12,
             MAX_CLASS_DIST: 150,      // max RGB distance to a legend colour
             ALLOWED: [5, 4.5, 4],     // "cel puțin în zona neutră"
-            OPACITY: 0.30             // screenshot opacity required by the spec
+            // The PDF figure does NOT re-fetch the tiles (the 30% raster wash
+            // was invisible on satellite): it polygonizes the classified grid,
+            // the way the "Search Help" tool does, and fills each outline with
+            // its legend colour over the satellite base.
+            FIGURE: {
+                OPACITY: 0.45,        // fill opacity of the APM figure polygons
+                MIN_CLUSTER_CELLS: 8  // drop connected patches smaller than this
+            }
         },
 
         // LIDAR Scanner
@@ -151,20 +158,30 @@
         return (typeof window._currentLang === 'function' && window._currentLang()) || 'en';
     }
 
-    function tr(key, vars) {
-        var dict = null;
-        if (typeof translations !== 'undefined' && translations && translations[lang()]) {
-            dict = translations[lang()];
-        }
-        var s = (dict && dict[key] !== undefined) ? dict[key]
-            : (FALLBACK_EN[key] !== undefined ? FALLBACK_EN[key] : key);
-        if (vars) {
-            Object.keys(vars).forEach(function (k) {
-                s = String(s).split('{' + k + '}').join(vars[k]);
-            });
-        }
-        return s;
+    // A translator bound to one language. The PDF can be generated in a
+    // language the user picks independently of the site language, so every
+    // PDF string (pages AND figure titles/badges) must go through the same
+    // bound translator — passing `lang` alone changes almost nothing in the
+    // Painter, which uses its `tr` for every string.
+    function makeTr(langCode) {
+        var code = (langCode === 'ro') ? 'ro' : 'en';
+        return function (key, vars) {
+            var dict = null;
+            if (typeof translations !== 'undefined' && translations && translations[code]) {
+                dict = translations[code];
+            }
+            var s = (dict && dict[key] !== undefined) ? dict[key]
+                : (FALLBACK_EN[key] !== undefined ? FALLBACK_EN[key] : key);
+            if (vars) {
+                Object.keys(vars).forEach(function (k) {
+                    s = String(s).split('{' + k + '}').join(vars[k]);
+                });
+            }
+            return s;
+        };
     }
+
+    function tr(key, vars) { return makeTr(lang())(key, vars); }
 
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -330,7 +347,16 @@
     var PROP_NAMES = {
         name: ['NUMESIT', 'Denumire', 'DENUMIRE', 'Nume', 'Eticheta', 'Toponim', 'Name', 'NAME'],
         ran: ['CODSIT', 'CodRAN', 'CODRAN', 'Cod_RAN', 'COD_RAN', 'RAN'],
-        period: ['EPOCA', 'Epoca', 'CRONOLOGIE', 'Cronologie', 'PERIOADA', 'Perioada', 'DATARE', 'Datare'],
+        // The production GeoJSON endpoints (/api/layers/0, /5/, /6/) were
+        // verified: NONE of the layers has a dedicated dating property.
+        // Layer 0 → NUMESIT/CODSIT/SIRUTA/COORD, layer 5 → Tip/Judet/Comuna/
+        // Eticheta, layer 6 → Nume/CodRAN/Localitate/Judet/Observatii/Sursa.
+        // The dating therefore lives in the site NAME itself ("Așezarea
+        // hallstattiană…", "Necropola de incinerație din epoca fierului…"),
+        // which siteInfo() falls back to. These keys stay listed so a dating
+        // field is picked up automatically the day the backend adds one.
+        period: ['EPOCA', 'Epoca', 'CRONOLOGIE', 'Cronologie', 'PERIOADA', 'Perioada', 'DATARE', 'Datare',
+                 'Observatii', 'OBSERVATII', 'Descriere', 'DESCRIERE'],
         type: ['TIPSIT', 'Tip', 'TIP', 'TipSit', 'Categorie', 'Tipobiect'],
         locality: ['LOCALITATE', 'Localitate', 'Sat', 'SAT', 'Punct'],
         county: ['JUDET', 'Judet', 'Judet_1', 'COUNTY', 'County'],
@@ -340,14 +366,24 @@
     function siteInfo(rec) {
         var p = rec.props || {};
         var ran = pickProp(p, PROP_NAMES.ran);
-        var name = pickProp(p, PROP_NAMES.name) || (ran ? 'RAN ' + ran : null);
+        var rawName = pickProp(p, PROP_NAMES.name);
+        var name = rawName || (ran ? 'RAN ' + ran : null);
+        // The production dataset has no dating field: the era is stated in the
+        // site name ("Cetatea medievală…", "Așezarea hallstattiană…", "Castrul
+        // militar auxiliar…"). A dating property wins when one exists; otherwise
+        // the name is the dating evidence.
+        var period = pickProp(p, PROP_NAMES.period);
+        var periodFromProperty = periodKey(period);
+        var periodFromName = rawName ? periodKey(rawName) : null;
         return {
             layerId: rec.layerId,
             oid: rec.oid,
             isPolygon: rec.isPolygon,
             name: name || tr('arch_report_site_unknown'),
             ran: ran,
-            period: pickProp(p, PROP_NAMES.period),
+            period: period,
+            periodKey: periodFromProperty || periodFromName || null,
+            datingFromName: !periodFromProperty && !!periodFromName,
             type: pickProp(p, PROP_NAMES.type),
             locality: pickProp(p, PROP_NAMES.locality),
             commune: pickProp(p, PROP_NAMES.commune),
@@ -603,6 +639,135 @@
         return grid.cls[cy * grid.cols + cx];
     }
 
+    /* ── APM figure polygons ("Search Help" style) ──────────────────────────
+     * The PDF figure no longer re-fetches the APM tiles (CORS + a 30% wash
+     * over dark satellite made the raster effectively invisible). Instead it
+     * polygonizes the very grid the score was computed from: the allowed
+     * classes (blue/green/yellow) are clustered per class, small patches are
+     * dropped, and each surviving cluster is outlined with a Moore boundary
+     * trace — the same algorithm map-app.js' Search Help tool uses — and
+     * filled with its legend colour. The figure is a direct rendering of the
+     * data that produced the score, so it can never contradict it. */
+
+    // Moore neighborhood tracing over the cell set; returns the simplified
+    // boundary as [[col,row],…] cell coordinates (null when degenerate).
+    function outlineCells(cells, cols) {
+        var cellSet = {};
+        cells.forEach(function (idx) { cellSet[idx] = true; });
+        function has(cx, cy) {
+            if (cx < 0 || cy < 0) return false;
+            return !!cellSet[cy * cols + cx];
+        }
+        // start from the top-left-most cell
+        var startIdx = cells.reduce(function (best, idx) {
+            var bx = best % cols, by = (best - bx) / cols;
+            var ix = idx % cols, iy = (idx - ix) / cols;
+            return (iy < by || (iy === by && ix < bx)) ? idx : best;
+        }, cells[0]);
+        var sx = startIdx % cols, sy = (startIdx - sx) / cols;
+
+        // directions: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE
+        var dx = [1, 1, 0, -1, -1, -1, 0, 1];
+        var dy = [0, 1, 1, 1, 0, -1, -1, -1];
+        var outline = [];
+        var cx = sx, cy = sy, dir = 7;
+        var maxSteps = cells.length * 4 + 8, steps = 0;
+        do {
+            outline.push([cx, cy]);
+            var backDir = (dir + 4) % 8;
+            var found = false;
+            for (var d = 0; d < 8; d++) {
+                var nd = (backDir + 1 + d) % 8;
+                var nx = cx + dx[nd], ny = cy + dy[nd];
+                if (has(nx, ny)) { cx = nx; cy = ny; dir = nd; found = true; break; }
+            }
+            if (!found) break;
+            steps++;
+        } while ((cx !== sx || cy !== sy) && steps < maxSteps);
+        if (outline.length < 3) return null;
+
+        // keep only the points where the direction changes
+        var simplified = [outline[0]];
+        for (var i = 1; i < outline.length - 1; i++) {
+            var prev = simplified[simplified.length - 1];
+            var curr = outline[i];
+            var next = outline[i + 1];
+            if (curr[0] - prev[0] !== next[0] - curr[0] ||
+                curr[1] - prev[1] !== next[1] - curr[1]) simplified.push(curr);
+        }
+        simplified.push(outline[outline.length - 1]);
+        return simplified;
+    }
+
+    // One polygon per connected patch of allowed classes (8-connectivity).
+    // @returns [{cls, cells, hull:[[col,row],…]}]
+    function apmGridPolygons(grid, minCells) {
+        var out = [];
+        if (!grid || !grid.cls || !grid.cols || !grid.rows) return out;
+        var min = (typeof minCells === 'number') ? minCells : CONFIG.APM.FIGURE.MIN_CLUSTER_CELLS;
+        var allowed = CONFIG.APM.ALLOWED;
+        var seen = new Uint8Array(grid.cols * grid.rows);
+        for (var c = 0; c < allowed.length; c++) {
+            var cls = allowed[c];
+            for (var idx = 0; idx < grid.cols * grid.rows; idx++) {
+                if (grid.cls[idx] !== cls || seen[idx]) continue;
+                var stack = [idx], cells = [];
+                seen[idx] = 1;
+                while (stack.length) {
+                    var cur = stack.pop();
+                    cells.push(cur);
+                    var cx = cur % grid.cols, cy = (cur - cx) / grid.cols;
+                    for (var dy = -1; dy <= 1; dy++) {
+                        for (var dx = -1; dx <= 1; dx++) {
+                            if (!dx && !dy) continue;
+                            var nx = cx + dx, ny = cy + dy;
+                            if (nx < 0 || ny < 0 || nx >= grid.cols || ny >= grid.rows) continue;
+                            var ni = ny * grid.cols + nx;
+                            if (!seen[ni] && grid.cls[ni] === cls) { seen[ni] = 1; stack.push(ni); }
+                        }
+                    }
+                }
+                if (cells.length < min) continue;
+                var hull = outlineCells(cells, grid.cols);
+                if (hull && hull.length >= 3) out.push({ cls: cls, cells: cells.length, hull: hull });
+            }
+        }
+        return out;
+    }
+
+    function apmClassColor(cls) {
+        for (var i = 0; i < APM_LEGEND.length; i++) {
+            if (APM_LEGEND[i].cls === cls) return APM_LEGEND[i].rgb;
+        }
+        return [160, 32, 240];   // never reached: only legend classes are outlined
+    }
+
+    // Paints the APM polygons over the figure canvas (satellite base below).
+    function drawApmFigurePolygons(g, proj, polygons, grid, lat0) {
+        polygons.forEach(function (poly) {
+            var pts = poly.hull.map(function (cell) {
+                var x = grid.x0 + (cell[0] + 0.5) * grid.cellM;
+                var y = grid.y0 + (cell[1] + 0.5) * grid.cellM;
+                var ll = localMetersToLatLng(x, y, lat0);
+                return proj.latLngToPx(ll.lat, ll.lng);
+            });
+            if (pts.length < 3) return;
+            var rgb = apmClassColor(poly.cls);
+            g.save();
+            g.beginPath();
+            g.moveTo(pts[0].x, pts[0].y);
+            for (var i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+            g.closePath();
+            g.fillStyle = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' +
+                CONFIG.APM.FIGURE.OPACITY + ')';
+            g.fill();
+            g.strokeStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+            g.lineWidth = 1.6;
+            g.stroke();
+            g.restore();
+        });
+    }
+
     /* ═══════════════════════════════════════════════════════════════════════
      * 7. LIDAR SCANNER POINTS
      * ═══════════════════════════════════════════════════════════════════════ */
@@ -811,14 +976,17 @@
     var PERIOD_RULES = [
         { key: 'paleolithic', re: /paleolitic|palaeolitic|paleolithic/i },
         { key: 'mesolithic', re: /mezolitic|mesolitic/i },
-        // eneolithic BEFORE neolithic: "Eneolitic" also contains "neolitic"
-        { key: 'eneolithic', re: /eneolitic|eneolithic|eneo|cucuteni/i },
-        { key: 'neolithic', re: /neolitic|neolithic/i },
+        // eneolithic BEFORE neolithic: "Eneolitic" also contains "neolitic".
+        // RAN culture names count as dating too (Coțofeni, Petrești, Vinča,
+        // Gumelnița, Hamangia, Boian, Decea are Eneolithic cultures).
+        { key: 'eneolithic', re: /eneolitic|eneolithic|eneo|cucuteni|cotofeni|petre[sș]ti|gumelni[tț]a|hamangia|vin[cč]a|decea|boian/i },
+        { key: 'neolithic', re: /neolitic|neolithic|star[cč]evo|\bcri[sș]\b/i },
         { key: 'bronze_age', re: /bronz|bronze/i },
         { key: 'hallstatt', re: /hallstatt/i },
         { key: 'iron_age', re: /fierului|fier\b|iron age|lat[eè]ne|latene/i },
         { key: 'dacian', re: /dacic|geto[- ]?dac|geto/i },
-        { key: 'roman', re: /roman|romano|romano-bizantin/i },
+        // "castrul / castru" = Roman fort in the RAN naming convention.
+        { key: 'roman', re: /roman|romano|romano-bizantin|castru|castrul|vicus/i },
         { key: 'migration', re: /migrat|migration|popoarelor/i },
         { key: 'medieval', re: /mediev|mediaev|feudal/i },
         { key: 'modern', re: /modern|contemporan/i },
@@ -826,12 +994,126 @@
         { key: 'antiquity', re: /antic|antichit/i }
     ];
 
+    /* ── Century / millennium notation ──────────────────────────────────────
+     * RAN records are frequently dated in centuries ("sec. II-III p.Chr.",
+     * "secolul al IV-lea", "sec. XII-XIII") or millennia, not era names. A
+     * century (or century range) is mapped onto the report's period keys so
+     * the estimate can use it. Fails closed: anything that is not clearly a
+     * century expression returns null. */
+
+    var ROMAN_DIGIT_VALUES = { I: 1, V: 5, X: 10, L: 50, C: 100 };
+
+    function romanToInt(s) {
+        var total = 0, prev = 0;
+        for (var i = s.length - 1; i >= 0; i--) {
+            var v = ROMAN_DIGIT_VALUES[s.charAt(i).toUpperCase()];
+            if (v === undefined) return NaN;
+            total += (v < prev) ? -v : v;
+            prev = v;
+        }
+        return total;
+    }
+
+    var CENTURY_NUM = '([IVXLCDM]+|\\d{1,2})';
+    var CENTURY_RANGE_RE = new RegExp(
+        '^\\s*(?:al\\s+)?' + CENTURY_NUM + '(?:\\s*-lea|-le)?' +
+        '(?:\\s*(?:[-–—,]|până\\s+la|și|si)\\s*(?:al\\s+)?' + CENTURY_NUM + '(?:\\s*-lea|-le)?)?',
+        'i'
+    );
+    // NB: no \\b around the Romanian era markers — ă/â/î/ș/ț are not JS word
+    // characters, so \\b breaks on "î.Chr." / "d.Hr.". The (?:^|[\\s(]) prefix
+    // anchors them to a token start instead.
+    var CENTURY_BC_RE = /(?:^|[\s(])(?:î|i|a)\.?\s*Chr|(?:^|\s)BC(?![A-Za-z])|(?:^|[\s(])(?:î|i)\.?\s*Hr|(?:^|[\s(])(?:î|i)\.?\s*e\.?\s*n\./i;
+    var CENTURY_AD_RE = /(?:^|[\s(])(?:p|d)\.?\s*Chr|(?:^|\s)AD(?![A-Za-z])|(?:^|[\s(])(?:p|d)\.?\s*Hr|(?:^|[\s(])e\.?\s*n\./i;
+
+    // "sec. II-III p.Chr." / "secolele XII–XIII" / "mileniul I î.Chr." →
+    // { from, to, bc, millennium } or null.
+    // The keyword must end a word (letter lookahead, not \\b — a trailing \\b
+    // fails after "sec.", where '.' and ' ' are both non-word characters).
+    var CENTURY_KEYWORD_RE = /\b(sec\.?|secole?(?:ul|ele|ului)?|mileniu(?:l|le)?)(?![A-Za-z0-9\u0103\u0102\u00E2\u00C2\u00EE\u00CE\u0219\u0218\u021B\u021A])/i;
+
+    function parseCenturyRange(text) {
+        var s = String(text || '');
+        var m = CENTURY_KEYWORD_RE.exec(s);
+        if (!m) return null;
+        var isMillennium = /milen/i.test(m[0]);
+        var tail = s.slice(m.index + m[0].length);
+        var rm = CENTURY_RANGE_RE.exec(tail);
+        if (!rm) return null;
+        var v1 = /^\d+$/.test(rm[1]) ? parseInt(rm[1], 10) : romanToInt(rm[1]);
+        if (!isFinite(v1) || v1 < 1 || v1 > 40) return null;
+        var v2 = v1;
+        if (rm[2]) {
+            var raw2 = /^\d+$/.test(rm[2]) ? parseInt(rm[2], 10) : romanToInt(rm[2]);
+            if (!isFinite(raw2) || raw2 < 1 || raw2 > 40) return null;
+            v2 = raw2;
+        }
+        var bcIdx = tail.search(CENTURY_BC_RE);
+        var adIdx = tail.search(CENTURY_AD_RE);
+        // Default AD (Romanian records are AD unless marked); when both markers
+        // appear, the one closer to the numerals wins.
+        var bc = bcIdx !== -1 && (adIdx === -1 || bcIdx < adIdx);
+        return { from: v1, to: v2, bc: bc, millennium: isMillennium };
+    }
+
+    // One century (BC = negative) mapped onto the period scale, following the
+    // conventions used in Romanian archaeology for Transylvania.
+    function centuryPeriod(c) {
+        if (c < 0) {
+            if (c >= -1) return 'dacian';        // sec. I î.Chr. (Burebista)
+            if (c >= -5) return 'iron_age';      // sec. II–V î.Chr. — La Tène
+            if (c >= -12) return 'hallstatt';    // sec. VI–XII î.Chr. — first Iron Age
+            if (c >= -30) return 'bronze_age';
+            return 'prehistoric';
+        }
+        if (c <= 3) return 'roman';              // sec. I–III — Roman Dacia (106–271)
+        if (c <= 7) return 'migration';          // sec. IV–VII
+        if (c <= 18) return 'medieval';          // sec. VIII–XVIII
+        return 'modern';
+    }
+
+    function periodKeyFromCenturies(from, to, bc) {
+        var lo = Math.min(from, to), hi = Math.max(from, to);
+        if (!isFinite(lo) || !isFinite(hi) || hi - lo > 30) return null;
+        // vote per century; on a tie the bucket closest to year 0 wins
+        // ("sec. II-I î.Chr." → dacian, "sec. III-IV p.Chr." → roman — the
+        // more distinctive horizon on either side of the era boundary)
+        var votes = {};
+        for (var c = lo; c <= hi; c++) {
+            var k = centuryPeriod(bc ? -c : c);
+            if (!votes[k]) votes[k] = { n: 0, minAbs: Infinity };
+            votes[k].n++;
+            if (c < votes[k].minAbs) votes[k].minAbs = c;
+        }
+        var best = null, bestN = 0, bestAbs = Infinity;
+        Object.keys(votes).forEach(function (k) {
+            var v = votes[k];
+            if (v.n > bestN || (v.n === bestN && v.minAbs < bestAbs)) {
+                best = k; bestN = v.n; bestAbs = v.minAbs;
+            }
+        });
+        return best;
+    }
+
+    function periodKeyFromMillennium(n, bc) {
+        if (bc) {
+            if (n <= 1) return 'iron_age';       // mileniul I î.Chr. — the Iron Age
+            if (n === 2) return 'bronze_age';
+            return 'prehistoric';
+        }
+        if (n <= 1) return 'antiquity';          // mileniul I p.Chr. — Antiquity as a whole
+        return 'modern';
+    }
+
     function periodKey(text) {
         if (!text) return null;
         for (var i = 0; i < PERIOD_RULES.length; i++) {
             if (PERIOD_RULES[i].re.test(text)) return PERIOD_RULES[i].key;
         }
-        return null;
+        var c = parseCenturyRange(text);
+        if (!c) return null;
+        if (c.millennium) return periodKeyFromMillennium(c.from, c.bc);
+        return periodKeyFromCenturies(c.from, c.to, c.bc);
     }
 
     function estimatePeriod(sites, count) {
@@ -839,9 +1121,15 @@
         var votes = {};
         var evidence = [];
         used.forEach(function (s, i) {
-            var key = periodKey(s.period);
+            // siteInfo() pre-computes periodKey (dating property → site name);
+            // raw objects fall back to the same chain here.
+            var key = (s.periodKey !== undefined) ? s.periodKey
+                : (periodKey(s.period) || periodKey(s.name));
+            var fromName = (s.datingFromName !== undefined) ? !!s.datingFromName
+                : (!s.period && !!key);
             evidence.push({
                 name: s.name, period: s.period || null, periodKey: key,
+                datingFromName: fromName,
                 distanceM: s.distanceM, ran: s.ran, url: s.url, index: i + 1
             });
             if (!key) return;
@@ -933,8 +1221,45 @@
         figures: null,          // cached screenshots
         visible: true,
         version: 0,
-        layerGroup: null
+        layerGroup: null,
+        pdfLang: null           // PDF language override ('ro'|'en'); null = site language
     };
+
+    // PDF language — the user picks RO or EN in the panel before downloading;
+    // the choice defaults to the site language and is remembered for the
+    // session (in-memory + sessionStorage so a reload keeps it in the tab).
+    var PDF_LANG_STORAGE_KEY = 'archReportPdfLang';
+
+    function pdfLanguage() {
+        if (_state.pdfLang === 'ro' || _state.pdfLang === 'en') return _state.pdfLang;
+        return lang();
+    }
+
+    function setPdfLanguage(code) {
+        if (code !== 'ro' && code !== 'en') return pdfLanguage();
+        _state.pdfLang = code;
+        try {
+            if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(PDF_LANG_STORAGE_KEY, code);
+        } catch (e) { /* storage unavailable — the in-memory choice still holds */ }
+        syncPdfLangUi();
+        return code;
+    }
+
+    function syncPdfLangUi() {
+        var active = pdfLanguage();
+        ['ro', 'en'].forEach(function (code) {
+            var btn = el('archReportPdfLang' + (code === 'ro' ? 'Ro' : 'En'));
+            if (btn) btn.classList.toggle('is-active', code === active);
+        });
+    }
+
+    (function restorePdfLang() {
+        try {
+            var saved = (typeof sessionStorage !== 'undefined')
+                ? sessionStorage.getItem(PDF_LANG_STORAGE_KEY) : null;
+            if (saved === 'ro' || saved === 'en') _state.pdfLang = saved;
+        } catch (e) { /* no storage — fall back to the site language */ }
+    })();
 
     function el(id) { return (typeof document !== 'undefined') ? document.getElementById(id) : null; }
 
@@ -1329,9 +1654,11 @@
     function updateUi() {
         var model = _state.model;
         var pdfBtn = el('archReportPdfBtn');
+        var pdfLangSel = el('archReportPdfLang');
         var resultsToggle = el('archReportResultsToggleWrap');
         var hasResults = !!(model && model.results.length);
         if (pdfBtn) pdfBtn.style.display = hasResults ? '' : 'none';
+        if (pdfLangSel) pdfLangSel.style.display = hasResults ? 'flex' : 'none';
         if (resultsToggle) resultsToggle.style.display = hasResults ? 'flex' : 'none';
         if (!hasResults) { setSummary(''); return; }
         var chips = model.results.map(function (r) {
@@ -1351,11 +1678,15 @@
     /* ═══════════════════════════════════════════════════════════════════════
      * 13. SCREENSHOTS FOR THE PDF
      * ═══════════════════════════════════════════════════════════════════════
-     * Each figure is composited from the real raster tiles (APM 2.0 at 30%,
-     * LIDAR hillshade, satellite base) plus vector overlays drawn on top.
-     * A source whose pixels cannot be read (bucket without CORS) is skipped
-     * rather than drawn, because a single tainted image would make the whole
-     * canvas un-exportable; the missing source is reported in the caption. */
+     * Each figure is composited from raster tiles (satellite base, LIDAR
+     * hillshade) plus vector overlays drawn on top. The APM figure is special:
+     * it draws the high-potential polygons produced from the report's own
+     * classified grid (apmGridPolygons) instead of re-fetching the APM tiles —
+     * no CORS dependency, visible on satellite, and guaranteed to agree with
+     * the score. A source whose pixels cannot be read (bucket without CORS)
+     * is skipped rather than drawn, because a single tainted image would make
+     * the whole canvas un-exportable; the missing source is reported in the
+     * caption. */
 
     var SATELLITE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
@@ -1544,7 +1875,8 @@
         g.restore();
     }
 
-    function drawResultPolygons(g, proj, model, highlightIndex) {
+    function drawResultPolygons(g, proj, model, highlightIndex, trx) {
+        var t = trx || tr;
         model.results.forEach(function (res, idx) {
             var pts = res.polygon.map(function (ll) { return proj.latLngToPx(ll[0], ll[1]); });
             g.save();
@@ -1562,7 +1894,7 @@
             // label
             var cx = pts.reduce(function (a, p) { return a + p.x; }, 0) / pts.length;
             var cy = pts.reduce(function (a, p) { return a + p.y; }, 0) / pts.length;
-            var text = tr('arch_report_result') + ' ' + (idx + 1);
+            var text = t('arch_report_result') + ' ' + (idx + 1);
             g.font = "700 12px 'Outfit', 'Segoe UI', Arial, sans-serif";
             var w = g.measureText(text).width + 14;
             g.fillStyle = 'rgba(255,138,30,0.95)';
@@ -1655,44 +1987,56 @@
     }
 
     /**
-     * The three explanatory figures required by the spec:
-     *   1. APM 2.0 view of the area at 30% opacity          (always)
-     *   2. LIDAR view of the area                            (if LIDAR objects)
-     *   3. Potential zones vs. other known sites             (if ≥1 bubble)
+     * The explanatory figures required by the spec:
+     *   1. APM 2.0 high-potential polygons over the satellite   (always)
+     *   2. LIDAR view of the area                               (if LIDAR objects)
+     *   3. Potential zones vs. other known sites                (if ≥1 bubble)
+     * `langCode` binds the figure titles/badges/labels to a language — the
+     * user-chosen PDF language, not necessarily the site language.
      */
-    function captureFigures(model, ctx) {
+    function captureFigures(model, ctx, langCode) {
+        var trx = makeTr(langCode || lang());
         var c = model.meta.center;
         var spanM = Math.sqrt(model.meta.areaKm2 * 1e6) + CONFIG.SCREENSHOT.MARGIN_M * 2;
         var out = { apm: null, lidar: null, potential: null };
         var tasks = [];
 
-        var apmSources = [{ key: 'sat', label: tr('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 19 }]
-            .concat(apmTileTemplates().map(function (t) {
-                return { key: t.key, label: 'APM 2.0', url: t.url, opacity: CONFIG.APM.OPACITY, maxNativeZoom: 15 };
-            }));
+        // The APM figure is polygonized from the report's own classified grid
+        // (the same data the score came from) — see apmGridPolygons().
+        var apmPolys = (ctx && ctx.apmGrid) ? apmGridPolygons(ctx.apmGrid) : [];
         tasks.push(captureFigure({
             centerLat: c.lat, centerLng: c.lng, spanM: spanM,
-            sources: apmSources,
-            title: tr('arch_report_fig_apm_title'),
-            badge: 'APM 2.0 · ' + Math.round(CONFIG.APM.OPACITY * 100) + '%',
+            sources: [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 19 }],
+            title: trx('arch_report_fig_apm_title'),
+            badge: 'APM 2.0',
             draw: function (g, proj) {
+                if (apmPolys.length) drawApmFigurePolygons(g, proj, apmPolys, ctx.apmGrid, c.lat);
                 drawAnalysisSquare(g, proj, model);
-                drawResultPolygons(g, proj, model);
+                drawResultPolygons(g, proj, model, undefined, trx);
             }
-        }).then(function (fig) { out.apm = fig; }));
+        }).then(function (fig) {
+            if (fig) {
+                fig.apmPolygonCount = apmPolys.length;
+                fig.used = fig.used || [];
+                fig.missing = fig.missing || [];
+                if (apmPolys.length) fig.used.push(trx('arch_report_fig_apm_grid'));
+                else if (ctx.apmGrid) fig.missing.push(trx('arch_report_fig_apm_grid'));
+            }
+            out.apm = fig;
+        }));
 
         if (model.meta.lidarInArea > 0 || model.meta.lidarCount > 0) {
-            var lidarSources = [{ key: 'sat', label: tr('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 19 }]
+            var lidarSources = [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 19 }]
                 .concat(lidarImageSources());
             tasks.push(captureFigure({
                 centerLat: c.lat, centerLng: c.lng, spanM: spanM,
                 sources: lidarSources,
-                title: tr('arch_report_fig_lidar_title'),
+                title: trx('arch_report_fig_lidar_title'),
                 badge: 'LIDAR',
                 draw: function (g, proj) {
                     drawLidarPoints(g, proj, ctx);
                     drawAnalysisSquare(g, proj, model);
-                    drawResultPolygons(g, proj, model);
+                    drawResultPolygons(g, proj, model, undefined, trx);
                 }
             }).then(function (fig) { out.lidar = fig; }));
         }
@@ -1700,14 +2044,14 @@
         if (model.meta.bubblesInArea > 0) {
             tasks.push(captureFigure({
                 centerLat: c.lat, centerLng: c.lng, spanM: spanM,
-                sources: [{ key: 'sat', label: tr('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 19 }],
-                title: tr('arch_report_fig_potential_title'),
-                badge: tr('arch_report_fig_potential_badge'),
+                sources: [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 19 }],
+                title: trx('arch_report_fig_potential_title'),
+                badge: trx('arch_report_fig_potential_badge'),
                 draw: function (g, proj) {
                     drawSites(g, proj, ctx);
                     drawBubbles(g, proj, model);
                     drawAnalysisSquare(g, proj, model);
-                    drawResultPolygons(g, proj, model);
+                    drawResultPolygons(g, proj, model, undefined, trx);
                 }
             }).then(function (fig) { out.potential = fig; }));
         }
@@ -1735,6 +2079,22 @@
             : '<span class="t" data-key="arch_report_pdf_btn">Download PDF</span>';
     }
 
+    // The model's visible strings (result labels, classifications) were built
+    // with the site-language translator at run time. Re-derive them in the
+    // chosen PDF language so an EN PDF never leaks RO labels and vice versa.
+    function localizeModel(model, trx) {
+        var copy = {};
+        Object.keys(model).forEach(function (k) { copy[k] = model[k]; });
+        copy.results = model.results.map(function (r) {
+            var c = {};
+            Object.keys(r).forEach(function (k) { c[k] = r[k]; });
+            c.label = trx('arch_report_result') + ' ' + r.index + '/' + r.total;
+            c.classificationLabel = trx('arch_report_class_' + r.classification);
+            return c;
+        });
+        return copy;
+    }
+
     function generatePdf() {
         var model = _state.model;
         if (!model || !model.results.length) { setStatus('arch_report_need_results', true); return Promise.resolve(null); }
@@ -1746,7 +2106,12 @@
         }
         setPdfBusy(true, 'arch_report_pdf_capturing');
 
-        return captureFigures(model, _state.ctx || {}).then(function (figures) {
+        // The whole document — pages AND figures — uses the user's chosen
+        // PDF language, which defaults to the site language.
+        var pdfLang = pdfLanguage();
+        var trx = makeTr(pdfLang);
+
+        return captureFigures(model, _state.ctx || {}, pdfLang).then(function (figures) {
             _state.figures = figures;
             setPdfBusy(true, 'arch_report_pdf_building');
             // Wait for the webfonts (Cinzel/Outfit) before painting, otherwise
@@ -1755,14 +2120,15 @@
                 ? document.fonts.ready.catch(function () { return null; })
                 : Promise.resolve(null);
             return fontsReady.then(function () {
-                return window.DetectLabReportPdf.build(model, figures, { tr: tr, fmtM: fmtM, lang: lang() });
+                return window.DetectLabReportPdf.build(localizeModel(model, trx), figures,
+                    { tr: trx, fmtM: fmtM, lang: pdfLang });
             });
         }).then(function (pdf) {
             if (!pdf) return null;
             var d = model.meta.generatedAt;
             function p2(n) { return (n < 10 ? '0' : '') + n; }
             var stamp = d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes());
-            var name = (lang() === 'ro' ? 'detectlab-raport-arheologic-' : 'detectlab-archaeological-report-') + stamp + '.pdf';
+            var name = (pdfLang === 'ro' ? 'detectlab-raport-arheologic-' : 'detectlab-archaeological-report-') + stamp + '.pdf';
             pdf.save(name);
             setStatus('arch_report_pdf_done', false, { name: name, pages: pdf.pageCount });
             console.log('[ArcheoReport] PDF ready:', name, '| pages:', pdf.pageCount, '| figures:',
@@ -1855,11 +2221,22 @@
             pdf.dataset.archReportWired = '1';
             pdf.addEventListener('click', function () { generatePdf(); });
         }
+        var langRo = el('archReportPdfLangRo');
+        if (langRo && !langRo.dataset.archReportWired) {
+            langRo.dataset.archReportWired = '1';
+            langRo.addEventListener('click', function () { setPdfLanguage('ro'); });
+        }
+        var langEn = el('archReportPdfLangEn');
+        if (langEn && !langEn.dataset.archReportWired) {
+            langEn.dataset.archReportWired = '1';
+            langEn.addEventListener('click', function () { setPdfLanguage('en'); });
+        }
         var show = el('archReportResultsToggle');
         if (show && !show.dataset.archReportWired) {
             show.dataset.archReportWired = '1';
             show.addEventListener('change', function () { toggleResults(this.checked); });
         }
+        syncPdfLangUi();
         updateUi();
     }
 
@@ -1874,6 +2251,8 @@
     window.toggleArcheoReportLayer = setActive;
     window.runArcheoReport = runReport;
     window.generateArcheoReportPdf = generatePdf;
+    window._archeoReportPdfLang = pdfLanguage;
+    window._archeoReportSetPdfLang = setPdfLanguage;
     window._archeoReportState = function () {
         return {
             active: _state.active,
@@ -1881,7 +2260,8 @@
             running: _state.running,
             results: _state.results,
             model: _state.model,
-            figures: _state.figures
+            figures: _state.figures,
+            pdfLang: pdfLanguage()
         };
     };
     // Console helpers:  _archeoReportSetPoint(46.77, 23.59) then runArcheoReport()
@@ -1893,6 +2273,10 @@
     window._archeoReportDebug = {
         config: CONFIG,
         tr: tr,
+        makeTr: makeTr,
+        lang: lang,
+        pdfLanguage: pdfLanguage,
+        setPdfLanguage: setPdfLanguage,
         areaSquare: areaSquare,
         buildSeeds: buildSeeds,
         passesSiteFilters: passesSiteFilters,
@@ -1902,6 +2286,10 @@
         classifyScore: classifyScore,
         selectResults: selectResults,
         periodKey: periodKey,
+        parseCenturyRange: parseCenturyRange,
+        periodKeyFromCenturies: periodKeyFromCenturies,
+        periodKeyFromMillennium: periodKeyFromMillennium,
+        romanToInt: romanToInt,
         estimatePeriod: estimatePeriod,
         buildResultModel: buildResultModel,
         buildSiteRecords: buildSiteRecords,
@@ -1913,6 +2301,9 @@
         buildUatGrid: buildUatGrid,
         buildApmGrid: buildApmGrid,
         apmClassAt: apmClassAt,
+        apmGridPolygons: apmGridPolygons,
+        outlineCells: outlineCells,
+        drawApmFigurePolygons: drawApmFigurePolygons,
         pointInPolygon: pointInPolygon,
         projectToLocalMeters: projectToLocalMeters,
         localMetersToLatLng: localMetersToLatLng,

@@ -45,6 +45,8 @@ class FakeImage {
     get src() { return this._url; }
 }
 
+const ALL_FILL_TEXT = [];   // every string painted on any canvas (assertion aid)
+
 function makeCtx(canvas) {
     let drawn = null;
     const ctx = {
@@ -57,7 +59,7 @@ function makeCtx(canvas) {
         beginPath() {}, closePath() {}, moveTo() {}, lineTo() {},
         quadraticCurveTo() {}, bezierCurveTo() {}, arc() {}, rect() {},
         fill() {}, stroke() {}, clip() {}, setLineDash() {},
-        fillText() {}, strokeText() {}, translate() {}, scale() {}, rotate() {},
+        fillText(t) { ALL_FILL_TEXT.push(String(t)); }, strokeText() {}, translate() {}, scale() {}, rotate() {},
         measureText(t) { return { width: String(t).length * 5.2 }; },
         drawImage(img) { drawn = pixelsFor(img && img._url); },
         getImageData(x, y, w, h) {
@@ -436,6 +438,49 @@ section('Result selection');
     check('the 3 best are kept', capped.map(c => c.score).join(',') === '0.9,0.8,0.7');
 }
 
+/* ═══════════════ 6b. APM 2.0 figure polygons (Search Help style) ═══════════════ */
+section('APM 2.0 figure polygonization');
+{
+    const mkGrid = (w, h, fill) => {
+        const g = mkApmGrid(w, h, 12, 0);
+        g.x0 = 0; g.y0 = 0;
+        if (fill !== undefined) { for (let i = 0; i < w * h; i++) g.cls[i] = fill; }
+        return g;
+    };
+    const grid = mkGrid(40, 40, 0);
+    for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) grid.cls[(15 + dy) * 40 + (15 + dx)] = 5;
+    const polys = R.apmGridPolygons(grid);
+    check('a 3\u00D73 blue patch becomes one polygon',
+        polys.length === 1 && polys[0].cls === 5 && polys[0].cells === 9,
+        JSON.stringify(polys.map(p => [p.cls, p.cells])));
+    check('the hull outlines the patch (\u22654 points inside its bounds)', (function () {
+        if (polys.length !== 1) return false;
+        return polys[0].hull.length >= 4 &&
+            polys[0].hull.every(c => c[0] >= 15 && c[0] <= 17 && c[1] >= 15 && c[1] <= 17);
+    })());
+
+    const speck = mkGrid(40, 40, 0); speck.cls[20 * 40 + 20] = 5;
+    check('a single-cell speck is dropped (min cluster)', R.apmGridPolygons(speck).length === 0);
+
+    const olive = mkGrid(40, 40, 3);
+    check('below-average classes are never outlined', R.apmGridPolygons(olive).length === 0);
+
+    const mixed = mkGrid(40, 40, 0);
+    for (let i = 0; i < 5; i++) { mixed.cls[5 * 40 + (5 + i)] = 4.5; mixed.cls[25 * 40 + (25 + i)] = 4; }
+    const mixedPolys = R.apmGridPolygons(mixed, 4);
+    check('green and yellow clusters stay separate colours',
+        mixedPolys.length === 2 && mixedPolys.map(p => p.cls).sort().join(',') === '4,4.5',
+        mixedPolys.map(p => p.cls).join(','));
+
+    const big = mkGrid(30, 30, 5);
+    check('a full blue area outlines as one big polygon', (function () {
+        const p = R.apmGridPolygons(big, 8);
+        return p.length === 1 && p[0].cells === 900 && p[0].hull.length >= 4;
+    })());
+    check('missing grid fails closed (no polygons, no throw)',
+        R.apmGridPolygons(null).length === 0 && R.apmGridPolygons({}).length === 0);
+}
+
 /* ═══════════════ 7. period estimation ═══════════════ */
 section('Period estimation');
 {
@@ -447,6 +492,31 @@ section('Period estimation');
      ['Neprecizat', null]].forEach(function (c) {
         check('"' + c[0] + '" \u2192 ' + c[1], R.periodKey(c[0]) === c[1], R.periodKey(c[0]));
     });
+
+    // RAN dates records in centuries, not era names — the matcher must
+    // resolve them (handoff acceptance: "sec. II-III p.Chr." → roman).
+    [['sec. II-III p.Chr.', 'roman'], ['sec. II - III p. Chr.', 'roman'],
+     ['sec. 2-3', 'roman'], ['sec. IV-V d.Chr.', 'migration'],
+     ['sec. XII-XIII', 'medieval'], ['secolul al IV-lea', 'migration'],
+     ['secolul al XIX-lea', 'modern'], ['sec. XXI', 'modern'],
+     ['sec. II-I \u00EE.Chr.', 'dacian'], ['sec. V \u00EE.Chr.', 'iron_age'],
+     ['sec. VIII-VII \u00EE.Chr.', 'hallstatt'], ['sec. XV a. Chr.', 'bronze_age'],
+     ['mileniul I \u00EE.Chr.', 'iron_age'], ['mileniul II \u00EE.Chr.', 'bronze_age'],
+     ['mileniul II p.Chr.', 'modern'], ['mileniul I p.Chr.', 'antiquity'],
+     ['\u00EEn sec. II d.Hr.', 'roman']].forEach(function (c) {
+        check('"' + c[0] + '" \u2192 ' + c[1], R.periodKey(c[0]) === c[1], String(R.periodKey(c[0])));
+    });
+
+    // the dataset has no dating field: the era is stated in the site name
+    check('era read from a RAN site name (hallstatt)',
+        R.periodKey('A\u0219ezarea hallstattian\u0103 de la Silistea - Popina') === 'hallstatt');
+    check('era read from a RAN site name (roman castru)',
+        R.periodKey('Castrul militar auxiliar de la Teregova') === 'roman');
+    check('era read from a RAN site name (culture)',
+        R.periodKey('Asezarea Cotofeni de la Bogaltin - Varful Gogaltan') === 'eneolithic');
+    check('a name without any era stays undated',
+        R.periodKey('Tumulul 1 de la Tuluce\u0219ti') === null);
+
     const ev = [
         { name: 'A', period: 'Romana', distanceM: 800, ran: '1', url: 'https://ran.cimec.ro/sel.asp?codran=1' },
         { name: 'B', period: 'Romana', distanceM: 900, ran: '2', url: 'https://ran.cimec.ro/sel.asp?codran=2' },
@@ -459,6 +529,18 @@ section('Period estimation');
     check('confidence in (0,1]', est.confidence > 0 && est.confidence <= 1, est.confidence);
     const none = R.estimatePeriod([{ name: 'X', period: 'Neprecizat', distanceM: 500 }], 3);
     check('no usable dating \u2192 no period', none.key === null);
+
+    // handoff acceptance: century fixture resolves to roman AND the evidence
+    // list carries the raw text so the reader sees what the database says
+    const estCent = R.estimatePeriod([{ name: 'S', period: 'sec. II-III p.Chr.', distanceM: 600 }], 1);
+    check('century dating resolves to roman', estCent.key === 'roman', estCent.key);
+    check('evidence carries the raw dating text', estCent.evidence[0].period === 'sec. II-III p.Chr.',
+        JSON.stringify(estCent.evidence));
+    check('property-derived dating is not flagged as name-derived',
+        estCent.evidence[0].datingFromName === false);
+    const estName = R.estimatePeriod([{ name: 'Cetatea medieval\u0103 de la X', period: null, distanceM: 900 }], 1);
+    check('era read from the site name drives the vote', estName.key === 'medieval' &&
+        estName.evidence[0].datingFromName === true, JSON.stringify(estName.evidence));
 }
 
 /* ═══════════════ 8. site records ═══════════════ */
@@ -483,6 +565,32 @@ section('Site records + properties');
     check('layer 6 RAN from CodRAN', info6.ran === '54984.77');
     check('distance to a polygon site uses its perimeter samples',
         R.distanceToSite(1000, 0, recs[1]) === 300, R.distanceToSite(1000, 0, recs[1]));
+
+    // the production payload has no dating field — the era comes from the name
+    const named = R.siteInfo({
+        key: '0:2', layerId: 0, oid: 2, isPolygon: false,
+        props: { NUMESIT: 'A\u0219ezarea hallstattian\u0103 de la Silistea', CODSIT: '40376.02' },
+        points: [{ x: 0, y: 0 }], ref: { x: 0, y: 0 }, lat: 46.8, lng: 23.6
+    });
+    check('period key derived from the site name', named.periodKey === 'hallstatt', named.periodKey);
+    check('name-derived dating is flagged', named.datingFromName === true);
+    check('a dating property wins over the name', info.periodKey === 'roman' && info.datingFromName === false,
+        info.periodKey + ' / ' + info.datingFromName);
+    const undated = R.siteInfo({
+        key: '0:3', layerId: 0, oid: 3, isPolygon: false,
+        props: { NUMESIT: 'Tumulul 1', CODSIT: '77340.03' },
+        points: [{ x: 0, y: 0 }], ref: { x: 0, y: 0 }, lat: 46.8, lng: 23.6
+    });
+    check('a name without any era stays undated', undated.periodKey === null && undated.datingFromName === false);
+    // the real production property keys must be recognized
+    const real = R.siteInfo({
+        key: '6:9', layerId: 6, oid: 9, isPolygon: false,
+        props: { Nume: 'Cetatea medieval\u0103 de la Carasova', CodRAN: '51813.01', Localitate: 'Cara\u0219ova',
+                 Judet: 'Cara\u0219-Severin', Observatii: null, Sursa: 'Jug\u0103naru Gabriel, 2013' },
+        points: [{ x: 0, y: 0 }], ref: { x: 0, y: 0 }, lat: 45.2, lng: 21.9
+    });
+    check('real layer-6 keys map to locality + county', real.locality === 'Cara\u0219ova' && real.county === 'Cara\u0219-Severin');
+    check('real layer-6 name yields the era', real.periodKey === 'medieval', real.periodKey);
 }
 
 /* ═══════════════ 9. PDF writer ═══════════════ */
@@ -536,8 +644,9 @@ section('End-to-end analysis (runReport)');
     const kLng = 111320 * Math.cos(C.lat * Math.PI / 180);
     const toLatLng = (dx, dy) => ({ lat: C.lat + dy / 111320, lng: C.lng + dx / kLng });
     const features = [];
-    // 4 known sites on a 1500 m ring → the triangulation centre is the gap
-    [[45, 'Roman'], [135, 'Dacic'], [225, 'Neolitic'], [315, 'Roman']].forEach(function (s, i) {
+    // 4 known sites on a 1500 m ring → the triangulation centre is the gap.
+    // One site carries a century-style dating, exactly like real RAN records.
+    [[45, 'sec. II-III p.Chr.'], [135, 'Dacic'], [225, 'Neolitic'], [315, 'Roman']].forEach(function (s, i) {
         const a = s[0] * Math.PI / 180;
         const p = toLatLng(1500 * Math.cos(a), 1500 * Math.sin(a));
         features.push({
@@ -632,7 +741,14 @@ section('End-to-end analysis (runReport)');
         check('result ' + r.index + ' period evidence links every cited site',
             r.period.evidence.length >= 3 && r.period.evidence.every(e => /^https:\/\/ran\.cimec\.ro/.test(e.url || '')),
             r.period.evidence.map(e => e.url).join(','));
+        check('result ' + r.index + ' evidence prints the raw dating text',
+            r.period.evidence.every(e => typeof e.period === 'string' && e.period.length > 0),
+            r.period.evidence.map(e => e.period).join(','));
     });
+    check('the century-dated site resolves to roman for at least one result',
+        model.results.some(r => r.period.key === 'roman' &&
+            r.period.evidence.some(e => e.period === 'sec. II-III p.Chr.')),
+        model.results.map(r => r.period.key + ':' + r.period.evidence.map(e => e.period).join('|')).join(' ; '));
     check('results are ordered annotated-first then by score',
         model.results[0].annotated === true, JSON.stringify(model.results.map(r => [r.annotated, r.score])));
     check('separation between results respected', (function () {
@@ -680,14 +796,22 @@ section('End-to-end analysis (runReport)');
     /* ═══════════════ 11. end-to-end PDF ═══════════════ */
     section('End-to-end PDF');
     model.potentialBubbles = model.potentialBubbles || [];
+    // the figure grid mirrors what runReport stored: blue APM everywhere the
+    // square is (the tiles were blue), so polygonization must find a patch
+    const apmFigGrid = mkApmGrid(220, 220, 12, 5);
+    apmFigGrid.x0 = CENTER.x - 1320; apmFigGrid.y0 = CENTER.y - 1320;
     const ctxForFigures = {
         lidarPoints: sandbox._lidarScannerApi.getPoints().map(p => ({ lat: p.lat, lng: p.lon, category: p.category })),
-        siteRecords: []
+        siteRecords: [],
+        apmGrid: apmFigGrid
     };
     const figures = await R.captureFigures(model, ctxForFigures);
     check('APM figure captured', !!figures.apm, JSON.stringify(figures.apm && figures.apm.missing));
-    check('APM figure at 30% opacity', figures.apm && figures.apm.used.indexOf('APM 2.0') !== -1,
-        figures.apm && figures.apm.used.join(','));
+    check('APM figure polygonized from the report grid (Search Help style)',
+        figures.apm && figures.apm.apmPolygonCount > 0, figures.apm && figures.apm.apmPolygonCount);
+    check('APM figure sources = satellite + grid polygons',
+        figures.apm && figures.apm.used.length === 2 && figures.apm.missing.length === 0,
+        figures.apm && figures.apm.used.join(' | '));
     check('LIDAR figure captured (LIDAR objects exist)', !!figures.lidar);
     check('potential-zones figure captured (bubbles exist)', !!figures.potential);
 
@@ -754,6 +878,76 @@ section('End-to-end analysis (runReport)');
     console.log('  [info] sample PDF (stub pages) written to ' + sample);
     check('the built PDF can be read back from disk',
         fs.readFileSync(sample).length === pdfBytes.length, pdfBytes.length + ' bytes');
+    check('the PDF evidence pages print the raw dating text of the nearest sites',
+        ALL_FILL_TEXT.some(t => t.indexOf('sec. II-III p.Chr.') !== -1),
+        ALL_FILL_TEXT.filter(t => /sec\./.test(t)).slice(0, 4).join(' | '));
+
+    /* ═══════════ 11a. PDF language selection ═══════════ */
+    section('PDF language selection');
+    {
+        // section 10 switched the layer off, which cleared the model — bring
+        // the analysis back so generatePdf() has something to download
+        sandbox.toggleArcheoReportLayer(true);
+        sandbox._archeoReportSetPoint(C.lat, C.lng);
+        const modelForLang = await sandbox.runArcheoReport();
+        check('the language test re-run yields results',
+            !!modelForLang && modelForLang.results.length > 0, modelForLang && modelForLang.results.length);
+
+        // the real translations live in js/translations.js; inject a small
+        // stand-in so makeTr() has something to resolve against
+        sandbox.translations = {
+            en: { arch_report_title: 'Archaeological Report', arch_report_result: 'Result',
+                  arch_report_class_high: 'High', arch_report_pdf_lang: 'PDF language:',
+                  arch_report_fig_apm_title: 'APM areas' },
+            ro: { arch_report_title: 'Raport arheologic', arch_report_result: 'Rezultat',
+                  arch_report_class_high: 'Ridicat', arch_report_pdf_lang: 'Limba PDF-ului:',
+                  arch_report_fig_apm_title: 'Zonele APM' }
+        };
+        check('makeTr binds a language', R.makeTr('ro')('arch_report_title') === 'Raport arheologic',
+            R.makeTr('ro')('arch_report_title'));
+        check('makeTr falls back to the built-in EN fallback',
+            R.makeTr('ro')('arch_report_site_unknown') === 'Unnamed site');
+        check('makeTr returns the key itself when nothing matches',
+            R.makeTr('en')('missing_key_xyz') === 'missing_key_xyz');
+        check('the PDF language defaults to the site language', R.pdfLanguage() === 'en', R.pdfLanguage());
+
+        const roBtn = domNodes['archReportPdfLangRo'];
+        const enBtn = domNodes['archReportPdfLangEn'];
+        check('both language buttons are wired',
+            !!(roBtn._handlers.click || []).length && !!(enBtn._handlers.click || []).length);
+        roBtn.fire('click');
+        check('picking RO overrides the site language', R.pdfLanguage() === 'ro', R.pdfLanguage());
+        check('the RO button is highlighted', roBtn.classList.contains('is-active') === true);
+        sandbox._currentLang = () => 'ro';
+        check('the explicit choice survives a site-language change', R.pdfLanguage() === 'ro');
+        enBtn.fire('click');
+        check('switching back to EN works', R.pdfLanguage() === 'en');
+
+        // generatePdf must hand the chosen language to the builder AND
+        // re-capture the figures + result labels in that language
+        const realBuild = sandbox.DetectLabReportPdf.build;
+        let captured = null;
+        sandbox.DetectLabReportPdf.build = function (m, figs, opts) {
+            captured = { model: m, figures: figs, opts: opts };
+            return Promise.resolve({ pageCount: 7, save() { return 'x.pdf'; } });
+        };
+        roBtn.fire('click');
+        await R.generatePdf();
+        check('generatePdf passes the chosen language to the PDF builder',
+            !!captured && captured.opts.lang === 'ro', captured && captured.opts.lang);
+        check('generatePdf passes a language-bound translator (whole document follows it)',
+            !!captured && captured.opts.tr('arch_report_title') === 'Raport arheologic',
+            captured && captured.opts.tr('arch_report_title'));
+        check('result labels are re-derived in the chosen language',
+            !!captured && captured.model.results.every(r => r.label === 'Rezultat ' + r.index + '/' + r.total),
+            captured && captured.model.results.map(r => r.label).join(','));
+        check('figures are re-captured with titles in the chosen language',
+            !!captured && captured.figures.apm && captured.figures.apm.title === 'Zonele APM',
+            captured && captured.figures.apm && captured.figures.apm.title);
+        sandbox.DetectLabReportPdf.build = realBuild;
+        delete sandbox.translations;
+        sandbox._currentLang = () => 'en';
+    }
 
     pixelsFor = origPixelsFor;
     /* ═══════════ 11b. degraded sources (offline / CORS blocked) ═══════════ */
@@ -808,22 +1002,29 @@ section('End-to-end analysis (runReport)');
     {
         const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
         const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-        const V = '?v=20260827-arch-report';
-        ['js/pdf-writer.js', 'js/archeo-report-pdf.js', 'js/archeo-report.js'].forEach(function (f) {
-            check(f + ' is loaded by index.html', html.indexOf('src="' + f + V + '"') !== -1);
+        const V = '?v=20260827-arch-report-v2';      // this release's versioned assets
+        const V0 = '?v=20260827-arch-report';        // pdf-writer.js is unchanged this release
+        ['js/archeo-report-pdf.js', 'js/archeo-report.js', 'js/translations.js'].forEach(function (f) {
+            check(f + ' is loaded by index.html (this release)', html.indexOf('src="' + f + V + '"') !== -1);
         });
+        check('styles.css is versioned for this release', html.indexOf('href="css/styles.css' + V + '"') !== -1);
+        check('js/pdf-writer.js is still loaded', html.indexOf('src="js/pdf-writer.js' + V0 + '"') !== -1);
         check('pdf-writer loads before the report PDF builder',
-            html.indexOf('js/pdf-writer.js' + V) < html.indexOf('js/archeo-report-pdf.js' + V));
+            html.indexOf('js/pdf-writer.js' + V0) < html.indexOf('js/archeo-report-pdf.js' + V));
         check('the report script loads after its data sources',
             html.indexOf('js/archeo-potential.js') < html.indexOf('js/archeo-report.js' + V) &&
             html.indexOf('js/lidar-scanner.js') < html.indexOf('js/archeo-report.js' + V));
         ['archReportRow', 'archReportToggle', 'archReportRunBtn', 'archReportPdfBtn',
+         'archReportPdfLang', 'archReportPdfLangRo', 'archReportPdfLangEn',
          'archReportResultsToggleWrap', 'archReportResultsToggle', 'archReportStatus', 'archReportSummary']
             .forEach(function (id) { check('index.html has #' + id, html.indexOf('id="' + id + '"') !== -1); });
+        check('the PDF language selector sits next to the PDF button',
+            html.indexOf('id="archReportPdfBtn"') < html.indexOf('id="archReportPdfLang"') &&
+            html.indexOf('id="archReportPdfLangRo"') < html.indexOf('id="archReportPdfLangEn"'));
         check('the row sits in the premium category',
             /class="transp-layer-row[^"]*" data-category="premium"[^>]*id="archReportRow"/.test(html));
 
-        const versioned = (html.match(/(?:src|href)="((?:js|css)\/[^"]+20260827-arch-report)"/g) || [])
+        const versioned = (html.match(/(?:src|href)="((?:js|css)\/[^"]+\?v=20260827-arch-report[^"]*)"/g) || [])
             .map(function (m) { return m.slice(m.indexOf('"') + 1, -1); });
         const missing = versioned.filter(function (u) { return sw.indexOf("'" + u + "'") === -1; });
         check('every cache-busted asset is pre-cached by the SW (' + versioned.length + ')',
@@ -837,7 +1038,7 @@ section('End-to-end analysis (runReport)');
         check('every .arch-report-* class emitted by the JS is styled (' + classes.size + ')',
             unstyled.length === 0, unstyled.join(', '));
         check('CACHE_NAME was bumped for this release',
-            /const CACHE_NAME = 'detectlab-v54-arch-report'/.test(sw),
+            /const CACHE_NAME = 'detectlab-v56-arch-report-v2'/.test(sw),
             (sw.match(/const CACHE_NAME = '[^']+'/) || [])[0]);
     }
 

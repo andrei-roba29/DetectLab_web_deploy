@@ -11,11 +11,12 @@
  *   2  Method             — the 3 sources, the 3 exclusions, the weighted score
  *   3… Result pages       — score breakdown + APM / potential-zone / LIDAR
  *                           interpretation + estimated period + nearest sites
- *   …  Figures            — APM 2.0 @30%, LIDAR, potential zones vs. sites
+ *   …  Figures            — APM 2.0 polygons, LIDAR, potential zones vs. sites
  *   n  Sources & links    — provenance, CIMEC/RAN links, legend
  *
- * Everything the pages say comes from `tr()` (js/translations.js), so the
- * document is produced in the site's current language (RO or EN).
+ * Everything the pages say comes from the `tr` passed into build() — a
+ * language-bound translator — so the document is produced in the language
+ * the user picked for the PDF (RO or EN), independent of the site language.
  * ───────────────────────────────────────────────────────────────────────────── */
 (function (root) {
     'use strict';
@@ -658,6 +659,10 @@
     function pct(v) { return (v === null || v === undefined) ? '—' : Math.round(v * 100) + '%'; }
 
     // Second page of a result: estimated period + the nearest known sites.
+    // The evidence list ALWAYS prints the raw dating text the database has
+    // (or an explicit note when the dating came from the site name), so the
+    // reader sees exactly what the records say even when no period key can be
+    // derived.
     function pageResultSites(pt, model, res) {
         var tr = pt.tr;
         pt.beginPage(res.label + ' — ' + tr('arch_report_period_title'));
@@ -676,8 +681,15 @@
         if (res.period.evidence.length) {
             pt.h3(tr('arch_report_period_evidence'));
             res.period.evidence.forEach(function (ev, i) {
-                pt.para((i + 1) + '. ' + ev.name + ' — ' +
-                    (ev.period || tr('arch_report_period_unknown')) + ' · ' + pt.fmtM(ev.distanceM) +
+                var dating;
+                if (ev.datingFromName) {
+                    dating = tr('arch_report_period_from_name', {
+                        period: ev.periodKey ? tr('arch_period_' + ev.periodKey) : tr('arch_report_period_unknown')
+                    });
+                } else {
+                    dating = ev.period || tr('arch_report_period_unknown');
+                }
+                pt.para((i + 1) + '. ' + ev.name + ' — ' + dating + ' · ' + pt.fmtM(ev.distanceM) +
                     (ev.ran ? ' · RAN ' + ev.ran : ''), { size: 8.6, spaceAfter: 2 });
                 if (ev.url) {
                     pt.para(ev.url, { size: 7.4, color: C.purple, spaceAfter: 5 });
@@ -693,7 +705,9 @@
                 .concat(res.nearestSites.map(function (s) {
                     return [
                         s.name + (s.locality ? ' (' + s.locality + ')' : ''),
-                        s.period || '—',
+                        s.period || (s.datingFromName && s.periodKey
+                            ? tr('arch_period_' + s.periodKey) + ' †'
+                            : tr('arch_report_period_unknown')),
                         s.type || '—',
                         pt.fmtM(s.distanceM),
                         s.url || '—'

@@ -4648,6 +4648,17 @@
         @keyframes archReportSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
         .arch-report-show { display:flex; align-items:center; gap:7px; margin-top:9px; font-size:.7rem; color:rgba(245,240,235,.7); cursor:pointer; }
         .arch-report-show input { accent-color:#ff8a1e; }
+        .arch-report-lang { display:flex; align-items:center; gap:6px; margin-top:9px; font-size:.7rem; color:rgba(245,240,235,.7); }
+        .arch-report-lang-btn {
+            background:rgba(255,138,30,.10); border:1px solid rgba(255,138,30,.4);
+            color:rgba(245,240,235,.85); border-radius:4px; padding:2px 8px;
+            font:.68rem/1.3 'Outfit',sans-serif; cursor:pointer; transition:background .15s,box-shadow .15s,color .15s;
+        }
+        .arch-report-lang-btn:hover { background:rgba(255,138,30,.28); }
+        .arch-report-lang-btn.is-active {
+            background:rgba(255,138,30,.5); color:#fff; border-color:#ff8a1e;
+            box-shadow:0 0 8px rgba(255,138,30,.35);
+        }
         .arch-report-status { min-height:15px; margin-top:7px; color:rgba(245,240,235,.5); font-size:.68rem; line-height:1.35; }
         .arch-report-status.error { color:rgba(255,140,120,.92); }
         /* on-map result label + popup */
