@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260814-compass">
+    <link rel="stylesheet" href="css/styles.css?v=20260827-arch-report">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260819">
     <style>
         /* PWA Specific Styles */
@@ -2498,6 +2498,52 @@
                         <div style="font-size:0.66rem;color:rgba(245,240,235,0.38);margin-top:7px;line-height:1.45" class="t" data-key="archeo_hint">Candidates = gaps between known sites, inside the UAT red zone, ≥ 700 m from every site.</div>
                     </div>
 
+                    <!-- Archeological Report (premium) — "Raport arheologic".
+                         Analizează 5 km² în jurul unui punct ales de utilizator combinând
+                         APM 2.0 + zonele cu potențial arheologic + LIDAR Scanner (medie
+                         ponderată) și returnează până la 3 rezultate (poligoane portocalii)
+                         plus un raport PDF descărcabil. -->
+                    <div class="transp-layer-row arch-report-row" data-category="premium" id="archReportRow">
+                        <div class="transp-layer-label" style="margin-bottom:6px">
+                            <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+                                    <path d="M6.5 1.2 L11 3.6 L11 8.1 L6.5 11.8 L2 8.1 L2 3.6 Z" fill="none" stroke="#ff8a1e" stroke-width="1" />
+                                    <path d="M4.4 7.2 L6 8.6 L8.8 5.2" stroke="#ff8a1e" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <span class="t" data-key="layer_arch_report" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">Archeological Report</span>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:5px;margin-left:auto;flex-shrink:0">
+                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Archeological Report','© DetectLab 2026 · APM 2.0 + RAN CIMEC + LIDAR')" title="Layer info"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                <label class="apm-toggle-switch" style="flex-shrink:0" title="Enable point selection"><input type="checkbox" id="archReportToggle"><span class="apm-toggle-track"></span></label>
+                            </span>
+                        </div>
+                        <div class="transp-layer-label" style="margin-bottom:6px;margin-top:4px;align-items:center">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                <span style="font-size:0.68rem;opacity:0.55" class="t" data-key="arch_report_desc">5 km² · APM 2.0 + potential zones + LIDAR · PDF</span>
+                            </span>
+                        </div>
+                        <button id="archReportRunBtn" type="button" class="arch-report-button" disabled>
+                            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+                                <path d="M6.5 1.2 L11 3.6 L11 8.1 L6.5 11.8 L2 8.1 L2 3.6 Z" fill="#ffb066" />
+                            </svg>
+                            <span class="t" data-key="arch_report_run_btn">Generate report</span>
+                        </button>
+                        <button id="archReportPdfBtn" type="button" class="arch-report-button arch-report-button-pdf" style="display:none">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0">
+                                <path d="M6 1v6.2M6 7.2 3.6 4.8M6 7.2 8.4 4.8M2 9.4v1.2h8V9.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <span class="t" data-key="arch_report_pdf_btn">Download PDF</span>
+                        </button>
+                        <label class="arch-report-show" id="archReportResultsToggleWrap" style="display:none">
+                            <input type="checkbox" id="archReportResultsToggle" checked>
+                            <span class="t" data-key="arch_report_show_results">Show results on the map</span>
+                        </label>
+                        <div id="archReportStatus" class="arch-report-status t" data-key="arch_report_hint">Switch the layer on and pick a point on the map.</div>
+                        <div id="archReportSummary" style="display:none;font-size:0.72rem;margin-top:4px;line-height:1.5"></div>
+                        <div style="font-size:0.66rem;color:rgba(245,240,235,0.38);margin-top:7px;line-height:1.45" class="t" data-key="arch_report_hint_bottom">Excluded: inside/near a UAT (&lt;500 m), inside site radii, or APM 2.0 below average (khaki → red) — unless annotated on LIDAR.</div>
+                    </div>
+
                     <div class="transp-divider" data-category="premium"></div>
 
                 </div><!-- /transpPanel -->
@@ -2897,7 +2943,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260814-useful-info"></script>
+    <script src="js/translations.js?v=20260827-arch-report"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -2927,10 +2973,15 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <script src="js/map-app.js?v=20260819-sat60-premium-layer"></script>
     <script src="js/vertical-opacity-control.js?v=20260812"></script>
-    <script src="js/archeo-potential.js?v=20260803"></script>
+    <script src="js/archeo-potential.js?v=20260827-arch-report"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
-    <script src="js/lidar-scanner.js?v=20260812-scanner-above-lidar"></script>
+    <script src="js/lidar-scanner.js?v=20260827-arch-report"></script>
     <script src="js/library-of-babel.js?v=20260819"></script>
+    <!-- Premium "Archeological Report" / "Raport arheologic": PDF writer →
+         PDF layout → the analysis layer itself (this order matters). -->
+    <script src="js/pdf-writer.js?v=20260827-arch-report"></script>
+    <script src="js/archeo-report-pdf.js?v=20260827-arch-report"></script>
+    <script src="js/archeo-report.js?v=20260827-arch-report"></script>
 
     <!-- AUTH MODAL -->
     <style>

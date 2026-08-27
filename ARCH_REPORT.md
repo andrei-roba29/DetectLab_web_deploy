@@ -1,0 +1,156 @@
+# Archeological Report — "Raport arheologic"
+
+Premium layer. Pick a point on the map, press **Run / Rulează**: the layer
+analyses the **5 km²** around that point, returns **3 ranked locations** as
+orange polygons and produces a **downloadable PDF** that explains each one.
+
+Three sources feed a single weighted score:
+
+| Source | What it contributes |
+| --- | --- |
+| **APM 2.0** | The raster score under the point (colour → legend score) |
+| **Zone cu potențial arheologic** | Proximity to a triangulation bubble |
+| **LIDAR Scanner** | Proximity to an annotated object; an annotated point is returned automatically |
+
+## Files
+
+| Path | Role |
+| --- | --- |
+| `js/archeo-report.js` | The layer: seed generation, filters, scoring, map rendering, PDF orchestration |
+| `js/archeo-report-pdf.js` | Page layout — paints every page on a canvas, hands JPEGs to the writer |
+| `js/pdf-writer.js` | Dependency-free PDF 1.4 writer (`window.DetectLabPdf`) |
+| `js/archeo-potential.js` | Unchanged logic, exposes `computeArcheoPotential()` headlessly |
+| `js/lidar-scanner.js` | Adds `window._lidarScannerApi` (`getPoints`, `ensureLoaded`) |
+| `css/styles.css` | `.arch-report-*` (row, buttons, popup, pin, labels) |
+| `js/translations.js` | `arch_report_*` + `arch_period_*` keys, EN and RO |
+| `test-archeo-report.js` | Node harness — `node test-archeo-report.js` |
+
+No PDF library is downloaded: jsPDF / html2canvas are not available offline, so
+`pdf-writer.js` emits the PDF byte stream itself and every page is a JPEG
+painted on a canvas. That also solves the diacritics problem — the standard PDF
+fonts are WinAnsiEncoding, so **ă/ș/ț would render as garbage**; on a canvas
+Cinzel/Outfit draw them correctly. `pdf-writer.js` still transliterates the
+document *metadata* (`/Title`, `/Author`) with `winAnsiSafe()`.
+
+## Workflow
+
+1. Switch the layer on → map clicks pick the analysis centre (orange pin).
+2. **Run** (disabled until a point exists) → status steps: sites → potential →
+   LIDAR → UAT → APM → scoring.
+3. **3 orange hexagons** (radius 180 m) with permanent `Rezultat n/3 · %` labels
+   appear and **stay until the layer is switched off** (or "show results" is
+   unticked). The polygon *and* its label are clickable → score popup.
+4. **PDF** → captures 3 screenshots, then builds the report and downloads it.
+
+The layer keeps its state: switching languages or re-running does not clear the
+results unless the user turns the layer off.
+
+## Mandatory filters (a seed must pass all of them)
+
+Seeds = 100 m systematic grid inside the square **+ every LIDAR point + every
+triangulation bubble inside it**.
+
+1. **UAT** — the candidate must sit on the **red** part of the UAT raster
+   (opaque and dark = open land) **and** be **≥ 500 m** from any non-red
+   (built-up) pixel. `window._uatGetTile()` is reused from `map-app.js`.
+2. **Known sites** — ≥ `RADIUS_M + BUFFER_M` (600 + 100 m) from every site
+   reference point. For **polygon** sites the perimeter is sampled every
+   `POLYGON_GUARD_STEP_M` (400 m) plus the centroid, exactly like
+   `archeo-potential.js` does, so an elongated site cannot be "passed through"
+   by measuring its centroid alone.
+3. **APM 2.0** — the nearest legend colour under the point must be
+   **5 (blue), 4.5 (green) or 4 (yellow)**. Khaki/olive (3), magenta (2) and
+   red (1) are below average → rejected. The classifier is an independent
+   nearest-neighbour match against the 6 legend colours (map-app's private
+   `_classifyPixel` was *not* reused: its yellow rule accepts pure olive
+   `#808000`, the colour the spec forbids, while rejecting the real reference
+   yellow `[240,240,140]`).
+4. **Exception** — a point **annotated in LIDAR Scanner** (≤ 60 m from a scanner
+   result) bypasses filter 3 and is returned automatically; its APM component
+   becomes `APM_UNKNOWN` (0.30) and it receives `LIDAR_ANNOTATION_BONUS`.
+
+## Scoring
+
+```
+score = 0.40 · APM  +  0.30 · Potential  +  0.30 · LIDAR   (+ 0.45 if annotated)
+```
+
+* **APM** — class → 1.00 / 0.85 / 0.62 (5 / 4.5 / 4).
+* **Potential** — inside a bubble: the bubble's own score; within
+  `PROXIMITY_M` (1500 m): half of it; otherwise 0 (`POTENTIAL_NONE` 0.25 when
+  the area has no bubble at all).
+* **LIDAR** — `1 − d/600` for the nearest scanner object; `LIDAR_NO_DATA` 0.20
+  when there is no coverage in the area, `LIDAR_FAR` 0.10 when nothing is near.
+
+Classification: **high ≥ 0.75**, **medium ≥ 0.50**, else low. Results are
+ordered annotated-first, then by score, and must be ≥ 350 m apart.
+
+## The PDF
+
+A4 pages, cover → method → per result (score page + sites & period page) →
+figures → sources. It explains, per result:
+
+* the **APM score derived from the colour**, justified in plain language
+  ("relatively flat, close to water, supported by the geology") — the exact
+  wording is chosen per class (`arch_report_apm_explain_*`);
+* the **potential-zone bubble** it lies in or near, relative to the other sites;
+* the **LIDAR Scanner title** when one exists;
+* an **approximate period** inferred from the 3 nearest sites, with their
+  names/eras and **links to RAN / CIMEC** (`https://ran.cimec.ro/sel.asp?codran=…`,
+  falling back to a description query) as the evidence;
+* the 5 nearest sites with distances, and the rejection statistics for the area.
+
+Screenshots (canvas re-composited from tiles + vector overlays, since
+`html2canvas` is unavailable): the **APM 2.0 view at 30 % opacity**, the
+**LIDAR view** when scanner objects exist, and the **potential zones vs. the
+other sites** when at least one bubble falls in the area.
+
+## Rendering
+
+Panes `pane_arch_report_shapes` (z 672) and `pane_arch_report_tags` (z 674),
+colour `#ff8a1e`, drawn above the LIDAR scanner tags (665).
+
+## Debugging
+
+```js
+_archeoReportDebug.config          // live CONFIG
+window.runArcheoReport()           // returns the model
+_archeoReportDebug.classifyApmPixel(r, g, b)
+_archeoReportDebug.uatVerdict(grid, x, y, 500)
+window._lidarScannerApi.getPoints()
+```
+
+`node test-archeo-report.js` runs the real `archeo-report.js`,
+`archeo-report-pdf.js`, `pdf-writer.js` and `archeo-potential.js` inside a vm
+sandbox with a working canvas/Image stub: APM colour classification, every
+exclusion rule, the weighted score, selection, period voting, the PDF byte
+structure (xref offsets, DCTDecode streams), the Leaflet layers that end up on
+the map, and the RO/EN translation completeness.
+
+211 checks. **Not covered by the harness** (needs a browser): real tile
+fetching — the R2 APM bucket and the Esri satellite basemap must answer
+`Access-Control-Allow-Origin` for `getImageData()` to work.
+
+## When a source is unavailable
+
+Everything fails **closed** — the layer never guesses:
+
+| Failure | Effect |
+| --- | --- |
+| APM tile unreadable (CORS/404) | `apmUnreadable: true`, `apmAvailable: false` → every seed is rejected, 0 results, the PDF button stays hidden and the status line says why |
+| UAT tile unreadable | the pixel counts as **not red** → rejected (`uat_not_red`) |
+| Heritage API down | after one 20 s cap: `sitesCount: 0`, `potentialStatus: 'no_sites'` |
+| LIDAR CSV down | `ensureLoaded()` rejects and is swallowed → `lidarCount: 0`, no annotation bonus |
+
+`computeArcheoPotential()` accepts `skipDataWait` so the report's own
+`waitForSiteData()` is not waited on a second time (40 s → 20 s when the
+heritage API is unreachable).
+
+## Adding another layer — checklist
+
+1. `js/<layer>.js` + a `test-<layer>.js` vm harness.
+2. `index.html`: premium row with `data-i18n` keys + `<script>` tags (cache-bust `?v=`).
+3. `js/translations.js`: every key in **both** `en` and `ro`.
+4. `css/styles.css`: the layer's classes.
+5. `sw.js`: add the versioned URLs to `PRECACHE_URLS` **and** bump `CACHE_NAME`.
+6. Run `node test-<layer>.js` and the harnesses of the layers you touched.

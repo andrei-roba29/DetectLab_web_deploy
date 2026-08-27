@@ -576,4 +576,17 @@
     }
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
     window.toggleLidarScannerLayer=setActive;
+
+    // ── Public API for the other premium features ────────────────────────
+    // js/archeo-report.js ("Raport arheologic") reads the very same annotation
+    // set the scanner works with, so "adnotat pe LIDAR Scanner" means exactly
+    // the same thing in both features (one CSV, one loader, one cache).
+    // `ensureLoaded()` reuses the scanner's own promise cache, so a report
+    // never triggers a second CSV download.
+    window._lidarScannerApi = {
+        getPoints: function () { return points; },
+        ensureLoaded: function () { return load(); },
+        isActive: function () { return active; },
+        getSelected: function () { return selected; }
+    };
 })();

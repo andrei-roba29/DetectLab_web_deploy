@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v53-sat60-premium-layer';
+const CACHE_NAME = 'detectlab-v54-arch-report';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -96,7 +96,16 @@ const PRECACHE_URLS = [
   'images/sonar_loading_animation.webp',
   'images/sonar_loading_animation.webp?v=20260729',
   'images/pwa-icon-192.png',
-  'images/pwa-icon-512.png'
+  'images/pwa-icon-512.png',
+  // Archeological Report premium layer: self-contained PDF writer + report +
+  // canvas-rendered PDF pages (no external PDF library is fetched at runtime).
+  'js/pdf-writer.js?v=20260827-arch-report',
+  'js/archeo-report-pdf.js?v=20260827-arch-report',
+  'js/archeo-report.js?v=20260827-arch-report',
+  'js/archeo-potential.js?v=20260827-arch-report',
+  'js/lidar-scanner.js?v=20260827-arch-report',
+  'js/translations.js?v=20260827-arch-report',
+  'css/styles.css?v=20260827-arch-report'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

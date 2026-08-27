@@ -1042,6 +1042,125 @@
     var _runVersion = 0;
 
     /**
+     * The whole analysis pipeline, WITHOUT any UI or map side effects.
+     *
+     * Both the layer's own button and the Premium "Archeological Report"
+     * (js/archeo-report.js) run through here, so a "potential zone" bubble means
+     * exactly the same thing in both features — one implementation, one set of
+     * filters, one scoring table.
+     *
+     * @param {number} centerLat  analysis centre
+     * @param {number} centerLng
+     * @param {number} [radiusM]  working radius (default CONFIG.SEARCH_RADIUS_M)
+     * @param {Object} [opts]
+     *        isCancelled()  → truthy aborts between batches ({status:'cancelled'})
+     *        chunkSize      → seeds per async batch (default 30)
+     *        yieldModulo    → yield to the UI every N batches (default 4)
+     * @returns {Promise<{status, results, ctx, stats}>}
+     *          status ∈ ok | no_sites | no_triangles | no_candidates | cancelled
+     *          results = [{lat, lng, x, y, score, factors, classification}]
+     */
+    function computeCandidates(centerLat, centerLng, radiusM, opts) {
+        opts = opts || {};
+        var radius = (typeof radiusM === 'number' && isFinite(radiusM)) ? radiusM : CONFIG.SEARCH_RADIUS_M;
+        var lat0 = centerLat;
+        var t0 = performance.now();
+        var isCancelled = typeof opts.isCancelled === 'function' ? opts.isCancelled : function () { return false; };
+        var chunkSize = opts.chunkSize || 30;
+        var yieldModulo = opts.yieldModulo === undefined ? 4 : opts.yieldModulo;
+
+        return (async function main() {
+            // Callers that already waited for window._localLayerData (e.g. the
+            // Archeological Report layer) pass skipDataWait so an unreachable
+            // heritage API is not waited on twice.
+            if (!opts.skipDataWait) await waitForSiteData();
+
+            var ctx = collectSitesInRadius(centerLat, centerLng, radius, lat0);
+            ctx.center = projectToLocalMeters(centerLat, centerLng, lat0);
+            ctx.centerLat = centerLat;
+            ctx.centerLng = centerLng;
+            ctx.radius = radius;
+            ctx.siteRadius = CONFIG.SITE_RADIUS_M;
+            ctx.siteBuffer = CONFIG.SITE_BUFFER_M;
+            ctx.triangles = [];
+            ctx.seeds = [];
+
+            if (ctx.sites.length < 3) return done('no_sites');
+
+            // local spatial index over the sites inside the radius
+            ctx.siteIndex = createGridIndex(1200, 1200);
+            for (var i = 0; i < ctx.sites.length; i++) {
+                ctx.siteIndex.insert(ctx.sites[i].x, ctx.sites[i].y, ctx.sites[i]);
+            }
+
+            // triangulate
+            var points = ctx.sites.map(function (s, idx) {
+                return { x: s.x, y: s.y, lat: s.lat, lng: s.lng, i: idx };
+            });
+            var triangles = delaunayTriangulation(points);
+            ctx.triangles = triangles.map(function (t) {
+                // keep lat/lng refs for debug rendering
+                return {
+                    a: { x: t.a.x, y: t.a.y, lat: points[t.a.i].lat, lng: points[t.a.i].lng },
+                    b: { x: t.b.x, y: t.b.y, lat: points[t.b.i].lat, lng: points[t.b.i].lng },
+                    c: { x: t.c.x, y: t.c.y, lat: points[t.c.i].lat, lng: points[t.c.i].lng }
+                };
+            });
+            if (ctx.triangles.length === 0) return done('no_triangles');
+
+            var seeds = sampleTriangles(triangles, lat0);
+            ctx.seeds = seeds;
+            if (seeds.length === 0) return done('no_candidates');
+
+            // async filtering, chunked so the UI stays responsive
+            var kept = [];
+            var batches = chunk(seeds, chunkSize);
+            for (var b = 0; b < batches.length; b++) {
+                var res = await Promise.all(batches[b].map(async function (seed) {
+                    if (!passesMandatorySpatialFilters(seed, ctx)) return null;
+                    var uat = await uatPixelAt(seed.lat, seed.lng);
+                    if (uat !== true) return null; // fail closed: not confirmed inside red UAT area
+                    return seed;
+                }));
+                kept = kept.concat(res.filter(function (x) { return x !== null; }));
+                if (yieldModulo > 0 && b % yieldModulo === 0) await yieldToUI();
+                if (isCancelled()) return done('cancelled');
+            }
+
+            var scored = kept.map(function (seed) { return scoreCandidate(seed, ctx); });
+            var results = selectSeparated(scored).map(function (c) {
+                return {
+                    lat: c.lat, lng: c.lng, x: c.x, y: c.y,
+                    score: c.score, factors: c.factors,
+                    classification: classify(c.score)
+                };
+            });
+            ctx.keptCount = kept.length;
+            return done('ok', results);
+
+            function done(status, results) {
+                var out = results || [];
+                var nHigh = 0, nMed = 0;
+                out.forEach(function (r) { if (r.classification === 'high') nHigh++; else nMed++; });
+                return {
+                    status: status,
+                    results: out,
+                    ctx: ctx,
+                    stats: {
+                        sites: ctx.sites.length,
+                        triangles: ctx.triangles.length,
+                        seeds: seeds ? seeds.length : 0,
+                        passed: ctx.keptCount || 0,
+                        high: nHigh,
+                        medium: nMed,
+                        ms: Math.round(performance.now() - t0)
+                    }
+                };
+            }
+        })();
+    }
+
+    /**
      * Main entry point — called every time the user presses
      * "Candidate Areas / Zone candidati".
      */
@@ -1059,109 +1178,38 @@
         }
 
         var center = map.getCenter();
-        var lat0 = center.lat;
-        var t0 = performance.now();
         setRunning(true);
         setStatus('running');
         setSummary(0, 0, 0);
 
-        var ctx = null;
-
         return (async function main() {
+            var run = null;
             try {
-                var data = await waitForSiteData();
+                run = await computeCandidates(center.lat, center.lng, CONFIG.SEARCH_RADIUS_M, {
+                    isCancelled: function () { return myVersion !== _runVersion; },
+                    chunkSize: 30,
+                    yieldModulo: 4
+                });
 
                 if (myVersion !== _runVersion) return; // superseded by a newer run
 
-                ctx = collectSitesInRadius(
-                    center.lat, center.lng,
-                    CONFIG.SEARCH_RADIUS_M, lat0
-                );
-                ctx.center = projectToLocalMeters(center.lat, center.lng, lat0);
-                ctx.centerLat = center.lat;   // used by the working-area circle
-                ctx.centerLng = center.lng;
-                ctx.radius = CONFIG.SEARCH_RADIUS_M;
-                ctx.siteRadius = CONFIG.SITE_RADIUS_M;
-                ctx.siteBuffer = CONFIG.SITE_BUFFER_M;
+                if (run.status === 'cancelled') { setStatus('cancelled'); return; }
+                if (run.status === 'no_sites') { setStatus('no_sites', true); setSummary(0, 0, 0); return; }
+                if (run.status === 'no_triangles') { setStatus('no_triangles', true); setSummary(0, 0, 0); return; }
 
-                if (ctx.sites.length < 3) {
-                    setStatus('no_sites', true);
-                    setSummary(0, 0, 0);
-                    return;
-                }
+                _currentResults = run.results;
+                render(run.results, run.ctx);
 
-                // local spatial index over the sites inside the radius
-                ctx.siteIndex = createGridIndex(1200, 1200);
-                for (var i = 0; i < ctx.sites.length; i++) {
-                    ctx.siteIndex.insert(ctx.sites[i].x, ctx.sites[i].y, ctx.sites[i]);
-                }
-
-                // triangulate
-                var points = ctx.sites.map(function (s, idx) {
-                    return { x: s.x, y: s.y, lat: s.lat, lng: s.lng, i: idx };
-                });
-                var triangles = delaunayTriangulation(points);
-                ctx.triangles = triangles.map(function (t) {
-                    // keep lat/lng refs for debug rendering
-                    return {
-                        a: { x: t.a.x, y: t.a.y, lat: points[t.a.i].lat, lng: points[t.a.i].lng },
-                        b: { x: t.b.x, y: t.b.y, lat: points[t.b.i].lat, lng: points[t.b.i].lng },
-                        c: { x: t.c.x, y: t.c.y, lat: points[t.c.i].lat, lng: points[t.c.i].lng }
-                    };
-                });
-                if (ctx.triangles.length === 0) {
-                    setStatus('no_triangles', true);
-                    setSummary(0, 0, 0);
-                    return;
-                }
-
-                var seeds = sampleTriangles(triangles, lat0);
-                if (seeds.length === 0) {
-                    setStatus('no_candidates', true);
-                    setSummary(0, 0, 0);
-                    return;
-                }
-
-                // async filtering, chunked so the UI stays responsive
-                var kept = [];
-                var batches = chunk(seeds, 30);
-                for (var b = 0; b < batches.length; b++) {
-                    var res = await Promise.all(batches[b].map(async function (seed) {
-                        if (!passesMandatorySpatialFilters(seed, ctx)) return null;
-                        var uat = await uatPixelAt(seed.lat, seed.lng);
-                        if (uat !== true) return null; // fail closed: not confirmed inside red UAT area
-                        return seed;
-                    }));
-                    kept = kept.concat(res.filter(function (x) { return x !== null; }));
-                    if (b % 4 === 0) await yieldToUI();
-                    if (myVersion !== _runVersion) { setStatus('cancelled'); return; }
-                }
-
-                var scored = kept.map(function (seed) { return scoreCandidate(seed, ctx); });
-                var results = selectSeparated(scored).map(function (c) {
-                    return {
-                        lat: c.lat, lng: c.lng, score: c.score, factors: c.factors,
-                        classification: classify(c.score)
-                    };
-                });
-
-                _currentResults = results;
-                render(results, ctx);
-
-                var nHigh = 0, nMed = 0;
-                results.forEach(function (r) {
-                    if (r.classification === 'high') nHigh++; else nMed++;
-                });
-
+                var s = run.stats;
                 console.log('[ArcheoPotential] ' +
-                    ctx.sites.length + ' sites, ' + triangles.length + ' triangles, ' +
-                    seeds.length + ' seeds, ' + kept.length + ' passed filters, ' +
-                    results.length + ' candidates (' + nHigh + ' high, ' + nMed + ' medium) — ' +
-                    Math.round(performance.now() - t0) + ' ms');
+                    s.sites + ' sites, ' + s.triangles + ' triangles, ' +
+                    s.seeds + ' seeds, ' + s.passed + ' passed filters, ' +
+                    run.results.length + ' candidates (' + s.high + ' high, ' + s.medium + ' medium) — ' +
+                    s.ms + ' ms');
 
-                if (results.length === 0) setStatus('no_candidates', true);
+                if (run.results.length === 0) setStatus('no_candidates', true);
                 else setStatus('done');
-                setSummary(results.length, nHigh, nMed);
+                setSummary(run.results.length, s.high, s.medium);
             } catch (err) {
                 console.error('[ArcheoPotential] Analysis failed:', err);
                 setStatus('error', true);
@@ -1213,6 +1261,10 @@
     // Public API (used by index.html handlers + console)
     window.runArcheoPotentialAnalysis = runArcheoPotentialAnalysis;
     window.toggleArcheoPotentialLayer = toggleArcheoPotentialLayer;
+    // Headless pipeline — used by js/archeo-report.js (the Premium
+    // "Archeological Report") so that its "potential zones" are exactly the
+    // bubbles this layer would return, with the same filters and scoring.
+    window.computeArcheoPotential = computeCandidates;
     window._archeoPotentialResults = function () { return _currentResults; };
     window._archeoPotentialResetCache = function () { _siteIndexCache = null; };
     window._archeoPotentialDebug = {
@@ -1230,6 +1282,10 @@
         starRatingHtml: starRatingHtml,
         popupHtml: popupHtml,
         uatPixelAt: uatPixelAt,
+        computeCandidates: computeCandidates,
+        projectToLocalMeters: projectToLocalMeters,
+        localMetersToLatLng: localMetersToLatLng,
+        haversineM: haversineM,
         _uatTileZ: uatTileZ
     };
 })();
