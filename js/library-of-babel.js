@@ -15,7 +15,7 @@
     /* ── i18n dictionaries — kept in strict ro/en parity (tested) ── */
     var C = {
         ro: {
-            title: 'Dosarul istoric al localității',
+            title: 'Biblioteca din Babel',
             subtitle: 'Fișă istorică documentată · SIRUTA + dovezi verificate',
             button: 'Cercetează zona', zoom: 'Zoom in mai mult',
             locating: 'Identificăm localitatea…', search: 'Cercetăm sursele și analizăm documentele…',
@@ -73,7 +73,7 @@
             generatedAt: 'Generat', schemaLabel: 'Schema'
         },
         en: {
-            title: 'Locality historical dossier',
+            title: 'Library of Babel',
             subtitle: 'Documented historical record · SIRUTA + verified evidence',
             button: 'Research area', zoom: 'Zoom in more',
             locating: 'Identifying locality…', search: 'Searching sources and analysing documents…',
