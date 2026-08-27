@@ -36,8 +36,13 @@
  *   • APM            colour class → 1.00 blue / 0.85 green / 0.62 yellow
  *   • PotentialZone  inside a bubble → that bubble's own score; near a bubble →
  *                    bubble score × (1 − d/PROXIMITY_M); no bubble → baseline
- *   • LIDAR          annotated → 1.0; near an anomaly → 1 − d/PROXIMITY_M;
- *                    nothing near → baseline (+ bonus when annotated)
+ *   • LIDAR          is an optional modifier, not a penalty for missing data:
+ *                    annotated → 1.0; near an anomaly → 1 − d/PROXIMITY_M;
+ *                    when no scanner point is within PROXIMITY_M its weight is
+ *                    removed and the APM + potential score is renormalised.
+ *                    Thus candidates close to scanner points can receive a
+ *                    bonus, while candidates farther away are scored lower
+ *                    relative to those nearby candidates.
  *
  * WHY THE PDF IS IMAGE-BASED — see js/pdf-writer.js (short version: the PDF
  * standard fonts cannot render ă/ș/ț without embedding a TrueType subset).
@@ -100,8 +105,10 @@
             APM_CLASS_SCORE: { '5': 1.00, '4.5': 0.85, '4': 0.62 },
             APM_UNKNOWN: 0.30,        // unreadable pixel, LIDAR-waived candidate
             POTENTIAL_NONE: 0.25,     // no triangulation bubble in the area at all
-            LIDAR_NO_DATA: 0.20,      // no LIDAR coverage in the area
-            LIDAR_FAR: 0.10,          // LIDAR data exists, nothing near this point
+            // Kept as named configuration values for backwards-compatible
+            // consumers; missing/far LIDAR is no longer inserted as a score.
+            LIDAR_NO_DATA: 0.20,
+            LIDAR_FAR: 0.10,
             LIDAR_ANNOTATION_BONUS: 0.45  // "se returnează automat"
         },
 
@@ -904,13 +911,25 @@
             potComp = clamp01(pot.bubble.score * (1 - pot.distM / CONFIG.POTENTIAL.PROXIMITY_M));
         else potComp = 0;
 
-        var lidarComp;
-        if (annotated) lidarComp = 1;
-        else if (lidar && lidar.distM <= CONFIG.LIDAR.PROXIMITY_M)
-            lidarComp = clamp01(1 - lidar.distM / CONFIG.LIDAR.PROXIMITY_M);
-        else lidarComp = ctx.lidarPoints.length ? S.LIDAR_FAR : S.LIDAR_NO_DATA;
+        var lidarNearby = annotated || (lidar && lidar.distM <= CONFIG.LIDAR.PROXIMITY_M);
+        var lidarComp = null;
+        if (lidarNearby) {
+            // LIDAR is deliberately applied only when it can actually inform
+            // this candidate. A point elsewhere must not reduce an otherwise
+            // strong APM + triangulated-potential result.
+            lidarComp = annotated ? 1 : clamp01(1 - lidar.distM / CONFIG.LIDAR.PROXIMITY_M);
+        }
 
-        var score = S.W_APM * apmComp + S.W_POTENTIAL * potComp + S.W_LIDAR * lidarComp;
+        // If there is no scanner evidence in the configured neighbourhood,
+        // remove its weight and renormalise the remaining evidence. This is
+        // important: missing LIDAR coverage is unknown, not negative evidence.
+        var score;
+        if (lidarNearby) {
+            score = S.W_APM * apmComp + S.W_POTENTIAL * potComp + S.W_LIDAR * lidarComp;
+        } else {
+            var nonLidarWeight = S.W_APM + S.W_POTENTIAL;
+            score = nonLidarWeight ? (S.W_APM * apmComp + S.W_POTENTIAL * potComp) / nonLidarWeight : 0;
+        }
         if (annotated) score += S.LIDAR_ANNOTATION_BONUS;
         score = clamp01(score);
 
@@ -931,6 +950,7 @@
                 potentialFactors: pot ? pot.bubble.factors : null,
                 bubblesInArea: ctx.bubblesInArea,
                 lidarComp: lidarComp,
+                lidarApplied: lidarNearby,
                 lidarDistM: lidar ? Math.round(lidar.distM) : null,
                 lidarPoint: lidar ? lidar.point : null,
                 uatClearanceM: isFinite(uat.clearanceM) ? Math.round(uat.clearanceM) : null

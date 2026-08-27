@@ -602,7 +602,9 @@
             [tr('arch_report_src_pot_title'),
              Math.round(w.potential * 100) + '%', pct(res.parts.potentialComp), pct(res.parts.potentialComp * w.potential)],
             ['LIDAR Scanner',
-             Math.round(w.lidar * 100) + '%', pct(res.parts.lidarComp), pct(res.parts.lidarComp * w.lidar)],
+             res.parts.lidarApplied ? Math.round(w.lidar * 100) + '%' : '—',
+             res.parts.lidarApplied ? pct(res.parts.lidarComp) : '—',
+             res.parts.lidarApplied ? pct(res.parts.lidarComp * w.lidar) : '—'],
             [tr('arch_report_tbl_total'), '100%', '', res.scorePct + '%']
         ], [CONTENT_W - 190, 58, 62, 70], { boldFirstCol: true });
 
