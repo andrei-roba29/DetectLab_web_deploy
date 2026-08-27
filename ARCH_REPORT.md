@@ -40,7 +40,11 @@ document *metadata* (`/Title`, `/Author`) with `winAnsiSafe()`.
 3. **3 orange hexagons** (radius 180 m) with permanent `Rezultat n/3 · %` labels
    appear and **stay until the layer is switched off** (or "show results" is
    unticked). The polygon *and* its label are clickable → score popup.
-4. **PDF** → captures 3 screenshots, then builds the report and downloads it.
+4. Pick the **PDF language** with the RO / EN selector next to the download
+   button (defaults to the site language, remembered per session), then
+   **Download PDF** → captures the 3 figures, builds the report and downloads
+   it. The *whole* document — pages, tables, figure titles and result labels —
+   comes out in the chosen language.
 
 The layer keeps its state: switching languages or re-running does not clear the
 results unless the user turns the layer off.
@@ -96,14 +100,45 @@ figures → sources. It explains, per result:
 * the **potential-zone bubble** it lies in or near, relative to the other sites;
 * the **LIDAR Scanner title** when one exists;
 * an **approximate period** inferred from the 3 nearest sites, with their
-  names/eras and **links to RAN / CIMEC** (`https://ran.cimec.ro/sel.asp?codran=…`,
-  falling back to a description query) as the evidence;
+  **raw dating text always printed** (name-derived dating is marked †) and
+  **links to RAN / CIMEC** (`https://ran.cimec.ro/sel.asp?codran=…`, falling
+  back to a description query) as the evidence;
 * the 5 nearest sites with distances, and the rejection statistics for the area.
 
 Screenshots (canvas re-composited from tiles + vector overlays, since
-`html2canvas` is unavailable): the **APM 2.0 view at 30 % opacity**, the
-**LIDAR view** when scanner objects exist, and the **potential zones vs. the
-other sites** when at least one bubble falls in the area.
+`html2canvas` is unavailable):
+
+* **APM 2.0 high-potential polygons (Search Help style)** — the figure does
+  *not* re-fetch the APM tiles (the 30 % raster wash was invisible over the
+  satellite image, and depended on CORS). It polygonizes the report's own
+  classified grid (`ctx.apmGrid` — the same 12 m cells the score was computed
+  from): the allowed classes (blue 5 / green 4.5 / yellow 4) are clustered
+  per class with 8-connectivity, patches below `APM.FIGURE.MIN_CLUSTER_CELLS`
+  (8 cells) are dropped, and each surviving cluster is outlined with the same
+  Moore boundary trace the Search Help tool uses and filled with its legend
+  colour at `APM.FIGURE.OPACITY` (0.45) over the satellite base. The figure
+  can therefore never contradict the analysis — it *is* the analysis data;
+* **LIDAR view** when scanner objects exist;
+* **potential zones vs. the other sites** when at least one bubble falls in
+  the area.
+
+### Period estimation
+
+The estimate is an inverse-distance vote over the 3 nearest known sites.
+The production GeoJSON endpoints (`/api/layers/0`, `/5/`, `/6/`) were checked:
+**none of the layers has a dating property** (layer 0 → `NUMESIT/CODSIT/
+SIRUTA/COORD`, layer 5 → `Tip/Judet/Comuna/Eticheta`, layer 6 → `Nume/CodRAN/
+Localitate/Judet/Observatii/Sursa`). The dating therefore lives in the site
+**name** ("Așezarea hallstattiană…", "Castrul militar auxiliar…"), so
+`siteInfo()` derives the period from a dating property when one exists,
+otherwise from the name (`datingFromName` is flagged in the evidence list and
+the sites table shows `†`). The matcher also understands RAN **century
+notation** — `sec. II-III p.Chr.`, `secolul al IV-lea`, `sec. XII-XIII`,
+`sec. II-I î.Chr.`, `mileniul I î.Chr.` — and maps each century (or range,
+majority vote, ties resolved toward year 0) onto the period scale using the
+Romanian archaeological conventions. Whatever happens, the evidence list
+**always prints the raw dating text** from the database; "undetermined"
+appears only when a record genuinely says nothing.
 
 ## Rendering
 
@@ -117,17 +152,23 @@ _archeoReportDebug.config          // live CONFIG
 window.runArcheoReport()           // returns the model
 _archeoReportDebug.classifyApmPixel(r, g, b)
 _archeoReportDebug.uatVerdict(grid, x, y, 500)
+_archeoReportDebug.apmGridPolygons(grid)   // figure polygons from the classified grid
+_archeoReportDebug.parseCenturyRange('sec. II-III p.Chr.')
+_archeoReportDebug.periodKey('sec. II-III p.Chr.')   // → 'roman'
+_archeoReportSetPdfLang('ro')      // or 'en' — PDF language override
+_archeoReportPdfLang()             // → the effective PDF language
 window._lidarScannerApi.getPoints()
 ```
 
 `node test-archeo-report.js` runs the real `archeo-report.js`,
 `archeo-report-pdf.js`, `pdf-writer.js` and `archeo-potential.js` inside a vm
 sandbox with a working canvas/Image stub: APM colour classification, every
-exclusion rule, the weighted score, selection, period voting, the PDF byte
-structure (xref offsets, DCTDecode streams), the Leaflet layers that end up on
-the map, and the RO/EN translation completeness.
+exclusion rule, the weighted score, selection, the century/name period
+matcher, the APM figure polygonization, the PDF byte structure (xref offsets,
+DCTDecode streams), the PDF language selection, the Leaflet layers that end
+up on the map, and the RO/EN translation completeness.
 
-211 checks. **Not covered by the harness** (needs a browser): real tile
+283 checks. **Not covered by the harness** (needs a browser): real tile
 fetching — the R2 APM bucket and the Esri satellite basemap must answer
 `Access-Control-Allow-Origin` for `getImageData()` to work.
 
@@ -137,10 +178,13 @@ Everything fails **closed** — the layer never guesses:
 
 | Failure | Effect |
 | --- | --- |
-| APM tile unreadable (CORS/404) | `apmUnreadable: true`, `apmAvailable: false` → every seed is rejected, 0 results, the PDF button stays hidden and the status line says why |
+| APM tile unreadable (CORS/404) | `apmUnreadable: true`, `apmAvailable: false` → every seed is rejected, 0 results, the PDF button stays hidden and the status line says why. The PDF's APM figure then has no polygons and the caption says the APM source was not drawn |
 | UAT tile unreadable | the pixel counts as **not red** → rejected (`uat_not_red`) |
 | Heritage API down | after one 20 s cap: `sitesCount: 0`, `potentialStatus: 'no_sites'` |
 | LIDAR CSV down | `ensureLoaded()` rejects and is swallowed → `lidarCount: 0`, no annotation bonus |
+
+The APM figure itself needs no APM tiles: it draws the classified grid the
+analysis produced, so it can never disagree with the score.
 
 `computeArcheoPotential()` accepts `skipDataWait` so the report's own
 `waitForSiteData()` is not waited on a second time (40 s → 20 s when the

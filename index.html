@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260827-arch-report">
+    <link rel="stylesheet" href="css/styles.css?v=20260827-arch-report-v2">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260827-historical-dossier">
     <style>
         /* PWA Specific Styles */
@@ -2535,6 +2535,11 @@
                             </svg>
                             <span class="t" data-key="arch_report_pdf_btn">Download PDF</span>
                         </button>
+                        <div class="arch-report-lang" id="archReportPdfLang" style="display:none" role="group" aria-label="PDF language">
+                            <span class="t" data-key="arch_report_pdf_lang">PDF language:</span>
+                            <button type="button" id="archReportPdfLangRo" class="arch-report-lang-btn" data-arch-report-lang="ro" title="Română">RO</button>
+                            <button type="button" id="archReportPdfLangEn" class="arch-report-lang-btn" data-arch-report-lang="en" title="English">EN</button>
+                        </div>
                         <label class="arch-report-show" id="archReportResultsToggleWrap" style="display:none">
                             <input type="checkbox" id="archReportResultsToggle" checked>
                             <span class="t" data-key="arch_report_show_results">Show results on the map</span>
@@ -2943,7 +2948,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260827-arch-report"></script>
+    <script src="js/translations.js?v=20260827-arch-report-v2"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -2980,8 +2985,8 @@
     <!-- Premium "Archeological Report" / "Raport arheologic": PDF writer →
          PDF layout → the analysis layer itself (this order matters). -->
     <script src="js/pdf-writer.js?v=20260827-arch-report"></script>
-    <script src="js/archeo-report-pdf.js?v=20260827-arch-report"></script>
-    <script src="js/archeo-report.js?v=20260827-arch-report"></script>
+    <script src="js/archeo-report-pdf.js?v=20260827-arch-report-v2"></script>
+    <script src="js/archeo-report.js?v=20260827-arch-report-v2"></script>
 
     <!-- AUTH MODAL -->
     <style>
