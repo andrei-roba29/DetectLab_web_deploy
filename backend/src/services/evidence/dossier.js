@@ -34,11 +34,11 @@ export const CERTAINTY_LEVELS = ['CERT', 'PROBABLE', 'CONTESTED', 'HYPOTHESIS', 
 // produced by the deterministic evidence engine (knowledge.periods.label_ro);
 // buckets without a detectable label remain honestly empty.
 export const HISTORY_BUCKETS = [
-  { key: 'preistorie', label: { ro: 'Preistorie', en: 'Prehistory' }, sourcePeriods: ['Preistorie', 'Epoca bronzului', 'Hallstatt'] },
-  { key: 'antichitate', label: { ro: 'Antichitate', en: 'Antiquity' }, sourcePeriods: ['La Tène', 'Dacic / getic', 'Roman'] },
-  { key: 'ev-mediu-timpuriu', label: { ro: 'Evul Mediu timpuriu', en: 'Early Middle Ages' }, sourcePeriods: [] },
+  { key: 'preistorie', label: { ro: 'Preistorie', en: 'Prehistory' }, sourcePeriods: ['Preistorie', 'Paleolitic', 'Mezolitic', 'Neolitic', 'Eneolitic', 'Epoca bronzului', 'Hallstatt'] },
+  { key: 'antichitate', label: { ro: 'Antichitate', en: 'Antiquity' }, sourcePeriods: ['La Tène', 'Epoca fierului', 'Dacic / getic', 'Roman', 'Antichitate'] },
+  { key: 'ev-mediu-timpuriu', label: { ro: 'Evul Mediu timpuriu', en: 'Early Middle Ages' }, sourcePeriods: ['Epoca migrațiilor'] },
   { key: 'ev-mediu', label: { ro: 'Evul Mediu', en: 'Middle Ages' }, sourcePeriods: ['Medieval'] },
-  { key: 'moderna-timpurie', label: { ro: 'Perioada modernă timpurie', en: 'Early modern period' }, sourcePeriods: [] },
+  { key: 'moderna-timpurie', label: { ro: 'Perioada modernă timpurie', en: 'Early modern period' }, sourcePeriods: ['Modern'] },
   { key: 'sec-xviii-xix', label: { ro: 'Secolele XVIII–XIX', en: '18th–19th centuries' }, sourcePeriods: [] },
   { key: 'austro-ungara', label: { ro: 'Perioada austro-ungară', en: 'Austro-Hungarian period' }, sourcePeriods: [] },
   { key: 'primul-razboi-mondial', label: { ro: 'Primul Război Mondial', en: 'World War I' }, sourcePeriods: [] },

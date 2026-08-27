@@ -99,6 +99,22 @@ test('claims are bucketed into the specification history periods', () => {
   assert.equal(byKey.get('ev-mediu').entries.length, 0);
 });
 
+test('report taxonomy epochs map onto the dossier history buckets', () => {
+  const toBucket = {
+    preistorie: ['Preistorie', 'Paleolitic', 'Mezolitic', 'Neolitic', 'Eneolitic', 'Epoca bronzului', 'Hallstatt'],
+    antichitate: ['La Tène', 'Epoca fierului', 'Dacic / getic', 'Roman', 'Antichitate'],
+    'ev-mediu-timpuriu': ['Epoca migrațiilor'],
+    'ev-mediu': ['Medieval'],
+    'moderna-timpurie': ['Modern'],
+  };
+  for (const [bucket, epochs] of Object.entries(toBucket)) {
+    for (const epoch of epochs) {
+      assert.equal(bucketForPeriods([epoch]), bucket, `${epoch} -> ${bucket}`);
+    }
+  }
+  assert.equal(bucketForPeriods([]), 'nespecificat');
+});
+
 test('thematic sections classify only claims whose verified text matches', () => {
   const population = claim({ id: 13, claim: 'Populație', periods: [], evidence: [{ excerpt: 'Recensământul din 1850 consemna 1.204 locuitori, majoritatea români ortodocși.', contextWindow: '' }] });
   const families = claim({ id: 14, claim: 'Moșie', periods: [], evidence: [{ excerpt: 'Moșia aparținuse familiei Bánffy până la 1848.', contextWindow: '' }] });

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { extractPdfPages, getArticle, searchCatalog } from './bibliotecaDigitala.js';
+import { periods } from './periods.js';
 
 export const LOCATION_ROLES = ['ARCHAEOLOGICAL_TARGET','FINDSPOT','EXCAVATION_LOCATION','SURVEY_LOCATION','HISTORICAL_LOCATION','ARCHAEOLOGICAL_CONTEXT','INSTITUTION','MUSEUM_LOCATION','COLLECTION_LOCATION','EXHIBITION_LOCATION','AUTHOR_AFFILIATION','PUBLICATION_LOCATION','BIBLIOGRAPHIC_REFERENCE','INCIDENTAL_MENTION','UNKNOWN'];
 
@@ -10,7 +11,6 @@ const categoryPatterns = [
   ['ARTEFACT', /fibul|ceramic|armă|arma|podoab|artefact|obiect/], ['SURVEY', /perieghez|prospecți|prospecti|suprafață|suprafata/],
   ['EXCAVATION', /săpătur|sapatur|excav|dezvel/], ['ARCHAEOLOGICAL_SITE', /sit arheologic|situl/],
 ];
-const periodPatterns = [['Preistorie', /preistor|paleolit|mezolit|mesolit|neolit|eneolit/],['Epoca bronzului', /epoca bronzului|bronze age/],['Hallstatt', /hallstatt/],['La Tène', /la\s*t[eè]ne|celtic/],['Dacic / getic', /\bdaci|dacic|getic/],['Roman', /\broman[ăei]?\b|dacia roman|castr/],['Medieval', /medieval|evul mediu/]];
 
 function normalize(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[șş]/gi, 's').replace(/[țţ]/gi, 't').toLocaleLowerCase('ro').trim(); }
 function escapeRegex(value) { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
@@ -74,7 +74,6 @@ export function classifyLocationMention(context, locality, { title = '', descrip
 }
 
 function category(value) { return categoryPatterns.find(([, rx]) => rx.test(value))?.[0] || 'OTHER_ARCHAEOLOGICAL_EVIDENCE'; }
-function periods(value, descriptors = []) { const all = `${value} ${descriptors.join(' ')}`; return periodPatterns.filter(([, rx]) => rx.test(all)).map(([name]) => name); }
 function makeClaim(locality, categoryName, evidence) {
   const labels = { NECROPOLIS: 'o necropolă', BURIAL: 'un context funerar', SETTLEMENT: 'o așezare', FORTIFICATION: 'o fortificație', HOARD: 'un tezaur', COIN_FIND: 'o descoperire monetară', ARTEFACT: 'artefacte', SURVEY: 'cercetări de suprafață', EXCAVATION: 'săpături arheologice', ARCHAEOLOGICAL_SITE: 'un sit arheologic', OTHER_ARCHAEOLOGICAL_EVIDENCE: 'informații arheologice' };
   const action = /descoper/i.test(evidence) ? 'este documentată descoperirea de' : 'sunt documentate';
