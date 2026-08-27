@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { pool, withTransaction } from '../../config/db.js';
+import { buildDossier } from './dossier.js';
 
 export const PIPELINE_VERSION = 'detectlab-evidence-2.0.0';
 const normalize = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[șş]/gi, 's').replace(/[țţ]/gi, 't').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -97,9 +98,30 @@ export async function getPersistentBundle(id) {
   const claims = await getLocalityArchaeology(id);
   const evidenceRows = await getLocalityEvidence(id);
   const documents = await getLocalityDocuments(id);
+  const sites = await getLocalitySites(id);
   const evidenceByClaim = new Map();
   evidenceRows.forEach((item) => { const list = evidenceByClaim.get(item.claim_id) || []; list.push({ id:item.id,excerpt:item.excerpt,contextWindow:item.context_excerpt,printedPage:item.printed_page,pdfPage:item.pdf_page,sourceUrl:item.source_url,extractionMethod:item.extraction_method,confidence:Number(item.confidence) }); evidenceByClaim.set(item.claim_id,list); });
-  return { schemaVersion:'2.0',storage:'PERSISTENT_POSTGRESQL',locality:{ id:locality.id,currentName:locality.name,county:locality.county,siruta:locality.siruta_code,aliases:(locality.aliases||[]).map((a)=>a.alias),coordinates:locality.latitude&&locality.longitude?{lat:locality.latitude,lng:locality.longitude}:null,ingestionStatus:locality.ingestion_status,lastIngestedAt:locality.last_ingested_at },sourcePolicy:{exclusiveProvider:'https://biblioteca-digitala.ro/',pdfsPermanentlyStored:false},archaeologicalInformation:claims.map((claim)=>({id:claim.id,claim:claim.claim,category:claim.category,periods:claim.periods,status:claim.status,confidence:Number(claim.extraction_confidence),confidenceLevel:Number(claim.extraction_confidence)>=.8?'HIGH':Number(claim.extraction_confidence)>=.5?'MEDIUM':'LOW',evidence:evidenceByClaim.get(claim.id)||[],source:(()=>{const e=evidenceRows.find((x)=>x.claim_id===claim.id);return e?{title:e.title,authors:e.authors,year:e.publication_year,publication:e.publication,url:e.catalog_url,pdfUrl:e.document_url}:{};})(),locations:[{name:locality.name,role:'ARCHAEOLOGICAL_TARGET',confidence:Number(claim.role_confidence),attributionReason:'Stored contextual classification; inspect linked evidence records for audit.'}],images:[],fullyVerified:claim.status==='VERIFIED',conflictingSources:claim.conflicting_sources})),documents,audit:{verifiedClaims:claims.filter((c)=>c.status==='VERIFIED').length,claims:claims.length,evidence:evidenceRows.length} };
+  const bundle = { schemaVersion:'2.0',storage:'PERSISTENT_POSTGRESQL',locality:{ id:locality.id,currentName:locality.name,county:locality.county,siruta:locality.siruta_code,aliases:(locality.aliases||[]).map((a)=>a.alias),coordinates:locality.latitude&&locality.longitude?{lat:locality.latitude,lng:locality.longitude}:null,ingestionStatus:locality.ingestion_status,lastIngestedAt:locality.last_ingested_at },sourcePolicy:{exclusiveProvider:'https://biblioteca-digitala.ro/',pdfsPermanentlyStored:false},archaeologicalInformation:claims.map((claim)=>({id:claim.id,claim:claim.claim,category:claim.category,periods:claim.periods,status:claim.status,confidence:Number(claim.extraction_confidence),confidenceLevel:Number(claim.extraction_confidence)>=.8?'HIGH':Number(claim.extraction_confidence)>=.5?'MEDIUM':'LOW',evidence:evidenceByClaim.get(claim.id)||[],source:(()=>{const e=evidenceRows.find((x)=>x.claim_id===claim.id);return e?{title:e.title,authors:e.authors,year:e.publication_year,publication:e.publication,url:e.catalog_url,pdfUrl:e.document_url}:{};})(),locations:[{name:locality.name,role:'ARCHAEOLOGICAL_TARGET',confidence:Number(claim.role_confidence),attributionReason:'Stored contextual classification; inspect linked evidence records for audit.'}],images:[],fullyVerified:claim.status==='VERIFIED',conflictingSources:claim.conflicting_sources})),documents,audit:{verifiedClaims:claims.filter((c)=>c.status==='VERIFIED').length,claims:claims.length,evidence:evidenceRows.length} };
+  // Complete historical dossier (specification: data/dossier-spec/*.md) —
+  // deterministic assembly from SIRUTA identity + verified claims only.
+  bundle.dossier = buildDossier(locality, bundle, { sites });
+  return bundle;
+}
+
+export async function getLocalitySites(id) {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM knowledge.archaeological_sites WHERE locality_id=$1 ORDER BY created_at`, [id]);
+    return rows;
+  } catch (_) {
+    // Older deployments may not have the table yet — the dossier then simply
+    // reports no stored sites (anti-hallucination: never fabricate entries).
+    return [];
+  }
+}
+
+export async function getDossier(id) {
+  const bundle = await getPersistentBundle(id);
+  return bundle ? bundle.dossier : null;
 }
 
 export async function getLocality(id) {
