@@ -3,7 +3,7 @@ import { pool } from '../config/db.js';
 import { env } from '../config/env.js';
 import { researchLocality } from '../services/evidence/engine.js';
 import { createRun, setRunStatus } from '../services/evidence/ingestionWorker.js';
-import { findLocality, getClaim, getEvidence, getLocality, getLocalityArchaeology, getLocalityDocuments, getLocalityEvidence, getPersistentBundle, persistResearchResult } from '../services/evidence/repository.js';
+import { findLocality, getClaim, getDossier, getEvidence, getLocality, getLocalityArchaeology, getLocalityDocuments, getLocalityEvidence, getPersistentBundle, persistResearchResult } from '../services/evidence/repository.js';
 
 const router = Router();
 const numericId = (value) => /^\d+$/.test(String(value));
@@ -13,8 +13,11 @@ router.post('/evidence/search', async (req, res, next) => {
   try {
     const localityName = String(req.body?.locality || '').trim();
     const county = req.body?.county ? String(req.body.county).trim().slice(0,80) : null;
-    if (localityName.length < 2 || localityName.length > 120) return res.status(400).json({error:'invalid_locality'});
-    const matches = req.body?.localityId && numericId(req.body.localityId)
+    // §1 exact identification: a numeric localityId (SIRUTA register row) may
+    // be supplied alone when the user resolved an ambiguous homonym by hand.
+    const hasLocalityId = Boolean(req.body?.localityId && numericId(req.body.localityId));
+    if (!hasLocalityId && (localityName.length < 2 || localityName.length > 120)) return res.status(400).json({error:'invalid_locality'});
+    const matches = hasLocalityId
       ? [await getLocality(req.body.localityId)].filter(Boolean)
       : await findLocality(localityName, county);
     if (!matches.length) return res.status(404).json({error:'locality_not_found',message:'Localitatea nu există în registrul SIRUTA importat.'});
@@ -34,6 +37,7 @@ router.post('/evidence/search', async (req, res, next) => {
   } catch(error){if(error?.name==='AbortError')return res.status(504).json({error:'source_timeout',source:'https://biblioteca-digitala.ro/'});next(error);}
 });
 
+router.get('/localities/:id/dossier', async(req,res,next)=>{try{if(!numericId(req.params.id))return res.status(400).json({error:'invalid_id'});const dossier=await getDossier(req.params.id);dossier?res.json({localityId:req.params.id,dossier}):res.status(404).json({error:'not_found'});}catch(e){next(e);}});
 router.get('/localities/:id', async(req,res,next)=>{try{if(!numericId(req.params.id))return res.status(400).json({error:'invalid_id'});const row=await getLocality(req.params.id);row?res.json(row):res.status(404).json({error:'not_found'});}catch(e){next(e);}});
 router.get('/localities/:id/archaeology', async(req,res,next)=>{try{res.json({localityId:req.params.id,claims:await getLocalityArchaeology(req.params.id)});}catch(e){next(e);}});
 router.get('/localities/:id/evidence', async(req,res,next)=>{try{res.json({localityId:req.params.id,evidence:await getLocalityEvidence(req.params.id)});}catch(e){next(e);}});
