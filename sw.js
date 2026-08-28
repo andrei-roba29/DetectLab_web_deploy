@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v56-arch-report-v2';
+const CACHE_NAME = 'detectlab-v57-arch-report-v3';
 
 // ── Detection settings ──
 let detectionEnabled = false;

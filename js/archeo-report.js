@@ -43,6 +43,9 @@
  *                    Thus candidates close to scanner points can receive a
  *                    bonus, while candidates farther away are scored lower
  *                    relative to those nearby candidates.
+ *   • Roman roads    optional bonus only: if a mapped Roman road is within
+ *                    ROMAN_ROADS.PROXIMITY_M, add W_ROMAN_ROADS × (1 − d/R).
+ *                    If no road is nearby, the score is unchanged (no penalty).
  *
  * WHY THE PDF IS IMAGE-BASED — see js/pdf-writer.js (short version: the PDF
  * standard fonts cannot render ă/ș/ț without embedding a TrueType subset).
@@ -98,10 +101,18 @@
             PROXIMITY_M: 600          // "în proximitatea unui rezultat LIDAR"
         },
 
+        // Roman roads (AWMC GeoJSON — same URL as the map layer). Bonus only:
+        // proximity can raise the score; absence never lowers it.
+        ROMAN_ROADS: {
+            PROXIMITY_M: 1500,
+            URL: 'https://raw.githubusercontent.com/andrei-roba29/geo_data/d81cd21/Cultural-Data/roads/roman_routes_under25mb.geojson'
+        },
+
         SCORING: {
             W_APM: 0.40,
             W_POTENTIAL: 0.30,
             W_LIDAR: 0.30,
+            W_ROMAN_ROADS: 0.12,      // optional bonus, not part of the 1.0 mix
             APM_CLASS_SCORE: { '5': 1.00, '4.5': 0.85, '4': 0.62 },
             APM_UNKNOWN: 0.30,        // unreadable pixel, LIDAR-waived candidate
             POTENTIAL_NONE: 0.25,     // no triangulation bubble in the area at all
@@ -276,6 +287,92 @@
     function fmtM(m) {
         if (m === null || m === undefined || !isFinite(m)) return '—';
         return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m';
+    }
+
+    function distPointToSegment(px, py, ax, ay, bx, by) {
+        var dx = bx - ax, dy = by - ay;
+        var len2 = dx * dx + dy * dy;
+        if (len2 < 1e-12) {
+            var ddx = px - ax, ddy = py - ay;
+            return Math.sqrt(ddx * ddx + ddy * ddy);
+        }
+        var t = ((px - ax) * dx + (py - ay) * dy) / len2;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        var qx = ax + t * dx, qy = ay + t * dy;
+        var rx = px - qx, ry = py - qy;
+        return Math.sqrt(rx * rx + ry * ry);
+    }
+
+    function flattenLineCoords(geom, out) {
+        if (!geom) return;
+        var t = geom.type, c = geom.coordinates;
+        if (t === 'LineString') out.push(c);
+        else if (t === 'MultiLineString') {
+            for (var i = 0; i < (c || []).length; i++) out.push(c[i]);
+        } else if (t === 'GeometryCollection' && geom.geometries) {
+            for (var j = 0; j < geom.geometries.length; j++) flattenLineCoords(geom.geometries[j], out);
+        }
+    }
+
+    function nearestRomanRoadM(x, y, segs) {
+        if (!segs || !segs.length) return null;
+        var best = Infinity;
+        for (var i = 0; i < segs.length; i++) {
+            var s = segs[i];
+            var d = distPointToSegment(x, y, s.ax, s.ay, s.bx, s.by);
+            if (d < best) best = d;
+        }
+        return best === Infinity ? null : best;
+    }
+
+    var _romanRoadsCache = null;
+    var _romanRoadsPromise = null;
+
+    function loadRomanRoadsGeojson() {
+        if (_romanRoadsCache) return Promise.resolve(_romanRoadsCache);
+        if (_romanRoadsPromise) return _romanRoadsPromise;
+        if (typeof fetch !== 'function') {
+            _romanRoadsCache = { type: 'FeatureCollection', features: [] };
+            return Promise.resolve(_romanRoadsCache);
+        }
+        _romanRoadsPromise = fetch(CONFIG.ROMAN_ROADS.URL)
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (data) { _romanRoadsCache = data; return data; })
+            .catch(function (err) {
+                console.warn('[ArcheoReport] Roman roads GeoJSON unavailable:', err && err.message);
+                _romanRoadsCache = { type: 'FeatureCollection', features: [] };
+                return _romanRoadsCache;
+            });
+        return _romanRoadsPromise;
+    }
+
+    function romanRoadSegmentsInSquare(geojson, square, lat0, padM) {
+        var segs = [];
+        var pad = padM == null ? CONFIG.ROMAN_ROADS.PROXIMITY_M : padM;
+        var minX = square.minX - pad, maxX = square.maxX + pad;
+        var minY = square.minY - pad, maxY = square.maxY + pad;
+        var feats = (geojson && geojson.features) ? geojson.features : [];
+        for (var i = 0; i < feats.length; i++) {
+            var lines = [];
+            flattenLineCoords(feats[i].geometry, lines);
+            for (var li = 0; li < lines.length; li++) {
+                var coords = lines[li] || [];
+                var pts = [];
+                for (var ci = 0; ci < coords.length; ci++) {
+                    var c = coords[ci];
+                    if (!c || c.length < 2) continue;
+                    pts.push(projectToLocalMeters(c[1], c[0], lat0));
+                }
+                for (var k = 1; k < pts.length; k++) {
+                    var a = pts[k - 1], b = pts[k];
+                    if (Math.max(a.x, b.x) < minX || Math.min(a.x, b.x) > maxX) continue;
+                    if (Math.max(a.y, b.y) < minY || Math.min(a.y, b.y) > maxY) continue;
+                    segs.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y });
+                }
+            }
+        }
+        return segs;
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -931,6 +1028,16 @@
             score = nonLidarWeight ? (S.W_APM * apmComp + S.W_POTENTIAL * potComp) / nonLidarWeight : 0;
         }
         if (annotated) score += S.LIDAR_ANNOTATION_BONUS;
+
+        // Roman-road proximity is a bonus only: applied when a road is near,
+        // otherwise the score is left unchanged (no penalty / no renormalise).
+        var roadDistM = nearestRomanRoadM(x, y, ctx.romanRoadSegs);
+        var roadNearby = roadDistM !== null && roadDistM <= CONFIG.ROMAN_ROADS.PROXIMITY_M;
+        var roadComp = null;
+        if (roadNearby) {
+            roadComp = clamp01(1 - roadDistM / CONFIG.ROMAN_ROADS.PROXIMITY_M);
+            score += S.W_ROMAN_ROADS * roadComp;
+        }
         score = clamp01(score);
 
         var ll = localMetersToLatLng(x, y, ctx.lat0);
@@ -953,7 +1060,10 @@
                 lidarApplied: lidarNearby,
                 lidarDistM: lidar ? Math.round(lidar.distM) : null,
                 lidarPoint: lidar ? lidar.point : null,
-                uatClearanceM: isFinite(uat.clearanceM) ? Math.round(uat.clearanceM) : null
+                uatClearanceM: isFinite(uat.clearanceM) ? Math.round(uat.clearanceM) : null,
+                romanRoadApplied: roadNearby,
+                romanRoadComp: roadComp,
+                romanRoadDistM: roadDistM !== null ? Math.round(roadDistM) : null
             }
         };
     }
@@ -1204,7 +1314,8 @@
             weights: {
                 apm: CONFIG.SCORING.W_APM,
                 potential: CONFIG.SCORING.W_POTENTIAL,
-                lidar: CONFIG.SCORING.W_LIDAR
+                lidar: CONFIG.SCORING.W_LIDAR,
+                romanRoads: CONFIG.SCORING.W_ROMAN_ROADS
             },
             nearestSites: nearest,
             period: period,
@@ -1420,6 +1531,12 @@
                     return inSquare(ctx.square, m.x, m.y);
                 });
 
+                setStatus('arch_report_step_roads');
+                var roadsGj = await loadRomanRoadsGeojson();
+                if (myVersion !== _state.version) return null;
+                ctx.romanRoadSegs = romanRoadSegmentsInSquare(roadsGj, ctx.square, ctx.lat0, CONFIG.ROMAN_ROADS.PROXIMITY_M);
+                ctx.romanRoadsInArea = ctx.romanRoadSegs.length;
+
                 // ── rasters (UAT red zone + APM 2.0 colours) ──
                 setStatus('arch_report_step_uat');
                 var bbox = buildBbox(ctx.square, CONFIG.UAT.CLEARANCE_M + CONFIG.UAT.CELL_M * 2, ctx.lat0);
@@ -1475,6 +1592,7 @@
                         potentialStatus: ctx.potentialStatus,
                         lidarCount: ctx.lidarPoints.length,
                         lidarInArea: ctx.lidarInArea.length,
+                        romanRoadSegments: ctx.romanRoadSegs ? ctx.romanRoadSegs.length : 0,
                         seeds: seeds.length,
                         candidates: candidates.length,
                         rejected: rejected,
@@ -1487,7 +1605,8 @@
                     weights: {
                         apm: CONFIG.SCORING.W_APM,
                         potential: CONFIG.SCORING.W_POTENTIAL,
-                        lidar: CONFIG.SCORING.W_LIDAR
+                        lidar: CONFIG.SCORING.W_LIDAR,
+                        romanRoads: CONFIG.SCORING.W_ROMAN_ROADS
                     },
                     thresholds: {
                         uatClearanceM: CONFIG.UAT.CLEARANCE_M,
@@ -1495,7 +1614,8 @@
                         siteBufferM: CONFIG.SITE.BUFFER_M,
                         lidarHitM: CONFIG.LIDAR.HIT_M,
                         lidarProximityM: CONFIG.LIDAR.PROXIMITY_M,
-                        potentialProximityM: CONFIG.POTENTIAL.PROXIMITY_M
+                        potentialProximityM: CONFIG.POTENTIAL.PROXIMITY_M,
+                        romanRoadProximityM: CONFIG.ROMAN_ROADS.PROXIMITY_M
                     }
                 };
 
@@ -1568,6 +1688,10 @@
                 : (p.lidarDistM !== null && p.lidarDistM <= CONFIG.LIDAR.PROXIMITY_M
                     ? esc(tr('arch_report_lidar_near', { dist: fmtM(p.lidarDistM) }))
                     : esc(tr('arch_report_lidar_none')))],
+            ['<b>' + esc(tr('arch_report_row_roads')) + '</b>',
+             p.romanRoadApplied
+                ? esc(tr('arch_report_roads_near', { dist: fmtM(p.romanRoadDistM) }))
+                : esc(tr('arch_report_roads_none'))],
             ['<b>' + esc(tr('arch_report_row_uat')) + '</b>',
              esc(tr('arch_report_uat_ok', { dist: fmtM(p.uatClearanceM) }))],
             ['<b>' + esc(tr('arch_report_row_period')) + '</b>',
@@ -2302,6 +2426,9 @@
         passesSiteFilters: passesSiteFilters,
         nearestBubble: nearestBubble,
         nearestLidar: nearestLidar,
+        nearestRomanRoadM: nearestRomanRoadM,
+        distPointToSegment: distPointToSegment,
+        romanRoadSegmentsInSquare: romanRoadSegmentsInSquare,
         evaluateSeed: evaluateSeed,
         classifyScore: classifyScore,
         selectResults: selectResults,
