@@ -495,6 +495,9 @@
             tr('arch_report_src_lidar_title') + ' — ' + tr('arch_report_src_lidar_state', {
                 n: meta.lidarInArea, total: meta.lidarCount
             }),
+            tr('arch_report_src_roads_title') + ' — ' + tr('arch_report_src_roads_state', {
+                n: meta.romanRoadSegments || 0
+            }),
             'UAT — ' + (meta.uatAvailable ? tr('arch_report_src_available') : tr('arch_report_src_unavailable'))
         ].join('\n'), { color: C.muted, spaceAfter: 10 });
 
@@ -512,7 +515,8 @@
         pt.h2(tr('arch_report_sources_title'));
         [[tr('arch_report_src_apm_title'), tr('arch_report_src_apm_desc')],
          [tr('arch_report_src_pot_title'), tr('arch_report_src_pot_desc')],
-         [tr('arch_report_src_lidar_title'), tr('arch_report_src_lidar_desc')]].forEach(function (row) {
+         [tr('arch_report_src_lidar_title'), tr('arch_report_src_lidar_desc')],
+         [tr('arch_report_src_roads_title'), tr('arch_report_src_roads_desc')]].forEach(function (row) {
             pt.h3(row[0]);
             pt.para(row[1], { color: C.muted, spaceAfter: 6 });
         });
@@ -529,13 +533,15 @@
         pt.para(tr('arch_report_score_formula', {
             wapm: Math.round(model.weights.apm * 100),
             wpot: Math.round(model.weights.potential * 100),
-            wlidar: Math.round(model.weights.lidar * 100)
+            wlidar: Math.round(model.weights.lidar * 100),
+            wroads: Math.round((model.weights.romanRoads || 0) * 100)
         }), { color: C.muted, spaceAfter: 6 });
         pt.table([
             [tr('arch_report_tbl_component'), tr('arch_report_tbl_weight'), tr('arch_report_tbl_how')],
             ['APM 2.0', Math.round(model.weights.apm * 100) + '%', tr('arch_report_weight_apm')],
             [tr('arch_report_src_pot_title'), Math.round(model.weights.potential * 100) + '%', tr('arch_report_weight_potential')],
-            ['LIDAR Scanner', Math.round(model.weights.lidar * 100) + '%', tr('arch_report_weight_lidar')]
+            ['LIDAR Scanner', Math.round(model.weights.lidar * 100) + '%', tr('arch_report_weight_lidar')],
+            [tr('arch_report_src_roads_title'), '+' + Math.round((model.weights.romanRoads || 0) * 100) + '%', tr('arch_report_weight_roads')]
         ], [120, 58, CONTENT_W - 178], { boldFirstCol: true });
 
         pt.h2(tr('arch_report_classify_title'));
@@ -550,6 +556,7 @@
             [tr('arch_report_stat_sites'), String(meta.sitesCount)],
             [tr('arch_report_stat_bubbles'), meta.bubblesInArea + ' / ' + meta.bubblesCount],
             [tr('arch_report_stat_lidar'), meta.lidarInArea + ' / ' + meta.lidarCount],
+            [tr('arch_report_stat_roads'), String(meta.romanRoadSegments || 0)],
             [tr('arch_report_stat_seeds'), String(meta.seeds)],
             [tr('arch_report_stat_candidates'), String(meta.candidates)]
         ], [CONTENT_W - 90, 90]);
@@ -605,6 +612,10 @@
              res.parts.lidarApplied ? Math.round(w.lidar * 100) + '%' : '—',
              res.parts.lidarApplied ? pct(res.parts.lidarComp) : '—',
              res.parts.lidarApplied ? pct(res.parts.lidarComp * w.lidar) : '—'],
+            [tr('arch_report_src_roads_title'),
+             res.parts.romanRoadApplied ? '+' + Math.round((w.romanRoads || 0) * 100) + '%' : '—',
+             res.parts.romanRoadApplied ? pct(res.parts.romanRoadComp) : '—',
+             res.parts.romanRoadApplied ? pct(res.parts.romanRoadComp * (w.romanRoads || 0)) : '—'],
             [tr('arch_report_tbl_total'), '100%', '', res.scorePct + '%']
         ], [CONTENT_W - 190, 58, 62, 70], { boldFirstCol: true });
 
@@ -649,6 +660,13 @@
             }), { spaceAfter: 8 });
         } else {
             pt.para(tr('arch_report_lidar_none_long'), { color: C.muted, spaceAfter: 8 });
+        }
+
+        pt.h2(tr('arch_report_roads_section_title'));
+        if (res.parts.romanRoadApplied) {
+            pt.para(tr('arch_report_roads_near_long', { dist: pt.fmtM(res.parts.romanRoadDistM) }), { spaceAfter: 8 });
+        } else {
+            pt.para(tr('arch_report_roads_none_long'), { color: C.muted, spaceAfter: 8 });
         }
 
         pt.h2(tr('arch_report_uat_line_title'));

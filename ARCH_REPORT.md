@@ -10,7 +10,7 @@ Three sources feed a single weighted score:
 | --- | --- |
 | **APM 2.0** | The raster score under the point (colour → legend score) |
 | **Zone cu potențial arheologic** | Proximity to a triangulation bubble |
-| **LIDAR Scanner** | Proximity to an annotated object; an annotated point is returned automatically |
+| **LIDAR Scanner** | Proximity to an annotated object; an annotated point is returned automatically |\n| **Roman roads** | Optional bonus: proximity to a mapped Roman road can raise the score; absence never lowers it |
 
 ## Files
 
@@ -77,6 +77,7 @@ triangulation bubble inside it**.
 
 ```
 score = 0.40 · APM  +  0.30 · Potential  +  0.30 · LIDAR   (+ 0.45 if annotated)
+      + up to 0.12 if a Roman road is within 1.5 km   (bonus only; omitted otherwise)
 ```
 
 * **APM** — class → 1.00 / 0.85 / 0.62 (5 / 4.5 / 4).

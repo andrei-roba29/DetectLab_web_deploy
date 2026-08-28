@@ -167,6 +167,12 @@ sandbox._dlMap = fakeMap;
 sandbox.UAT_TILE_Z = 14;
 sandbox._UAT_TILE_UNREADABLE = { unreadable: true };
 sandbox._currentLang = () => 'en';
+sandbox.fetch = function () {
+    return Promise.resolve({
+        ok: true,
+        json: function () { return Promise.resolve({ type: 'FeatureCollection', features: [] }); }
+    });
+};
 
 function load(file) {
     const code = fs.readFileSync(path.join(__dirname, file), 'utf8');
@@ -364,14 +370,25 @@ section('Weighted score');
 {
     const S = CFG.SCORING;
     check('weights sum to 1', Math.abs(S.W_APM + S.W_POTENTIAL + S.W_LIDAR - 1) < 1e-9);
+    check('Roman-road bonus is extra (not in the 1.0 mix)', S.W_ROMAN_ROADS > 0);
 
     const lidarLL = R.localMetersToLatLng(CENTER.x + 120, CENTER.y, 46.8);
     const bubble = { x: CENTER.x, y: CENTER.y, lat: 46.8, lng: 23.6, score: 0.8, factors: {} };
 
     const plain = R.evaluateSeed({ x: CENTER.x, y: CENTER.y, origin: 'grid' }, baseCtx());
-    const expectedPlain = S.W_APM * 1.0 + S.W_POTENTIAL * S.POTENTIAL_NONE + S.W_LIDAR * S.LIDAR_NO_DATA;
+    const expectedPlain = (S.W_APM * 1.0 + S.W_POTENTIAL * S.POTENTIAL_NONE) / (S.W_APM + S.W_POTENTIAL);
     check('plain blue candidate matches the formula (' + expectedPlain.toFixed(3) + ')',
         Math.abs(plain.score - expectedPlain) < 1e-9, plain.score);
+    check('no Roman road nearby does not apply a bonus (no penalty)',
+        plain.parts.romanRoadApplied === false && Math.abs(plain.score - expectedPlain) < 1e-9);
+
+    const roadSegs = [{ ax: CENTER.x + 300, ay: CENTER.y, bx: CENTER.x + 800, by: CENTER.y }];
+    const withRoad = R.evaluateSeed({ x: CENTER.x, y: CENTER.y, origin: 'grid' }, baseCtx({ romanRoadSegs: roadSegs }));
+    check('a Roman road 300 m away raises the score as a bonus',
+        withRoad.score > plain.score, plain.score.toFixed(3) + ' → ' + withRoad.score.toFixed(3));
+    check('road bonus = W_ROMAN_ROADS × (1 − d/R)',
+        Math.abs(withRoad.score - clamp01(expectedPlain + S.W_ROMAN_ROADS * (1 - 300 / CFG.ROMAN_ROADS.PROXIMITY_M))) < 1e-6,
+        withRoad.score);
 
     const boosted = R.evaluateSeed({ x: CENTER.x, y: CENTER.y, origin: 'potential' }, baseCtx({
         bubbles: [bubble]
@@ -414,6 +431,7 @@ section('Weighted score');
     check('blue + inside bubble + annotated = maximum score', best.score === 1, best.score);
     check('classification thresholds', R.classifyScore(0.9) === 'high' && R.classifyScore(0.6) === 'medium' && R.classifyScore(0.2) === 'low');
 }
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 function mkApmGridAt(cls) {
     const g = mkApmGrid(400, 400, 12, cls);
     g.x0 = CENTER.x - 2000; g.y0 = CENTER.y - 2000;
@@ -731,8 +749,15 @@ section('End-to-end analysis (runReport)');
             r.nearestSites.every((s, i) => i === 0 || s.distanceM >= r.nearestSites[i - 1].distanceM),
             r.nearestSites.map(s => Math.round(s.distanceM)).join(','));
         const bonus = r.annotated ? CFG.SCORING.LIDAR_ANNOTATION_BONUS : 0;
-        const expected = Math.min(1, CFG.SCORING.W_APM * r.parts.apmComp + CFG.SCORING.W_POTENTIAL * r.parts.potentialComp +
-                     CFG.SCORING.W_LIDAR * r.parts.lidarComp + bonus);
+        const roadB = r.parts.romanRoadApplied ? CFG.SCORING.W_ROMAN_ROADS * r.parts.romanRoadComp : 0;
+        let expected;
+        if (r.parts.lidarApplied) {
+            expected = Math.min(1, CFG.SCORING.W_APM * r.parts.apmComp + CFG.SCORING.W_POTENTIAL * r.parts.potentialComp +
+                     CFG.SCORING.W_LIDAR * r.parts.lidarComp + bonus + roadB);
+        } else {
+            const nw = CFG.SCORING.W_APM + CFG.SCORING.W_POTENTIAL;
+            expected = Math.min(1, (CFG.SCORING.W_APM * r.parts.apmComp + CFG.SCORING.W_POTENTIAL * r.parts.potentialComp) / nw + bonus + roadB);
+        }
         check('result ' + r.index + ' score = weighted sum' + (bonus ? ' + annotation bonus' : '') + ' (' +
             expected.toFixed(3) + ')', Math.abs(expected - r.score) < 1e-9, r.score);
         check('result ' + r.index + ' popup html has the score + closest site',
@@ -1002,7 +1027,7 @@ section('End-to-end analysis (runReport)');
     {
         const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
         const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-        const V = '?v=20260827-arch-report-v2';      // this release's versioned assets
+        const V = '?v=20260828-arch-report-v3';      // this release's versioned assets
         const V0 = '?v=20260827-arch-report';        // pdf-writer.js is unchanged this release
         ['js/archeo-report-pdf.js', 'js/archeo-report.js', 'js/translations.js'].forEach(function (f) {
             check(f + ' is loaded by index.html (this release)', html.indexOf('src="' + f + V + '"') !== -1);
@@ -1038,7 +1063,7 @@ section('End-to-end analysis (runReport)');
         check('every .arch-report-* class emitted by the JS is styled (' + classes.size + ')',
             unstyled.length === 0, unstyled.join(', '));
         check('CACHE_NAME was bumped for this release',
-            /const CACHE_NAME = 'detectlab-v56-arch-report-v2'/.test(sw),
+            /const CACHE_NAME = 'detectlab-v57-arch-report-v3'/.test(sw),
             (sw.match(/const CACHE_NAME = '[^']+'/) || [])[0]);
     }
 
@@ -1072,6 +1097,7 @@ section('End-to-end analysis (runReport)');
         ['uat_not_red', 'uat_too_close', 'site_radius', 'site_polygon', 'apm_below_average'].forEach(function (v) { used.add('arch_report_rej_' + v); });
         ['inside', 'near', 'none'].forEach(function (v) { used.add('arch_report_pot_' + v + '_long'); });
         ['hit', 'near', 'none'].forEach(function (v) { used.add('arch_report_lidar_' + v + '_long'); });
+        ['near', 'none'].forEach(function (v) { used.add('arch_report_roads_' + v + '_long'); });
         const rules = rsrc.slice(rsrc.indexOf('var PERIOD_RULES = ['), rsrc.indexOf('function periodKey'));
         (rules.match(/key: '([a-z_]+)'/g) || []).forEach(function (m) { used.add('arch_period_' + m.slice(6, -1)); });
 
