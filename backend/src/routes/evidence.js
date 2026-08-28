@@ -1,6 +1,8 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { env } from '../config/env.js';
+import { logger } from '../logger.js';
 import { researchLocality } from '../services/evidence/engine.js';
 import { SourceUnavailableError } from '../services/evidence/bibliotecaDigitala.js';
 import { createRun, setRunStatus } from '../services/evidence/ingestionWorker.js';
@@ -10,9 +12,60 @@ const router = Router();
 const numericId = (value) => /^\d+$/.test(String(value));
 function admin(req,res,next){if(!env.ingestionAdminKey)return res.status(503).json({error:'ingestion_admin_not_configured'});if(req.get('x-ingestion-key')!==env.ingestionAdminKey)return res.status(403).json({error:'forbidden'});next();}
 
-router.post('/evidence/search', async (req, res, next) => {
+/**
+ * Live research is throttled at the source (one polite request lane) and can
+ * legitimately take a long time. Concurrent searches for the SAME locality
+ * must not each start an independent crawl — the first request owns the run
+ * and everybody else awaits the same promise. Without this, a user pressing
+ * "Cercetează" repeatedly multiplies the load and every duplicate request
+ * keeps the pool and the source busy for minutes.
+ */
+const inFlightResearch = new Map();
+function researchOnce(localityId, task) {
+  const existing = inFlightResearch.get(localityId);
+  if (existing) return { promise: existing, shared: true };
+  const promise = task().finally(() => inFlightResearch.delete(localityId));
+  inFlightResearch.set(localityId, promise);
+  return { promise, shared: false };
+}
+
+/**
+ * Storage-layer failures used to reach the app-level handler and answer the
+ * browser with a contentless `Internal server error` — which is exactly the
+ * symptom this route was reported for. They are now logged with a request id
+ * (and the real Postgres error) and answered with a code the UI can translate,
+ * so an un-migrated or unreachable database is obvious instead of mysterious.
+ * Set `EVIDENCE_DEBUG=true` on the server to also echo the underlying message.
+ */
+// "The deployed schema and this code disagree."
+const SCHEMA_ERRORS = new Set(['42P01' /* undefined_table */, '42703' /* undefined_column */, '42704' /* undefined_object */, '42883' /* undefined_function */, '42P10' /* invalid_dependency */]);
+// The server refused the statement itself — e.g. `SELECT DISTINCT … ORDER BY
+// CASE … END` (0A000 feature_not_supported), the shape that broke every search.
+const REJECTED_QUERY = new Set(['0A000']);
+// A write the knowledge schema's constraints legitimately refused to accept.
+const WRITE_ERRORS = new Set(['23502', '23503', '23505', '23507', '23514']);
+
+export function classifyStorageError(error, requestId = '—') {
+  const sqlState = error?.code || null;
+  if (SCHEMA_ERRORS.has(sqlState)) return { status: 503, code: 'database_schema_outdated', message: 'Structura bazei de date `knowledge.*` de pe server nu este la zi (rulează `npm run migrate`).' };
+  if (REJECTED_QUERY.has(sqlState)) return { status: 503, code: 'database_query_rejected', message: 'Interogarea bazei de date a fost respinsă de serverul PostgreSQL (sintaxă incompatibilă cu versiunea acestuia).' };
+  if (WRITE_ERRORS.has(sqlState)) return { status: 500, code: 'storage_write_failed', message: `Salvarea dovezilor a fost respinsă de restricțiile bazei de date. Reîncearcă; dacă se repetă, raportează ID-ul ${requestId}.` };
+  if (/timeout|connection|ECONN/i.test(String(error?.message || '')) || sqlState === 'ETYIMOUT' || sqlState === '57P01' || sqlState === '57P02' || sqlState === '57P03') return { status: 503, code: 'database_unreachable', message: 'Baza de date nu a putut fi contactată. Reîncearcă în câteva minute.' };
+  return { status: 500, code: 'search_failed', message: `Cercetarea a eșuat dintr-o eroare internă. Reîncearcă; dacă se repetă, raportează ID-ul ${requestId}.` };
+}
+
+function failSearch(res, error, status, code, message, requestId) {
+  logger.error({ err: error, requestId, code: error?.code || null, sqlMessage: error?.sqlMessage || null, relation: error?.relation || null, responseCode: code }, 'evidence/search failed');
+  const body = { error: code, requestId, message };
+  if (error?.code) body.sqlState = error.code;
+  if (env.exposeErrorDetails) body.detail = String(error?.message || error);
+  return res.status(status).json(body);
+}
+
+router.post('/evidence/search', async (req, res) => {
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const localityName = String(req.body?.locality || '').trim();
   try {
-    const localityName = String(req.body?.locality || '').trim();
     const county = req.body?.county ? String(req.body.county).trim().slice(0,80) : null;
     // §1 exact identification: a numeric localityId (SIRUTA register row) may
     // be supplied alone when the user resolved an ambiguous homonym by hand.
@@ -24,24 +77,47 @@ router.post('/evidence/search', async (req, res, next) => {
     if (!matches.length) return res.status(404).json({error:'locality_not_found',message:'Localitatea nu există în registrul SIRUTA importat.'});
     if (matches.length > 1) return res.status(409).json({error:'ambiguous_locality',message:'Selectarea necesită ID-ul/SIRUTA exact; numele nu este îmbinat automat.',matches:matches.map((l)=>({id:l.id,name:l.name,county:l.county,uat:l.uat_name,siruta:l.siruta_code}))});
     const locality = matches[0];
+    const cached = async () => {
+      const bundle = await getPersistentBundle(locality.id);
+      if (!bundle) return res.status(404).json({ error: 'locality_not_found', requestId, message: 'Înregistrarea localității nu a putut fi citită. Reîncearcă.' });
+      return res.json(bundle);
+    };
     if (locality.ingestion_status === 'PROCESSED' && req.body?.refresh !== true) {
       res.set('X-DetectLab-Storage','persistent-cache');
-      return res.json(await getPersistentBundle(locality.id));
+      return await cached();
     }
     const explicitAliases = Array.isArray(req.body?.aliases) ? req.body.aliases.map(String).slice(0,10) : [];
     const stored = await getLocality(locality.id);
     const aliases = [...new Set([...(stored.aliases||[]).map((a)=>a.alias),...explicitAliases])];
-    const result = await researchLocality({locality:locality.name,county:locality.county,aliases,limit:Math.min(Number(req.body?.limit)||10,20),includeFullText:req.body?.includeFullText!==false});
+    const { promise: resultPromise, shared } = researchOnce(locality.id, () => researchLocality({
+      locality: locality.name, county: locality.county, aliases,
+      limit: Math.min(Number(req.body?.limit) || 10, 20),
+      includeFullText: req.body?.includeFullText !== false,
+      budgetMs: env.evidenceResearchBudgetMs,
+    }));
+    if (shared) res.set('X-DetectLab-Research','shared-in-flight');
+    const result = await resultPromise;
     await persistResearchResult(locality.id,result);
     res.set('X-DetectLab-Storage','newly-persisted');
-    res.status(201).json(await getPersistentBundle(locality.id));
+    const bundle = await getPersistentBundle(locality.id);
+    // Saved but unreadable means the storage layer is misbehaving; report it
+    // with the same coded vocabulary instead of a silent 500.
+    if (!bundle) { const failure = classifyStorageError(null, requestId); return res.status(failure.status).json({ error: failure.code, requestId, message: failure.message }); }
+    // A time-boxed run returns what it managed to analyse; the UI says so
+    // instead of letting the browser abort the request at 150 s.
+    if (result.truncated) bundle.truncated = { reason: 'research_budget_exhausted', budgetMs: env.evidenceResearchBudgetMs };
+    return res.status(201).json(bundle);
   } catch(error){
     // The exclusive publication source is the only external dependency of the
     // research path. When it is unreachable or refuses a request, surface an
     // actionable 502 (source_unavailable) instead of a bare 500.
-    if (error?.name === 'AbortError') return res.status(504).json({ error: 'source_timeout', source: 'https://biblioteca-digitala.ro/', message: 'Sursa de publicații a răspuns prea lent.' });
-    if (error instanceof SourceUnavailableError) return res.status(502).json({ error: 'source_unavailable', source: 'https://biblioteca-digitala.ro/', message: 'Sursa de publicații biblioteca-digitala.ro este momentan indisponibilă. Încearcă din nou mai târziu.' });
-    next(error);
+    if (error?.name === 'AbortError') return failSearch(res, error, 504, 'source_timeout', 'Sursa de publicații a răspuns prea lent. Reîncearcă.', requestId);
+    if (error instanceof SourceUnavailableError) return failSearch(res, error, 502, 'source_unavailable', 'Sursa de publicații biblioteca-digitala.ro este momentan indisponibilă. Încearcă din nou mai târziu.', requestId);
+    // Everything else comes from the storage layer or is a real bug: classify
+    // it so the user sees a sentence and the log sees the cause.
+    const failure = classifyStorageError(error, requestId);
+    if (!error?.code) logger.error({ err: error, requestId, locality: localityName || req.body?.localityId || null }, 'evidence/search unhandled error');
+    return failSearch(res, error, failure.status, failure.code, failure.message, requestId);
   }
 });
 
