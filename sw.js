@@ -65,6 +65,7 @@ const PRECACHE_URLS = [
   'js/library-of-babel.js?v=20260815',
   'js/library-of-babel.js?v=20260819',
   'js/library-of-babel.js?v=20260827-historical-dossier',
+  'js/library-of-babel.js?v=20260828-evidence-search-fix',
   'js/vertical-opacity-control.js',
   'js/vertical-opacity-control.js?v=20260812',
   'js/auth.js?v=20260812-vertical-opacity',

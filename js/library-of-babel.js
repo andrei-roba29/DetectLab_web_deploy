@@ -69,6 +69,11 @@
             cHistory: 'Istoria localității', cSites: 'Situri arheologice', cToponymy: 'Toponimie', cOther: 'Alte informații',
             certCERT: 'Cert', certPROBABLE: 'Probabil', certCONTESTED: 'Controversat', certHYPOTHESIS: 'Ipoteză', certNO_DATA: 'fără date',
             legacyTitle: 'Dovezi arheologice',
+            storageError: 'Stocarea bazei de date a eșuat. Reîncearcă într-un moment.',
+            schemaError: 'Structura bazei de date de pe server nu este la zi; cercetarea este temporar indisponibilă.',
+            notFound: 'Localitatea nu se află în registrul SIRUTA importat. Verifică denumirea sau alege o localitate de pe hartă.',
+            truncatedNotice: 'Cercetarea s-a oprit la limita de timp impusă sursei: lista de mai jos este parțială și va fi completată la o căutare ulterioară.',
+            retryLater: 'Reîncearcă', requestId: 'ID eroare',
             quotesRo: 'Citatele sunt redate în limba originală a publicației (română).',
             generatedAt: 'Generat', schemaLabel: 'Schema'
         },
@@ -127,6 +132,11 @@
             cHistory: 'Locality history', cSites: 'Archaeological sites', cToponymy: 'Toponymy', cOther: 'Other information',
             certCERT: 'Certain', certPROBABLE: 'Probable', certCONTESTED: 'Controversial', certHYPOTHESIS: 'Hypothesis', certNO_DATA: 'no data',
             legacyTitle: 'Archaeological evidence',
+            storageError: 'The evidence database could not complete the request. Please try again shortly.',
+            schemaError: 'The server database schema is out of date; research is temporarily unavailable.',
+            notFound: 'This locality is not in the imported SIRUTA register. Check the spelling or pick a locality on the map.',
+            truncatedNotice: 'Research stopped at the source time budget: the list below is partial and will be completed by a later search.',
+            retryLater: 'Try again', requestId: 'Error ID',
             quotesRo: 'Quotes are given in the original language of the publication (Romanian).',
             generatedAt: 'Generated', schemaLabel: 'Schema'
         }
@@ -207,15 +217,26 @@
             render();
         } catch (e) {
             if (e.data && e.data.error === 'ambiguous_locality' && e.data.matches && e.data.matches.length) { renderAmbiguous(e.data.matches); }
-            else {
-                var srcErr = e.data && (e.data.error === 'source_unavailable' || e.data.error === 'source_timeout');
-                var heading = srcErr ? (e.data.error === 'source_timeout' ? t('sourceTimeout') : t('sourceUnavailable')) : t('failed');
-                var detail = srcErr ? (e.data.message || '') : (e.message || '');
-                document.getElementById('babelBody').innerHTML = '<div class="babel-state"><p>' + esc(heading) + '</p>' + (detail ? '<small>' + esc(detail) + '</small>' : '') + '<button class="evidence-retry" id="evidenceRetry">' + esc(t('run')) + '</button></div>';
-                var retry = document.getElementById('evidenceRetry');
-                if (retry) retry.onclick = function () { form({ name: locality || '', county: county || '' }); };
-            }
+            else { failure(e, locality, county); }
         } finally { running = false; updateButton(); }
+    }
+
+    /* Every failure mode of POST /evidence/search has its own wording: the
+     * backend answers source problems (502/504), storage problems (503) and
+     * unknown bugs (500 + requestId) with distinct codes, and the modal must
+     * never degrade to an anonymous “Internal server error”. */
+    function failure(e, locality, county) {
+        var code = (e.data && e.data.error) || '';
+        var heading = t('failed'), detail = (e.data && e.data.message) || e.message || '';
+        if (code === 'source_unavailable' || e.status === 502) heading = t('sourceUnavailable');
+        else if (code === 'source_timeout' || e.status === 504 || e.name === 'AbortError') { heading = t('sourceTimeout'); detail = ''; }
+        else if (code === 'database_schema_outdated' || code === 'database_query_rejected') heading = t('schemaError');
+        else if (code === 'storage_write_failed' || code === 'database_unreachable' || code === 'search_failed' || e.status === 503) heading = t('storageError');
+        else if (code === 'locality_not_found') { heading = t('notFound'); detail = ''; }
+        var requestId = e.data && e.data.requestId ? '<small>' + esc(t('requestId')) + ': <code>' + esc(e.data.requestId) + '</code></small>' : '';
+        document.getElementById('babelBody').innerHTML = '<div class="babel-state"><p>' + esc(heading) + '</p>' + (detail && detail !== heading ? '<small>' + esc(detail) + '</small>' : '') + requestId + '<button class="evidence-retry" id="evidenceRetry">' + esc(t('retryLater')) + '</button></div>';
+        var retry = document.getElementById('evidenceRetry');
+        if (retry) retry.onclick = function () { form({ name: locality || '', county: county || '' }); };
     }
 
     /* §1 — IDENTIFICARE INSUFICIENTĂ: pick the exact SIRUTA entity */
@@ -371,7 +392,8 @@
     function render() {
         var claims = lastResult.archaeologicalInformation || [], docs = lastResult.documents || [], loc = lastResult.locality || {}, d = lastResult.dossier;
         var head = '<header class="evidence-head"><div><span>DETECTLAB · HISTORICAL DOSSIER</span><h2>' + esc(loc.currentName) + (loc.county ? ', ' + esc(loc.county) : '') + '</h2><p>' + claims.length + ' ' + esc(t('claims')) + ' · ' + docs.length + ' ' + esc(t('docs')) + (d ? ' · SIRUTA ' + esc(d.identity && d.identity.siruta || loc.siruta || '—') : '') + '</p></div><button id="evidenceNew">＋ ' + esc(t('locality')) + '</button></header>' +
-            '<div class="evidence-sourcebar"><b>✓ ' + esc(t('sourcePolicy')) + '</b><span>' + esc((lastResult.audit && lastResult.audit.verifiedClaims) || 0) + ' verified</span></div>';
+            '<div class="evidence-sourcebar"><b>✓ ' + esc(t('sourcePolicy')) + '</b><span>' + esc((lastResult.audit && lastResult.audit.verifiedClaims) || 0) + ' verified</span></div>' +
+            (lastResult.truncated ? '<div class="dossier-banner"><b>⏱ ' + esc(t('truncatedNotice')) + '</b></div>' : '');
         var body;
         if (d) {
             var nav = ['identity', 'names', 'attestation', 'history', 'admin', 'population', 'families', 'buildings', 'sites', 'nearby', 'vanished', 'toponymy', 'maps', 'checks', 'sources', 'certainty'];

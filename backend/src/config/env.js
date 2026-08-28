@@ -41,6 +41,15 @@ export const env = {
   // Protects national-ingestion and review administration endpoints.
   ingestionAdminKey: process.env.INGESTION_ADMIN_KEY || '',
   evidenceWorkerEnabled: process.env.EVIDENCE_WORKER_ENABLED === 'true',
+  // Wall-clock budget for the live crawl a user search triggers. The source is
+  // politely throttled through one request lane, so an unbounded run can
+  // outlast the platform's HTTP timeout and the browser's own abort: the
+  // engine stops at the deadline and answers with everything it managed to
+  // read, flagged as `truncated` (and re-researched on a later search).
+  evidenceResearchBudgetMs: Number(process.env.EVIDENCE_RESEARCH_BUDGET_MS || 45000),
+  // Echo the underlying error message in failed evidence responses (useful on
+  // staging; leave unset in production).
+  exposeErrorDetails: process.env.EVIDENCE_DEBUG === 'true',
 
   // ── Stripe (real payments) ────────────────────────────────────────────
   stripe: {

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { extractPdfPages, getArticle, searchCatalog } from './bibliotecaDigitala.js';
+import { createDeadline } from './deadline.js';
 import { periods } from './periods.js';
 
 export const LOCATION_ROLES = ['ARCHAEOLOGICAL_TARGET','FINDSPOT','EXCAVATION_LOCATION','SURVEY_LOCATION','HISTORICAL_LOCATION','ARCHAEOLOGICAL_CONTEXT','INSTITUTION','MUSEUM_LOCATION','COLLECTION_LOCATION','EXHIBITION_LOCATION','AUTHOR_AFFILIATION','PUBLICATION_LOCATION','BIBLIOGRAPHIC_REFERENCE','INCIDENTAL_MENTION','UNKNOWN'];
@@ -127,29 +128,46 @@ async function mapLimited(items, limit, fn) {
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker)); return output;
 }
 
-export async function researchLocality({ locality, county = null, aliases: suppliedAliases = [], limit = 10, includeFullText = true }) {
+/**
+ * Minimum milliseconds a document still needs to be worth starting: fetching a
+ * monograph PDF and parsing up to 180 pages is the expensive part of a search,
+ * so a run that is about to hit its budget must not begin it.
+ */
+const MIN_FULL_TEXT_MS = 12000;
+
+export async function researchLocality({ locality, county = null, aliases: suppliedAliases = [], limit = 10, includeFullText = true, budgetMs = 0 }) {
+  const deadline = createDeadline(budgetMs);
   const aliases = buildAliases(locality, suppliedAliases);
-  const candidates = await searchCatalog(aliases, Math.max(1, Math.min(Number(limit) || 10, 20)));
+  const candidates = await searchCatalog(aliases, Math.max(1, Math.min(Number(limit) || 10, 20)), { deadline });
   const documents = await mapLimited(candidates, 3, async (candidate, index) => {
-    const article = await getArticle(candidate);
+    // The shared budget is checked per document: an exhausted run finishes the
+    // work already paid for and reports the rest as a failure (which keeps the
+    // locality `PARTIAL`, so a later search resumes the research).
+    if (deadline.exceeded()) throw new Error('research_budget_exhausted');
+    const article = await getArticle(candidate, { deadline });
     let extracted = { pages: [], status: article.extractionStatus };
     const metadataRelevant = hasAlias(article.title, aliases) || article.descriptors.some((d) => hasAlias(d, aliases)) || hasAlias(article.abstract, aliases);
     // Analyse only the strongest first candidates synchronously; all metadata
     // remains in the response and can be queued by a future background worker.
-    if (includeFullText && index < 6 && metadataRelevant && article.pdfUrl) {
-      try { extracted = await extractPdfPages(article.pdfUrl, article.pagination); } catch (error) { extracted = { pages: [], status: 'PDF_EXTRACTION_FAILED', error: error.message }; }
+    const canExtractFullText = includeFullText && index < 6 && metadataRelevant && article.pdfUrl && (!deadline.bounded || deadline.remaining() > MIN_FULL_TEXT_MS);
+    if (canExtractFullText) {
+      try { extracted = await extractPdfPages(article.pdfUrl, article.pagination, { deadline }); } catch (error) { extracted = { pages: [], status: 'PDF_EXTRACTION_FAILED', error: error.message }; }
     }
     const claims = extractClaims(article, extracted.pages, locality, aliases, extracted.status);
     return { ...article, extractionStatus: extracted.status, extractionError: extracted.error || null, claims };
   });
   const validDocuments = documents.filter((d) => !d.error);
   const claims = validDocuments.flatMap((d) => d.claims);
+  // `truncated` = this answer is deliberately incomplete (time budget or a
+  // source refusal that was survivable), never a claim of exhaustiveness.
+  const truncated = Boolean(candidates.truncated) || deadline.exceeded() || documents.some((d) => d.error && /budget/.test(String(d.error)));
   return {
     schemaVersion: '1.0', locality: { currentName: locality, county, aliases, coordinates: null, siruta: null },
     sourcePolicy: { exclusiveProvider: 'https://biblioteca-digitala.ro/', externalArchaeologicalSourcesAllowed: false },
     searchedAt: new Date().toISOString(), candidateCount: candidates.length, documentCount: validDocuments.length,
+    truncated, budgetMs: deadline.bounded ? Number(budgetMs) : null,
     archaeologicalInformation: claims, documents: validDocuments.map(({ claims: _, ...document }) => document),
     failures: documents.filter((d) => d.error),
-    audit: { verifiedClaims: claims.filter((c) => c.fullyVerified).length, highConfidence: claims.filter((c) => c.confidenceLevel === 'HIGH').length, ocrRequiredDocuments: validDocuments.filter((d) => d.extractionStatus === 'OCR_REQUIRED').length },
+    audit: { verifiedClaims: claims.filter((c) => c.fullyVerified).length, highConfidence: claims.filter((c) => c.confidenceLevel === 'HIGH').length, ocrRequiredDocuments: validDocuments.filter((d) => d.extractionStatus === 'OCR_REQUIRED').length, truncated },
   };
 }

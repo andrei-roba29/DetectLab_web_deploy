@@ -77,18 +77,51 @@ export async function persistResearchResult(localityId, result, { runId = null }
       const failureId = hash(JSON.stringify(failure.candidate || failure)).slice(0, 32);
       await client.query(`INSERT INTO knowledge.review_queue(entity_type,entity_id,locality_id,reason,severity,payload) VALUES('SOURCE_FAILURE',$1,$2,'DISCOVERY_OR_ACCESS_FAILED','HIGH',$3) ON CONFLICT DO UPDATE SET payload=EXCLUDED.payload,created_at=now()`, [failureId, localityId, JSON.stringify(failure)]);
     }
-    await client.query(`UPDATE knowledge.localities SET ingestion_status=$2,last_ingested_at=now(),next_check_at=now()+interval '30 days',updated_at=now() WHERE id=$1`, [localityId, result.failures?.length ? 'PARTIAL' : 'PROCESSED']);
+    // A run that hit its time budget (or lost documents on the way) is never
+    // marked PROCESSED: it stays eligible for the next search, which resumes the
+    // research and merges into the same idempotent records. A complete locality
+    // is not re-crawled for 30 days; an incomplete one is retried the same day,
+    // so a rate-limited source can never freeze a locality into a permanently
+    // partial dossier.
+    const incomplete = Boolean(result.failures?.length || result.truncated);
+    await client.query(`UPDATE knowledge.localities SET ingestion_status=$2,last_ingested_at=now(),next_check_at=now()+($3::interval),updated_at=now() WHERE id=$1`, [localityId, incomplete ? 'PARTIAL' : 'PROCESSED', incomplete ? '6 hours' : '30 days']);
     if (runId) await client.query(`UPDATE knowledge.extraction_runs SET documents_discovered=documents_discovered+$2,documents_processed=documents_processed+$3,claims_created=claims_created+$4,evidence_created=evidence_created+$5,failures=failures+$6,heartbeat_at=now() WHERE id=$1`, [runId, result.candidateCount || 0, result.documentCount || 0, claimsCreated, evidenceCreated, result.failures?.length || 0]);
     return { claimsCreated, evidenceCreated, documentsDiscovered: result.candidateCount || 0, documentsProcessed: result.documentCount || 0 };
   });
 }
 
-export async function findLocality(name, county = null) {
-  const normalizedName = normalize(name);
-  const params = [normalizedName];
+/**
+ * Locality identification (§1) — the very first query of every evidence
+ * search, so it must be valid SQL for PostgreSQL.
+ *
+ * It used to be `SELECT DISTINCT l.* … ORDER BY CASE WHEN … END`, which
+ * PostgreSQL rejects outright (`0A000 feature_not_supported: for SELECT
+ * DISTINCT, ORDER BY expressions must appear in select list`). The route
+ * mapped nothing of it, so every search died as a bare HTTP 500 before the
+ * publication source was even contacted.
+ *
+ * The exact-name preference is therefore projected as `exact_match` *inside*
+ * the DISTINCT subselect, and the ordering happens in the outer query over
+ * plain columns. The alias LEFT JOIN can still fan a locality out over several
+ * rows; DISTINCT over (locality row, exact_match) collapses them again because
+ * `exact_match` is functionally determined by the row (localities.id is the PK).
+ */
+export function localityLookupQuery(name, county = null) {
+  const params = [normalize(name)];
   let countyClause = '';
   if (county) { params.push(String(county).trim()); countyClause = `AND lower(l.county)=lower($2)`; }
-  const { rows } = await pool.query(`SELECT DISTINCT l.* FROM knowledge.localities l LEFT JOIN knowledge.locality_aliases a ON a.locality_id=l.id WHERE (l.normalized_name=$1 OR a.normalized_alias=$1) ${countyClause} ORDER BY CASE WHEN l.normalized_name=$1 THEN 0 ELSE 1 END,l.id LIMIT 2`, params);
+  const sql = `SELECT * FROM (
+  SELECT DISTINCT l.*, (l.normalized_name=$1) AS exact_match
+  FROM knowledge.localities l
+  LEFT JOIN knowledge.locality_aliases a ON a.locality_id=l.id
+  WHERE (l.normalized_name=$1 OR a.normalized_alias=$1) ${countyClause}
+) m ORDER BY m.exact_match DESC, m.id LIMIT 2`;
+  return { sql, params };
+}
+
+export async function findLocality(name, county = null) {
+  const { sql, params } = localityLookupQuery(name, county);
+  const { rows } = await pool.query(sql, params);
   return rows;
 }
 
