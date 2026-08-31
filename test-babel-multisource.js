@@ -117,9 +117,9 @@ function loadEngine() {
 
     /* ── STATISTICĂ: total results, active sources, duplicates removed ── */
     assert.ok(/„Sarmizegetusa”/.test(html), 'the head repeats the query');
-    assert.ok(/<b>10<\/b>\s*rezultate/.test(html), `10 aggregated results (got: ${html.match(/<b>(\d+)<\/b>\s*rezultate/)})`);
+    assert.ok(/<b>8<\/b>\s*rezultate/.test(html), `8 aggregated results (got: ${html.match(/<b>(\d+)<\/b>\s*rezultate/)})`);
     assert.ok(/<b>7\/7<\/b>\s*surse active/.test(html), 'all 7 sources answered');
-    assert.ok(/<b>6<\/b>\s*duplicate eliminate/.test(html), '6 duplicates removed by cross-source merging (16 raw → 10)');
+    assert.ok(/<b>6<\/b>\s*duplicate eliminate/.test(html), '6 duplicates removed by cross-source merging (16 raw → 8; the 2 period-less findings are dropped)');
 
     /* ── per-source status chips with counts ── */
     assert.ok(/Wikipedia <b>3<\/b>/.test(html), 'Wikipedia chip reports 3 unique articles (ro+en merged)');
@@ -159,32 +159,32 @@ function loadEngine() {
     /* ── optional filters ── */
     assert.ok(/id="babelTypeFilter"/.test(html), 'type filter present');
     assert.ok(/id="babelPeriodFilter"/.test(html), 'period filter present');
-    assert.ok(/Afișate: 10 din 10/.test(html), 'unfiltered view shows all 10');
+    assert.ok(/Afișate: 8 din 8/.test(html), 'unfiltered view shows all 8');
 
     /* ── type filter: images only (Commons photo + Europeana IMAGE) ── */
     E('babelTypeFilter').value = 'image';
     E('babelTypeFilter').onchange();
-    assert.ok(/Afișate: 2 din 10/.test(app.body()), 'image filter narrows to 2 results');
+    assert.ok(/Afișate: 2 din 8/.test(app.body()), 'image filter narrows to 2 results');
     E('babelTypeFilter').value = 'all';
     E('babelTypeFilter').onchange();
 
-    /* ── period filter: Roman ── */
+    /* ── period filter: Roman (lexicon-driven, "român" without diacritics excluded) ── */
     E('babelPeriodFilter').value = 'roman';
     E('babelPeriodFilter').onchange();
-    assert.ok(/Afișate: 6 din 10/.test(app.body()), 'Roman period filter narrows to 6 results');
+    assert.ok(/Afișate: 6 din 8/.test(app.body()), 'Roman period filter narrows to 6 results');
     E('babelPeriodFilter').value = 'all';
     E('babelPeriodFilter').onchange();
 
     /* ── exports (JSON / CSV) ── */
     const json = JSON.parse(app.sandbox.window.DetectLabEvidenceEngine._export.json());
-    assert.strictEqual(json.results.length, 10, 'JSON export contains all 10 aggregated results');
+    assert.strictEqual(json.results.length, 8, 'JSON export contains all 8 aggregated results');
     assert.strictEqual(json.stats.activeSources, '7/7', 'JSON export carries the source statistics');
     for (const field of ['titlu', 'descriere', 'tip', 'sursa', 'perioade', 'url']) {
         assert.ok(field in json.results[0], `JSON export row has field ${field}`);
     }
     const csv = app.sandbox.window.DetectLabEvidenceEngine._export.csv();
     const lines = csv.split('\r\n');
-    assert.strictEqual(lines.length, 11, 'CSV export = header + 10 rows');
+    assert.strictEqual(lines.length, 9, 'CSV export = header + 8 rows');
     assert.ok(csv.startsWith('\uFEFFtitlu,descriere,tip,sursa,perioade'), 'CSV starts with a BOM and the header row');
     assert.ok(csv.includes('"Castrul roman de la Apulum"'), 'CSV contains a quoted title');
     assert.ok(csv.includes('1930'), 'CSV carries the archive.org year');
@@ -192,7 +192,7 @@ function loadEngine() {
     /* ── EN variant renders the same data in English ── */
     app.sandbox.window.setLang('en'); // the module re-renders the open modal
     const htmlEn = app.body();
-    assert.ok(/10<\/b>\s*results/.test(htmlEn), 'EN: statistics rendered in English');
+    assert.ok(/8<\/b>\s*results/.test(htmlEn), 'EN: statistics rendered in English');
     assert.ok(/>Wikipedia article</.test(htmlEn), 'EN: type badge translated');
     assert.ok(/>SPARQL data</.test(htmlEn), 'EN: Wikidata type label translated');
     assert.ok(/AMBIGUOUS LOCATION/.test(htmlEn), 'EN: ambiguity banner translated');
