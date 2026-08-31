@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conflicte militare — România (sec. VIII î.Hr. – 1944)</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171c22; --panel2:#1f2630; --line:#2c3542;
+    --text:#e8edf3; --muted:#93a1b3; --accent:#d97757; --accent2:#4a8fe7;
+    --ok:#5fbf8a; --warn:#d9a648; --bad:#d96a5f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:20px 24px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#151a20,#0f1216)}
+  h1{margin:0 0 4px;font-size:22px}
+  h1 small{color:var(--muted);font-weight:400}
+  .sub{color:var(--muted);font-size:13px}
+  .wrap{max-width:1500px;margin:0 auto;padding:16px 24px 60px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .card b{display:block;font-size:26px}
+  .card span{color:var(--muted);font-size:12.5px}
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px}
+  .toolbar input[type=search]{flex:1 1 260px;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:9px 12px;border-radius:8px;font-size:14px}
+  .toolbar select{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:8px;font-size:14px}
+  .toolbar button{background:var(--accent);border:0;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:14px}
+  .toolbar button.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--text)}
+  .results{color:var(--muted);font-size:13px;margin-bottom:10px}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:14px}
+  th,td{padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+  th{background:var(--panel2);position:sticky;top:0;cursor:pointer;white-space:nowrap;user-select:none}
+  th:hover{color:#fff}
+  td.titlu{min-width:300px;font-weight:600}
+  td.descr{color:#c8d2de;min-width:420px;max-width:640px}
+  td.muted{color:var(--muted)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+  .tag.da{color:var(--ok);border-color:var(--ok)}
+  .tag.partial{color:var(--warn);border-color:var(--warn)}
+  .tag.nu{color:var(--bad);border-color:var(--bad)}
+  tr:hover td{background:rgba(255,255,255,.03)}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  footer{margin-top:26px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
+  @media (max-width:900px){
+    th,td{padding:7px 8px;font-size:12.5px}
+    td.titlu{min-width:220px} td.descr{min-width:0}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Conflicte militare pe teritoriul României <small>· sec. VIII î.Hr. – 1944</small></h1>
+  <div class="sub">Bază de date structurată din <b>batalii.csv</b> — titlu, datare, locație, participanți, descriere, rezultat</div>
+</header>
+<div class="wrap">
+  <div class="cards" id="cards"></div>
+
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="Caută după titlu, locație, participanți, descriere…">
+    <select id="fSecol"><option value="">Toate secolele</option></select>
+    <select id="fTip"><option value="">Toate tipurile</option></select>
+    <select id="fRegiune"><option value="">Toate regiunile</option></select>
+    <select id="fTeritoriu">
+      <option value="">Teritoriu: toate</option>
+      <option value="da">Pe teritoriul actual</option>
+      <option value="partial">Parțial / graniță</option>
+      <option value="nu">Context (în afara granițelor)</option>
+    </select>
+    <button id="btnReset" class="ghost">Reset</button>
+    <button id="btnCsv">Descarcă CSV (filtrat)</button>
+  </div>
+
+  <div class="results" id="results"></div>
+
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th data-k="secol">Secol</th>
+        <th data-k="data_start">Datare</th>
+        <th data-k="titlu">Titlu</th>
+        <th data-k="tip">Tip</th>
+        <th data-k="locatie">Locație</th>
+        <th data-k="participanti">Participanți</th>
+        <th data-k="descriere">Descriere</th>
+        <th data-k="rezultat">Rezultat</th>
+        <th data-k="teritoriu">Teritoriu</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <footer>
+    Sursa principală: <code>batalii.csv</code> (28 de secole). Coordonatele lat/lng sunt aproximative (<code>zona_aprox = 1</code> pentru locații incerte).
+    Fișiere: <code>data/conflicte_militare/conflicte_militare_romania.csv|json|xlsx</code> · <a href="data/conflicte_militare/RAPORT_STRUCTURARE.md" style="color:var(--accent2)">Raport de structurare</a>
+  </footer>
+</div>
+
+<script>
+(async function(){
+  const res = await fetch('data/conflicte_militare/conflicte_militare_romania.json');
+  const data = await res.json();
+  const rows = data.conflicte;
+  let sortKey = 'an_start', sortDir = 1;
+
+  const $ = s => document.querySelector(s);
+  const opts = (el, values, label) => {
+    [...new Set(values)].sort().forEach(v => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = label ? label(v) : v;
+      el.appendChild(o);
+    });
+  };
+  opts($('#fSecol'), rows.map(r=>r.secol));
+  opts($('#fTip'), rows.map(r=>r.tip));
+  opts($('#fRegiune'), rows.map(r=>r.regiune));
+
+  const TER = {da:'Da', partial:'Parțial', nu:'Context'};
+
+  function filtered(){
+    const q = $('#q').value.trim().toLowerCase();
+    const s = $('#fSecol').value, t = $('#fTip').value, r = $('#fRegiune').value, tt = $('#fTeritoriu').value;
+    return rows.filter(x => {
+      if (s && x.secol !== s) return false;
+      if (t && x.tip !== t) return false;
+      if (r && x.regiune !== r) return false;
+      if (tt && x.teritoriu !== tt) return false;
+      if (q){
+        const hay = (x.titlu+' '+x.locatie+' '+x.participanti+' '+x.descriere+' '+x.rezultat+' '+x.secol).toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  function render(){
+    const list = filtered().sort((a,b)=>{
+      const av = a[sortKey], bv = b[sortKey];
+      if (typeof av === 'number' && typeof bv === 'number') return (av-bv)*sortDir;
+      return String(av ?? '').localeCompare(String(bv ?? ''),'ro')*sortDir;
+    });
+    $('#results').textContent = list.length + ' evenimente' + (list.length !== rows.length ? ' din ' + rows.length : '');
+    const tbody = $('#tbody');
+    tbody.innerHTML = list.map(x => `
+      <tr>
+        <td class="muted">${x.secol}</td>
+        <td class="muted" style="white-space:nowrap">${x.data_start}${x.data_end && x.data_end !== x.data_start ? ' – ' + x.data_end : ''}</td>
+        <td class="titlu">${x.titlu}</td>
+        <td class="muted">${x.tip}</td>
+        <td>${x.locatie}${x.judet && x.judet !== '—' ? '<br><small class="muted">' + x.judet + '</small>' : ''}</td>
+        <td class="muted" style="max-width:260px">${x.participanti}</td>
+        <td class="descr">${x.descriere}</td>
+        <td style="max-width:280px">${x.rezultat}</td>
+        <td><span class="tag ${x.teritoriu}">${TER[x.teritoriu]||x.teritoriu}</span></td>
+      </tr>`).join('') || '<tr><td colspan="9" class="empty">Niciun rezultat pentru filtrele selectate.</td></tr>';
+  }
+
+  function cards(){
+    const c = [
+      ['Total evenimente', rows.length],
+      ['Pe teritoriul actual', rows.filter(r=>r.teritoriu==='da').length],
+      ['Parțial / graniță', rows.filter(r=>r.teritoriu==='partial').length],
+      ['Context regional', rows.filter(r=>r.teritoriu==='nu').length],
+      ['Bătălii', rows.filter(r=>r.tip.includes('Bătălie')).length],
+      ['Secole acoperite', new Set(rows.map(r=>r.secol)).size],
+    ];
+    $('#cards').innerHTML = c.map(([k,v])=>`<div class="card"><b>${v}</b><span>${k}</span></div>`).join('');
+  }
+
+  document.querySelectorAll('#tbl th').forEach(th => th.addEventListener('click', () => {
+    const k = th.dataset.k;
+    if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = 1; }
+    render();
+  }));
+  ['q','fSecol','fTip','fRegiune','fTeritoriu'].forEach(id => $('#'+id).addEventListener('input', render));
+  $('#fSecol').addEventListener('change', render);
+  $('#fTip').addEventListener('change', render);
+  $('#fRegiune').addEventListener('change', render);
+  $('#fTeritoriu').addEventListener('change', render);
+  $('#btnReset').addEventListener('click', () => {
+    ['q','fSecol','fTip','fRegiune','fTeritoriu'].forEach(id => $('#'+id).value = '');
+    render();
+  });
+  $('#btnCsv').addEventListener('click', () => {
+    const list = filtered();
+    const cols = ['id','titlu','tip','data_start','data_end','an_start','an_end','secol','secol_n','locatie','zona_aprox','judet','regiune','lat','lng','participanti','descriere','rezultat','teritoriu','observatii','sursa'];
+    const esc = v => v==null ? '' : String(v).replace(/"/g,'""');
+    const csv = [cols.join(',')].concat(list.map(r => cols.map(c => '"'+esc(r[c])+'"').join(','))).join('\n');
+    const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'conflicte_militare_romania_filtrat.csv';
+    a.click();
+  });
+
+  cards(); render();
+})().catch(e => console.error(e));
+</script>
+</body>
+</html>
