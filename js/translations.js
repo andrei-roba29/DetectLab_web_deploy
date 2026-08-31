@@ -141,6 +141,28 @@
                 heritage_legend_yellow: 'Tumulus',
                 layer_opacity_label: 'Opacity',
                 layer_roman: 'Roman Empire',
+                // ── Battles / Bătălii premium layer ──
+                layer_battles: 'Battles',
+                battles_period_label: 'Period',
+                battles_period_hint: 'Drag the slider to browse battles by century (8th c. BC – 20th c. AD)',
+                battles_count: '{n} events',
+                battles_legend: 'Epoch colors',
+                battles_epoch_antiquity: 'Pre-Roman Antiquity',
+                battles_epoch_dacoroman: 'Daco-Roman era',
+                battles_epoch_migrations: 'Migrations & Early Middle Ages',
+                battles_epoch_medieval: 'Middle Ages',
+                battles_epoch_earlymodern: 'Early Modern era',
+                battles_epoch_modern: 'Modern era',
+                battles_popup_date: 'Date',
+                battles_popup_type: 'Type',
+                battles_popup_location: 'Location',
+                battles_popup_participants: 'Participants',
+                battles_popup_result: 'Outcome',
+                battles_popup_desc: 'Description',
+                battles_search_more: 'Search more',
+                battles_context_note: 'Context event — outside today\'s borders',
+                battles_slider_min: '8th c. BC',
+                battles_slider_max: '20th c. AD',
                 layer_roads: 'Roads',
                 layer_vici_sites: 'Roman Sites (DARE)',
                 layer_dare_11: 'Major Settlements',
@@ -560,6 +582,28 @@
                 heritage_legend_yellow: 'Tumul',
                 layer_opacity_label: 'Opacitate',
                 layer_roman: 'Imperiul Roman',
+                // ── Strat premium „Bătălii" ──
+                layer_battles: 'Bătălii',
+                battles_period_label: 'Perioadă',
+                battles_period_hint: 'Trage de slider pentru a explora bătăliile pe secole (sec. VIII î.Hr. – sec. XX d.Hr.)',
+                battles_count: '{n} evenimente',
+                battles_legend: 'Culori pe epoci',
+                battles_epoch_antiquity: 'Antichitate preromană',
+                battles_epoch_dacoroman: 'Epoca daco-romană',
+                battles_epoch_migrations: 'Migrații și ev mediu timpuriu',
+                battles_epoch_medieval: 'Evul Mediu',
+                battles_epoch_earlymodern: 'Epoca modernă timpurie',
+                battles_epoch_modern: 'Epoca modernă',
+                battles_popup_date: 'Datare',
+                battles_popup_type: 'Tip',
+                battles_popup_location: 'Locație',
+                battles_popup_participants: 'Participanți',
+                battles_popup_result: 'Rezultat',
+                battles_popup_desc: 'Descriere',
+                battles_search_more: 'Caută mai mult',
+                battles_context_note: 'Eveniment de context — în afara granițelor actuale',
+                battles_slider_min: 'Sec. VIII î.Hr.',
+                battles_slider_max: 'Sec. XX d.Hr.',
                 layer_roads: 'Drumuri',
                 layer_vici_sites: 'Situri Romane (DARE)',
                 layer_dare_11: 'Așezări majore',
@@ -928,6 +972,10 @@
             });
             syncLanguageSelectors(lang);
             updateBillingDisplay();
+
+            // Notifică widget-urile dinamice (ex. stratul „Bătălii / Battles")
+            // să-și re-randeze conținutul în noua limbă.
+            document.dispatchEvent(new CustomEvent('detectlab:langchange', { detail: { lang: lang } }));
         }
 
         // Expose the canonical language state to PWA controls and map widgets.

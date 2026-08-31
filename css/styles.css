@@ -4287,6 +4287,154 @@
             display: block !important;
         }
 
+        /* ── Battles / Bătălii premium layer ── */
+        .battles-zone {
+            animation: battlesFadeIn 0.45s ease both;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        .battles-label {
+            background: rgba(12, 15, 20, 0.88);
+            border: 1px solid rgba(232, 179, 75, 0.55);
+            color: #f0e6d2;
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            padding: 2px 7px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            cursor: pointer;
+            white-space: nowrap;
+            animation: battlesFadeIn 0.45s ease both;
+            pointer-events: auto;
+        }
+        .battles-label::before {
+            border-top-color: rgba(232, 179, 75, 0.55) !important;
+        }
+        .battles-label:hover {
+            background: rgba(30, 26, 18, 0.95);
+            border-color: #E8B34B;
+            color: #fff;
+        }
+        @keyframes battlesFadeIn {
+            from { opacity: 0; transform: scale(0.85); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+
+        .battles-popup .leaflet-popup-content-wrapper {
+            background: #141a22;
+            color: #e8edf3;
+            border: 1px solid rgba(232, 179, 75, 0.35);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+        }
+        .battles-popup .leaflet-popup-tip {
+            background: #141a22;
+            border: 1px solid rgba(232, 179, 75, 0.35);
+        }
+        .battles-popup .leaflet-popup-content {
+            margin: 14px 16px;
+            line-height: 1.5;
+            max-width: 400px;
+        }
+        .battles-popup-inner {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+        .battles-popup-title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.02rem;
+            font-weight: 700;
+            color: #E8B34B;
+            line-height: 1.25;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(232, 179, 75, 0.25);
+        }
+        .battles-popup-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            font-size: 0.7rem;
+        }
+        .battles-popup-date {
+            color: var(--sky);
+            font-weight: 600;
+        }
+        .battles-popup-type {
+            background: rgba(160, 112, 232, 0.16);
+            border: 1px solid rgba(160, 112, 232, 0.4);
+            color: #c9a8f2;
+            border-radius: 20px;
+            padding: 1px 8px;
+        }
+        .battles-popup-context {
+            font-size: 0.66rem;
+            font-style: italic;
+            color: rgba(232, 179, 75, 0.85);
+            background: rgba(232, 179, 75, 0.08);
+            border: 1px dashed rgba(232, 179, 75, 0.4);
+            border-radius: 6px;
+            padding: 4px 8px;
+        }
+        .battles-popup-row {
+            display: flex;
+            gap: 8px;
+            font-size: 0.76rem;
+        }
+        .battles-popup-k {
+            flex-shrink: 0;
+            min-width: 92px;
+            color: rgba(245, 240, 235, 0.5);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.62rem;
+            letter-spacing: 0.06em;
+            padding-top: 2px;
+        }
+        .battles-popup-desc {
+            font-size: 0.78rem;
+            color: #c9d3df;
+            max-height: 180px;
+            overflow-y: auto;
+            padding-right: 4px;
+            border-top: 1px solid rgba(184, 216, 240, 0.12);
+            padding-top: 8px;
+            margin-top: 3px;
+        }
+        .battles-popup-search {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            margin-top: 4px;
+            background: linear-gradient(135deg, #7a4bc0, var(--violet));
+            border: 1px solid rgba(160, 112, 232, 0.8);
+            color: #fff;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-decoration: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            transition: filter 0.2s, transform 0.15s;
+        }
+        .battles-popup-search:hover {
+            filter: brightness(1.15);
+            transform: translateY(-1px);
+            color: #fff;
+        }
+        .battles-popup-search:active {
+            transform: translateY(0);
+        }
+        .battles-popup .leaflet-popup-close-button {
+            color: rgba(245, 240, 235, 0.6) !important;
+        }
+        .battles-popup .leaflet-popup-close-button:hover {
+            color: #fff !important;
+        }
+
         footer .nav-logo span {
             color: #E8772A !important;
         }

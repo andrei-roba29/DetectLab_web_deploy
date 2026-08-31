@@ -684,6 +684,7 @@
         'toggleHistPremiumLayer',
         'toggleJosephineLayer',
         'toggleRomanLayer',
+        'toggleBattlesLayer',
         'toggleArcheoPotentialLayer',
         'toggleLidarScannerLayer',
         'setLidarActive',
