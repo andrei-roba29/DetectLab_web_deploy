@@ -89,7 +89,7 @@ CONFLICTS_EN_6 = {
     "RM-130": {
         "titlu": "Battle of Ojogeni",
         "tip": "Battle",
-        "locatie": "Ojogeni (Gorj county) — disputed identification",
+        "locatie": "Ojogeni, on the Prahova river, near its confluence with the Ialomița — disputed identification",
         "regiune": "Wallachia",
         "participanti": "Moldavia (Vasile Lupu) vs. Wallachia (Matei Basarab)",
         "rezultat": "Decisive defeat of Vasile Lupu",

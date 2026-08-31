@@ -4294,6 +4294,11 @@
             pointer-events: auto;
         }
         .battles-label {
+            position: absolute;
+            left: 0;
+            top: 0;
+            margin: 0;
+            will-change: transform;
             background: rgba(12, 15, 20, 0.88);
             border: 1px solid rgba(232, 179, 75, 0.55);
             color: #f0e6d2;
@@ -4305,16 +4310,19 @@
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
             cursor: pointer;
             white-space: nowrap;
-            animation: battlesFadeIn 0.45s ease both;
+            animation: battlesLabelFade 0.4s ease both;
             pointer-events: auto;
-        }
-        .battles-label::before {
-            border-top-color: rgba(232, 179, 75, 0.55) !important;
+            -webkit-user-select: none;
+            user-select: none;
         }
         .battles-label:hover {
             background: rgba(30, 26, 18, 0.95);
             border-color: #E8B34B;
             color: #fff;
+        }
+        @keyframes battlesLabelFade {
+            from { opacity: 0; }
+            to   { opacity: 1; }
         }
         @keyframes battlesFadeIn {
             from { opacity: 0; transform: scale(0.85); }

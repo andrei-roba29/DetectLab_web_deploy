@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v60-babel-cimec';
+const CACHE_NAME = 'detectlab-v61-battles-v2';
 
 // ── Detection settings ──
 let detectionEnabled = false;

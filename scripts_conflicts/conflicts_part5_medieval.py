@@ -316,7 +316,7 @@ EVENTS = [
   secol="sec. XV d.Hr.", secol_n=15,
   locatie="Războieni / Valea Albă (județul Neamț)",
   zona_aprox=1, judet="Neamț", regiune="Moldova",
-  lat=47.06, lng=26.95,
+  lat=47.078, lng=26.560,
   participanti="Moldova (Ștefan cel Mare) vs. Imperiul Otoman (Mehmed al II-lea)",
   descriere="Oastea Moldovei este înfrântă de sultanul Mehmed al II-lea, care invadase Moldova cu o armată uriașă. Cu toate acestea, otomanii nu pot cuceri țara datorită rezistenței din cetăți și a tacticii de hărțuire, retrăgându-se în cele din urmă.",
   rezultat="Înfrângere militară tactică, dar victorie strategică a Moldovei",
