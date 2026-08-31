@@ -89,16 +89,16 @@ test('concurrent searches for one locality share a single crawl', () => {
   assert.match(route, /\.finally\(\(\) => inFlightResearch\.delete\(localityId\)\)/, 'the entry is released when the run ends');
 });
 
-test('the modal translates every failure code instead of showing raw errors', () => {
+test('the modal translates every failure class instead of showing raw errors', () => {
   // The vocabulary the classifier can emit, derived from the route itself.
   const classifier = route.slice(route.indexOf('export function classifyStorageError'), route.indexOf('function failSearch'));
   const codes = [...new Set([...classifier.matchAll(/code: '([a-z_]+)'/g)].map((m) => m[1]))];
   assert.deepEqual(codes.sort(), ['database_query_rejected', 'database_schema_outdated', 'database_unreachable', 'search_failed', 'storage_write_failed'], `the classifier names every storage failure mode (${codes.join(', ')})`);
-  const handled = frontend.match(/function failure\(e, locality, county\)([\s\S]*?)\n    \}/);
-  assert.ok(handled, 'the frontend has a dedicated failure renderer');
-  for (const code of ['source_unavailable', 'source_timeout', 'database_schema_outdated', 'database_query_rejected', 'storage_write_failed', 'database_unreachable', 'search_failed', 'locality_not_found']) {
-    assert.ok(handled[1].includes(`'${code}'`), `the UI maps ${code} to its own wording`);
+  // The frontend agent now queries the 7 open sources directly (see
+  // LIBRARY_OF_BABEL.md); it must classify — never echo — its own failures.
+  for (const key of ['srcError', 'srcTimeout', 'srcNetwork', 'srcHttp', 'srcNokey', 'allSourcesFailed']) {
+    assert.ok(frontend.includes(key), `the UI names the ${key} failure mode`);
   }
-  assert.match(frontend, /t\('requestId'\)[\s\S]{0,40}e\.data\.requestId/, 'an unfixable error still gives the user a reference id');
-  assert.match(frontend, /lastResult\.truncated/, 'a partial answer is announced in the dossier');
+  assert.match(frontend, /classifyError/, 'fetch errors are classified instead of being echoed raw');
+  assert.match(frontend, /renderError/, 'a dedicated failure renderer exists');
 });

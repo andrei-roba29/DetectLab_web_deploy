@@ -1082,7 +1082,7 @@ section('End-to-end analysis (runReport)');
         check('every .arch-report-* class emitted by the JS is styled (' + classes.size + ')',
             unstyled.length === 0, unstyled.join(', '));
         check('CACHE_NAME was bumped for this release',
-            /const CACHE_NAME = 'detectlab-v58-arch-report-v4'/.test(sw),
+            /const CACHE_NAME = 'detectlab-v59-babel-multisource'/.test(sw),
             (sw.match(/const CACHE_NAME = '[^']+'/) || [])[0]);
     }
 
