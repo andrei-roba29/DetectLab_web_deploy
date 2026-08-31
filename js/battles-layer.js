@@ -9,7 +9,9 @@
  *  • slider DE PERIOADĂ (nu de opacitate!): secolele -8 … 20 (VIII î.Hr. – XX d.Hr.);
  *    fiecare secol afișează evenimentele aferente
  *  • fiecare eveniment: zonă colorată semitransparentă cu contur punctat +
- *    etichetă permanentă cu titlul bătăliei
+ *    etichetă permanentă cu titlul bătăliei, ANCORATĂ PE PROPRIA RAZĂ
+ *    (marginea cercului); etichetele se redistribuie automat în jurul cercului
+ *    la pan/zoom, ca să nu se suprapună între ele
  *  • click pe zonă SAU etichetă → fereastră extinsă cu descrierea completă
  *    (bilingvă) + buton „Caută mai mult / Search more" → căutare Google
  *    cu titlul și anul bătăliei
@@ -24,9 +26,11 @@
     var _promise = null;       // fetch în curs
     var _visible = false;      // stratul e pornit?
     var _period = 14;          // secolul selectat (secol_n: -8 … 20)
-    var _group = null;         // L.layerGroup cu markerii
+    var _group = null;         // L.layerGroup cu cercurile
     var _circleById = {};      // id → L.circle (evenimente afișate)
     var _evById = {};          // id → eveniment (pentru refresh i18n)
+    var _labelById = {};       // id → { el, circle, ev } — etichetele proprii
+    var _mapHooked = false;    // evenimentele de hartă sunt deja legate?
 
     // ── Paleta de culori pe epoci (culori sugestive, semitransparente) ──
     var EPOCHS = [
@@ -53,7 +57,7 @@
     function esc(s) {
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // ── Etichete de secol (RO + EN) ──
@@ -120,9 +124,19 @@
             map.createPane('pane_battles');
             map.getPane('pane_battles').style.zIndex = 640; // deasupra Roman (625), sub tooltips (650)
         }
+        if (!map.getPane('pane_battles_labels')) {
+            map.createPane('pane_battles_labels');
+            map.getPane('pane_battles_labels').style.zIndex = 645; // etichetele, peste zone
+        }
         if (!_group) {
             _group = L.layerGroup([], { pane: 'pane_battles' });
             window._battlesGroup = _group;
+        }
+        // Repoziționăm etichetele la fiecare schimbare de hartă (pan / zoom / resize)
+        if (!_mapHooked) {
+            _mapHooked = true;
+            var relayout = function () { if (_visible) relayoutLabels(); };
+            map.on('moveend zoomend resize viewreset', relayout);
         }
     }
 
@@ -177,15 +191,95 @@
         return html;
     }
 
-    // ── Panoul de control (eticheta secolului + numărător) ──
+    // ── Panoul de control (doar eticheta secolului) ──
     function updatePanel() {
         var valEl = document.getElementById('battlesPeriodValue');
         if (valEl) valEl.textContent = centuryLabel(_period);
-        var cntEl = document.getElementById('battlesCountLabel');
-        if (cntEl) {
-            var n = _visible && _data ? eventsForPeriod().length : 0;
-            cntEl.textContent = tt('battles_count').replace('{n}', String(n));
-        }
+    }
+
+    // ── Etichete ancorate pe fiecare rază (fără suprapunere) ──
+    // Direcții în jurul cercului, pornind dinspre nord (sus), în sens orar.
+    var LABEL_DIRS = [
+        [0, -1], [0.7071, -0.7071], [1, 0], [0.7071, 0.7071],
+        [0, 1], [-0.7071, 0.7071], [-1, 0], [-0.7071, -0.7071]
+    ];
+    // Pentru fiecare direcție: unde se „prinde" eticheta de punctul de ancorare
+    // (fracțiuni din lățimea / înălțimea etichetei, raportate la centrul ei).
+    var LABEL_ATTACH = [
+        [0, -0.5], [-0.5, -0.5], [-0.5, 0], [-0.5, 0.5],
+        [0, 0.5], [0.5, 0.5], [0.5, 0], [0.5, -0.5]
+    ];
+    var LABEL_GAP = 8;   // distanța etichetei față de marginea cercului (px)
+    var LABEL_PAD = 3;   // spațiu de siguranță între etichete (px)
+
+    // Raza cercului exprimată în pixeli (în sistemul de coordonate al hărții).
+    function circlePixelRadius(map, latlng, radiusMeters) {
+        if (typeof map.latLngToContainerPoint !== 'function' ||
+            typeof map.containerPointToLatLng !== 'function' ||
+            typeof map.distance !== 'function' || !radiusMeters) return 0;
+        var pt = map.latLngToContainerPoint(latlng);
+        var mpp = map.distance(latlng, map.containerPointToLatLng([pt.x, pt.y - 1]));
+        return mpp > 0 ? radiusMeters / mpp : 0;
+    }
+
+    function boxesOverlap(a, b) {
+        return a.minX < b.maxX && a.maxX > b.minX &&
+               a.minY < b.maxY && a.maxY > b.minY;
+    }
+
+    function overlapArea(a, b) {
+        if (!boxesOverlap(a, b)) return 0;
+        var w = Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX);
+        var h = Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY);
+        return w * h;
+    }
+
+    // Repoziționează toate etichetele: fiecare este ancorată pe marginea
+    // propriului cerc („pe propria rază") și, dacă se suprapune cu altele,
+    // este mutată în jurul cercului până găsește un loc liber.
+    function relayoutLabels() {
+        var map = getMap();
+        if (!map) return;
+        var ids = Object.keys(_labelById);
+        if (!ids.length) return;
+        if (typeof map.latLngToLayerPoint !== 'function') return;
+
+        var placed = []; // casetele deja ocupate
+        ids.forEach(function (id) {
+            var rec = _labelById[id];
+            var circle = rec.circle, el = rec.el;
+            var latlng = (typeof circle.getLatLng === 'function') ? circle.getLatLng() : null;
+            if (!latlng) return;
+            var w = el.offsetWidth || 0;
+            var h = el.offsetHeight || 0;
+            if (!w || !h) return; // încă nemăsurată — se reia la următorul relayout
+
+            var center = map.latLngToLayerPoint(latlng);
+            var rMeters = (typeof circle.getRadius === 'function') ? circle.getRadius() : 0;
+            var rPx = circlePixelRadius(map, latlng, rMeters);
+
+            var best = null, bestOverlap = Infinity;
+            for (var i = 0; i < LABEL_DIRS.length; i++) {
+                var d = LABEL_DIRS[i];
+                var at = LABEL_ATTACH[i];
+                var ax = center.x + d[0] * (rPx + LABEL_GAP);
+                var ay = center.y + d[1] * (rPx + LABEL_GAP);
+                var cx = ax + at[0] * w;
+                var cy = ay + at[1] * h;
+                var box = {
+                    minX: cx - w / 2 - LABEL_PAD, minY: cy - h / 2 - LABEL_PAD,
+                    maxX: cx + w / 2 + LABEL_PAD, maxY: cy + h / 2 + LABEL_PAD
+                };
+                var ov = 0;
+                for (var j = 0; j < placed.length; j++) ov += overlapArea(box, placed[j]);
+                if (ov === 0) { best = { cx: cx, cy: cy, box: box }; break; }
+                if (ov < bestOverlap) { bestOverlap = ov; best = { cx: cx, cy: cy, box: box }; }
+            }
+            placed.push(best.box);
+            el.style.transform = 'translate3d(' +
+                Math.round(best.cx - w / 2) + 'px,' +
+                Math.round(best.cy - h / 2) + 'px,0)';
+        });
     }
 
     // ── Randare markeri pentru secolul curent ──
@@ -198,12 +292,18 @@
             var c = _circleById[id];
             if (c) {
                 if (c.closePopup) c.closePopup();
-                if (c.unbindTooltip) c.unbindTooltip();
                 if (_group.hasLayer(c)) _group.removeLayer(c);
             }
         });
         _circleById = {};
         _evById = {};
+
+        // curățăm etichetele vechi
+        Object.keys(_labelById).forEach(function (id) {
+            var rec = _labelById[id];
+            if (rec && rec.el && rec.el.parentNode) rec.el.parentNode.removeChild(rec.el);
+        });
+        _labelById = {};
 
         var events = eventsForPeriod();
         var mapL = lang();
@@ -239,22 +339,36 @@
                 closeButton: true
             });
 
+            // Eticheta permanentă — element propriu, ancorat pe marginea
+            // cercului (poziția e calculată în relayoutLabels).
             var txt = ev[mapL] || ev.ro;
-            circle.bindTooltip(esc(txt.titlu), {
-                permanent: true,
-                direction: 'top',
-                offset: [0, -8],
-                className: 'battles-label battles-enter',
-                interactive: true,
-                opacity: 1
+            circle._labelText = txt.titlu; // expus pentru teste
+            var el = document.createElement('div');
+            el.className = 'battles-label';
+            el.textContent = txt.titlu;
+            el.title = txt.titlu;
+            el.addEventListener('click', function (e) {
+                e.stopPropagation();
+                circle.openPopup();
             });
+            var pane = map.getPane('pane_battles_labels');
+            if (pane) pane.appendChild(el);
+            _labelById[ev.id] = { el: el, circle: circle, ev: ev };
 
             _circleById[ev.id] = circle;
             _evById[ev.id] = ev;
             circle.addTo(_group);
         });
 
+        relayoutLabels();
         updatePanel();
+
+        // Fonturile se pot încărca după randare și schimbă lățimea etichetelor
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function () {
+                if (_visible) relayoutLabels();
+            });
+        }
     }
 
     // ── API public ──
@@ -271,12 +385,16 @@
             _group.addTo(map);
             loadData().then(function () {
                 if (_visible) render();
-            }).catch(function () {
-                var cntEl = document.getElementById('battlesCountLabel');
-                if (cntEl) cntEl.textContent = '⚠';
+            }).catch(function (err) {
+                console.error('[Battles] Nu s-au putut încărca datele:', err);
             });
         } else {
             if (_group) map.removeLayer(_group);
+            Object.keys(_labelById).forEach(function (id) {
+                var rec = _labelById[id];
+                if (rec && rec.el && rec.el.parentNode) rec.el.parentNode.removeChild(rec.el);
+            });
+            _labelById = {};
         }
     };
 
@@ -305,18 +423,22 @@
             var ev = _evById[id];
             if (!c || !ev) return;
             var txt = ev[mapL] || ev.ro;
-            if (c.setTooltipContent) c.setTooltipContent(esc(txt.titlu));
             if (c.bindPopup) c.bindPopup(buildPopupContent(ev)); // refolosește instanța → update live
+            c._labelText = txt.titlu; // expus pentru teste
+            var rec = _labelById[id];
+            if (rec && rec.el) {
+                rec.el.textContent = txt.titlu;
+                rec.el.title = txt.titlu;
+            }
         });
+        relayoutLabels();
         updatePanel();
     });
 
-    // Sincronizare inițială a etichetei + numărătorului
+    // Sincronizare inițială a etichetei de secol
     function initPanel() {
         var valEl = document.getElementById('battlesPeriodValue');
         if (valEl) valEl.textContent = centuryLabel(_period);
-        var cntEl = document.getElementById('battlesCountLabel');
-        if (cntEl) cntEl.textContent = tt('battles_count').replace('{n}', '0');
     }
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
         initPanel();

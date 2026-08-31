@@ -127,11 +127,18 @@ function assert(cond, msg) {
     assert(true, 'no throw without map');
 
     console.log('2) Data loads and events filter by century:');
-    const fakePane = { style: {}, className: '' };
+    const fakePane = { style: {}, className: '', _children: [] };
+    fakePane.appendChild = function (el) { el.parentNode = this; this._children.push(el); };
+    fakePane.removeChild = function (el) {
+        const i = this._children.indexOf(el);
+        if (i >= 0) this._children.splice(i, 1);
+        if (el.parentNode === this) el.parentNode = null;
+    };
+    const panes = {};
     global.window._dlMap = {
-        getPane: () => fakePane,
-        createPane: () => fakePane,
-        addLayer() {}, removeLayer() {},
+        getPane: (name) => panes[name] || (panes[name] = Object.assign({}, fakePane, { _children: [] })),
+        createPane: (name) => panes[name] || (panes[name] = Object.assign({}, fakePane, { _children: [] })),
+        addLayer() {}, removeLayer() {}, on() {}, off() {},
     };
     window.toggleBattlesLayer(true);
     await new Promise(res => setTimeout(res, 100));
@@ -139,14 +146,15 @@ function assert(cond, msg) {
     // century 14 (1301–1400): Posada (1330), Rovine (1394), Nicopole (1396)
     assert(circles.length === 3, 'century XIV shows 3 events (Posada, Rovine, Nicopole), got ' + circles.length);
     assert(/XIV/.test(elements['battlesPeriodValue'].textContent), 'RO century label "Sec. XIV d.Hr." → ' + elements['battlesPeriodValue'].textContent);
-    assert(/3/.test(elements['battlesCountLabel'].textContent), 'count label shows 3 → ' + elements['battlesCountLabel'].textContent);
+    assert(panes['pane_battles_labels']._children.length === 3, '3 labels appended to the battles labels pane → ' + panes['pane_battles_labels']._children.length);
+    assert(typeof elements['battlesCountLabel'] === 'undefined', 'no event-count label element anymore');
 
     console.log('3) Zones carry dotted outline + semi-transparent fill + label:');
     const circle = circles[0];
     assert(circle._opts.dashArray === '8 6', 'dashed outline (dashArray 8 6)');
     assert(circle._opts.fillOpacity === 0.30, 'semi-transparent fill (0.30)');
     assert(circle._opts.pane === 'pane_battles', 'renders in pane_battles');
-    assert(circle._tooltipContent === 'Bătălia de la Posada', 'permanent label with battle title → ' + circle._tooltipContent);
+    assert(circle._labelText === 'Bătălia de la Posada', 'permanent label with battle title → ' + circle._labelText);
     assert(circle._popupContent && circle._popupContent.includes('battles-popup-search'), 'popup bound with full content + search button');
 
     console.log('4) Popup content is bilingual (RO):');
@@ -169,13 +177,13 @@ function assert(cond, msg) {
     console.log('7) English language refresh (labels + open popup):');
     circles.length = 0;
     window.setBattlesPeriod(14);
-    assert(circles[0]._tooltipContent === 'Bătălia de la Posada', 'back to century XIV (RO label)');
+    assert(circles[0]._labelText === 'Bătălia de la Posada', 'back to century XIV (RO label)');
     langState.current = 'en';
     document.dispatchEvent({ type: 'detectlab:langchange' });
     assert(/14th c\. AD/.test(elements['battlesPeriodValue'].textContent), 'EN label "14th c. AD" → ' + elements['battlesPeriodValue'].textContent);
-    assert(/3 events/.test(elements['battlesCountLabel'].textContent), 'EN count "3 events" → ' + elements['battlesCountLabel'].textContent);
     const c2 = circles[0];
-    assert(c2._tooltipContent === 'Battle of Posada', 'label updated to EN title → ' + c2._tooltipContent);
+    assert(c2._labelText === 'Battle of Posada', 'label updated to EN title → ' + c2._labelText);
+    assert(panes['pane_battles_labels']._children[0].textContent === 'Battle of Posada', 'label DOM element updated to EN');
     assert(c2._popupContent && c2._popupContent.includes('Battle of Posada'), 'popup content updated to EN');
     assert(c2._popupContent && c2._popupContent.includes('Search more'), 'EN search button label');
     assert(c2._popupContent && /google\.com\/search\?q=Battle%20of%20Posada%201330/.test(c2._popupContent), 'Google query = "Battle of Posada 1330"');
@@ -185,6 +193,7 @@ function assert(cond, msg) {
     window.toggleBattlesLayer(false);
     assert(elements['battlesToggle'].checked === false, 'checkbox unchecked');
     assert(groupLayers.size === 0 || true, 'group removed from map');
+    assert(panes['pane_battles_labels']._children.length === 0, 'labels removed from pane');
 
     console.log('\n' + (failures ? failures + ' FAILURES' : 'ALL TESTS PASSED'));
     process.exit(failures ? 1 : 0);
