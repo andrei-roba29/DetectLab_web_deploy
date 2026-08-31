@@ -1,13 +1,12 @@
 # Historical Dossier — „Dosarul arheologic / Dosarul istoric al localității”
 
-The premium **Dosarul arheologic** layer now produces a **complete, documented
-historical record for every Romanian locality**, built exactly to the canonical
-specification the project received:
-
-| Variant | Canonical specification file |
-| --- | --- |
-| 🇷🇴 Română | `data/dossier-spec/FISA_ISTORICA_PROMPT_RO.md` |
-| 🇬🇧 English | `data/dossier-spec/HISTORICAL_RECORD_PROMPT_EN.md` |
+> **Status: legacy backend pipeline.** The *Biblioteca din Babel* UI no longer
+> uses this pipeline — the layer now runs the browser-side multi-source search
+> agent documented in [`LIBRARY_OF_BABEL.md`](LIBRARY_OF_BABEL.md) (Wikipedia ·
+> Wikidata · OpenStreetMap · Commons · DBpedia · Archive.org · Europeana).
+> The `POST /api/evidence/search` endpoint, the SIRUTA ingestion and the
+> deterministic dossier builder below remain deployed and tested as a
+> standalone API.
 
 The two files are full translations of each other (all 23 sections). They are
 the product-level contract for what the dossier must contain; the builder code

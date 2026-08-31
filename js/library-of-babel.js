@@ -1,429 +1,911 @@
-/* DetectLab National Archaeological Evidence Engine — "Dosarul arheologic"
- * Complete historical dossier per the canonical specification:
- *   RO: data/dossier-spec/FISA_ISTORICA_PROMPT_RO.md
- *   EN: data/dossier-spec/HISTORICAL_RECORD_PROMPT_EN.md
- * Evidence is retrieved exclusively from biblioteca-digitala.ro and assembled
- * deterministically by the backend (SIRUTA identity + verified claims).
- * Every UI string exists in BOTH site language variants (ro / en).
+/* DetectLab — "Biblioteca din Babel" multi-source archaeological search agent.
+ *
+ * The old single-source dossier search was retired; this module now queries
+ * 7 open knowledge sources DIRECTLY from the browser, in parallel, aggregates
+ * and de-duplicates the findings and renders them with per-source provenance:
+ *
+ *   1. Wikipedia (ro + en)   — articles about localities and sites
+ *   2. Wikidata (SPARQL)     — structured entities + coordinates
+ *   3. OpenStreetMap Nominatim — geocoding / gazetteer (max 1 req/sec!)
+ *   4. Wikimedia Commons     — images, plans and old maps
+ *   5. DBpedia Lookup        — semantic resources
+ *   6. Archive.org           — digitised old documents and collections
+ *   7. Europeana             — museum objects and cultural collections
+ *                              (free API key required, stored locally)
+ *
+ * Contract (see AGENT spec): a source that fails never blocks the others,
+ * zero results yields suggested alternative searches, an ambiguous locality
+ * surfaces the OSM matches, results can be filtered by type / period /
+ * source and exported as JSON or CSV. Every UI string exists in BOTH site
+ * language variants (ro / en — parity is tested).
  */
 (function () {
     'use strict';
-    var MIN_ZOOM = 10;
-    var API_BASE = window.DETECTLAB_API_BASE || 'https://detectlab-backend-production.up.railway.app/api';
-    var running = false, lastResult = null, lastForm = null, lastNominatimAt = 0;
+
+    /* ── tuning constants ── */
+    var NOMINATIM_MIN_INTERVAL = 1100;   // hard usage-policy limit: 1 req/sec
+    var CACHE_TTL = 30 * 60 * 1000;      // 30 minutes of local result caching
+    var WIKI_LIMIT = 8, COMMONS_LIMIT = 12, OTHER_LIMIT = 10;
+    var SOURCE_ORDER = ['wikipedia', 'wikidata', 'osm', 'commons', 'dbpedia', 'archive', 'europeana'];
+    /* dominant type wins when the same finding arrives from several sources */
+    var TYPE_PRIORITY = { place: 9, article: 8, structured: 7, document: 6, map: 5, image: 4, collection: 3, audio: 2, video: 2 };
+    var TYPE_ORDER = ['article', 'structured', 'place', 'document', 'map', 'image', 'collection', 'audio', 'video'];
+    var PERIOD_ORDER = ['prehistory', 'bronze', 'iron', 'dacian', 'roman', 'migration', 'medieval', 'modern'];
+
+    /* ── state ── */
+    var running = false, searchSeq = 0;
+    var runState = 'form';               // form | searching | results | error
+    var lastQuery = '', lastAgg = null, lastStats = null, cachedAt = null, lastError = null;
+    var sourceStatuses = {};             // live per-source status while searching
+    var uiFilters = { type: 'all', period: 'all', source: 'all' };
+    var mapRef = null, lastNominatimAt = 0, formValues = { query: '' };
 
     /* ── i18n dictionaries — kept in strict ro/en parity (tested) ── */
     var C = {
         ro: {
             title: 'Biblioteca din Babel',
-            subtitle: 'Fișă istorică documentată · SIRUTA + dovezi verificate',
-            button: 'Cercetează zona', zoom: 'Zoom in mai mult',
-            locating: 'Identificăm localitatea…', search: 'Cercetăm sursele și analizăm documentele…',
-            failed: 'Cercetarea nu a putut fi finalizată.',
-            sourceUnavailable: 'Sursa de publicații biblioteca-digitala.ro este momentan indisponibilă. Încearcă din nou mai târziu.',
-            sourceTimeout: 'Sursa de publicații a răspuns prea lent. Încearcă din nou.',
-            no: 'Nu au fost identificate claim-uri arheologice verificabile. Încearcă aliasuri istorice.',
-            locality: 'Localitate', county: 'Județ (opțional)', aliases: 'Aliasuri istorice (separate prin virgulă)', run: 'Cercetează',
-            sourcePolicy: 'Dovezi: Biblioteca Digitală / ProEuropeana · Identitate: INS SIRUTA',
-            claims: 'dovezi', docs: 'documente analizate', quote: 'Dovadă din sursă', page: 'Pagina',
-            original: 'Vezi documentul original', why: 'De ce este atribuit?', images: 'Figuri asociate',
-            export: 'Exportă dosarul JSON', close: 'Închide', confidence: 'Încredere', unverified: 'Necesită verificare', ocr: 'Document scanat: OCR necesar',
-            methodTitle: 'SIRUTA → ALIASURI → DOVEZI → PERIOADE → SECȚIUNI → CERTITUDINE → SURSE',
-            methodLine: 'Identificare exactă (SIRUTA + județ + UAT) → extragere dovezi cu extras și pagină → clasificare pe perioade și secțiuni → nivel de certitudine → surse ierarhizate',
-            ambiguousTitle: 'IDENTIFICARE INSUFICIENTĂ',
-            ambiguousHelp: 'Există mai multe localități cu acest nume. Alege localitatea exactă (județ + UAT + SIRUTA) — informațiile nu se transferă între omonime (§1).',
-            newSearch: 'Caută altă localitate',
-            specRef: 'Specificație completă',
-            noSource: 'Nu a fost identificată o sursă verificabilă.',
-            sectIdentity: 'Identitate', sectNames: 'Denumiri istorice', sectAttestation: 'Prima atestare',
-            sectHistory: 'Istorie', sectAdmin: 'Evoluție administrativă', sectPopulation: 'Populație',
-            sectFamilies: 'Familii / proprietari / moșii', sectBuildings: 'Clădiri și monumente istorice',
-            sectSites: 'Situri arheologice documentate', sectNearby: 'Situri din vecinătate',
-            sectVanished: 'Localități / cătune dispărute', sectToponymy: 'Toponimie istorică',
-            sectMaps: 'Hărți istorice', sectChecks: 'Verificare identitate (CHECK 1–7)',
-            sectSources: 'Surse', sectCertainty: 'Nivel general de certitudine', sectAppendix: 'Anexă — dovezi complete',
-            fName: 'Denumire', fCounty: 'Județ', fUat: 'UAT', fType: 'Tip', fSiruta: 'Cod SIRUTA',
-            fCountyCode: 'Cod județ', fCoords: 'Coordonate', fLat: 'Latitudine', fLng: 'Longitudine',
-            fLevel: 'Nivel', fParent: 'SIRUTA părinte', fRegSource: 'Sursă registru',
-            colForm: 'Forma numelui', colType: 'Tip', colLang: 'Limbă', colVerified: 'Verificat',
-            verifiedYes: 'da', verifiedNo: 'nu',
-            namesNote: 'Variantele neverificate sunt marcate. Nu se presupune că două nume asemănătoare desemnează aceeași localitate (§3).',
-            fYear: 'An', fHistoricalForm: 'Formă istorică', fDocument: 'Document', fDocumentType: 'Tip document',
-            fDocumentLang: 'Limba documentului', fSource: 'Sursă', conflictsIntro: 'Conflicte între surse (§18)',
-            conflictsNote: 'Documentul original trebuie verificat pentru stabilirea valorii corecte.',
-            periodUnspecified: 'Perioadă nespecificată', historyNote: 'Perioadele fără dovezi rămân explicit necompletate — nu se estimează (§20).',
-            fRanCode: 'Cod RAN', fCategory: 'Categorie', fSiteType: 'Tip', fComponents: 'Componente',
-            fEpoch: 'Epocă', fPeriod: 'Perioadă', fCulture: 'Cultură', fChronology: 'Cronologie',
-            fDescription: 'Descriere', fLmi: 'Cod LMI', fLinkRan: 'Link RAN/CIMEC', fOtherSources: 'Alte surse',
-            unknownCulture: 'Necunoscut / nespecificat', notIdentified: 'nu a fost identificat',
-            ranPendingTitle: 'Integrare RAN / CIMEC în curs',
-            ranPendingBody: 'Codurile RAN și LMI, cultura arheologică și coordonatele siturilor se completează exclusiv din Repertoriul Arheologic Național. Până la integrare, aceste câmpuri rămân necompletate — nu se inventează identificatori (§13, §20).',
-            officialPortals: 'Portaluri oficiale',
-            nearbyNote: 'Secțiune rezervată siturilor atribuite explicit altor localități. Nu se mută situri între localități pe baza proximității (§12).',
-            checkPass: 'OK', checkPending: 'în așteptare', checkFail: 'eșuat',
-            checksIntro: 'Verificarea finală anti-omonime execută înainte de afișarea fișei (§21).',
-            level1: 'Nivel 1 — surse oficiale', level2: 'Nivel 2 — surse academice',
-            level3: 'Nivel 3 — surse locale', level4: 'Nivel 4 — surse secundare',
-            notIntegrated: 'în curs de integrare',
-            cIdentification: 'Identificarea localității', cNames: 'Denumiri istorice', cAttestation: 'Prima atestare',
-            cHistory: 'Istoria localității', cSites: 'Situri arheologice', cToponymy: 'Toponimie', cOther: 'Alte informații',
-            certCERT: 'Cert', certPROBABLE: 'Probabil', certCONTESTED: 'Controversat', certHYPOTHESIS: 'Ipoteză', certNO_DATA: 'fără date',
-            legacyTitle: 'Dovezi arheologice',
-            storageError: 'Stocarea bazei de date a eșuat. Reîncearcă într-un moment.',
-            schemaError: 'Structura bazei de date de pe server nu este la zi; cercetarea este temporar indisponibilă.',
-            notFound: 'Localitatea nu se află în registrul SIRUTA importat. Verifică denumirea sau alege o localitate de pe hartă.',
-            truncatedNotice: 'Cercetarea s-a oprit la limita de timp impusă sursei: lista de mai jos este parțială și va fi completată la o căutare ulterioară.',
-            retryLater: 'Reîncearcă', requestId: 'ID eroare',
-            quotesRo: 'Citatele sunt redate în limba originală a publicației (română).',
-            generatedAt: 'Generat', schemaLabel: 'Schema'
+            subtitle: 'Căutare arheologică multi-sursă · 7 surse deschise',
+            button: 'Caută o localitate',
+            close: 'Închide',
+            intro: 'Introdu o localitate sau un sit (ex. Sarmizegetusa, Apulum). Căutarea pornește simultan în 7 surse deschise; rezultatele sunt agregate, deduplicate și marcate cu sursa de proveniență.',
+            sourcesPolicy: 'Surse: Wikipedia (ro/en) · Wikidata · OpenStreetMap · Wikimedia Commons · DBpedia · Archive.org · Europeana',
+            locality: 'Localitate / sit arheologic',
+            placeholder: 'ex. Sarmizegetusa, Apulum, Grădiștea Muncelului…',
+            run: 'Caută', searching: 'Interogăm cele 7 surse în paralel…',
+            failed: 'Căutarea nu a putut fi finalizată.',
+            allSourcesFailed: 'Niciuna dintre cele 7 surse nu a răspuns. Verifică conexiunea la internet și reîncearcă.',
+            retry: 'Reîncearcă', newSearch: 'Caută altceva',
+            noResults: 'Nu am găsit niciun rezultat pentru',
+            noResultsHelp: 'Încearcă o variantă de mai jos, un nume istoric (ex. Ulpia Traiana în loc de Sarmizegetusa) sau forma engleză / maghiară / germană a numelui.',
+            suggestions: 'Căutări sugerate',
+            results: 'rezultate', activeSources: 'surse active', duplicates: 'duplicate eliminate',
+            shown: 'Afișate', of: 'din', seconds: 's',
+            perSourceTitle: 'Surse',
+            srcOk: 'activă', srcEmpty: 'fără rezultate', srcError: 'indisponibilă',
+            srcTimeout: 'fără răspuns (timeout)', srcNetwork: 'inaccesibilă (rețea/CORS)',
+            srcHttp: 'eroare server', srcNokey: 'fără cheie API', srcPartial: 'parțial',
+            type: 'Tip', period: 'Perioadă', source: 'Sursa', all: 'Toate',
+            type_article: 'Articol Wikipedia', type_structured: 'Dată structurată',
+            type_place: 'Locație OSM', type_image: 'Imagine', type_map: 'Hartă',
+            type_document: 'Document', type_audio: 'Audio', type_video: 'Video', type_collection: 'Colecție',
+            sparqlData: 'Dată SPARQL', semanticResource: 'Resursă semantică',
+            heritageObject: 'Obiect de patrimoniu', digitalDocument: 'Document digital',
+            src_wikipedia: 'Wikipedia', src_wikidata: 'Wikidata', src_osm: 'OpenStreetMap',
+            src_commons: 'Wikimedia Commons', src_dbpedia: 'DBpedia', src_archive: 'Archive.org',
+            src_europeana: 'Europeana',
+            p_prehistory: 'Preistorie', p_bronze: 'Epoca bronzului', p_iron: 'Epoca fierului',
+            p_dacian: 'Dacic', p_roman: 'Roman', p_migration: 'Epoca migrațiilor',
+            p_medieval: 'Medieval', p_modern: 'Modern', p_unspecified: 'Nespecificată',
+            timeline: 'Cronologie', timelineNote: 'clasificare automată',
+            mapView: 'Locații pe hartă',
+            ambiguousTitle: 'LOCAȚIE AMBIGUĂ',
+            ambiguousHelp: 'OpenStreetMap a găsit mai multe potriviri pentru acest nume. Alege una pentru a rafina căutarea:',
+            exportJson: 'Export JSON', exportCsv: 'Export CSV',
+            cachedFrom: 'Rezultate din cache local', refresh: 'Reîmprospătează',
+            keyTitle: 'Cheie API Europeana (opțional)', keyHelp: 'Europeana cere o cheie API gratuită, obținută în câteva minute la europeana.eu/api. Cheia se salvează doar local, în browserul tău. Fără cheie, căutarea continuă automat cu celelalte 6 surse.',
+            keyPlaceholder: 'wskey Europeana', keySave: 'Salvează cheia', keySaved: 'Cheia a fost salvată local.',
+            keyInvalid: 'Cheia a fost respinsă de Europeana — verifică-o și salveaz-o din nou.',
+            year: 'An', generated: 'Generat', query: 'Căutare',
+            periodNote: 'Perioadele sunt clasificate automat după cuvinte-cheie din titlu și descriere — verifică întotdeauna sursa originală.',
+            partialNote: 'Surse care nu au răspuns (căutarea a continuat cu celelalte):',
+            sourcesCount: 'surse'
         },
         en: {
             title: 'Library of Babel',
-            subtitle: 'Documented historical record · SIRUTA + verified evidence',
-            button: 'Research area', zoom: 'Zoom in more',
-            locating: 'Identifying locality…', search: 'Searching sources and analysing documents…',
-            failed: 'Research could not be completed.',
-            sourceUnavailable: 'The publication source biblioteca-digitala.ro is temporarily unavailable. Please try again later.',
-            sourceTimeout: 'The publication source responded too slowly. Please try again.',
-            no: 'No verifiable archaeological claims were identified. Try historical aliases.',
-            locality: 'Locality', county: 'County (optional)', aliases: 'Historical aliases (comma-separated)', run: 'Research',
-            sourcePolicy: 'Evidence: Digital Library / ProEuropeana · Identity: INS SIRUTA',
-            claims: 'claims', docs: 'documents analysed', quote: 'Source evidence', page: 'Page',
-            original: 'View original document', why: 'Why was this attributed?', images: 'Associated figures',
-            export: 'Export dossier JSON', close: 'Close', confidence: 'Confidence', unverified: 'Needs verification', ocr: 'Scanned document: OCR required',
-            methodTitle: 'SIRUTA → ALIASES → EVIDENCE → PERIODS → SECTIONS → CERTAINTY → SOURCES',
-            methodLine: 'Exact identification (SIRUTA + county + UAT) → evidence extraction with excerpt and page → classification by period and section → certainty level → ranked sources',
-            ambiguousTitle: 'INSUFFICIENT IDENTIFICATION',
-            ambiguousHelp: 'Several localities share this name. Pick the exact locality (county + UAT + SIRUTA) — information is never transferred between homonyms (§1).',
-            newSearch: 'Search another locality',
-            specRef: 'Full specification',
-            noSource: 'No verifiable source was identified.',
-            sectIdentity: 'Identity', sectNames: 'Historical names', sectAttestation: 'First attestation',
-            sectHistory: 'History', sectAdmin: 'Administrative evolution', sectPopulation: 'Population',
-            sectFamilies: 'Families / owners / estates', sectBuildings: 'Historic buildings and monuments',
-            sectSites: 'Documented archaeological sites', sectNearby: 'Sites in the vicinity',
-            sectVanished: 'Vanished localities / hamlets', sectToponymy: 'Historical toponymy',
-            sectMaps: 'Historical maps', sectChecks: 'Identity verification (CHECK 1–7)',
-            sectSources: 'Sources', sectCertainty: 'Overall level of certainty', sectAppendix: 'Appendix — full evidence',
-            fName: 'Name', fCounty: 'County', fUat: 'UAT', fType: 'Type', fSiruta: 'SIRUTA code',
-            fCountyCode: 'County code', fCoords: 'Coordinates', fLat: 'Latitude', fLng: 'Longitude',
-            fLevel: 'Level', fParent: 'Parent SIRUTA', fRegSource: 'Register source',
-            colForm: 'Name form', colType: 'Type', colLang: 'Language', colVerified: 'Verified',
-            verifiedYes: 'yes', verifiedNo: 'no',
-            namesNote: 'Unverified variants are flagged. Two similar names are never assumed to designate the same locality (§3).',
-            fYear: 'Year', fHistoricalForm: 'Historical form', fDocument: 'Document', fDocumentType: 'Document type',
-            fDocumentLang: 'Document language', fSource: 'Source', conflictsIntro: 'Conflicts between sources (§18)',
-            conflictsNote: 'The original document must be verified to establish the correct value.',
-            periodUnspecified: 'Unspecified period', historyNote: 'Periods without evidence remain explicitly empty — nothing is estimated (§20).',
-            fRanCode: 'RAN code', fCategory: 'Category', fSiteType: 'Type', fComponents: 'Components',
-            fEpoch: 'Epoch', fPeriod: 'Period', fCulture: 'Culture', fChronology: 'Chronology',
-            fDescription: 'Description', fLmi: 'LMI code', fLinkRan: 'RAN/CIMEC link', fOtherSources: 'Other sources',
-            unknownCulture: 'Unknown / not specified', notIdentified: 'not identified',
-            ranPendingTitle: 'RAN / CIMEC integration in progress',
-            ranPendingBody: 'RAN and LMI codes, the archaeological culture and site coordinates are filled exclusively from the National Archaeological Repertory. Until integration these fields stay empty — no identifiers are invented (§13, §20).',
-            officialPortals: 'Official portals',
-            nearbyNote: 'Section reserved for sites explicitly attributed to other localities. Sites are never moved between localities based on proximity (§12).',
-            checkPass: 'PASS', checkPending: 'pending', checkFail: 'failed',
-            checksIntro: 'The final anti-homonym check runs before the record is shown (§21).',
-            level1: 'Level 1 — official sources', level2: 'Level 2 — academic sources',
-            level3: 'Level 3 — local sources', level4: 'Level 4 — secondary sources',
-            notIntegrated: 'integration in progress',
-            cIdentification: 'Locality identification', cNames: 'Historical names', cAttestation: 'First attestation',
-            cHistory: 'Locality history', cSites: 'Archaeological sites', cToponymy: 'Toponymy', cOther: 'Other information',
-            certCERT: 'Certain', certPROBABLE: 'Probable', certCONTESTED: 'Controversial', certHYPOTHESIS: 'Hypothesis', certNO_DATA: 'no data',
-            legacyTitle: 'Archaeological evidence',
-            storageError: 'The evidence database could not complete the request. Please try again shortly.',
-            schemaError: 'The server database schema is out of date; research is temporarily unavailable.',
-            notFound: 'This locality is not in the imported SIRUTA register. Check the spelling or pick a locality on the map.',
-            truncatedNotice: 'Research stopped at the source time budget: the list below is partial and will be completed by a later search.',
-            retryLater: 'Try again', requestId: 'Error ID',
-            quotesRo: 'Quotes are given in the original language of the publication (Romanian).',
-            generatedAt: 'Generated', schemaLabel: 'Schema'
+            subtitle: 'Multi-source archaeological search · 7 open sources',
+            button: 'Search a locality',
+            close: 'Close',
+            intro: 'Enter a locality or site (e.g. Sarmizegetusa, Apulum). The search runs simultaneously across 7 open sources; results are aggregated, de-duplicated and tagged with their source.',
+            sourcesPolicy: 'Sources: Wikipedia (ro/en) · Wikidata · OpenStreetMap · Wikimedia Commons · DBpedia · Archive.org · Europeana',
+            locality: 'Locality / archaeological site',
+            placeholder: 'e.g. Sarmizegetusa, Apulum, Grădiștea Muncelului…',
+            run: 'Search', searching: 'Querying all 7 sources in parallel…',
+            failed: 'The search could not be completed.',
+            allSourcesFailed: 'None of the 7 sources responded. Check your internet connection and try again.',
+            retry: 'Try again', newSearch: 'Search something else',
+            noResults: 'No results found for',
+            noResultsHelp: 'Try one of the variants below, a historical name (e.g. Ulpia Traiana instead of Sarmizegetusa) or the English / Hungarian / German form of the name.',
+            suggestions: 'Suggested searches',
+            results: 'results', activeSources: 'active sources', duplicates: 'duplicates removed',
+            shown: 'Showing', of: 'of', seconds: 's',
+            perSourceTitle: 'Sources',
+            srcOk: 'active', srcEmpty: 'no results', srcError: 'unavailable',
+            srcTimeout: 'no response (timeout)', srcNetwork: 'unreachable (network/CORS)',
+            srcHttp: 'server error', srcNokey: 'no API key', srcPartial: 'partial',
+            type: 'Type', period: 'Period', source: 'Source', all: 'All',
+            type_article: 'Wikipedia article', type_structured: 'Structured data',
+            type_place: 'OSM location', type_image: 'Image', type_map: 'Map',
+            type_document: 'Document', type_audio: 'Audio', type_video: 'Video', type_collection: 'Collection',
+            sparqlData: 'SPARQL data', semanticResource: 'Semantic resource',
+            heritageObject: 'Heritage object', digitalDocument: 'Digital document',
+            src_wikipedia: 'Wikipedia', src_wikidata: 'Wikidata', src_osm: 'OpenStreetMap',
+            src_commons: 'Wikimedia Commons', src_dbpedia: 'DBpedia', src_archive: 'Archive.org',
+            src_europeana: 'Europeana',
+            p_prehistory: 'Prehistoric', p_bronze: 'Bronze Age', p_iron: 'Iron Age',
+            p_dacian: 'Dacian', p_roman: 'Roman', p_migration: 'Migration period',
+            p_medieval: 'Medieval', p_modern: 'Modern', p_unspecified: 'Unspecified',
+            timeline: 'Timeline', timelineNote: 'automatic classification',
+            mapView: 'Locations on map',
+            ambiguousTitle: 'AMBIGUOUS LOCATION',
+            ambiguousHelp: 'OpenStreetMap found several matches for this name. Pick one to refine the search:',
+            exportJson: 'Export JSON', exportCsv: 'Export CSV',
+            cachedFrom: 'Results from local cache', refresh: 'Refresh',
+            keyTitle: 'Europeana API key (optional)', keyHelp: 'Europeana requires a free API key, obtainable in a few minutes at europeana.eu/api. The key is stored locally in your browser only. Without a key the search automatically continues with the other 6 sources.',
+            keyPlaceholder: 'Europeana wskey', keySave: 'Save key', keySaved: 'The key was saved locally.',
+            keyInvalid: 'The key was rejected by Europeana — check it and save it again.',
+            year: 'Year', generated: 'Generated', query: 'Query',
+            periodNote: 'Periods are classified automatically from keywords in the title and description — always check the original source.',
+            partialNote: 'Sources that did not respond (the search continued with the others):',
+            sourcesCount: 'sources'
         }
     };
-    /* SIRUTA locality types (stored in Romanian) — translated for the EN variant */
-    var TYPES_EN = {
-        'municipiu': 'municipality', 'oraș': 'town', 'comună': 'commune', 'sector': 'sector',
-        'localitate componentă reședință municipiu': 'municipality-seat component locality',
-        'localitate componentă municipiu': 'municipality component locality',
-        'sat aparținător municipiu': 'village belonging to a municipality',
-        'localitate componentă reședință oraș': 'town-seat component locality',
-        'localitate componentă oraș': 'town component locality',
-        'sat reședință comună': 'commune-seat village', 'sat component comună': 'commune component village'
-    };
-    var ALIAS_TYPES = {
-        ro: { CURRENT: 'actuală', HISTORICAL: 'istorică', HUNGARIAN: 'maghiară', GERMAN: 'germană', LATIN: 'latină', SLAVIC: 'slavă', ORTHOGRAPHIC: 'ortografică', ADMINISTRATIVE: 'administrativă', VARIANT: 'variantă' },
-        en: { CURRENT: 'current', HISTORICAL: 'historical', HUNGARIAN: 'Hungarian', GERMAN: 'German', LATIN: 'Latin', SLAVIC: 'Slavic', ORTHOGRAPHIC: 'spelling', ADMINISTRATIVE: 'administrative', VARIANT: 'variant' }
-    };
 
+    /* Period detection heuristics (diacritics-insensitive, word-aware —
+     * "Romania" the country must NOT trigger the Roman period). */
+    var PERIOD_RULES = [
+        { id: 'prehistory', re: /preistor|prehistor|pal[eae]olit|neolit|eneolit|cucuteni|hamangia|gumelnita|\bboian\b|vinca|starcevo|turdas|petresti/i },
+        { id: 'bronze', re: /\bbronz|otomani|wietenberg|monteoru|coslogeni|succuleni/i },
+        { id: 'iron', re: /epoca fierului|iron age|hallstatt|halstatt|la[ -]?tene|latene|\bcelt|scythian|scitic|bastarn|thracian|tracic|basarabi|padea|babadag/i },
+        { id: 'dacian', re: /\bdacic|\bdacian|\bdacii\b|\bdacilor\b|\bdacia\b|\bgeto\b|\bgetii\b|burebista|decebal|sarmizegetusa regia|cetatile dacice|gradistea de munte/i },
+        { id: 'roman', re: /\bromans?\b|\bromane\b|\bromana\b|\bromani\b|\bromanii\b|\bromanilor\b|ulpia|apulum|porolissum|drobeta|tropaeum|adamclisi|castru|castra\b|castren|legion|legiune|\bcolonia\b|amphiteatr|amphitheatr|termele|thermae|villa rustica|trajan|traian|imperiul roman|roman empire|roman province|provincia dacia|dacia romana|roman fort|roman city|roman town|roman camp|roman road|roman bath|roman villa|drum roman|asezare roman/i },
+        { id: 'migration', re: /gepids?|gepiz|avars?\b|huns?\b|\bhuni\b|slavs?\b|\bslavi\b|goths?\b|\bgoti\b|epoca migratiilor|migration period/i },
+        { id: 'medieval', re: /medieval|mediev|evul mediu|middle ages|secolul (x|xi|xii|xiii|xiv|xv|xvi|xvii)\b|1[1-7]th century|cetate medievala|cetatea medievala|medieval fortress|medieval castle|castel|citadel|fortified church|biserica fortificata|fortareata|\bsaxons?\b|\bsasi\b|husit|secuiesc|knights?/i },
+        { id: 'modern', re: /\bmodern|secolul (xviii|xix|xx|xxi)\b|1[89]th century|20th century|21st century|habsburg|austro-ungar|austro-hungarian|world war|razboiul mondial|primul razboi|al doilea razboi/i }
+    ];
+
+    /* ── small helpers ── */
     function lang() { return typeof window._currentLang === 'function' && window._currentLang() === 'en' ? 'en' : 'ro'; }
-    function t(k) { return (C[lang()][k] != null) ? C[lang()][k] : k; }
-    function L(bilingual) { return (bilingual && typeof bilingual === 'object') ? (bilingual[lang()] != null ? bilingual[lang()] : bilingual.ro) : bilingual; }
+    function t(k) { var d = C[lang()] || C.ro; return (d[k] != null) ? d[k] : k; }
     function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-    function safeUrl(v) { try { var u = new URL(v); return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : '#'; } catch (_) { return '#'; } }
-    function open() { var m = document.getElementById('babelModal'); if (m) { m.hidden = false; document.body.classList.add('babel-modal-open'); } }
-    function close() { var m = document.getElementById('babelModal'); if (m) { m.hidden = true; document.body.classList.remove('babel-modal-open'); } }
-    function status(message) { open(); document.getElementById('babelBody').innerHTML = '<div class="babel-state is-loading"><span class="babel-orbit"></span><p>' + esc(message) + '</p></div>'; }
-    function isPremium() { if (typeof window._dlIsPremium === 'function') return window._dlIsPremium(); var u = typeof window._authUser === 'function' ? window._authUser() : null; return !!(u && u.plan === 'premium'); }
-    function updateButton() { var b = document.getElementById('babelSearchBtn'), m = window._dlMap; if (!b) return; var ok = !!(m && m.getZoom() >= MIN_ZOOM); b.disabled = running || !ok; b.textContent = running ? '…' : ok ? t('button') : t('zoom'); }
+    function safeUrl(v) { try { var u = new URL(v, 'https://example.invalid'); return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : '#'; } catch (_) { return '#'; } }
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function first(v) { return Array.isArray(v) ? v[0] : v; }
+    function stripHtml(v) {
+        return String(v == null ? '' : v)
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+            .replace(/\s+/g, ' ').trim();
+    }
+    function stripDiacritics(v) { return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+    /* de-duplication key: "File:Ulpia Traiana.jpg" ≡ "Ulpia Traiana" */
+    function normKey(v) {
+        return stripDiacritics(v).toLowerCase()
+            .replace(/^file\s*:\s*/, '')
+            .replace(/\.(jpe?g|jpeg|png|gif|svg|tiff?|webp|pdf|djvu|jp2)$/i, '')
+            .replace(/[^a-z0-9\u00c0-\u024f]+/g, ' ').trim();
+    }
+    /* DESCRIPTION: 50–150 characters from the source (spec §OUTPUT FORMAT) */
+    function clampDesc(v) {
+        var s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+        if (s.length > 150) return s.slice(0, 147).replace(/[\s,;.:]+\S*$/, '') + '…';
+        return s;
+    }
+    function slug(v) { return stripDiacritics(v).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'localitate'; }
 
-    function fetchJson(url, options, timeout) {
-        var c = new AbortController(), timer = setTimeout(function () { c.abort(); }, timeout || 120000);
-        return fetch(url, Object.assign({}, options || {}, { signal: c.signal })).then(function (r) {
+    function open() { var m = document.getElementById('babelModal'); if (m) { m.hidden = false; document.body.classList.add('babel-modal-open'); } }
+    function close() { var m = document.getElementById('babelModal'); if (m) { m.hidden = true; document.body.classList.remove('babel-modal-open'); } destroyMap(); }
+    function isPremium() { if (typeof window._dlIsPremium === 'function') return window._dlIsPremium(); var u = typeof window._authUser === 'function' ? window._authUser() : null; return !!(u && u.plan === 'premium'); }
+    function updateButton() { var b = document.getElementById('babelSearchBtn'); if (!b) return; b.disabled = running; b.textContent = running ? '…' : t('button'); }
+
+    /* ── resilient JSON fetch: timeout via AbortController, error classes ── */
+    function fetchJson(url, timeout) {
+        var c = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = c ? setTimeout(function () { c.abort(); }, timeout || 15000) : null;
+        var opts = c ? { signal: c.signal } : {};
+        return fetch(url, opts).then(function (r) {
             return r.json().catch(function () { return {}; }).then(function (data) {
-                if (!r.ok) { var e = new Error(data.message || data.error || ('HTTP ' + r.status)); e.status = r.status; e.data = data; throw e; }
+                if (!r.ok) {
+                    var e = new Error((data && (data.message || data.error)) || ('HTTP ' + r.status));
+                    e.status = r.status; e.data = data; throw e;
+                }
                 return data;
             });
-        }).finally(function () { clearTimeout(timer); });
+        }, function (e) {
+            if (timer) clearTimeout(timer);
+            throw e;
+        }).then(function (v) { if (timer) clearTimeout(timer); return v; });
+    }
+    function classifyError(e) {
+        if (e && e.name === 'AbortError') return 'timeout';
+        if (e && e.status) return 'http';
+        return 'network';
+    }
+    function settle(p) { return p.then(function (v) { return { ok: true, value: v }; }, function (e) { return { ok: false, error: e }; }); }
+
+    /* ════════════════════════ THE 7 SOURCES ════════════════════════ */
+
+    /* 1. Wikipedia — ro AND en, both attempted; one failing keeps the other. */
+    function wikiSearchOnce(query, lg) {
+        var u = new URL('https://' + lg + '.wikipedia.org/w/api.php');
+        u.search = new URLSearchParams({ action: 'query', format: 'json', origin: '*', list: 'search', srsearch: query, srlimit: WIKI_LIMIT, srprop: 'snippet|timestamp' });
+        return fetchJson(u.href, 12000).then(function (d) {
+            return ((d.query && d.query.search) || []).map(function (r, i) {
+                return {
+                    title: r.title, description: clampDesc(stripHtml(r.snippet)),
+                    type: 'article', source: 'wikipedia', lang: lg,
+                    url: 'https://' + lg + '.wikipedia.org/wiki/' + encodeURIComponent(String(r.title).replace(/ /g, '_')),
+                    rank: i, meta: { lang: lg, updated: r.timestamp || null }
+                };
+            });
+        });
+    }
+    function sourceWikipedia(query) {
+        return Promise.all([settle(wikiSearchOnce(query, 'ro')), settle(wikiSearchOnce(query, 'en'))]).then(function (rs) {
+            var oks = rs.filter(function (r) { return r.ok; });
+            if (!oks.length) throw rs[0].error;
+            var results = [], seen = {};
+            oks.forEach(function (r) {
+                r.value.forEach(function (item) { var k = normKey(item.title); if (!k || seen[k]) return; seen[k] = 1; results.push(item); });
+            });
+            return { results: results, partial: oks.length < 2 };
+        });
     }
 
-    async function reverse(center) {
-        var delay = Math.max(0, 1000 - (Date.now() - lastNominatimAt)); if (delay) await new Promise(function (r) { setTimeout(r, delay); });
-        lastNominatimAt = Date.now();
-        var u = new URL('https://nominatim.openstreetmap.org/reverse');
-        u.search = new URLSearchParams({ format: 'jsonv2', lat: center.lat, lon: center.lng, zoom: 10, addressdetails: 1, 'accept-language': lang() });
-        var d = await fetchJson(u.href, {}, 15000), a = d.address || {};
-        return { name: a.city || a.town || a.village || a.municipality || a.hamlet || '', county: (a.county || '').replace(/^Județul\s+/i, '') };
+    /* 2. Wikidata — SPARQL EntitySearch + labels/descriptions/coordinates. */
+    function sourceWikidata(query, lg) {
+        var sparql = 'SELECT ?item ?itemLabel ?itemDescription ?coord WHERE {'
+            + ' SERVICE wikibase:mwapi { bd:serviceParam wikibase:endpoint "www.wikidata.org";'
+            + ' wikibase:api "EntitySearch"; mwapi:search "' + String(query).replace(/"/g, '\\"') + '";'
+            + ' mwapi:language "' + lg + '"; mwapi:limit "20". ?item wikibase:apiOutputItem mwapi:item. }'
+            + ' OPTIONAL { ?item wdt:P625 ?coord. }'
+            + ' SERVICE wikibase:label { bd:serviceParam wikibase:language "' + lg + ',en". } } LIMIT 40';
+        var u = new URL('https://query.wikidata.org/sparql');
+        u.search = new URLSearchParams({ format: 'json', query: sparql });
+        return fetchJson(u.href, 30000).then(function (d) {
+            var bindings = (d.results && d.results.bindings) || [], seen = {}, results = [];
+            bindings.forEach(function (b, i) {
+                var id = String((b.item && b.item.value) || '').split('/').pop();
+                if (!id || seen[id]) return;
+                seen[id] = 1;
+                var label = (b.itemLabel && b.itemLabel.value) || id;
+                var desc = (b.itemDescription && b.itemDescription.value) || '';
+                var pt = String((b.coord && b.coord.value) || ''), coords = null;
+                var m = pt.match(/Point\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)/);
+                if (m) coords = { lat: Number(m[2]), lng: Number(m[1]) };
+                results.push({
+                    title: label, description: clampDesc(desc), type: 'structured', source: 'wikidata',
+                    url: 'https://www.wikidata.org/wiki/' + id, rank: i, coords: coords,
+                    typeKey: 'sparqlData', meta: { entityId: id }
+                });
+            });
+            return { results: results };
+        });
     }
 
-    function form(place) {
-        lastForm = { name: place.name || '', county: place.county || '' };
-        open();
-        document.getElementById('babelBody').innerHTML =
-            '<div class="evidence-intro"><span class="evidence-source-seal">✓</span><div><h2>' + esc(t('title')) + '</h2><p>' + esc(t('sourcePolicy')) + '</p></div></div>' +
-            '<form id="evidenceForm" class="evidence-form"><label>' + esc(t('locality')) + '<input id="evidenceLocality" required maxlength="120" value="' + esc(place.name) + '"></label>' +
-            '<label>' + esc(t('county')) + '<input id="evidenceCounty" maxlength="80" value="' + esc(place.county) + '"></label>' +
-            '<label class="wide">' + esc(t('aliases')) + '<input id="evidenceAliases" maxlength="500" placeholder="Apahida, Apahida I…"></label>' +
-            '<button type="submit">' + esc(t('run')) + '</button></form>' +
-            '<div class="evidence-method"><b>' + esc(t('methodTitle')) + '</b><span>' + esc(t('methodLine')) + '</span></div>';
-        document.getElementById('evidenceForm').onsubmit = function (e) { e.preventDefault(); run(document.getElementById('evidenceLocality').value, document.getElementById('evidenceCounty').value, document.getElementById('evidenceAliases').value); };
+    /* 3. OpenStreetMap Nominatim — gazetteer + ambiguity detection.
+     * Strictly throttled to 1 request/second (usage policy). */
+    function sourceOsm(query, lg) {
+        var wait = NOMINATIM_MIN_INTERVAL - (Date.now() - lastNominatimAt);
+        return (wait > 0 ? sleep(wait) : Promise.resolve()).then(function () {
+            lastNominatimAt = Date.now();
+            var u = new URL('https://nominatim.openstreetmap.org/search');
+            u.search = new URLSearchParams({ q: query, format: 'jsonv2', limit: 8, addressdetails: 1, 'accept-language': lg });
+            return fetchJson(u.href, 15000);
+        }).then(function (d) {
+            var arr = Array.isArray(d) ? d : [];
+            var results = arr.map(function (r, i) {
+                var name = r.name || String(r.display_name || '').split(',')[0] || '?';
+                return {
+                    title: name, description: clampDesc(r.display_name || name),
+                    type: 'place', source: 'osm',
+                    url: 'https://www.openstreetmap.org/' + (r.osm_type || 'node') + '/' + (r.osm_id || ''),
+                    rank: i, coords: { lat: Number(r.lat), lng: Number(r.lon) },
+                    meta: { category: r.category || null, osmType: r.type || null }
+                };
+            });
+            return { results: results, osmMatches: arr.map(function (r) { return { name: r.name || String(r.display_name || '').split(',')[0], display: r.display_name || '', type: r.type || '', category: r.category || '' }; }) };
+        });
     }
 
-    async function begin() {
-        var map = window._dlMap;
-        if (!map || map.getZoom() < MIN_ZOOM || running) { updateButton(); return; }
-        if (!isPremium()) { if (typeof window.openPremiumModal === 'function') window.openPremiumModal(); return; }
-        running = true; updateButton(); status(t('locating'));
-        try { form(await reverse(map.getCenter())); } catch (e) { form({ name: '', county: '' }); } finally { running = false; updateButton(); }
+    /* 4. Wikimedia Commons — photos, plans and old maps (namespace File:). */
+    function sourceCommons(query) {
+        var u = new URL('https://commons.wikimedia.org/w/api.php');
+        u.search = new URLSearchParams({
+            action: 'query', format: 'json', origin: '*', generator: 'search',
+            gsrsearch: query, gsrlimit: COMMONS_LIMIT, gsrnamespace: 6,
+            prop: 'imageinfo', iiprop: 'url|extmetadata|mime|size', iiurlwidth: 320
+        });
+        return fetchJson(u.href, 15000).then(function (d) {
+            var pages = (d.query && d.query.pages) || {};
+            var arr = Object.keys(pages).map(function (k) { return pages[k]; })
+                .filter(function (p) { return p.imageinfo && p.imageinfo[0]; })
+                .sort(function (a, b) { return (a.index || 99) - (b.index || 99); });
+            var results = [];
+            arr.forEach(function (p, i) {
+                var ii = p.imageinfo[0], em = ii.extmetadata || {}, mime = ii.mime || '';
+                if (/^audio\//.test(mime) || /^video\//.test(mime)) return; // media noise
+                var fname = String(p.title || '').replace(/^File:/, '');
+                var desc = stripHtml(em.ImageDescription && em.ImageDescription.value || '');
+                var cats = String(em.Categories && em.Categories.value || '');
+                var isMap = mime === 'image/svg+xml' || /\b(map|maps|hart|plan|kart|atlas)\b/i.test(fname + ' ' + desc + ' ' + cats);
+                var type = (mime === 'application/pdf' || mime === 'image/vnd.djvu') ? 'document' : (isMap ? 'map' : 'image');
+                results.push({
+                    title: fname.replace(/\.[a-z0-9]+$/i, ''),
+                    description: clampDesc(desc || (em.ObjectName && stripHtml(em.ObjectName.value)) || fname),
+                    type: type, source: 'commons',
+                    url: ii.descriptionurl || ('https://commons.wikimedia.org/wiki/' + encodeURIComponent(String(p.title).replace(/ /g, '_'))),
+                    image: ii.thumburl || ii.url || null, rank: i,
+                    meta: { license: em.LicenseShortName && em.LicenseShortName.value || null, artist: stripHtml(em.Artist && em.Artist.value || '') || null }
+                });
+            });
+            return { results: results };
+        });
     }
 
-    async function run(locality, county, aliases, localityId) {
-        if (!localityId) { locality = String(locality || '').trim(); if (!locality) return; }
-        running = true; updateButton(); status(t('search'));
-        var body = { locality: locality || undefined, county: county || null, aliases: String(aliases || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean), limit: 10, includeFullText: true };
-        if (localityId) body.localityId = String(localityId);
+    /* 5. DBpedia Lookup — semantic resources (English DBpedia only; the
+     * de/fr/… interwiki hits are duplicates of the same entities). */
+    function sourceDbpedia(query) {
+        var u = new URL('https://lookup.dbpedia.org/api/search');
+        u.search = new URLSearchParams({ query: query, limit: OTHER_LIMIT, format: 'JSON' });
+        return fetchJson(u.href, 15000).then(function (d) {
+            var docs = (d && d.docs) || [], results = [];
+            docs.forEach(function (doc, i) {
+                var res = String(first(doc.resource || doc.id) || '');
+                if (!/^https?:\/\/dbpedia\.org\/resource\//.test(res)) return;
+                var label = stripHtml(first(doc.label) || '') || decodeURIComponent(res.split('/resource/')[1] || 'DBpedia');
+                var cats = (doc.category || []).map(function (c) { return String(c).split('Category:').pop(); }).filter(Boolean).slice(0, 4);
+                results.push({
+                    title: label, description: clampDesc(stripHtml(first(doc.comment) || '')),
+                    type: 'structured', source: 'dbpedia', url: res, rank: i,
+                    typeKey: 'semanticResource', meta: { categories: cats }
+                });
+            });
+            return { results: results };
+        });
+    }
+
+    /* 6. Archive.org — digitised old documents and collections. */
+    function sourceArchive(query) {
+        var u = new URL('https://archive.org/advancedsearch.php');
+        var qs = new URLSearchParams({ q: query, rows: OTHER_LIMIT, page: 1, output: 'json' });
+        ['identifier', 'title', 'description', 'year', 'mediatype'].forEach(function (f) { qs.append('fl[]', f); });
+        u.search = qs;
+        return fetchJson(u.href, 15000).then(function (d) {
+            var docs = (d.response && d.response.docs) || [];
+            var MT = { texts: 'document', image: 'image', audio: 'audio', movies: 'video', collection: 'collection', software: 'collection', etree: 'audio' };
+            return {
+                results: docs.map(function (doc, i) {
+                    var id = doc.identifier || ('archive-' + i);
+                    var desc = Array.isArray(doc.description) ? doc.description[0] : doc.description;
+                    return {
+                        title: stripHtml(doc.title || id) || id,
+                        description: clampDesc(stripHtml(desc || '')),
+                        type: MT[doc.mediatype] || 'document', source: 'archive',
+                        url: 'https://archive.org/details/' + encodeURIComponent(id),
+                        rank: i, year: doc.year || null,
+                        typeKey: doc.mediatype === 'texts' ? 'digitalDocument' : null,
+                        meta: { mediatype: doc.mediatype || null }
+                    };
+                })
+            };
+        });
+    }
+
+    /* 7. Europeana — museum objects and cultural collections (needs a free
+     * wskey; without one the source is simply marked inactive). */
+    function europeanaKey() {
         try {
-            lastResult = await fetchJson(API_BASE + '/evidence/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 150000);
-            render();
-        } catch (e) {
-            if (e.data && e.data.error === 'ambiguous_locality' && e.data.matches && e.data.matches.length) { renderAmbiguous(e.data.matches); }
-            else { failure(e, locality, county); }
-        } finally { running = false; updateButton(); }
+            if (typeof localStorage !== 'undefined') {
+                var k = localStorage.getItem('babel.europeanaKey');
+                if (k) return String(k);
+            }
+        } catch (_) { /* private mode */ }
+        return (typeof window !== 'undefined' && window.DETECTLAB_EUROPEANA_KEY) || '';
+    }
+    function saveEuropeanaKey(key) {
+        try { if (typeof localStorage !== 'undefined') localStorage.setItem('babel.europeanaKey', String(key || '').trim()); } catch (_) { }
+    }
+    function sourceEuropeana(query, key) {
+        if (!key) { var e = new Error('nokey'); e.code = 'nokey'; return Promise.reject(e); }
+        var u = new URL('https://api.europeana.eu/record/v2/search.json');
+        u.search = new URLSearchParams({ wskey: key, query: query, rows: OTHER_LIMIT, profile: 'minimal' });
+        return fetchJson(u.href, 15000).then(function (d) {
+            if (d && d.success === false) {
+                var err = new Error(d.message || d.error || 'Europeana error');
+                err.code = (d && d.code) || 'invalid_apikey';
+                throw err;
+            }
+            var items = d.items || [];
+            var ET = { IMAGE: 'image', TEXT: 'document', VIDEO: 'video', SOUND: 'audio', '3D': 'image' };
+            return {
+                results: items.map(function (it, i) {
+                    var title = (Array.isArray(it.title) ? it.title[0] : it.title) || t('heritageObject');
+                    var prov = (Array.isArray(it.edmDataProvider) ? it.edmDataProvider[0] : it.edmDataProvider) || '';
+                    return {
+                        title: title, description: clampDesc(prov),
+                        type: ET[it.edmType] || 'document', source: 'europeana',
+                        url: 'https://www.europeana.eu/item' + (it.id || ''),
+                        rank: i, typeKey: 'heritageObject',
+                        meta: { provider: prov || null, edmType: it.edmType || null }
+                    };
+                })
+            };
+        });
     }
 
-    /* Every failure mode of POST /evidence/search has its own wording: the
-     * backend answers source problems (502/504), storage problems (503) and
-     * unknown bugs (500 + requestId) with distinct codes, and the modal must
-     * never degrade to an anonymous “Internal server error”. */
-    function failure(e, locality, county) {
-        var code = (e.data && e.data.error) || '';
-        var heading = t('failed'), detail = (e.data && e.data.message) || e.message || '';
-        if (code === 'source_unavailable' || e.status === 502) heading = t('sourceUnavailable');
-        else if (code === 'source_timeout' || e.status === 504 || e.name === 'AbortError') { heading = t('sourceTimeout'); detail = ''; }
-        else if (code === 'database_schema_outdated' || code === 'database_query_rejected') heading = t('schemaError');
-        else if (code === 'storage_write_failed' || code === 'database_unreachable' || code === 'search_failed' || e.status === 503) heading = t('storageError');
-        else if (code === 'locality_not_found') { heading = t('notFound'); detail = ''; }
-        var requestId = e.data && e.data.requestId ? '<small>' + esc(t('requestId')) + ': <code>' + esc(e.data.requestId) + '</code></small>' : '';
-        document.getElementById('babelBody').innerHTML = '<div class="babel-state"><p>' + esc(heading) + '</p>' + (detail && detail !== heading ? '<small>' + esc(detail) + '</small>' : '') + requestId + '<button class="evidence-retry" id="evidenceRetry">' + esc(t('retryLater')) + '</button></div>';
-        var retry = document.getElementById('evidenceRetry');
-        if (retry) retry.onclick = function () { form({ name: locality || '', county: county || '' }); };
+    /* ══════════════════ parallel orchestration + aggregation ══════════════════ */
+
+    function searchAll(query, lg, key, seq, onSource) {
+        var t0 = Date.now();
+        var runners = [
+            { id: 'wikipedia', run: function () { return sourceWikipedia(query); } },
+            { id: 'wikidata', run: function () { return sourceWikidata(query, lg); } },
+            { id: 'osm', run: function () { return sourceOsm(query, lg); } },
+            { id: 'commons', run: function () { return sourceCommons(query); } },
+            { id: 'dbpedia', run: function () { return sourceDbpedia(query); } },
+            { id: 'archive', run: function () { return sourceArchive(query); } },
+            { id: 'europeana', run: function () { return sourceEuropeana(query, key); } }
+        ];
+        var tasks = runners.map(function (r) {
+            return r.run().then(function (out) {
+                var st = {
+                    id: r.id, status: out.results && out.results.length ? 'ok' : 'empty',
+                    count: out.results ? out.results.length : 0, ms: Date.now() - t0,
+                    partial: !!out.partial, message: ''
+                };
+                if (seq === searchSeq && onSource) onSource(st);
+                return { source: st, results: out.results || [], extra: out };
+            }, function (e) {
+                var kind = (e && e.code === 'nokey') ? 'nokey' : classifyError(e);
+                var st = {
+                    id: r.id, status: kind, count: 0, ms: Date.now() - t0,
+                    message: (e && e.message) || '', invalidKey: !!(e && e.code === 'invalid_apikey') || !!(e && e.data && e.data.code === 'invalid_apikey')
+                };
+                if (seq === searchSeq && onSource) onSource(st);
+                return { source: st, results: [], extra: {} };
+            });
+        });
+        return Promise.all(tasks).then(function (outs) {
+            return { perSource: outs, durationMs: Date.now() - t0 };
+        });
     }
 
-    /* §1 — IDENTIFICARE INSUFICIENTĂ: pick the exact SIRUTA entity */
-    function renderAmbiguous(matches) {
-        open();
+    /* Merge findings across sources by normalised title, attach automatic
+     * period tags and a cross-source relevance score. */
+    function detectPeriods(r) {
+        var text = stripDiacritics((r.title || '') + ' ' + (r.description || '') + ' ' + (r.meta ? JSON.stringify(r.meta) : '')).toLowerCase();
+        var ids = [];
+        PERIOD_RULES.forEach(function (rule) { if (rule.re.test(text)) ids.push(rule.id); });
+        return ids;
+    }
+    function aggregate(outs, durationMs) {
+        var map = {}, order = [], totalBefore = 0;
+        outs.forEach(function (out) {
+            (out.results || []).forEach(function (item, rank) {
+                var key = normKey(item.title);
+                if (!key) return;
+                totalBefore++;
+                var ex = map[key];
+                if (!ex) {
+                    ex = item;
+                    ex.sources = [{ id: item.source, url: item.url, lang: item.lang || null }];
+                    ex.rank = rank; ex.periods = [];
+                    map[key] = ex; order.push(ex);
+                } else {
+                    if (!ex.sources.some(function (s) { return s.id === item.source; })) {
+                        ex.sources.push({ id: item.source, url: item.url, lang: item.lang || null });
+                    }
+                    if (!ex.description && item.description) ex.description = item.description;
+                    if (!ex.image && item.image) ex.image = item.image;
+                    if (!ex.coords && item.coords) ex.coords = item.coords;
+                    if (!ex.year && item.year) ex.year = item.year;
+                    if ((TYPE_PRIORITY[item.type] || 0) > (TYPE_PRIORITY[ex.type] || 0)) {
+                        ex.type = item.type; ex.typeKey = item.typeKey || null; ex.url = item.url; ex.title = item.title;
+                    }
+                    ex.rank = Math.min(ex.rank, rank);
+                }
+            });
+        });
+        order.forEach(function (r) {
+            r.periods = detectPeriods(r);
+            r.description = clampDesc(r.description || '');
+            r.score = r.sources.length * 100 + Math.max(0, 60 - r.rank * 5) + (r.image ? 4 : 0) + (r.coords ? 4 : 0);
+        });
+        order.sort(function (a, b) { return b.score - a.score; });
+        return { results: order, totalBeforeDedup: totalBefore, durationMs: durationMs };
+    }
+
+    function buildStats(query, perSource, agg) {
+        var sources = SOURCE_ORDER.map(function (id) {
+            var out = perSource.filter(function (o) { return o.source.id === id; })[0];
+            return out ? out.source : { id: id, status: 'error', count: 0, message: 'not run' };
+        });
+        return {
+            query: query, generatedAt: new Date().toISOString(),
+            durationMs: agg.durationMs,
+            total: agg.results.length,
+            totalBeforeDedup: agg.totalBeforeDedup,
+            duplicatesRemoved: agg.totalBeforeDedup - agg.results.length,
+            active: sources.filter(function (s) { return s.status === 'ok' || s.status === 'empty'; }).length,
+            sources: sources,
+            osmMatches: (perSource.filter(function (o) { return o.source.id === 'osm'; })[0] || { extra: {} }).extra.osmMatches || []
+        };
+    }
+
+    /* ── local result cache (localStorage, TTL) ── */
+    function cacheKey(q, lg) { return 'babel.cache.v1.' + lg + '.' + slug(q); }
+    function cacheGet(q, lg) {
+        try {
+            if (typeof localStorage === 'undefined') return null;
+            var raw = localStorage.getItem(cacheKey(q, lg));
+            if (!raw) return null;
+            var v = JSON.parse(raw);
+            if (!v || !v.ts || (Date.now() - v.ts) > CACHE_TTL) return null;
+            return v;
+        } catch (_) { return null; }
+    }
+    function cacheSet(q, lg, data) {
+        try {
+            if (typeof localStorage === 'undefined') return;
+            localStorage.setItem(cacheKey(q, lg), JSON.stringify({ ts: Date.now(), data: data }));
+        } catch (_) { /* quota / private mode */ }
+    }
+
+    /* ════════════════════════ rendering ════════════════════════ */
+
+    function destroyMap() { if (mapRef) { try { mapRef.remove(); } catch (_) { } mapRef = null; } }
+
+    function renderSearching() {
+        runState = 'searching';
+        var chips = SOURCE_ORDER.map(function (id) { return sourceChipHtml(sourceStatuses[id] || { id: id, status: 'pending' }); }).join('');
         document.getElementById('babelBody').innerHTML =
-            '<div class="dossier-ambiguous"><b>⚠ ' + esc(t('ambiguousTitle')) + '</b><p>' + esc(t('ambiguousHelp')) + '</p><ul>' +
-            matches.map(function (m, i) {
-                return '<li><button class="dossier-pick" data-id="' + esc(m.id) + '"><strong>' + esc(m.name) + '</strong><span>' + esc(m.county) + ' · ' + esc(m.uat || '—') + ' · SIRUTA ' + esc(m.siruta || '—') + '</span></button></li>';
-            }).join('') + '</ul><button class="evidence-retry" id="evidenceNew">' + esc(t('newSearch')) + '</button></div>';
-        Array.prototype.forEach.call(document.querySelectorAll('.dossier-pick'), function (btn) {
-            btn.onclick = function () { run(null, null, '', btn.getAttribute('data-id')); };
-        });
-        document.getElementById('evidenceNew').onclick = function () { form(lastForm || { name: '', county: '' }); };
+            '<div class="babel-state is-loading"><span class="babel-orbit"></span><p>' + esc(t('searching')) + '</p></div>' +
+            '<div class="babel-chip-label">' + esc(t('perSourceTitle')) + '</div>' +
+            '<div class="babel-chips" id="babelChips">' + chips + '</div>';
     }
 
-    /* ── small render helpers ── */
-    var CERT_CLS = { CERT: 'cert', PROBABLE: 'probable', CONTESTED: 'contested', HYPOTHESIS: 'hypothesis', NO_DATA: 'nodata' };
-    var CERT_ICON = { CERT: '🟢', PROBABLE: '🟡', CONTESTED: '🟠', HYPOTHESIS: '🔴', NO_DATA: '⚪' };
-    function certBadge(level) { var k = CERT_CLS[level] ? level : 'NO_DATA'; return '<span class="certainty-badge ' + CERT_CLS[k] + '">' + CERT_ICON[k] + ' ' + esc(t('cert' + k)) + '</span>'; }
-    function row(label, value) { return value == null || value === '' ? '' : '<div class="dossier-row"><span>' + esc(label) + '</span><b>' + value + '</b></div>'; }    function noSourceBlock() { return '<p class="dossier-nosource">' + esc(t('noSource')) + '</p>'; }
-    function section(key, title, inner, badge) {
-        return '<section class="dossier-section" id="dossier-sec-' + key + '"><h3>' + esc(title) + (badge || '') + '</h3>' + inner + '</section>';
+    function statusClass(status) {
+        if (status === 'ok') return 'is-ok';
+        if (status === 'empty') return 'is-empty';
+        if (status === 'nokey') return 'is-nokey';
+        if (status === 'pending') return 'is-pending';
+        return 'is-err';
     }
-    function sourceLine(src) {
-        if (!src) return '';
-        var url = safeUrl(src.pdfUrl || src.url || '');
-        return '<footer><div><strong>' + esc(src.title || '') + '</strong><span>' + esc((src.authors || []).join(', ')) + (src.year ? ' · ' + esc(src.year) : '') + (src.publication ? ' · ' + esc(src.publication) : '') + '</span></div>' + (url !== '#' ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(t('original')) + ' ↗</a>' : '') + '</footer>';
+    function chipNote(st) {
+        if (st.status === 'pending') return '…';
+        if (st.status === 'ok') return st.partial ? t('srcPartial') : t('srcOk');
+        if (st.status === 'empty') return t('srcEmpty');
+        if (st.status === 'nokey') return t('srcNokey');
+        if (st.status === 'timeout') return t('srcTimeout');
+        if (st.status === 'http') return t('srcHttp');
+        if (st.status === 'network') return t('srcNetwork');
+        return t('srcError');
     }
-    function entryHtml(entry) {
-        var ev = entry.evidence && entry.evidence[0] || {};
-        var page = ev.printedPage || ev.pdfPage || '—';
-        return '<article class="dossier-entry">' +
-            '<header>' + (entry.periods && entry.periods.length ? '<div class="evidence-periods">' + entry.periods.map(function (p) { return '<span>' + esc(p) + '</span>'; }).join('') + '</div>' : '') + certBadge(entry.certainty) + '</header>' +
-            '<p class="dossier-claim">' + esc(entry.claim) + '</p>' +
-            (ev.excerpt ? '<div class="evidence-quote dossier-quote"><small>' + esc(t('quote')) + '</small><blockquote>„' + esc(ev.excerpt) + '”</blockquote><div><b>' + esc(t('page')) + ':</b> ' + esc(page) + (ev.pdfPage ? ' <span>(PDF ' + esc(ev.pdfPage) + ')</span>' : '') + '</div></div>' : '') +
-            sourceLine(entry.source) + '</article>';
+    function chipInner(st) {
+        var count = st.status === 'ok' ? '<b>' + st.count + '</b>' : '';
+        return esc(t('src_' + st.id)) + ' ' + count + (statusClass(st.status) === 'is-err' ? '<i>✕</i>' : '') + '<small>' + esc(chipNote(st)) + '</small>';
     }
-    function entriesSection(key, title, data) {
-        if (!data) return section(key, title, noSourceBlock());
-        if (data.noVerifiedSource || !data.entries || !data.entries.length) {
-            return section(key, title, (data.note ? '<p class="dossier-note">' + esc(L(data.note)) + '</p>' : '') + noSourceBlock());
+    function sourceChipHtml(st, asButton) {
+        var open = asButton ? '<button type="button" class="babel-chip ' + statusClass(st.status) + (asButton.active ? ' is-active' : '') + '" data-source="' + esc(st.id) + '" title="' + esc(chipNote(st)) + '">'
+            : '<span class="babel-chip ' + statusClass(st.status) + '" id="babel-src-' + esc(st.id) + '" data-source="' + esc(st.id) + '" title="' + esc(chipNote(st)) + '">';
+        var close = asButton ? '</button>' : '</span>';
+        return open + chipInner(st) + close;
+    }
+
+    function chipUpdate(st) {
+        sourceStatuses[st.id] = st;
+        var el = document.getElementById('babel-src-' + st.id);
+        if (el) {
+            el.className = 'babel-chip ' + statusClass(st.status);
+            el.title = chipNote(st);
+            el.innerHTML = chipInner(st);
         }
-        return section(key, title, data.entries.map(entryHtml).join(''), '<span class="dossier-count">' + data.entries.length + '</span>');
     }
 
-    /* ── dossier sections ── */
-    function renderIdentity(d) {
-        var i = d.identity || {}, type = i.type ? (lang() === 'en' ? (TYPES_EN[i.type] || i.type) : i.type) : null;
-        var coords = i.coordinates ? (Number(i.coordinates.lat)).toFixed(5) + ', ' + (Number(i.coordinates.lng)).toFixed(5) : null;
-        var inner =
-            row(t('fName'), esc(i.name)) + row(t('fCounty'), esc(i.county)) + row(t('fUat'), esc(i.uat)) + row(t('fType'), esc(type)) +
-            row(t('fSiruta'), esc(i.siruta)) + row(t('fCountyCode'), esc(i.countyCode)) + row(t('fParent'), esc(i.parentSiruta)) +
-            row(t('fCoords'), coords) + row(t('fLat'), i.latitude != null ? esc(i.latitude) : null) + row(t('fLng'), i.longitude != null ? esc(i.longitude) : null) +
-            row(t('fRegSource'), esc((i.source && i.source.name) + (i.source && i.source.version ? ' · ' + i.source.version : ''))) +
-            (i.coordinatesNote ? '<p class="dossier-note">' + esc(L(i.coordinatesNote)) + '</p>' : '') +
-            (i.source && i.source.url ? '<a class="dossier-reglink" href="' + esc(safeUrl(i.source.url)) + '" target="_blank" rel="noopener noreferrer">' + esc(i.source.url) + ' ↗</a>' : '');
-        return section('identity', t('sectIdentity'), inner, certBadge('CERT'));
+    function renderForm(prefill) {
+        runState = 'form';
+        destroyMap();
+        document.getElementById('babelBody').innerHTML =
+            '<div class="babel-intro"><span class="babel-intro-seal">7×</span><div>' +
+            '<h2>' + esc(t('title')) + '</h2><p>' + esc(t('intro')) + '</p>' +
+            '<p class="babel-policy">' + esc(t('sourcesPolicy')) + '</p></div></div>' +
+            '<form id="babelForm" class="babel-searchbar">' +
+            '<label><span class="vh">' + esc(t('locality')) + '</span>' +
+            '<input id="babelQuery" required maxlength="120" autocomplete="off" placeholder="' + esc(t('placeholder')) + '" value="' + esc(prefill != null ? prefill : formValues.query) + '"></label>' +
+            '<button type="submit">' + esc(t('run')) + '</button></form>' +
+            '<details class="babel-keypanel"><summary>' + esc(t('keyTitle')) + '</summary>' +
+            '<p>' + esc(t('keyHelp')) + '</p>' +
+            '<div class="babel-keyrow"><input id="babelKey" maxlength="80" autocomplete="off" placeholder="' + esc(t('keyPlaceholder')) + '" value="' + esc(europeanaKey()) + '">' +
+            '<button type="button" id="babelKeySave">' + esc(t('keySave')) + '</button></div>' +
+            '<p class="babel-keynote" id="babelKeyNote" hidden></p></details>';
+        var f = document.getElementById('babelForm');
+        f.onsubmit = function (e) { e.preventDefault(); run(document.getElementById('babelQuery').value); };
+        var qi = document.getElementById('babelQuery');
+        if (qi && typeof qi.focus === 'function') qi.focus();
+        var saveBtn = document.getElementById('babelKeySave');
+        saveBtn.onclick = function () {
+            saveEuropeanaKey(document.getElementById('babelKey').value);
+            var n = document.getElementById('babelKeyNote');
+            n.hidden = false; n.textContent = t('keySaved');
+        };
     }
-    function renderNames(d) {
-        var n = d.historicalNames || {};
-        if (n.noVerifiedSource || !n.entries || !n.entries.length) return entriesSection('names', t('sectNames'), n);
-        var table = '<table class="dossier-table"><thead><tr><th>' + esc(t('colForm')) + '</th><th>' + esc(t('colType')) + '</th><th>' + esc(t('colLang')) + '</th><th>' + esc(t('colVerified')) + '</th></tr></thead><tbody>' +
-            n.entries.map(function (e) { return '<tr><td>' + esc(e.form) + '</td><td>' + esc((ALIAS_TYPES[lang()][e.aliasType] || e.aliasType)) + '</td><td>' + esc(e.language || '—') + '</td><td>' + (e.verified ? '✓ ' + esc(t('verifiedYes')) : '○ ' + esc(t('verifiedNo'))) + '</td></tr>'; }).join('') + '</tbody></table>' +
-            (n.note ? '<p class="dossier-note">' + esc(L(n.note)) + '</p>' : '');
-        return section('names', t('sectNames'), table, '<span class="dossier-count">' + n.entries.length + '</span>');
+
+    /* Filtered view of the aggregated results (type + period + source). */
+    function filteredResults() {
+        return (lastAgg || []).filter(function (r) {
+            if (uiFilters.type !== 'all' && r.type !== uiFilters.type) return false;
+            if (uiFilters.period === 'unspecified') { if (r.periods.length) return false; }
+            else if (uiFilters.period !== 'all' && r.periods.indexOf(uiFilters.period) === -1) return false;
+            if (uiFilters.source !== 'all' && !r.sources.some(function (s) { return s.id === uiFilters.source; })) return false;
+            return true;
+        });
     }
-    function renderAttestation(d) {
-        var a = d.firstAttestation || {};
-        if (a.status !== 'DOCUMENTED') return section('attestation', t('sectAttestation'), noSourceBlock() + certBadge('NO_DATA'));
-        var conflicts = a.conflicts && a.conflicts.length
-            ? '<div class="dossier-conflicts"><b>' + esc(t('conflictsIntro')) + '</b><ul>' + a.conflicts.map(function (c) { return '<li>' + esc(c.year) + ' — „' + esc(String(c.excerpt || '').slice(0, 220)) + '”' + (c.source && c.source.title ? ' <i>(' + esc(c.source.title) + ')</i>' : '') + '</li>'; }).join('') + '</ul><p>' + esc(t('conflictsNote')) + '</p></div>' : '';
-        var inner =
-            row(t('fYear'), esc(a.year)) + row(t('fHistoricalForm'), esc(a.historicalForm)) +
-            row(t('fDocumentType'), esc(a.documentType)) + row(t('fDocumentLang'), esc(a.documentLanguage)) +
-            (a.excerpt ? '<div class="evidence-quote dossier-quote"><small>' + esc(t('quote')) + '</small><blockquote>„' + esc(a.excerpt) + '”</blockquote></div>' : '') +
-            conflicts + (a.note ? '<p class="dossier-note">' + esc(L(a.note)) + '</p>' : '') +
-            sourceLine(a.source);
-        return section('attestation', t('sectAttestation'), inner, certBadge(a.certainty));
-    }
-    function renderHistory(d) {
-        var h = d.history || { buckets: [] };
-        var inner = (h.note ? '<p class="dossier-note">' + esc(L(h.note)) + '</p>' : '') + h.buckets.map(function (b) {
-            var has = b.entries && b.entries.length;
-            return '<div class="dossier-period' + (has ? '' : ' is-empty') + '"><h4>' + esc(L(b.label)) + (has ? ' <span>(' + b.entries.length + ')</span>' : '') + '</h4>' + (has ? b.entries.map(entryHtml).join('') : '<p class="dossier-period-empty">' + esc(t('noSource')) + '</p>') + '</div>';
+
+    function resultHtml(r) {
+        var typeLabel = r.typeKey ? t(r.typeKey) : t('type_' + r.type);
+        var badges = (r.sources || []).map(function (s) {
+            var url = safeUrl(s.url || '');
+            var lab = t('src_' + s.id) + (s.lang ? ' (' + s.lang.toUpperCase() + ')' : '');
+            return url !== '#' ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(lab) + '</a>' : '<span>' + esc(lab) + '</span>';
         }).join('');
-        return section('history', t('sectHistory'), inner);
-    }
-    function renderSites(d) {
-        var s = d.ranSites || {};
-        var banner = '<div class="dossier-banner"><b>⧉ ' + esc(t('ranPendingTitle')) + '</b><p>' + esc(t('ranPendingBody')) + '</p>' +
-            (s.officialPortals && s.officialPortals.length ? '<div class="dossier-portals"><span>' + esc(t('officialPortals')) + ':</span> ' + s.officialPortals.map(function (p) { return '<a href="' + esc(safeUrl(p.url)) + '" target="_blank" rel="noopener noreferrer">' + esc(p.name) + ' ↗</a>'; }).join('') + '</div>' : '') + '</div>';
-        var sites = (s.entries || []).map(function (site) {
-            return '<article class="dossier-site">' +
-                '<h4>' + esc(L(site.name)) + '</h4>' + certBadge(site.certainty) +
-                row(t('fRanCode'), site.ranCode ? esc(site.ranCode) : '<i>' + esc(t('notIdentified')) + '</i>') +
-                row(t('fCategory'), esc(L(site.categoryLabel))) +
-                row(t('fSiteType'), esc(L(site.type))) +
-                row(t('fComponents'), esc(site.components)) +
-                row(t('fEpoch'), site.epoch ? esc(L(site.epoch)) : null) +
-                row(t('fPeriod'), site.periods && site.periods.length ? esc(site.periods.join(', ')) : null) +
-                row(t('fCulture'), site.culture ? esc(site.culture) : '<i>' + esc(t('unknownCulture')) + '</i>') +
-                row(t('fChronology'), esc(site.chronology)) +
-                (site.description ? '<p class="dossier-desc">' + esc(site.description) + '</p>' : '') +
-                row(t('fCoords'), site.coordinates ? esc(site.coordinates.lat + ', ' + site.coordinates.lng) : '<i>' + esc(t('notIdentified')) + '</i>') +
-                row(t('fLmi'), site.lmiCode ? esc(site.lmiCode) : '<i>' + esc(t('notIdentified')) + '</i>') +
-                row(t('fLinkRan'), site.links && site.links.ran ? '<a href="' + esc(safeUrl(site.links.ran)) + '" target="_blank" rel="noopener noreferrer">' + esc(site.links.ran) + '</a>' : '<i>' + esc(t('notIdentified')) + '</i>') +
-                (site.links && site.links.other && safeUrl(site.links.other) !== '#' ? row(t('fOtherSources'), '<a href="' + esc(safeUrl(site.links.other)) + '" target="_blank" rel="noopener noreferrer">' + esc(t('original')) + ' ↗</a>') : '') +
-                (site.pendingIntegration ? '<p class="dossier-note">' + esc(L(site.pendingIntegration)) + '</p>' : '') +
-                (site.evidence && site.evidence.length ? site.evidence.map(function (ev) { return ev.excerpt ? '<div class="evidence-quote dossier-quote"><small>' + esc(t('quote')) + '</small><blockquote>„' + esc(ev.excerpt) + '”</blockquote></div>' : ''; }).join('') : '') +
-                sourceLine(site.source) + '</article>';
-        }).join('');
-        var note = s.note ? '<p class="dossier-note">' + esc(L(s.note)) + '</p>' : '';
-        return section('sites', t('sectSites'), banner + note + (sites || noSourceBlock()), s.entries && s.entries.length ? '<span class="dossier-count">' + s.entries.length + '</span>' : '');
-    }
-    function renderNearby(d) {
-        var n = d.nearbySites || {};
-        if (!n.entries || !n.entries.length) return section('nearby', t('sectNearby'), '<p class="dossier-note">' + esc(L(n.note) || t('nearbyNote')) + '</p>');
-        return section('nearby', t('sectNearby'), n.entries.map(entryHtml).join(''));
-    }
-    function renderChecks(d) {
-        var checks = d.identityChecks || [];
-        var inner = '<p class="dossier-note">' + esc(t('checksIntro')) + '</p><ul class="dossier-checks">' + checks.map(function (c) {
-            var mark = c.status === 'PASS' ? '<span class="check pass">✓ ' + esc(t('checkPass')) + '</span>' : c.status === 'PENDING' ? '<span class="check pending">◔ ' + esc(t('checkPending')) + '</span>' : '<span class="check fail">✕ ' + esc(t('checkFail')) + '</span>';
-            return '<li><div><b>' + esc(c.id) + '</b> ' + esc(L(c.label)) + '</div><div>' + mark + ' <small>' + esc(L(c.detail)) + '</small></div></li>';
-        }).join('') + '</ul>';
-        return section('checks', t('sectChecks'), inner);
-    }
-    function renderSources(d) {
-        var levelName = { 1: t('level1'), 2: t('level2'), 3: t('level3'), 4: t('level4') };
-        var inner = '<ul class="dossier-sources">' + (d.sources || []).map(function (s) {
-            var detail = s.detail ? ' <small>' + esc((s.detail.authors || []).join(', ') + (s.detail.year ? ' · ' + s.detail.year : '') + (s.detail.publication ? ' · ' + s.detail.publication : '')) + '</small>' : '';
-            return '<li><span class="source-level lv' + s.level + '">' + esc(levelName[s.level] || s.level) + '</span><div><b>' + esc(L(s.name)) + '</b>' + detail + (s.role ? '<p>' + esc(L(s.role)) + '</p>' : '') + (s.status === 'NOT_INTEGRATED' ? ' <em>· ' + esc(t('notIntegrated')) + '</em>' : '') + (s.url && safeUrl(s.url) !== '#' ? ' <a href="' + esc(safeUrl(s.url)) + '" target="_blank" rel="noopener noreferrer">↗</a>' : '') + '</div></li>';
-        }).join('') + '</ul>';
-        return section('sources', t('sectSources'), inner);
-    }
-    function renderCertainty(d) {
-        var c = d.certainty || {};
-        var inner = [
-            [t('cIdentification'), c.identification], [t('cNames'), c.historicalNames], [t('cAttestation'), c.firstAttestation],
-            [t('cHistory'), c.history], [t('cSites'), c.archaeologicalSites], [t('cToponymy'), c.toponymy], [t('cOther'), c.otherInfo]
-        ].map(function (r) { return '<div class="dossier-certainly-row"><span>' + esc(r[0]) + '</span>' + certBadge(r[1] || 'NO_DATA') + '</div>'; }).join('');
-        return section('certainty', t('sectCertainty'), inner);
+        var meta = [];
+        if (r.year) meta.push(esc(t('year')) + ': ' + esc(r.year));
+        if (r.coords) meta.push(esc(r.coords.lat.toFixed(4)) + ', ' + esc(r.coords.lng.toFixed(4)));
+        if (r.meta && r.meta.license) meta.push(esc(r.meta.license));
+        if (r.meta && r.meta.artist) meta.push(esc(r.meta.artist));
+        if (r.meta && r.meta.provider) meta.push(esc(r.meta.provider));
+        if (r.meta && r.meta.mediatype) meta.push(esc(r.meta.mediatype));
+        return '<article class="babel-result" data-source="' + esc((r.sources[0] || {}).id || '') + '">' +
+            (r.image && safeUrl(r.image) !== '#' ? '<img src="' + esc(safeUrl(r.image)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
+            '<div class="babel-result-main">' +
+            '<div class="babel-result-top"><span class="babel-result-type t-' + esc(r.type) + '">' + esc(typeLabel) + '</span>' +
+            '<span class="babel-result-sources">' + badges + (r.sources && r.sources.length > 1 ? '<em>' + r.sources.length + ' ' + esc(t('sourcesCount')) + '</em>' : '') + '</span></div>' +
+            '<h3><a href="' + esc(safeUrl(r.url)) + '" target="_blank" rel="noopener noreferrer">' + esc(r.title) + '</a></h3>' +
+            (r.description ? '<p>' + esc(r.description) + '</p>' : '') +
+            (r.periods && r.periods.length ? '<div class="babel-periods">' + r.periods.map(function (p) { return '<span>' + esc(t('p_' + p)) + '</span>'; }).join('') + '</div>' : '') +
+            (meta.length ? '<div class="babel-result-meta">' + meta.join(' · ') + '</div>' : '') +
+            '</div></article>';
     }
 
-    function claimHtml(c, index) {
-        var ev = (c.evidence && c.evidence[0]) || {}, loc = (c.locations && c.locations[0]) || {}, src = c.source || {}, url = safeUrl(src.pdfUrl || src.url), page = ev.printedPage || ev.pdfPage || '—';
-        return '<article class="evidence-card"><header><div><span class="evidence-index">0' + (index + 1) + '</span><span class="evidence-category">' + esc(c.category) + '</span></div>' + confidence(c) + '</header><h3>' + esc(c.claim) + '</h3>' + (c.periods && c.periods.length ? '<div class="evidence-periods">' + c.periods.map(function (p) { return '<span>' + esc(p) + '</span>'; }).join('') + '</div>' : '') + '<div class="evidence-quote"><small>' + esc(t('quote')) + '</small><blockquote>„' + esc(ev.excerpt || '') + '”</blockquote><div><b>' + esc(t('page')) + ':</b> ' + esc(page) + (ev.pdfPage ? ' <span>(PDF ' + esc(ev.pdfPage) + ')</span>' : '') + ' · ' + esc(ev.extractionMethod || '') + '</div></div><details><summary>' + esc(t('why')) + '</summary><p>' + esc(loc.attributionReason || '') + '</p><code>' + esc(loc.role || 'UNKNOWN') + '</code></details>' + (c.images && c.images.length ? '<div class="evidence-images"><b>' + esc(t('images')) + '</b><ul>' + c.images.map(imageHtml).join('') + '</ul></div>' : '') + '<footer><div><strong>' + esc(src.title || '') + '</strong><span>' + esc((src.authors || []).join(', ')) + (src.year ? ' · ' + esc(src.year) : '') + (src.publication ? ' · ' + esc(src.publication) : '') + '</span></div><a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(t('original')) + ' ↗</a></footer></article>';
-    }
-    function confidence(c) { var pct = Math.round((c.confidence || 0) * 100), level = c.confidenceLevel || 'LOW'; return '<span class="evidence-confidence ' + level.toLowerCase() + '">' + esc(t('confidence')) + ' ' + pct + '% · ' + esc(level) + '</span>'; }
-    function imageHtml(image) { return '<li><span>' + esc(image.figureNumber || image.type) + '</span><p>' + esc(image.caption) + '</p><small>PDF p. ' + esc(image.pdfPage || '—') + ' · ' + esc(image.type) + (image.imageRepublicationAllowed ? '' : ' · © status necunoscut') + '</small></li>'; }
+    function renderResults() {
+        runState = 'results';
+        destroyMap();
+        var s = lastStats, q = lastQuery;
+        var active = s.active, total = s.total;
+        var failed = s.sources.filter(function (x) { return x.status === 'timeout' || x.status === 'http' || x.status === 'network' || x.status === 'error'; });
+        var invalidKey = s.sources.some(function (x) { return x.id === 'europeana' && x.invalidKey; });
+        var visible = filteredResults();
+        var hasCoords = (lastAgg || []).some(function (r) { return r.coords; });
+        var mapAvailable = typeof window.L !== 'undefined' && typeof window.L.map === 'function';
 
-    function render() {
-        var claims = lastResult.archaeologicalInformation || [], docs = lastResult.documents || [], loc = lastResult.locality || {}, d = lastResult.dossier;
-        var head = '<header class="evidence-head"><div><span>DETECTLAB · HISTORICAL DOSSIER</span><h2>' + esc(loc.currentName) + (loc.county ? ', ' + esc(loc.county) : '') + '</h2><p>' + claims.length + ' ' + esc(t('claims')) + ' · ' + docs.length + ' ' + esc(t('docs')) + (d ? ' · SIRUTA ' + esc(d.identity && d.identity.siruta || loc.siruta || '—') : '') + '</p></div><button id="evidenceNew">＋ ' + esc(t('locality')) + '</button></header>' +
-            '<div class="evidence-sourcebar"><b>✓ ' + esc(t('sourcePolicy')) + '</b><span>' + esc((lastResult.audit && lastResult.audit.verifiedClaims) || 0) + ' verified</span></div>' +
-            (lastResult.truncated ? '<div class="dossier-banner"><b>⏱ ' + esc(t('truncatedNotice')) + '</b></div>' : '');
-        var body;
-        if (d) {
-            var nav = ['identity', 'names', 'attestation', 'history', 'admin', 'population', 'families', 'buildings', 'sites', 'nearby', 'vanished', 'toponymy', 'maps', 'checks', 'sources', 'certainty'];
-            var navLabels = { identity: t('sectIdentity'), names: t('sectNames'), attestation: t('sectAttestation'), history: t('sectHistory'), admin: t('sectAdmin'), population: t('sectPopulation'), families: t('sectFamilies'), buildings: t('sectBuildings'), sites: t('sectSites'), nearby: t('sectNearby'), vanished: t('sectVanished'), toponymy: t('sectToponymy'), maps: t('sectMaps'), checks: t('sectChecks'), sources: t('sectSources'), certainty: t('sectCertainty') };
-            body = '<nav class="dossier-nav">' + nav.map(function (k) { return '<button data-target="dossier-sec-' + k + '">' + esc(navLabels[k]) + '</button>'; }).join('') + '</nav>' +
-                renderIdentity(d) + renderNames(d) + renderAttestation(d) + renderHistory(d) +
-                entriesSection('admin', t('sectAdmin'), d.administrativeEvolution) +
-                entriesSection('population', t('sectPopulation'), d.population) +
-                entriesSection('families', t('sectFamilies'), d.familiesAndEstates) +
-                entriesSection('buildings', t('sectBuildings'), d.historicBuildings) +
-                renderSites(d) + renderNearby(d) +
-                entriesSection('vanished', t('sectVanished'), d.vanishedLocalities) +
-                entriesSection('toponymy', t('sectToponymy'), d.toponymy) +
-                entriesSection('maps', t('sectMaps'), d.historicalMaps) +
-                renderChecks(d) + renderSources(d) + renderCertainty(d) +
-                (claims.length ? section('appendix', t('sectAppendix'), '<p class="dossier-note">' + esc(t('quotesRo')) + '</p><section class="evidence-list">' + claims.map(claimHtml).join('') + '</section>') : '') +
-                '<p class="dossier-footer-meta">' + esc(t('generatedAt')) + ': ' + esc(d.generatedAt || '') + ' · ' + esc(t('schemaLabel')) + ' ' + esc(d.schemaVersion || '') + ' · <a href="https://github.com/andrei-roba29/DetectLab_web_deploy/blob/main/data/dossier-spec/' + (lang() === 'en' ? 'HISTORICAL_RECORD_PROMPT_EN.md' : 'FISA_ISTORICA_PROMPT_RO.md') + '" target="_blank" rel="noopener noreferrer">' + esc(t('specRef')) + ' ↗</a></p>';
+        /* head + stats */
+        var html =
+            '<header class="babel-results-head"><div><span>DETECTLAB · MULTI-SOURCE SEARCH</span>' +
+            '<h2>„' + esc(q) + '”</h2><p><b>' + total + '</b> ' + esc(t('results')) + ' · <b>' + active + '/7</b> ' + esc(t('activeSources')) +
+            (s.duplicatesRemoved > 0 ? ' · <b>' + s.duplicatesRemoved + '</b> ' + esc(t('duplicates')) : '') +
+            ' · ' + (s.durationMs / 1000).toFixed(1) + ' ' + esc(t('seconds')) + '</p></div>' +
+            '<button type="button" id="babelNew">' + esc(t('newSearch')) + '</button></header>';
+
+        /* live per-source chips (clickable → filter by source) */
+        html += '<div class="babel-chip-label">' + esc(t('perSourceTitle')) + '</div>' +
+            '<div class="babel-chips" id="babelChips">' + s.sources.map(function (st) {
+            return sourceChipHtml(st, { active: uiFilters.source === st.id });
+        }).join('') + '</div>';
+
+        if (cachedAt) html += '<p class="babel-cachenote">' + esc(t('cachedFrom')) + ' · ' + esc(new Date(cachedAt).toLocaleString()) + ' <button type="button" id="babelRefresh">' + esc(t('refresh')) + '</button></p>';
+        if (failed.length) {
+            html += '<p class="babel-partial">' + esc(t('partialNote')) + ' ' + failed.map(function (f) {
+                return '<span>' + esc(t('src_' + f.id)) + ' (' + esc(t('src' + f.status.charAt(0).toUpperCase() + f.status.slice(1)) || f.status) + ')</span>';
+            }).join('') + '</p>';
+        }
+        if (invalidKey) html += '<p class="babel-partial">' + esc(t('keyInvalid')) + '</p>';
+
+        /* ambiguity: several OSM matches → refine buttons (spec §EDGE CASES) */
+        if (s.osmMatches && s.osmMatches.length > 1) {
+            html += '<div class="babel-ambiguous"><b>⚠ ' + esc(t('ambiguousTitle')) + '</b><p>' + esc(t('ambiguousHelp')) + '</p><div class="babel-ambiguous-list">' +
+                s.osmMatches.map(function (m) {
+                    var where = String(m.display || '').split(',').slice(1, 3).join(',').trim();
+                    return '<button type="button" class="babel-pick" data-query="' + esc(m.name) + '"><strong>' + esc(m.name) + '</strong><span>' + esc([m.type, where].filter(Boolean).join(' · ')) + '</span></button>';
+                }).join('') + '</div></div>';
+        }
+
+        /* zero results → suggested alternative searches (spec §EDGE CASES) */
+        if (total === 0) {
+            var variants = [stripDiacritics(q), q.split(/[\s,]+/)[0], q + ' arheologic', q + ' archaeological'].filter(function (v, i, a) { return v && v.length > 2 && a.indexOf(v) === i; });
+            html += '<div class="babel-empty"><p>' + esc(t('noResults')) + ' „' + esc(q) + '”.</p><p>' + esc(t('noResultsHelp')) + '</p>' +
+                '<div class="babel-suggest"><b>' + esc(t('suggestions')) + ':</b> ' + variants.map(function (v) { return '<button type="button" class="babel-pick" data-query="' + esc(v) + '">' + esc(v) + '</button>'; }).join('') + '</div></div>';
         } else {
-            body = '<section class="evidence-list">' + (claims.length ? claims.map(claimHtml).join('') : '<div class="babel-empty">' + esc(t('no')) + '</div>') + '</section>';
+            /* timeline of periods (automatic classification, clickable filter) */
+            var counts = {};
+            (lastAgg || []).forEach(function (r) { r.periods.forEach(function (p) { counts[p] = (counts[p] || 0) + 1; }); var u = r.periods.length === 0; if (u) counts.unspecified = (counts.unspecified || 0) + 1; });
+            var tl = PERIOD_ORDER.filter(function (p) { return counts[p]; }).map(function (p) {
+                return '<button type="button" data-period="' + p + '"' + (uiFilters.period === p ? ' class="is-active"' : '') + '><span>' + esc(t('p_' + p)) + '</span><b>' + counts[p] + '</b></button>';
+            }).join('');
+            if (counts.unspecified) tl += '<button type="button" data-period="unspecified"' + (uiFilters.period === 'unspecified' ? ' class="is-active"' : '') + '><span>' + esc(t('p_unspecified')) + '</span><b>' + counts.unspecified + '</b></button>';
+            if (tl) html += '<div class="babel-timeline"><span class="babel-timeline-label">' + esc(t('timeline')) + ' <small>(' + esc(t('timelineNote')) + ')</small></span><div class="babel-timeline-strip">' + tl + '</div></div>';
+
+            /* mini map with every geolocated finding */
+            if (hasCoords && mapAvailable) html += '<div class="babel-mapwrap"><span class="babel-maplabel">' + esc(t('mapView')) + '</span><div class="babel-map" id="babelMap"></div></div>';
+
+            /* filters */
+            var types = TYPE_ORDER.filter(function (ty) { return (lastAgg || []).some(function (r) { return r.type === ty; }); });
+            html += '<div class="babel-toolbar">' +
+                '<label><span>' + esc(t('type')) + '</span><select id="babelTypeFilter"><option value="all">' + esc(t('all')) + '</option>' +
+                types.map(function (ty) { return '<option value="' + ty + '"' + (uiFilters.type === ty ? ' selected' : '') + '>' + esc(t('type_' + ty)) + '</option>'; }).join('') + '</select></label>' +
+                '<label><span>' + esc(t('period')) + '</span><select id="babelPeriodFilter"><option value="all">' + esc(t('all')) + '</option>' +
+                PERIOD_ORDER.filter(function (p) { return counts[p]; }).map(function (p) { return '<option value="' + p + '"' + (uiFilters.period === p ? ' selected' : '') + '>' + esc(t('p_' + p)) + '</option>'; }).join('') +
+                (counts.unspecified ? '<option value="unspecified"' + (uiFilters.period === 'unspecified' ? ' selected' : '') + '>' + esc(t('p_unspecified')) + '</option>' : '') +
+                '</select></label>' +
+                '<span class="babel-showing">' + esc(t('shown')) + ': ' + visible.length + ' ' + esc(t('of')) + ' ' + total + '</span></div>';
+
+            /* the results themselves */
+            html += '<div class="babel-results">' + (visible.length ? visible.map(resultHtml).join('') : '<div class="babel-empty">0 ' + esc(t('results')) + '</div>') + '</div>';
         }
-        document.getElementById('babelBody').innerHTML = head + body + '<div class="evidence-actions"><button id="evidenceExport">↓ ' + esc(t('export')) + '</button></div>';
-        document.getElementById('evidenceNew').onclick = function () { form({ name: loc.currentName || '', county: loc.county || '' }); };
-        document.getElementById('evidenceExport').onclick = function () { download('detectlab-dossier-' + slug(loc.currentName) + '.json', JSON.stringify(lastResult, null, 2)); };
-        Array.prototype.forEach.call(document.querySelectorAll('.dossier-nav button'), function (btn) {
-            btn.onclick = function () { var el = document.getElementById(btn.getAttribute('data-target')); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-        });
+
+        /* exports + provenance note */
+        html += '<div class="babel-exportbar"><span class="babel-period-note">' + esc(t('periodNote')) + '</span>' +
+            '<button type="button" id="babelExportJson">↓ ' + esc(t('exportJson')) + '</button>' +
+            '<button type="button" id="babelExportCsv">↓ ' + esc(t('exportCsv')) + '</button></div>' +
+            '<p class="babel-footer-meta">' + esc(t('generated')) + ': ' + esc(s.generatedAt) + '</p>';
+
+        document.getElementById('babelBody').innerHTML = html;
+        wireResults();
+        if (hasCoords && mapAvailable) mountMap();
     }
 
-    function slug(v) { return String(v || 'locality').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
-    function download(name, content) { var u = URL.createObjectURL(new Blob([content], { type: 'application/json;charset=utf-8' })), a = document.createElement('a'); a.href = u; a.download = name; a.click(); setTimeout(function () { URL.revokeObjectURL(u); }, 1000); }
+    function wireResults() {
+        var el;
+        el = document.getElementById('babelNew'); if (el) el.onclick = function () { cachedAt = null; renderForm(lastQuery); };
+        el = document.getElementById('babelRefresh'); if (el) el.onclick = function () { run(lastQuery, { bypassCache: true }); };
+        el = document.getElementById('babelExportJson'); if (el) el.onclick = function () { download(slug(lastQuery) + '.json', buildJsonExport(), 'application/json;charset=utf-8'); };
+        el = document.getElementById('babelExportCsv'); if (el) el.onclick = function () { download(slug(lastQuery) + '.csv', buildCsvExport(), 'text/csv;charset=utf-8'); };
+        Array.prototype.forEach.call(document.querySelectorAll('.babel-pick'), function (btn) {
+            btn.onclick = function () { run(btn.getAttribute('data-query'), { bypassCache: true }); };
+        });
+        Array.prototype.forEach.call(document.querySelectorAll('#babelChips .babel-chip'), function (btn) {
+            btn.onclick = function () {
+                var id = btn.getAttribute('data-source');
+                uiFilters.source = (uiFilters.source === id) ? 'all' : id;
+                renderResults();
+            };
+        });
+        Array.prototype.forEach.call(document.querySelectorAll('.babel-timeline-strip button'), function (btn) {
+            btn.onclick = function () {
+                var p = btn.getAttribute('data-period');
+                uiFilters.period = (uiFilters.period === p) ? 'all' : p;
+                renderResults();
+            };
+        });
+        var tf = document.getElementById('babelTypeFilter');
+        if (tf) tf.onchange = function () { uiFilters.type = tf.value; renderResults(); };
+        var pf = document.getElementById('babelPeriodFilter');
+        if (pf) pf.onchange = function () { uiFilters.period = pf.value; renderResults(); };
+    }
+
+    /* Leaflet mini-map with every geolocated finding (extension idea). */
+    function mountMap() {
+        var host = document.getElementById('babelMap');
+        if (!host) return;
+        var pts = (lastAgg || []).filter(function (r) { return r.coords; }).slice(0, 60);
+        if (!pts.length) return;
+        try {
+            var map = window.L.map(host, { scrollWheelZoom: false, zoomControl: true });
+            window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+            var latlngs = [];
+            pts.forEach(function (r) {
+                var ll = [r.coords.lat, r.coords.lng];
+                latlngs.push(ll);
+                window.L.circleMarker(ll, { radius: 7, color: '#d3a35d', weight: 2, fillColor: '#8a5a20', fillOpacity: 0.85 })
+                    .addTo(map).bindPopup('<b>' + esc(r.title) + '</b><br><small>' + esc((r.sources || []).map(function (s) { return t('src_' + s.id); }).join(' · ')) + '</small>');
+            });
+            map.fitBounds(latlngs, { padding: [18, 18], maxZoom: 13 });
+            setTimeout(function () { try { map.invalidateSize(); } catch (_) { } }, 80);
+            mapRef = map;
+        } catch (_) { /* leaflet missing or container hidden */ }
+    }
+
+    /* ── exports (JSON / CSV) over the CURRENTLY FILTERED results ── */
+    function exportRows() {
+        return filteredResults().map(function (r) {
+            return {
+                titlu: r.title,
+                descriere: r.description,
+                tip: r.typeKey ? t(r.typeKey) : t('type_' + r.type),
+                sursa: (r.sources || []).map(function (s) { return t('src_' + s.id) + (s.lang ? ' (' + s.lang + ')' : ''); }).join(' + '),
+                perioade: (r.periods || []).map(function (p) { return t('p_' + p); }).join(', '),
+                an: r.year || '',
+                coordonate: r.coords ? (r.coords.lat + ', ' + r.coords.lng) : '',
+                url: r.url
+            };
+        });
+    }
+    function buildJsonExport() {
+        return JSON.stringify({
+            query: lastQuery, language: lang(), generatedAt: lastStats && lastStats.generatedAt,
+            stats: {
+                total: lastStats.total, activeSources: lastStats.active + '/7',
+                duplicatesRemoved: lastStats.duplicatesRemoved, durationMs: lastStats.durationMs,
+                sources: lastStats.sources.map(function (s) { return { source: s.id, status: s.status, results: s.count }; })
+            },
+            results: exportRows()
+        }, null, 2);
+    }
+    function buildCsvExport() {
+        var rows = exportRows();
+        var cols = ['titlu', 'descriere', 'tip', 'sursa', 'perioade', 'an', 'coordonate', 'url'];
+        var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+        return '\uFEFF' + [cols.join(',')].concat(rows.map(function (r) { return cols.map(function (c) { return q(r[c]); }).join(','); })).join('\r\n');
+    }
+
+    function download(name, content, mime) {
+        var u = URL.createObjectURL(new Blob([content], { type: mime }));
+        var a = document.createElement('a');
+        a.href = u; a.download = 'detectlab-babel-' + name; a.click();
+        setTimeout(function () { URL.revokeObjectURL(u); }, 1000);
+    }
+
+    /* ════════════════════════ flow control ════════════════════════ */
+
+    /* every source down, or an unexpected crash → named error + retry */
+    function renderError() {
+        runState = 'error';
+        destroyMap();
+        var allFailed = lastError && lastError.allFailed;
+        document.getElementById('babelBody').innerHTML =
+            '<div class="babel-state"><p>' + esc(allFailed ? t('allSourcesFailed') : t('failed')) + '</p>' +
+            (!allFailed && lastError && lastError.message ? '<small>' + esc(lastError.message) + '</small>' : '') +
+            '<button type="button" class="babel-retry" id="babelRetry">' + esc(t('retry')) + '</button>' +
+            '<button type="button" class="babel-retry secondary" id="babelRetryForm">' + esc(t('newSearch')) + '</button></div>';
+        var rb = document.getElementById('babelRetry');
+        if (rb) rb.onclick = function () { run(lastError && lastError.query || lastQuery, { bypassCache: true }); };
+        var rf = document.getElementById('babelRetryForm');
+        if (rf) rf.onclick = function () { renderForm(lastQuery || ''); };
+    }
+
+    async function run(query, opts) {
+        query = String(query || '').trim();
+        if (!query || running) return;
+        opts = opts || {};
+        formValues.query = query;
+        uiFilters = { type: 'all', period: 'all', source: 'all' };
+        cachedAt = null;
+        lastError = null;
+        var lg = lang(), seq = ++searchSeq;
+        running = true; updateButton(); open();
+
+        /* cache hit? (30 min TTL, bypass with opts.bypassCache) */
+        if (!opts.bypassCache) {
+            var hit = cacheGet(query, lg);
+            if (hit) {
+                lastQuery = query; lastAgg = hit.data.agg; lastStats = hit.data.stats; cachedAt = hit.ts;
+                running = false; updateButton(); renderResults(); return;
+            }
+        }
+
+        sourceStatuses = {};
+        SOURCE_ORDER.forEach(function (id) { sourceStatuses[id] = { id: id, status: 'pending' }; });
+        renderSearching();
+        try {
+            var out = await searchAll(query, lg, europeanaKey(), seq, chipUpdate);
+            if (seq !== searchSeq) return; /* superseded by a newer search */
+            var agg = aggregate(out.perSource, out.durationMs);
+            var stats = buildStats(query, out.perSource, agg);
+            lastQuery = query; lastAgg = agg.results; lastStats = stats;
+
+            if (stats.active === 0) {
+                /* every source failed — say it plainly and offer a retry */
+                lastError = { allFailed: true, query: query };
+                renderError();
+                return;
+            }
+            cacheSet(query, lg, { agg: agg.results, stats: stats });
+            renderResults();
+        } catch (e) {
+            if (seq !== searchSeq) return;
+            lastError = { message: (e && e.message) || '', query: query };
+            renderError();
+        } finally {
+            if (seq === searchSeq) { running = false; updateButton(); }
+        }
+    }
+
+    function begin() {
+        if (running) return;
+        if (!isPremium()) { if (typeof window.openPremiumModal === 'function') window.openPremiumModal(); return; }
+        open();
+        renderForm(lastQuery || formValues.query);
+    }
 
     function apply() {
         var title = document.getElementById('babelModalTitle'), sub = document.getElementById('babelScrollSubtitle'), closeBtn = document.getElementById('babelClose'), scrollTitle = document.getElementById('babelScrollTitle');
@@ -432,19 +914,30 @@
         if (sub) sub.textContent = t('subtitle');
         if (closeBtn) closeBtn.setAttribute('aria-label', t('close'));
         var m = document.getElementById('babelModal');
-        if (m && !m.hidden) { if (lastResult) render(); else if (lastForm) form(lastForm); }
+        if (m && !m.hidden) {
+            if (runState === 'error') renderError();
+            else if (runState === 'results' && lastStats) renderResults();
+            else if (runState === 'searching') renderSearching();
+            else renderForm(lastQuery || formValues.query);
+        }
         updateButton();
     }
+
     function init() {
         var b = document.getElementById('babelSearchBtn'), x = document.getElementById('babelClose'), m = document.getElementById('babelModal');
         if (!b || !m) return;
         b.onclick = begin; x.onclick = close; m.onclick = function (e) { if (e.target === m) close(); };
         document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !m.hidden) close(); });
-        var wait = setInterval(function () { if (window._dlMap) { clearInterval(wait); window._dlMap.on('zoomend', updateButton); updateButton(); } }, 100);
-        setTimeout(function () { clearInterval(wait); updateButton(); }, 15000);
         var old = window.setLang; if (typeof old === 'function') window.setLang = function (v) { old(v); apply(); };
         apply();
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
-    window.DetectLabEvidenceEngine = { open: begin, close: close, research: run };
+
+    /* Public surface — research() drives the tests; _noThrottle() speeds them up. */
+    window.DetectLabEvidenceEngine = {
+        open: begin, close: close, research: run,
+        _noThrottle: function () { NOMINATIM_MIN_INTERVAL = 0; },
+        _export: { json: buildJsonExport, csv: buildCsvExport, rows: exportRows },
+        _filters: function () { return uiFilters; }
+    };
 })();
