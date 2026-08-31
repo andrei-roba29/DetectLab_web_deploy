@@ -147,7 +147,15 @@
         { id: 'bronze', re: /\bbronz|otomani|wietenberg|monteoru|coslogeni|succuleni/i },
         { id: 'iron', re: /epoca fierului|iron age|hallstatt|halstatt|la[ -]?tene|latene|\bcelt|scythian|scitic|bastarn|thracian|tracic|basarabi|padea|babadag/i },
         { id: 'dacian', re: /\bdacic|\bdacian|\bdacii\b|\bdacilor\b|\bdacia\b|\bgeto\b|\bgetii\b|burebista|decebal|sarmizegetusa regia|cetatile dacice|gradistea de munte/i },
-        { id: 'roman', re: /\bromans?\b|\bromane\b|\bromana\b|\bromani\b|\bromanii\b|\bromanilor\b|ulpia|apulum|porolissum|drobeta|tropaeum|adamclisi|castru|castra\b|castren|legion|legiune|\bcolonia\b|amphiteatr|amphitheatr|termele|thermae|villa rustica|trajan|traian|imperiul roman|roman empire|roman province|provincia dacia|dacia romana|roman fort|roman city|roman town|roman camp|roman road|roman bath|roman villa|drum roman|asezare roman/i },
+        /* Roman — a broad lexical field of terms that genuinely belong to the
+         * ancient Roman period (castrum, legion, oil lamp, burgus, villa …).
+         * The bare words "roman / romana / romani / romane / romanii /
+         * romanilor" are NOT triggers on their own, because once diacritics are
+         * stripped they could also be "român / română / români / române…"
+         * (Romanian, the language / nationality) and would produce false
+         * positives. They only count inside unambiguous compound phrases
+         * ("imperiul roman", "dacia romana", "roman empire", … ). */
+        { id: 'roman', re: /(\bcastr(u|a|e|ul|ului|elor|en|ense|orum)\b|\bleg(iune|iunea|iunii|iuni|ionar|ionari|ion|ions|ionary|ionarii|ionare)\b|\bopait(e|ul|ele|elor)?\b|\blucern\w*\b|\bburgus\b|\bvilla(e|s|rustica|rusticale)?\b|\bthermae\b|\bterm(e|ele|es|ae|arum)\b|\bamphitheatr\w*\b|\bamphiteatr\w*\b|\bamfiteatr\w*\b|\bforum\b|\bforul\b|\bapeduct\w*\b|\baqueduct\w*\b|\bcoloni(a|ae|e|ile|iilor)\b|\bmunicipi\w*\b|\blimes\b|\bcenturion\w*\b|\btropaeum\b|\bcastren(se|sis)\b|\b(ulpia|apulum|porolissum|drobeta|tropaeum|adamclisi|romula|zaldapa|durostorum|novae|viminacium)\b|\btraian\b|\btrajan\b|\bhadrian\b|\bconstanti\w*|imperiul roman|roman empire|imperium romanum|dacia romana|roman dacia|provincia dacia|provinci[aie]+\s+roman|roman province|roman fort|roman city|roman town|roman camp|roman road|roman bath|roman villa|roman legion|roman coin|roman coins|roman conquest|roman rule|roman era|roman period|roman site|roman ruin|roman temple|roman mosaic|roman forum|roman thermae|roman bridge|roman wall|drum roman|drumul roman|asezare romana|asezari romane|cetate romana|cetati romane|oras roman|orase romane|castrul roman|castre romane|zid roman|pod roman|cladire romana|monument roman|santier roman)/i },
         { id: 'migration', re: /gepids?|gepiz|avars?\b|huns?\b|\bhuni\b|slavs?\b|\bslavi\b|goths?\b|\bgoti\b|epoca migratiilor|migration period/i },
         { id: 'medieval', re: /medieval|mediev|evul mediu|middle ages|secolul (x|xi|xii|xiii|xiv|xv|xvi|xvii)\b|1[1-7]th century|cetate medievala|cetatea medievala|medieval fortress|medieval castle|castel|citadel|fortified church|biserica fortificata|fortareata|\bsaxons?\b|\bsasi\b|husit|secuiesc|knights?/i },
         { id: 'modern', re: /\bmodern|secolul (xviii|xix|xx|xxi)\b|1[89]th century|20th century|21st century|habsburg|austro-ungar|austro-hungarian|world war|razboiul mondial|primul razboi|al doilea razboi/i }
@@ -502,8 +510,13 @@
             r.description = clampDesc(r.description || '');
             r.score = r.sources.length * 100 + Math.max(0, 60 - r.rank * 5) + (r.image ? 4 : 0) + (r.coords ? 4 : 0);
         });
+        /* Findings with no period at all (perioada "nespecificată") are dropped:
+         * the Library of Babel only surfaces results the automatic classifier can
+         * place on the archaeological timeline. */
+        var totalDeduped = order.length;
+        order = order.filter(function (r) { return r.periods.length > 0; });
         order.sort(function (a, b) { return b.score - a.score; });
-        return { results: order, totalBeforeDedup: totalBefore, durationMs: durationMs };
+        return { results: order, totalBeforeDedup: totalBefore, totalDeduped: totalDeduped, durationMs: durationMs };
     }
 
     function buildStats(query, perSource, agg) {
@@ -516,7 +529,7 @@
             durationMs: agg.durationMs,
             total: agg.results.length,
             totalBeforeDedup: agg.totalBeforeDedup,
-            duplicatesRemoved: agg.totalBeforeDedup - agg.results.length,
+            duplicatesRemoved: agg.totalBeforeDedup - agg.totalDeduped,
             active: sources.filter(function (s) { return s.status === 'ok' || s.status === 'empty'; }).length,
             sources: sources,
             osmMatches: (perSource.filter(function (o) { return o.source.id === 'osm'; })[0] || { extra: {} }).extra.osmMatches || []

@@ -65,10 +65,20 @@ licence/artist (Commons), data provider (Europeana), mediatype (Archive.org).
 * **Filter by type** — article / structured data / place / document / map /
   image / collection / audio / video (only types that actually occur).
 * **Filter by period** — Prehistoric, Bronze Age, Iron Age, Dacian, Roman,
-  Migration, Medieval, Modern, Unspecified. Periods are **classified
-  automatically** from keywords in the title + description (diacritic-aware,
-  word-boundary regexes — “Romania” never triggers the *Roman* period). The
-  classification is disclosed as automatic on every render.
+  Migration, Medieval, Modern. Periods are **classified automatically** from
+  keywords in the title + description (diacritic-insensitive, word-boundary
+  regexes). The **Roman** period is decided by a broad lexical field of
+  genuinely ancient-Roman terms (`castru`, `legiune`, `opaiț`, `burgus`,
+  `villa`, `terme`, `amfiteatru`, `colonia`, `ulpia`, `traian`, `imperiul
+  roman`, `dacia romana`, …) — the bare words *roman / romana / romani /
+  romane / romanii / romanilor* are **not** triggers, because once diacritics
+  are stripped they could also be *român / română / români / române…* (the
+  Romanian language / nationality → false positives). “Romania” the country
+  never triggers the *Roman* period. The classification is disclosed as
+  automatic on every render.
+* **Unspecified-period findings are excluded** — results the classifier cannot
+  place on any period (perioada „nespecificată”) are removed from the Library
+  of Babel output, so every shown finding carries at least one period label.
 * **Filter by source** — click a chip.
 * **Export** — JSON and CSV (Excel-safe BOM, quoted fields) over the
   currently filtered rows, as `detectlab-babel-<locality>.{json,csv}`.
@@ -104,11 +114,13 @@ licence/artist (Commons), data provider (Europeana), mediatype (Archive.org).
 | `test-babel-i18n.js` | ro/en dictionary parity + agent-spec contract |
 | `test-babel-multisource.js` | full render with realistic fixtures for all 7 APIs: aggregation, dedup, provenance, periods, filters, exports |
 | `test-babel-resilience.js` | failing sources, total outage, zero results, ambiguity, cache |
+| `test-babel-periods.js` | period-classification contract: unspecified exclusion + lexicon-driven *Roman* (no *român* false positive) |
 
 ```bash
 node test-babel-i18n.js
 node test-babel-multisource.js
 node test-babel-resilience.js
+node test-babel-periods.js
 ```
 
 ## Nominatim usage policy
