@@ -2059,6 +2059,64 @@
                         </div><!-- /romanSubLayers -->
                     </div><!-- /roman transp-layer-row -->
 
+                    <!-- Bătălii / Battles (premium) — între Imperiul Roman și Hărți istorice -->
+                    <div class="transp-layer-row" data-category="premium">
+                        <!-- Group header: master toggle -->
+                        <div class="transp-layer-label" style="margin-bottom:6px">
+                            <span style="display:flex;align-items:center;gap:7px">
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0" aria-hidden="true">
+                                    <path d="M2.3 10.7 L10.7 2.3" stroke="#E8B34B" stroke-width="1.6" stroke-linecap="round" />
+                                    <path d="M10.7 10.7 L2.3 2.3" stroke="#E8B34B" stroke-width="1.6" stroke-linecap="round" />
+                                    <path d="M1.9 11.5 L3.4 10" stroke="#E8B34B" stroke-width="1.3" stroke-linecap="round" />
+                                    <path d="M11.1 11.5 L9.6 10" stroke="#E8B34B" stroke-width="1.3" stroke-linecap="round" />
+                                    <circle cx="1.7" cy="11.7" r="0.7" fill="#E8B34B" />
+                                    <circle cx="11.3" cy="11.7" r="0.7" fill="#E8B34B" />
+                                </svg>
+                                <span class="t" data-key="layer_battles">Battles</span>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
+                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Bătălii / Battles','© DetectLab 2026 · batalii.csv · 163 evenimente / events')" title="Layer info"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                <label class="apm-toggle-switch" title="Toggle Battles / Bătălii">
+                                    <input type="checkbox" id="battlesToggle" onchange="toggleBattlesLayer(this.checked)">
+                                    <span class="apm-toggle-track"></span>
+                                </label>
+                            </span>
+                        </div>
+
+                        <!-- Period slider (NOT opacity): century -8 … 20 -->
+                        <div class="transp-layer-label" style="margin-bottom:6px;margin-top:2px">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="battles_period_label">Period</span>
+                                <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:5px;flex-shrink:0">
+                                <span class="pct" id="battlesPeriodValue" style="min-width:74px;text-align:right">Sec. XIV d.Hr.</span>
+                                <span class="pct" id="battlesCountLabel" style="opacity:0.7;min-width:64px;text-align:right">0</span>
+                            </span>
+                        </div>
+                        <input type="range" class="transp-slider" id="battlesPeriodSlider"
+                               min="-8" max="20" step="1" value="14"
+                               title="Period / Perioadă — 8th c. BC … 20th c. AD"
+                               oninput="setBattlesPeriod(this.value)">
+                        <div style="display:flex;justify-content:space-between;font-size:0.6rem;opacity:0.5;margin-top:3px">
+                            <span class="t" data-key="battles_slider_min">8th c. BC</span>
+                            <span class="t" data-key="battles_slider_max">20th c. AD</span>
+                        </div>
+
+                        <!-- Epoch legend -->
+                        <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(184,216,240,0.12)">
+                            <div style="font-size:0.62rem;opacity:0.55;margin-bottom:6px" class="t" data-key="battles_legend">Epoch colors</div>
+                            <div style="display:flex;flex-wrap:wrap;gap:6px 11px;font-size:0.62rem;color:rgba(245,240,235,0.62)">
+                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#9b59b6;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_antiquity">Pre-Roman Antiquity</span></span>
+                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#e74c3c;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_dacoroman">Daco-Roman era</span></span>
+                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#e67e22;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_migrations">Migrations &amp; Early Middle Ages</span></span>
+                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#d4a017;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_medieval">Middle Ages</span></span>
+                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#16a085;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_earlymodern">Early Modern era</span></span>
+                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#2980b9;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_modern">Modern era</span></span>
+                            </div>
+                        </div>
+                    </div><!-- /battles transp-layer-row -->
+
                     <div class="transp-divider" data-category="premium"></div>
 
                     <!-- Harti Istorice — Parent Group -->
@@ -2977,6 +3035,7 @@
          Web-Mercator tiles. Must load before map-app.js. -->
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <script src="js/map-app.js?v=20260819-sat60-premium-layer"></script>
+    <script src="js/battles-layer.js?v=20260831-battles"></script>
     <script src="js/vertical-opacity-control.js?v=20260812"></script>
     <script src="js/archeo-potential.js?v=20260827-arch-report"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
