@@ -27,17 +27,17 @@
     var CONTENT_W = PAGE.w - MARGIN * 2;
 
     var C = {
-        ink: '#1e1a24',
-        muted: '#6b6474',
-        faint: '#98929f',
-        line: '#e4dfeb',
-        purple: '#6B3FA0',
-        purpleSoft: '#f1ebfa',
-        orange: '#d9700a',
-        orangeSoft: '#fff4e8',
-        green: '#1c8a3c',
-        card: '#f7f5fa',
-        page: '#ffffff'
+        ink: '#e8eef8',
+        muted: '#9aa8bc',
+        faint: '#6b7a90',
+        line: '#1e2a40',
+        purple: '#66c8ff',
+        purpleSoft: '#132033',
+        orange: '#4db8ff',
+        orangeSoft: '#0e2238',
+        green: '#4ade80',
+        card: '#121c2c',
+        page: '#0a1220'
     };
 
     var FONT_BODY = "'Outfit', 'Segoe UI', Arial, sans-serif";
@@ -257,7 +257,7 @@
         var barY = this.y + 4;
         var barH = 9;
 
-        g.fillStyle = '#ece7f2';
+        g.fillStyle = '#1a2740';
         roundRect(g, x, barY, w, barH, 4.5);
         g.fill();
         g.fillStyle = scoreColor(score);
@@ -278,7 +278,7 @@
         var g = this.g;
         var star = '\u2605';
         g.font = font(400, size, FONT_BODY);
-        g.fillStyle = '#e2dcea';
+        g.fillStyle = '#1e2a40';
         var total = 0;
         for (var i = 0; i < 5; i++) {
             g.fillText(star, x + total, baselineY);
@@ -325,7 +325,7 @@
                 g.fillStyle = C.purpleSoft;
                 g.fillRect(x, self.y - 2, CONTENT_W, h);
             } else if (ri % 2 === 0) {
-                g.fillStyle = '#faf8fc';
+                g.fillStyle = '#0e1828';
                 g.fillRect(x, self.y - 2, CONTENT_W, h);
             }
             var cx = x;
@@ -363,7 +363,7 @@
         g.clip();
         if (img) g.drawImage(img, MARGIN, this.y, w, h);
         else {
-            g.fillStyle = '#f0edf4';
+            g.fillStyle = '#121c2c';
             g.fillRect(MARGIN, this.y, w, h);
         }
         g.restore();
@@ -444,7 +444,10 @@
         pt.y += 30;
 
         pt.h1(tr('arch_report_title'));
-        pt.para(tr('arch_report_subtitle', { area: meta.areaKm2 }), {
+        pt.para(tr('arch_report_subtitle', {
+            radius: meta.radiusKm != null ? meta.radiusKm : (meta.sideM / 2000).toFixed(0),
+            area: meta.areaKm2
+        }), {
             size: 11, color: C.muted, lineHeight: 16, spaceAfter: 10
         });
         pt.rule();
@@ -453,7 +456,8 @@
         pt.kv(tr('arch_report_generated_on'), fmtDate(meta.generatedAt, pt.lang));
         pt.kv(tr('arch_report_analysis_point'), meta.center.lat.toFixed(5) + ', ' + meta.center.lng.toFixed(5));
         pt.kv(tr('arch_report_area'), tr('arch_report_area_value', {
-            area: meta.areaKm2, side: (meta.sideM / 1000).toFixed(2)
+            radius: meta.radiusKm != null ? meta.radiusKm : (meta.sideM / 2000).toFixed(0),
+            area: meta.areaKm2
         }));
         pt.kv(tr('arch_report_language'), pt.lang === 'ro' ? 'Română' : 'English');
         pt.kv(tr('arch_report_duration'), meta.ms + ' ms');
@@ -501,7 +505,7 @@
             'UAT — ' + (meta.uatAvailable ? tr('arch_report_src_available') : tr('arch_report_src_unavailable'))
         ].join('\n'), { color: C.muted, spaceAfter: 10 });
 
-        pt.card(58, '#fdf7f0');
+        pt.card(58, C.orangeSoft);
         pt.para(tr('arch_report_disclaimer'), {
             x: MARGIN + 10, width: CONTENT_W - 20, size: 8, color: C.muted, lineHeight: 11.5
         });
@@ -588,17 +592,17 @@
         var g = pt.g;
 
         // score header card
-        pt.card(74);
-        g.font = font(600, 12, FONT_HEAD);
+        pt.card(62);
+        g.font = font(600, 11, FONT_HEAD);
         g.fillStyle = C.ink;
-        g.fillText(res.classificationLabel, MARGIN + 10, pt.y + 14);
-        g.font = font(400, 8.5, FONT_BODY);
+        g.fillText(res.classificationLabel, MARGIN + 10, pt.y + 12);
+        g.font = font(400, 8, FONT_BODY);
         g.fillStyle = C.muted;
         g.fillText(res.lat.toFixed(5) + ', ' + res.lng.toFixed(5) +
-            (res.annotated ? '  ·  ' + tr('arch_report_flag_lidar') : ''), MARGIN + 10, pt.y + 28);
-        pt.y += 34;
+            (res.annotated ? '  ·  ' + tr('arch_report_flag_lidar') : ''), MARGIN + 10, pt.y + 24);
+        pt.y += 28;
         pt.scoreBar(res.score, { x: MARGIN + 10, width: CONTENT_W - 20 });
-        pt.y += 8;
+        pt.y += 4;
 
         pt.h2(tr('arch_report_how_score'));
         var w = res.weights;
@@ -624,17 +628,17 @@
             cls: tr('arch_report_apm_class_' + (res.parts.apmCls || 0)),
             value: pct(res.parts.apmComp)
         }), { spaceAfter: 4 });
-        pt.para(apmExplanation(tr, res.parts), { color: C.muted, spaceAfter: 8 });
+        pt.para(apmExplanation(tr, res.parts), { color: C.muted, size: 8.2, spaceAfter: 4 });
 
         pt.h2(tr('arch_report_src_pot_title'));
         if (res.parts.potentialInside) {
-            pt.para(tr('arch_report_pot_inside_long', { score: pct(res.parts.potentialScore) }), { spaceAfter: 4 });
+            pt.para(tr('arch_report_pot_inside_long', { score: pct(res.parts.potentialScore) }), { size: 8.4, spaceAfter: 2 });
         } else if (res.parts.potentialDistM !== null && res.parts.potentialDistM <= root.ARCH_REPORT_CONFIG.POTENTIAL.PROXIMITY_M) {
             pt.para(tr('arch_report_pot_near_long', {
                 dist: pt.fmtM(res.parts.potentialDistM), score: pct(res.parts.potentialScore)
-            }), { spaceAfter: 4 });
+            }), { size: 8.4, spaceAfter: 2 });
         } else {
-            pt.para(tr('arch_report_pot_none_long', { n: res.parts.bubblesInArea }), { spaceAfter: 4 });
+            pt.para(tr('arch_report_pot_none_long', { n: res.parts.bubblesInArea }), { size: 8.4, spaceAfter: 2 });
         }
         if (res.parts.potentialFactors) {
             pt.para(tr('arch_report_pot_factors', {
@@ -652,14 +656,14 @@
         if (res.annotated && res.parts.lidarPoint) {
             pt.para(tr('arch_report_lidar_hit_long', {
                 title: res.parts.lidarPoint.category || res.parts.lidarPoint.name || '—'
-            }), { spaceAfter: 8 });
+            }), { size: 8.4, spaceAfter: 4 });
         } else if (res.parts.lidarDistM !== null && res.parts.lidarDistM <= root.ARCH_REPORT_CONFIG.LIDAR.PROXIMITY_M) {
             pt.para(tr('arch_report_lidar_near_long', {
                 dist: pt.fmtM(res.parts.lidarDistM),
                 title: res.parts.lidarPoint ? (res.parts.lidarPoint.category || res.parts.lidarPoint.name || '—') : '—'
-            }), { spaceAfter: 8 });
+            }), { size: 8.4, spaceAfter: 4 });
         } else {
-            pt.para(tr('arch_report_lidar_none_long'), { color: C.muted, spaceAfter: 8 });
+            pt.para(tr('arch_report_lidar_none_long'), { color: C.muted, size: 8.4, spaceAfter: 4 });
         }
 
         pt.h2(tr('arch_report_roads_section_title'));
@@ -671,8 +675,51 @@
 
         pt.h2(tr('arch_report_uat_line_title'));
         pt.para(tr('arch_report_uat_ok_long', { dist: pt.fmtM(res.parts.uatClearanceM) }), {
-            size: 8.6, color: C.muted, spaceAfter: 8
+            size: 8.2, color: C.muted, spaceAfter: 6
         });
+
+        pt.h2(tr('arch_report_period_title'));
+        if (res.period.key) {
+            pt.para(tr('arch_report_period_line', {
+                period: tr('arch_period_' + res.period.key),
+                confidence: Math.round(res.period.confidence * 100)
+            }), { size: 8.6, spaceAfter: 2 });
+        } else {
+            pt.para(tr('arch_report_period_none'), { size: 8.6, color: C.muted, spaceAfter: 2 });
+        }
+        if (res.period.evidence && res.period.evidence.length) {
+            res.period.evidence.forEach(function (ev, i) {
+                var dating;
+                if (ev.datingFromName) {
+                    dating = tr('arch_report_period_from_name', {
+                        period: ev.periodKey ? tr('arch_period_' + ev.periodKey) : tr('arch_report_period_unknown')
+                    });
+                } else {
+                    dating = ev.period || tr('arch_report_period_unknown');
+                }
+                pt.para((i + 1) + '. ' + ev.name + ' — ' + dating + ' · ' + pt.fmtM(ev.distanceM) +
+                    (ev.ran ? ' · RAN ' + ev.ran : ''), { size: 8, spaceAfter: 1 });
+            });
+        }
+
+        pt.h2(tr('arch_report_sites_title'));
+        pt.table(
+            [[tr('arch_report_tbl_site'), tr('arch_report_tbl_period'), tr('arch_report_tbl_type'),
+              tr('arch_report_tbl_dist'), tr('arch_report_tbl_link')]]
+                .concat(res.nearestSites.map(function (s) {
+                    return [
+                        s.name + (s.locality ? ' (' + s.locality + ')' : ''),
+                        s.period || (s.datingFromName && s.periodKey
+                            ? tr('arch_period_' + s.periodKey) + ' †'
+                            : tr('arch_report_period_unknown')),
+                        s.type || '—',
+                        pt.fmtM(s.distanceM),
+                        s.url || '—'
+                    ];
+                })),
+            [148, 96, 86, 52, CONTENT_W - 382],
+            { size: 7.6, rowHeight: 14 }
+        );
         return pt.finishPage();
     }
 
@@ -843,7 +890,10 @@
                 title: tr('arch_report_title') + ' — ' +
                     model.meta.center.lat.toFixed(4) + ', ' + model.meta.center.lng.toFixed(4),
                 author: 'DetectLab',
-                subject: tr('arch_report_subtitle', { area: model.meta.areaKm2 }),
+                subject: tr('arch_report_subtitle', {
+                    radius: model.meta.radiusKm != null ? model.meta.radiusKm : '',
+                    area: model.meta.areaKm2
+                }),
                 keywords: 'DetectLab, APM 2.0, LIDAR, RAN, CIMEC, archaeology',
                 date: model.meta.generatedAt
             });

@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v57-arch-report-v3';
+const CACHE_NAME = 'detectlab-v58-arch-report-v4';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -114,7 +114,12 @@ const PRECACHE_URLS = [
   'js/archeo-report-pdf.js?v=20260827-arch-report-v2',
   'js/archeo-report.js?v=20260827-arch-report-v2',
   'js/translations.js?v=20260827-arch-report-v2',
-  'css/styles.css?v=20260827-arch-report-v2'
+  'css/styles.css?v=20260827-arch-report-v2',
+  // Archaeological Report: circular 1–10 km radius, blue LIDAR-like UI, dark PDF.
+  'js/archeo-report-pdf.js?v=20260831-arch-report-v4',
+  'js/archeo-report.js?v=20260831-arch-report-v4',
+  'js/translations.js?v=20260831-arch-report-v4',
+  'css/styles.css?v=20260831-arch-report-v4'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

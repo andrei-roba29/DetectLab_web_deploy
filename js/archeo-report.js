@@ -3,15 +3,16 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * WHAT IT DOES
  *   The user enables the layer, clicks one point on the map and presses
- *   "Generate report". The engine analyses a 5 km² square around that point,
- *   cross-referencing THREE premium data sources:
+ *   "Generate report". The engine analyses a circular radius (1–10 km, same
+ *   slider pattern as the LIDAR Scanner) around that point, cross-referencing
+ *   THREE premium data sources:
  *
  *     1. APM 2.0                 — the prediction raster (score colour)
  *     2. Archeological Potential — the "zone cu potențial arheologic" bubbles
  *        Sites (triangulation)     produced by js/archeo-potential.js
  *     3. LIDAR Scanner           — annotated anomalies from the scanner CSV
  *
- *   …returns up to 3 ranked candidates (orange polygons + labels on the map)
+ *   …returns up to 3 ranked candidates (blue circular rings + labels on the map)
  *   and a downloadable, printable PDF explaining every score.
  *
  * MANDATORY EXCLUSIONS (a candidate failing any of these never appears)
@@ -60,12 +61,16 @@
      * 1. CONFIGURATION  (live-tunable: window.ARCH_REPORT_CONFIG.X = …)
      * ═══════════════════════════════════════════════════════════════════════ */
     var CONFIG = {
-        // Analysis area — the spec asks for 5 km² around the picked point.
-        AREA_KM2: 5,
+        // Analysis area — a circular radius around the picked point, 1–10 km
+        // (same slider interaction as the LIDAR Scanner). Default 3 km.
+        RADIUS_KM_MIN: 1,
+        RADIUS_KM_MAX: 10,
+        RADIUS_KM_DEFAULT: 3,
         MAX_RESULTS: 3,               // "Cele 3 rezultate"
-        RESULT_RADIUS_M: 180,         // radius of the orange result polygon
+        RESULT_RADIUS_M: 180,         // radius of the circular result ring
         RESULT_MIN_SEPARATION_M: 350, // two results may not be closer than this
-        SEED_GRID_M: 100,             // systematic seed spacing inside the area
+        SEED_GRID_M: 100,             // baseline seed spacing (grows with radius)
+        RESULT_CIRCLE_VERTS: 32,      // circular footprint for PDF / geometry
 
         // Triangulation source ("zone cu potențial arheologic")
         POTENTIAL: {
@@ -134,12 +139,13 @@
             PANE_TAGS: 'pane_arch_report_tags',
             Z_SHAPES: 672,            // above the LIDAR scanner tags (665)
             Z_TAGS: 674,
-            COLOR: '#ff8a1e'
+            COLOR: '#66c8ff',
+            FILL: '#29b6f6'
         },
 
         SCREENSHOT: {
             SIZE_PX: 900,
-            MARGIN_M: 480,            // padding drawn around the 5 km² square
+            MARGIN_M: 480,            // padding drawn around the search circle
             JPEG_QUALITY: 0.85,
             TIMEOUT_MS: 25000
         },
@@ -245,19 +251,62 @@
         return inside;
     }
 
-    // The 5 km² analysis square, in local meters, centred on the picked point.
-    function areaSquare(centerLat, centerLng, areaKm2) {
-        var side = Math.sqrt(areaKm2 * 1e6);
+    function currentRadiusKm() {
+        var slider = el('archReportDistance');
+        if (slider) {
+            var v = parseInt(slider.value, 10);
+            if (isFinite(v)) {
+                return Math.max(CONFIG.RADIUS_KM_MIN, Math.min(CONFIG.RADIUS_KM_MAX, v));
+            }
+        }
+        return CONFIG.RADIUS_KM_DEFAULT;
+    }
+
+    function currentRadiusM() { return currentRadiusKm() * 1000; }
+
+    // Circular analysis area in local meters, centred on the picked point.
+    // min/max describe the axis-aligned bbox (used by rasters / roads);
+    // inCircle() is the actual membership test.
+    function analysisArea(centerLat, centerLng, radiusM) {
+        var r = (radiusM && isFinite(radiusM)) ? radiusM : currentRadiusM();
         var c = projectToLocalMeters(centerLat, centerLng, centerLat);
         return {
-            sideM: side, areaKm2: areaKm2,
-            minX: c.x - side / 2, maxX: c.x + side / 2,
-            minY: c.y - side / 2, maxY: c.y + side / 2
+            radiusM: r,
+            areaKm2: Math.PI * r * r / 1e6,
+            sideM: r * 2,
+            cx: c.x, cy: c.y,
+            minX: c.x - r, maxX: c.x + r,
+            minY: c.y - r, maxY: c.y + r
         };
+    }
+
+    function areaSquare(centerLat, centerLng, areaKm2) {
+        var radiusM = Math.sqrt((areaKm2 || 0) * 1e6 / Math.PI);
+        return analysisArea(centerLat, centerLng, radiusM);
     }
 
     function inSquare(square, x, y) {
         return x >= square.minX && x <= square.maxX && y >= square.minY && y <= square.maxY;
+    }
+
+    function inCircle(area, x, y) {
+        var dx = x - area.cx, dy = y - area.cy;
+        return dx * dx + dy * dy <= area.radiusM * area.radiusM;
+    }
+
+    function seedGridM(radiusM) {
+        var r = radiusM || currentRadiusM();
+        return Math.max(CONFIG.SEED_GRID_M, Math.round(r / 25));
+    }
+
+    function uatCellM(radiusM) {
+        var span = ((radiusM || currentRadiusM()) + CONFIG.UAT.CLEARANCE_M) * 2;
+        return Math.max(CONFIG.UAT.CELL_M, Math.round(span / 400));
+    }
+
+    function apmCellM(radiusM) {
+        var span = ((radiusM || currentRadiusM()) + CONFIG.UAT.CLEARANCE_M) * 2;
+        return Math.max(CONFIG.APM.CELL_M, Math.round(span / 360));
     }
 
     /* ── Web Mercator tile math (XYZ, slippy map) ───────────────────────── */
@@ -905,23 +954,23 @@
     function buildSeeds(ctx) {
         var seeds = [];
         var sq = ctx.square;
-        var step = CONFIG.SEED_GRID_M;
+        var step = seedGridM(sq.radiusM);
         for (var y = sq.minY + step / 2; y < sq.maxY; y += step) {
             for (var x = sq.minX + step / 2; x < sq.maxX; x += step) {
-                seeds.push({ x: x, y: y, origin: 'grid' });
+                if (inCircle(sq, x, y)) seeds.push({ x: x, y: y, origin: 'grid' });
             }
         }
         // Every LIDAR annotation inside the area becomes a candidate of its own
         // (the spec: an annotated zone is returned automatically).
         ctx.lidarPoints.forEach(function (p) {
             var m = projectToLocalMeters(p.lat, p.lng, ctx.lat0);
-            if (inSquare(sq, m.x, m.y)) {
+            if (inCircle(sq, m.x, m.y)) {
                 seeds.push({ x: m.x, y: m.y, origin: 'lidar', lidarPoint: p });
             }
         });
         // …and so does every triangulation bubble that falls inside the area.
         ctx.bubbles.forEach(function (b) {
-            if (inSquare(sq, b.x, b.y)) {
+            if (inCircle(sq, b.x, b.y)) {
                 seeds.push({ x: b.x, y: b.y, origin: 'potential', bubble: b });
             }
         });
@@ -1323,12 +1372,13 @@
         };
     }
 
-    // Orange result footprint: a hexagon (reads as a "zone", not a pin).
+    // Blue result footprint: a circle (32 vertices for PDF / geometry).
     function resultPolygon(lat, lng, radiusM, lat0) {
         var c = projectToLocalMeters(lat, lng, lat0);
+        var n = CONFIG.RESULT_CIRCLE_VERTS || 32;
         var pts = [];
-        for (var i = 0; i < 6; i++) {
-            var a = Math.PI / 6 + i * Math.PI / 3;
+        for (var i = 0; i < n; i++) {
+            var a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
             var p = localMetersToLatLng(c.x + radiusM * Math.cos(a), c.y + radiusM * Math.sin(a), lat0);
             pts.push([p.lat, p.lng]);
         }
@@ -1419,6 +1469,8 @@
         }
         var pdfBtn = el('archReportPdfBtn');
         if (pdfBtn) pdfBtn.disabled = running;
+        var ov = el('archReportLoading');
+        if (ov) ov.classList.toggle('visible', !!running);
     }
 
     // The run button only makes sense once a point has been picked.
@@ -1454,7 +1506,7 @@
     }
 
     /**
-     * Full analysis of the 5 km² area around `_state.point`.
+     * Full analysis of the circular radius around `_state.point`.
      * @returns {Promise<Object|null>} the report model (null when aborted/failed)
      */
     function runReport() {
@@ -1480,11 +1532,15 @@
                 await waitForSiteData();
                 if (myVersion !== _state.version) return null;
 
+                var radiusKm = currentRadiusKm();
+                var radiusM = radiusKm * 1000;
                 ctx = {
                     center: center,
                     lat0: center.lat,
-                    areaKm2: CONFIG.AREA_KM2,
-                    square: areaSquare(center.lat, center.lng, CONFIG.AREA_KM2)
+                    radiusKm: radiusKm,
+                    radiusM: radiusM,
+                    areaKm2: Math.PI * radiusM * radiusM / 1e6,
+                    square: analysisArea(center.lat, center.lng, radiusM)
                 };
 
                 // ── known sites (radii + polygons) via archeo-potential.js ──
@@ -1513,7 +1569,7 @@
                     }
                 }
                 ctx.bubblesInArea = ctx.bubbles.filter(function (b) {
-                    return inSquare(ctx.square, b.x, b.y);
+                    return inCircle(ctx.square, b.x, b.y);
                 });
 
                 // ── LIDAR Scanner annotations ──
@@ -1528,7 +1584,7 @@
                 }).map(function (p) { return p; });
                 ctx.lidarInArea = ctx.lidarPoints.filter(function (p) {
                     var m = projectToLocalMeters(p.lat, p.lng, ctx.lat0);
-                    return inSquare(ctx.square, m.x, m.y);
+                    return inCircle(ctx.square, m.x, m.y);
                 });
 
                 setStatus('arch_report_step_roads');
@@ -1541,9 +1597,9 @@
                 setStatus('arch_report_step_uat');
                 var bbox = buildBbox(ctx.square, CONFIG.UAT.CLEARANCE_M + CONFIG.UAT.CELL_M * 2, ctx.lat0);
                 ctx.bbox = bbox;
-                var uatPromise = buildUatGrid(bbox, CONFIG.UAT.CELL_M);
+                var uatPromise = buildUatGrid(bbox, uatCellM(ctx.radiusM));
                 setStatus('arch_report_step_apm');
-                var apmPromise = buildApmGrid(bbox, CONFIG.APM.CELL_M, CONFIG.APM.Z);
+                var apmPromise = buildApmGrid(bbox, apmCellM(ctx.radiusM), CONFIG.APM.Z);
                 var grids = await Promise.all([uatPromise, apmPromise]);
                 if (myVersion !== _state.version) return null;
                 ctx.uatGrid = grids[0];
@@ -1583,7 +1639,9 @@
                     meta: {
                         generatedAt: new Date(),
                         lang: lang(),
-                        areaKm2: ctx.areaKm2,
+                        areaKm2: Math.round(ctx.areaKm2 * 100) / 100,
+                        radiusKm: ctx.radiusKm,
+                        radiusM: Math.round(ctx.radiusM),
                         sideM: Math.round(ctx.square.sideM),
                         center: { lat: center.lat, lng: center.lng },
                         sitesCount: ctx.siteRecords.length,
@@ -1641,7 +1699,7 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-     * 12. MAP RENDERING — orange polygons + "Result 1/2/3" labels
+     * 12. MAP RENDERING — blue circular rings + "Result 1/2/3" labels
      * ═══════════════════════════════════════════════════════════════════════ */
 
     function ensurePanes(map) {
@@ -1699,8 +1757,8 @@
         ];
         var nearest = res.nearestSites[0];
         return '<div style="font-family:Outfit,sans-serif;min-width:230px;max-width:290px;padding:2px">' +
-            '<div style="font-family:Cinzel,serif;font-size:0.86rem;color:#ff8a1e;font-weight:700;margin-bottom:6px">' +
-            '⬢ ' + esc(res.label) + '</div>' +
+            '<div style="font-family:Cinzel,serif;font-size:0.86rem;color:#66c8ff;font-weight:700;margin-bottom:6px">' +
+            '● ' + esc(res.label) + '</div>' +
             '<div style="font-size:0.8rem;color:rgba(245,240,235,0.95);margin-bottom:8px">' +
             '<strong>' + esc(res.classificationLabel) + '</strong> — ' + pct + '%</div>' +
             '<table style="width:100%;border-collapse:collapse;font-size:0.7rem;color:rgba(245,240,235,0.78);line-height:1.6">' +
@@ -1737,50 +1795,32 @@
         var group = L.layerGroup([]);
         _state.layerGroup = group;
 
-        // analysis square
-        var sq = areaSquare(model.meta.center.lat, model.meta.center.lng, model.meta.areaKm2);
-        var lat0 = model.meta.center.lat;
-        var corners = [
-            localMetersToLatLng(sq.minX, sq.minY, lat0),
-            localMetersToLatLng(sq.maxX, sq.minY, lat0),
-            localMetersToLatLng(sq.maxX, sq.maxY, lat0),
-            localMetersToLatLng(sq.minX, sq.maxY, lat0)
-        ].map(function (p) { return [p.lat, p.lng]; });
-        group.addLayer(L.polygon(corners, assignPane({
-            color: 'rgba(255,138,30,0.75)', weight: 1.4, dashArray: '6 6',
-            fillColor: '#ff8a1e', fillOpacity: 0.04, interactive: false
-        }, CONFIG.RENDER.PANE_SHAPES)));
-
-        // analysis centre
-        group.addLayer(L.circleMarker([model.meta.center.lat, model.meta.center.lng], assignPane({
-            radius: 4, color: '#ff8a1e', weight: 1.5, fillColor: '#ffd2a0',
-            fillOpacity: 0.95, interactive: false
-        }, CONFIG.RENDER.PANE_SHAPES)));
-
-        // result polygons + permanent labels
+        // Result rings stay on Leaflet's SVG renderer (same reason as the
+        // LIDAR Scanner): they are clickable, and the shapes pane is
+        // pointer-events:none so a canvas surface would swallow map clicks.
         model.results.forEach(function (res) {
-            var poly = L.polygon(res.polygon, assignPane({
-                color: CONFIG.RENDER.COLOR, weight: 2.4, opacity: 0.98,
-                fillColor: CONFIG.RENDER.COLOR, fillOpacity: 0.3, interactive: true
+            var ring = L.circle([res.lat, res.lng], assignPane({
+                radius: CONFIG.RESULT_RADIUS_M,
+                color: CONFIG.RENDER.COLOR, weight: 2, dashArray: '3 6',
+                fillColor: CONFIG.RENDER.FILL || CONFIG.RENDER.COLOR,
+                fillOpacity: 0.11, opacity: 0.98, interactive: true
             }, CONFIG.RENDER.PANE_SHAPES));
-            poly.bindPopup(resultPopupHtml(res), { className: 'arch-report-popup', maxWidth: 320 });
-            poly.bindTooltip(
+            ring.bindPopup(resultPopupHtml(res), { className: 'arch-report-popup', maxWidth: 320 });
+            ring.bindTooltip(
                 '<span class="arch-report-tag"><b>' + esc(res.label) + '</b><br>' + res.scorePct + '%</span>',
                 assignPane({
-                    permanent: true, direction: 'top', offset: [0, -12],
+                    permanent: true, direction: 'top', offset: [0, -14],
                     className: 'arch-report-tooltip', interactive: true
                 }, CONFIG.RENDER.PANE_TAGS)
             );
-            // The label is clickable too: the tooltip is interactive, so hook a
-            // click on its DOM element to the same popup as the polygon.
-            poly.on('tooltipopen', function (e) {
+            ring.on('tooltipopen', function (e) {
                 var node = e.tooltip && e.tooltip.getElement ? e.tooltip.getElement() : null;
                 if (node && !node._archReportWired) {
                     node._archReportWired = true;
-                    node.addEventListener('click', function () { poly.openPopup(); });
+                    node.addEventListener('click', function () { ring.openPopup(); });
                 }
             });
-            group.addLayer(poly);
+            group.addLayer(ring);
         });
 
         if (_state.visible) group.addTo(map);
@@ -1806,9 +1846,9 @@
         if (resultsToggle) resultsToggle.style.display = hasResults ? 'flex' : 'none';
         if (!hasResults) { setSummary(''); return; }
         var chips = model.results.map(function (r) {
-            return '<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,138,30,0.14);' +
-                'border:1px solid rgba(255,138,30,0.45);border-radius:4px;padding:1px 6px;margin:2px 4px 0 0">' +
-                '<b style="color:#ffb066">' + esc(r.label) + '</b> ' + r.scorePct + '%</span>';
+            return '<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(41,182,246,0.14);' +
+                'border:1px solid rgba(102,200,255,0.45);border-radius:4px;padding:1px 6px;margin:2px 4px 0 0">' +
+                '<b style="color:#9ad8ff">' + esc(r.label) + '</b> ' + r.scorePct + '%</span>';
         }).join('');
         setSummary(chips + '<div style="margin-top:5px;opacity:.7">' +
             esc(tr('arch_report_summary_detail', {
@@ -1948,7 +1988,7 @@
         // title strip
         g.fillStyle = 'rgba(20,16,24,0.78)';
         g.fillRect(0, 0, size, 34);
-        g.fillStyle = '#ffb066';
+        g.fillStyle = '#9ad8ff';
         g.font = "600 15px 'Outfit', 'Segoe UI', Arial, sans-serif";
         g.textBaseline = 'middle';
         g.textAlign = 'left';
@@ -1998,22 +2038,15 @@
 
     function drawAnalysisSquare(g, proj, model) {
         var c = model.meta.center;
-        var sq = areaSquare(c.lat, c.lng, model.meta.areaKm2);
-        var lat0 = c.lat;
-        var pts = [
-            localMetersToLatLng(sq.minX, sq.minY, lat0),
-            localMetersToLatLng(sq.maxX, sq.minY, lat0),
-            localMetersToLatLng(sq.maxX, sq.maxY, lat0),
-            localMetersToLatLng(sq.minX, sq.maxY, lat0)
-        ].map(function (p) { return proj.latLngToPx(p.lat, p.lng); });
+        var rM = model.meta.radiusM || ((model.meta.sideM || 0) / 2);
+        var pt = proj.latLngToPx(c.lat, c.lng);
+        var rPx = Math.max(4, rM * proj.pxPerMeter);
         g.save();
         g.setLineDash([7, 5]);
-        g.strokeStyle = '#ff8a1e';
+        g.strokeStyle = '#66c8ff';
         g.lineWidth = 2;
         g.beginPath();
-        g.moveTo(pts[0].x, pts[0].y);
-        for (var i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
-        g.closePath();
+        g.arc(pt.x, pt.y, rPx, 0, Math.PI * 2);
         g.stroke();
         g.setLineDash([]);
         g.restore();
@@ -2021,33 +2054,32 @@
 
     function drawResultPolygons(g, proj, model, highlightIndex, trx) {
         var t = trx || tr;
+        var rM = CONFIG.RESULT_RADIUS_M;
         model.results.forEach(function (res, idx) {
-            var pts = res.polygon.map(function (ll) { return proj.latLngToPx(ll[0], ll[1]); });
+            var pt = proj.latLngToPx(res.lat, res.lng);
+            var rPx = Math.max(4, rM * proj.pxPerMeter);
             g.save();
             g.beginPath();
-            g.moveTo(pts[0].x, pts[0].y);
-            for (var i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
-            g.closePath();
+            g.arc(pt.x, pt.y, rPx, 0, Math.PI * 2);
             g.fillStyle = (highlightIndex === undefined || highlightIndex === idx + 1)
-                ? 'rgba(255,138,30,0.38)' : 'rgba(255,138,30,0.16)';
+                ? 'rgba(41,182,246,0.28)' : 'rgba(41,182,246,0.12)';
             g.fill();
-            g.strokeStyle = '#ff8a1e';
+            g.strokeStyle = '#66c8ff';
             g.lineWidth = (highlightIndex === idx + 1) ? 3 : 2;
+            g.setLineDash([4, 4]);
             g.stroke();
+            g.setLineDash([]);
 
-            // label
-            var cx = pts.reduce(function (a, p) { return a + p.x; }, 0) / pts.length;
-            var cy = pts.reduce(function (a, p) { return a + p.y; }, 0) / pts.length;
             var text = t('arch_report_result') + ' ' + (idx + 1);
             g.font = "700 12px 'Outfit', 'Segoe UI', Arial, sans-serif";
             var w = g.measureText(text).width + 14;
-            g.fillStyle = 'rgba(255,138,30,0.95)';
-            roundRect(g, cx - w / 2, cy - 26, w, 19, 4);
+            g.fillStyle = 'rgba(41,182,246,0.95)';
+            roundRect(g, pt.x - w / 2, pt.y - 26, w, 19, 4);
             g.fill();
-            g.fillStyle = '#2a1400';
+            g.fillStyle = '#041018';
             g.textAlign = 'center';
             g.textBaseline = 'middle';
-            g.fillText(text, cx, cy - 16);
+            g.fillText(text, pt.x, pt.y - 16);
             g.textAlign = 'left';
             g.restore();
         });
@@ -2141,7 +2173,8 @@
     function captureFigures(model, ctx, langCode) {
         var trx = makeTr(langCode || lang());
         var c = model.meta.center;
-        var spanM = Math.sqrt(model.meta.areaKm2 * 1e6) + CONFIG.SCREENSHOT.MARGIN_M * 2;
+        var radiusM = model.meta.radiusM || Math.sqrt((model.meta.areaKm2 || 0) * 1e6 / Math.PI);
+        var spanM = radiusM * 2 + CONFIG.SCREENSHOT.MARGIN_M * 2;
         var out = { apm: null, lidar: null, potential: null };
         var tasks = [];
 
@@ -2293,6 +2326,64 @@
      * ═══════════════════════════════════════════════════════════════════════ */
 
     var _pointMarker = null;
+    var _searchCircle = null;
+    var _circleRenderer = null;
+
+    var CIRCLE_STYLE_IDLE = {
+        color: '#66c8ff', weight: 1.8, dashArray: '5 6',
+        fill: true, fillColor: '#29b6f6', fillOpacity: 0.05, opacity: 0.85
+    };
+    var CIRCLE_STYLE_DRAG = {
+        color: '#66c8ff', weight: 2, dashArray: null,
+        fill: false, fillColor: '#29b6f6', fillOpacity: 0, opacity: 0.95
+    };
+
+    var raf = (typeof window !== 'undefined' && window.requestAnimationFrame &&
+        window.requestAnimationFrame.bind(window)) || function (fn) { return setTimeout(fn, 16); };
+
+    function circleRendererOption() {
+        var map = window._dlMap;
+        if (!_circleRenderer && map && typeof L !== 'undefined' && L.canvas) {
+            _circleRenderer = L.canvas(assignPane({ padding: 0.3 }, CONFIG.RENDER.PANE_SHAPES));
+        }
+        return _circleRenderer;
+    }
+
+    function drawSearchCircle(latlng) {
+        var map = window._dlMap;
+        if (!map || typeof L === 'undefined' || !L.circle) return;
+        var radius = currentRadiusM();
+        if (_searchCircle && _searchCircle.setLatLng && _searchCircle.setRadius) {
+            _searchCircle.setLatLng(latlng);
+            _searchCircle.setRadius(radius);
+            if (_searchCircle.setStyle) _searchCircle.setStyle(CIRCLE_STYLE_IDLE);
+            return;
+        }
+        if (_searchCircle && map.removeLayer) map.removeLayer(_searchCircle);
+        var circleOptions = {
+            radius: radius,
+            color: CIRCLE_STYLE_IDLE.color,
+            weight: CIRCLE_STYLE_IDLE.weight,
+            dashArray: CIRCLE_STYLE_IDLE.dashArray,
+            fill: CIRCLE_STYLE_IDLE.fill,
+            fillColor: CIRCLE_STYLE_IDLE.fillColor,
+            fillOpacity: CIRCLE_STYLE_IDLE.fillOpacity,
+            opacity: CIRCLE_STYLE_IDLE.opacity,
+            interactive: false
+        };
+        assignPane(circleOptions, CONFIG.RENDER.PANE_SHAPES);
+        var renderer = circleRendererOption();
+        if (renderer) circleOptions.renderer = renderer;
+        _searchCircle = L.circle(latlng, circleOptions);
+        if (_searchCircle.addTo) _searchCircle.addTo(map);
+        else if (map.addLayer) map.addLayer(_searchCircle);
+    }
+
+    function clearSearchCircle() {
+        var map = window._dlMap;
+        if (map && _searchCircle) map.removeLayer(_searchCircle);
+        _searchCircle = null;
+    }
 
     function drawPointMarker(latlng) {
         var map = window._dlMap;
@@ -2312,6 +2403,7 @@
             latlng.lat.toFixed(4) + ', ' + latlng.lng.toFixed(4) + '</span>',
             assignPane({ direction: 'top', offset: [0, -14], className: 'arch-report-tooltip' }, CONFIG.RENDER.PANE_TAGS)
         );
+        drawSearchCircle(latlng);
     }
 
     function onMapClick(e) {
@@ -2333,6 +2425,7 @@
         if (!_state.active) {
             map.off('click', onMapClick);
             if (_pointMarker) { map.removeLayer(_pointMarker); _pointMarker = null; }
+            clearSearchCircle();
             clearResults();
             _state.point = null;
             _state.figures = null;
@@ -2380,8 +2473,86 @@
             show.dataset.archReportWired = '1';
             show.addEventListener('change', function () { toggleResults(this.checked); });
         }
+        var slider = el('archReportDistance');
+        var valueLabel = el('archReportDistanceValue');
+        if (slider && !slider.dataset.archReportWired) {
+            slider.dataset.archReportWired = '1';
+            wireDistanceSlider(slider, valueLabel);
+        }
+        if (valueLabel && slider) valueLabel.textContent = currentRadiusKm() + ' km';
         syncPdfLangUi();
         updateUi();
+    }
+
+    function setDragClass(on) {
+        var body = (typeof document !== 'undefined') && document.body;
+        if (body && body.classList) body.classList.toggle('arch-distance-dragging', !!on);
+    }
+
+    function wireDistanceSlider(slider, valueLabel) {
+        var pendingValue = null;
+        var frameHandle = null;
+        var frameScheduled = false;
+        var dragging = false;
+        var releaseTimer = null;
+
+        function paint() {
+            frameScheduled = false;
+            frameHandle = null;
+            var value = pendingValue;
+            pendingValue = null;
+            if (value == null) return;
+            if (valueLabel) valueLabel.textContent = value + ' km';
+            if (_state.point && _searchCircle && _searchCircle.setRadius) {
+                _searchCircle.setRadius(value * 1000);
+            }
+        }
+
+        function schedule() {
+            if (frameScheduled) return;
+            frameScheduled = true;
+            frameHandle = raf(paint);
+        }
+
+        function beginDrag() {
+            if (dragging) return;
+            dragging = true;
+            setDragClass(true);
+            if (_searchCircle && _searchCircle.setStyle) _searchCircle.setStyle(CIRCLE_STYLE_DRAG);
+        }
+
+        function cancelFrame() {
+            if (!frameScheduled) return;
+            if (typeof window !== 'undefined' && window.cancelAnimationFrame) window.cancelAnimationFrame(frameHandle);
+            else clearTimeout(frameHandle);
+            frameScheduled = false;
+            frameHandle = null;
+        }
+
+        function endDrag() {
+            if (!dragging) return;
+            dragging = false;
+            if (pendingValue !== null) {
+                cancelFrame();
+                paint();
+            }
+            if (_searchCircle && _searchCircle.setStyle) _searchCircle.setStyle(CIRCLE_STYLE_IDLE);
+            setDragClass(false);
+        }
+
+        slider.addEventListener('input', function () {
+            pendingValue = +this.value;
+            beginDrag();
+            schedule();
+            clearTimeout(releaseTimer);
+            releaseTimer = setTimeout(endDrag, 220);
+        });
+        ['change', 'pointerup', 'pointercancel', 'touchend', 'touchcancel', 'mouseup', 'blur'].forEach(function (type) {
+            slider.addEventListener(type, function () {
+                clearTimeout(releaseTimer);
+                endDrag();
+            });
+        });
     }
 
     if (typeof document !== 'undefined') {
@@ -2422,6 +2593,14 @@
         pdfLanguage: pdfLanguage,
         setPdfLanguage: setPdfLanguage,
         areaSquare: areaSquare,
+        analysisArea: analysisArea,
+        inCircle: inCircle,
+        inSquare: inSquare,
+        currentRadiusKm: currentRadiusKm,
+        currentRadiusM: currentRadiusM,
+        seedGridM: seedGridM,
+        uatCellM: uatCellM,
+        apmCellM: apmCellM,
         buildSeeds: buildSeeds,
         passesSiteFilters: passesSiteFilters,
         nearestBubble: nearestBubble,
