@@ -109,6 +109,8 @@ const PRECACHE_URLS = [
   'js/archeo-report.js?v=20260827-arch-report',
   'js/archeo-potential.js?v=20260827-arch-report',
   'js/lidar-scanner.js?v=20260827-arch-report',
+  // LIDAR Scanner: 5 new sites appended to data/lidar_scanner_points.csv.
+  'js/lidar-scanner.js?v=20260831-scanner-points-5',
   'js/translations.js?v=20260827-arch-report',
   'css/styles.css?v=20260827-arch-report',
   // Archeological Report fix release: Search-Help-style APM figure polygons,

@@ -5,7 +5,7 @@
  */
 (function () {
     'use strict';
-    var DATA_URL = 'data/lidar_scanner_points.csv?v=20260812-scanner-above-lidar';
+    var DATA_URL = 'data/lidar_scanner_points.csv?v=20260831-scanner-points-5';
     var HERITAGE_RADIUS_M = 600;
     var map = null, resultsLayer = null, selectedMarker = null, selectionCircle = null;
     var points = [], selected = null, active = false, scanning = false, pointsPromise = null;
