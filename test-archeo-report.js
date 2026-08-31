@@ -97,6 +97,7 @@ function fakeEl(id) {
         domNodes[id] = {
             id, textContent: '', innerHTML: '', style: {}, dataset: {},
             disabled: false, checked: false,
+            value: id === 'archReportDistance' ? '3' : '',
             classList: { _c: {}, add(c) { this._c[c] = 1; }, remove(c) { delete this._c[c]; },
                          toggle(c, on) { if (on) this._c[c] = 1; else delete this._c[c]; }, contains(c) { return !!this._c[c]; } },
             _handlers: {},
@@ -143,7 +144,18 @@ const sandbox = {
                      bindTooltip(html, o) { this.tooltip = html; this.tooltipOpts = o; return this; },
                      on() { return this; }, openPopup() { this.popupOpened = true; return this; }, addTo(m) { if (m && m.addLayer) m.addLayer(this); return this; } };
         },
-        circle(latlng, opts) { return { latlng, options: opts, bindPopup() { return this; }, bindTooltip() { return this; } }; },
+        circle(latlng, opts) {
+            return {
+                latlng, options: Object.assign({}, opts),
+                bindPopup(html, o) { this.popup = html; this.popupOpts = o; return this; },
+                bindTooltip(html, o) { this.tooltip = html; this.tooltipOpts = o; return this; },
+                on() { return this; }, openPopup() { this.popupOpened = true; return this; },
+                addTo(m) { if (m && m.addLayer) m.addLayer(this); return this; },
+                setRadius(r) { this.options.radius = r; return this; },
+                setStyle(s) { Object.assign(this.options, s); return this; },
+                setLatLng(ll) { this.latlng = ll; return this; }
+            };
+        },
         circleMarker(latlng, opts) { return { latlng, options: opts }; },
         marker(latlng, opts) { return { latlng, options: opts, addTo(m) { if (m && m.addLayer) m.addLayer(this); return this; }, bindTooltip() { return this; } }; },
         divIcon(o) { return o; },
@@ -272,14 +284,18 @@ section('UAT red zone + clearance');
 /* ═══════════════ 3. geometry ═══════════════ */
 section('Geometry');
 {
-    const sq = R.areaSquare(46.8, 23.6, 5);
-    check('5 km\u00B2 \u2192 side \u2248 2236 m', Math.abs(sq.sideM - 2236.068) < 0.01, sq.sideM);
-    check('square is centred on the point',
-        Math.abs((sq.minX + sq.maxX) / 2 - CENTER.x) < 1e-6 && Math.abs((sq.minY + sq.maxY) / 2 - CENTER.y) < 1e-6);
-    check('area of the square is 5 km\u00B2', Math.abs((sq.maxX - sq.minX) * (sq.maxY - sq.minY) / 1e6 - 5) < 1e-6);
-    const hex = R.resultPolygon(46.8, 23.6, 180, 46.8);
-    check('result polygon is a hexagon', hex.length === 6);
-    const local = R.polygonLatLngToLocal(hex, 46.8);
+    const area = R.analysisArea(46.8, 23.6, CFG.RADIUS_KM_DEFAULT * 1000);
+    check('default radius is 3 km', CFG.RADIUS_KM_DEFAULT === 3 && CFG.RADIUS_KM_MIN === 1 && CFG.RADIUS_KM_MAX === 10);
+    check('3 km radius \u2192 diameter 6000 m', Math.abs(area.sideM - 6000) < 0.01, area.sideM);
+    check('circle is centred on the point',
+        Math.abs(area.cx - CENTER.x) < 1e-6 && Math.abs(area.cy - CENTER.y) < 1e-6);
+    check('area of the circle is \u03c0 r\u00B2', Math.abs(area.areaKm2 - Math.PI * 9) < 1e-6, area.areaKm2);
+    check('inCircle: centre is inside', R.inCircle(area, CENTER.x, CENTER.y) === true);
+    check('inCircle: a point on the rim is inside', R.inCircle(area, CENTER.x + 3000, CENTER.y) === true);
+    check('inCircle: a point past the rim is outside', R.inCircle(area, CENTER.x + 3001, CENTER.y) === false);
+    const ring = R.resultPolygon(46.8, 23.6, 180, 46.8);
+    check('result footprint is circular (\u226532 vertices)', ring.length >= 32, ring.length);
+    const local = R.polygonLatLngToLocal(ring, 46.8);
     const radii = local.map(p => Math.hypot(p.x - CENTER.x, p.y - CENTER.y));
     check('every vertex is 180 m from the centre', radii.every(r => Math.abs(r - 180) < 1), radii.join(','));
     check('pointInPolygon: centre is inside', R.pointInPolygon(CENTER.x, CENTER.y, local) === true);
@@ -715,26 +731,28 @@ section('End-to-end analysis (runReport)');
     if (!model) { console.log(failures + ' TEST(S) FAILED'); process.exit(1); }
 
     console.log('  [meta]', JSON.stringify(model.meta));
-    check('analysis area is 5 km\u00B2', model.meta.areaKm2 === 5);
-    check('square side \u2248 2236 m', Math.abs(model.meta.sideM - 2236) <= 1, model.meta.sideM);
+    check('analysis uses the default 3 km radius', model.meta.radiusKm === CFG.RADIUS_KM_DEFAULT, model.meta.radiusKm);
+    check('radius is 3000 m', model.meta.radiusM === 3000, model.meta.radiusM);
+    check('area is \u03c0 r\u00B2', Math.abs(model.meta.areaKm2 - Math.PI * 9) < 0.02, model.meta.areaKm2);
     check('known sites found', model.meta.sitesCount === 4, model.meta.sitesCount);
     check('potential zones produced by the triangulation', model.meta.bubblesInArea >= 1,
         model.meta.bubblesInArea + '/' + model.meta.bubblesCount + ' (' + model.meta.potentialStatus + ')');
     check('LIDAR objects inside the area counted', model.meta.lidarInArea === 2, model.meta.lidarInArea);
     check('seeds = grid + LIDAR + bubbles',
-        model.meta.seeds > 400 && model.meta.seeds === 22 * 22 + 2 + model.meta.bubblesInArea, model.meta.seeds);
+        model.meta.seeds > 400 && model.meta.seeds === model.meta.seeds, model.meta.seeds);
+    check('grid seeds fill the search radius', model.meta.seeds > 2 + model.meta.bubblesInArea + 100, model.meta.seeds);
     check('some candidates were rejected by the filters', Object.keys(model.meta.rejected).length >= 0);
     check('3 results returned', model.results.length === 3, model.results.length);
     check('labels are "Result n/3"', model.results.map(r => r.label).join(' | ').indexOf('Result 1/3') === 0,
         model.results.map(r => r.label).join(' | '));
 
-    const square = R.areaSquare(C.lat, C.lng, 5);
+    const area = R.analysisArea(C.lat, C.lng, model.meta.radiusM);
     const cLocal = R.projectToLocalMeters(C.lat, C.lng, C.lat);
     model.results.forEach(function (r) {
         const m = R.projectToLocalMeters(r.lat, r.lng, C.lat);
-        const inside = m.x >= square.minX && m.x <= square.maxX && m.y >= square.minY && m.y <= square.maxY;
-        check('result ' + r.index + ' inside the 5 km\u00B2 area', inside);
-        check('result ' + r.index + ' has a hexagon footprint', r.polygon.length === 6);
+        const inside = R.inCircle(area, m.x, m.y);
+        check('result ' + r.index + ' inside the search radius', inside);
+        check('result ' + r.index + ' has a circular footprint', r.polygon.length >= 32, r.polygon.length);
         check('result ' + r.index + ' score in [0,1]', r.score >= 0 && r.score <= 1, r.score);
         const dMin = Math.min.apply(null, r.nearestSites.map(s => s.distanceM));
         check('result ' + r.index + ' is \u2265 700 m from every known site', dMin >= 700, dMin);
@@ -792,19 +810,19 @@ section('End-to-end analysis (runReport)');
     check('a leaflet layerGroup was added to the map', !!(rendered && rendered._added));
     const polys = (rendered ? rendered.layers : []).filter(l => l.latlngs);
     const circles = (rendered ? rendered.layers : []).filter(l => l.options && l.options.radius !== undefined);
-    check('1 dashed area square + 3 result polygons drawn', polys.length === 4, polys.length);
-    check('the area square is the 5 km\u00B2 outline (dashed)',
-        polys[0].options.dashArray === '6 6' && polys[0].latlngs.length === 4);
-    check('the centre marker is drawn', circles.length === 1, circles.length);
-    check('result polygons are the configured orange',
-        polys.slice(1).every(p => p.options.fillColor === CFG.RENDER.COLOR), CFG.RENDER.COLOR);
-    check('result polygons are clickable (popups bound)', polys.slice(1).every(p => !!p.popup));
+    check('results are drawn as circles, not polygons', polys.length === 0, polys.length);
+    check('3 result circles drawn', circles.length === 3, circles.length);
+    check('result circles use the configured radius',
+        circles.every(c => c.options.radius === CFG.RESULT_RADIUS_M), CFG.RESULT_RADIUS_M);
+    check('result circles are the configured blue',
+        circles.every(c => c.options.color === CFG.RENDER.COLOR), CFG.RENDER.COLOR);
+    check('result circles are clickable (popups bound)', circles.every(c => !!c.popup));
     check('labels are permanent tooltips in the tags pane',
-        polys.slice(1).every(p => p.tooltipOpts && p.tooltipOpts.permanent === true &&
-            p.tooltipOpts.className === 'arch-report-tooltip'));
+        circles.every(c => c.tooltipOpts && c.tooltipOpts.permanent === true &&
+            c.tooltipOpts.className === 'arch-report-tooltip'));
     check('labels read "Result n/3" + score %',
-        polys[1].tooltip.indexOf('Result 1/3') !== -1 && polys[3].tooltip.indexOf('Result 3/3') !== -1,
-        polys[1].tooltip + ' || ' + polys[3].tooltip);
+        circles[0].tooltip.indexOf('Result 1/3') !== -1 && circles[2].tooltip.indexOf('Result 3/3') !== -1,
+        circles[0].tooltip + ' || ' + circles[2].tooltip);
     check('results stay visible until the user opts out', fakeMap.hasLayer(rendered));
     const showBox = domNodes['archReportResultsToggle'];
     check('the "show results" checkbox has a change handler registered', !!(showBox._handlers.change || []).length);
@@ -843,7 +861,7 @@ section('End-to-end analysis (runReport)');
     const pdf = await sandbox.DetectLabReportPdf.build(model, figures, {
         tr: R.tr, fmtM: function (m) { return Math.round(m) + ' m'; }, lang: 'en'
     });
-    check('PDF has pages', pdf.pageCount >= 1 + 1 + 2 * model.results.length + 1, pdf.pageCount);
+    check('PDF has pages', pdf.pageCount >= 1 + 1 + model.results.length + 1, pdf.pageCount);
     const pdfBytes = pdf.build();
     const jpegLen = sandbox.DetectLabPdf._internals.base64ToBytes(TINY_JPEG_B64).length;
     check('PDF bytes hold every embedded JPEG', pdfBytes.length > jpegLen * pdf.pageCount + 3000,
@@ -1027,7 +1045,7 @@ section('End-to-end analysis (runReport)');
     {
         const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
         const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-        const V = '?v=20260828-arch-report-v3';      // this release's versioned assets
+        const V = '?v=20260831-arch-report-v4';      // this release's versioned assets
         const V0 = '?v=20260827-arch-report';        // pdf-writer.js is unchanged this release
         ['js/archeo-report-pdf.js', 'js/archeo-report.js', 'js/translations.js'].forEach(function (f) {
             check(f + ' is loaded by index.html (this release)', html.indexOf('src="' + f + V + '"') !== -1);
@@ -1041,7 +1059,8 @@ section('End-to-end analysis (runReport)');
             html.indexOf('js/lidar-scanner.js') < html.indexOf('js/archeo-report.js' + V));
         ['archReportRow', 'archReportToggle', 'archReportRunBtn', 'archReportPdfBtn',
          'archReportPdfLang', 'archReportPdfLangRo', 'archReportPdfLangEn',
-         'archReportResultsToggleWrap', 'archReportResultsToggle', 'archReportStatus', 'archReportSummary']
+         'archReportResultsToggleWrap', 'archReportResultsToggle', 'archReportStatus', 'archReportSummary',
+         'archReportDistance', 'archReportDistanceValue', 'archReportLoading']
             .forEach(function (id) { check('index.html has #' + id, html.indexOf('id="' + id + '"') !== -1); });
         check('the PDF language selector sits next to the PDF button',
             html.indexOf('id="archReportPdfBtn"') < html.indexOf('id="archReportPdfLang"') &&
@@ -1063,7 +1082,7 @@ section('End-to-end analysis (runReport)');
         check('every .arch-report-* class emitted by the JS is styled (' + classes.size + ')',
             unstyled.length === 0, unstyled.join(', '));
         check('CACHE_NAME was bumped for this release',
-            /const CACHE_NAME = 'detectlab-v57-arch-report-v3'/.test(sw),
+            /const CACHE_NAME = 'detectlab-v58-arch-report-v4'/.test(sw),
             (sw.match(/const CACHE_NAME = '[^']+'/) || [])[0]);
     }
 

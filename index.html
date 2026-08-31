@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260828-arch-report-v3">
+    <link rel="stylesheet" href="css/styles.css?v=20260831-arch-report-v4">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260827-historical-dossier">
     <style>
         /* PWA Specific Styles */
@@ -865,6 +865,7 @@
                 <div class="map-wrapper">
                     <div id="detectlab-map" style="width:100%;height:100%;"></div>
                     <div id="lidarScannerLoading" class="lidar-scanner-loading" aria-live="polite"><span class="lidar-scanner-ring" aria-hidden="true"></span></div>
+                    <div id="archReportLoading" class="arch-report-loading" aria-live="polite"><span class="arch-report-ring" aria-hidden="true"></span></div>
 
                     <!-- Josephine Map + source transition — shown only while the premium
                          raster switches between Cloudflare and Supabase. -->
@@ -2557,16 +2558,16 @@
                     </div>
 
                     <!-- Archeological Report (premium) — "Raport arheologic".
-                         Analizează 5 km² în jurul unui punct ales de utilizator combinând
-                         APM 2.0 + zonele cu potențial arheologic + LIDAR Scanner (medie
-                         ponderată) și returnează până la 3 rezultate (poligoane portocalii)
+                         Analizează o rază de 1–10 km în jurul unui punct ales de utilizator
+                         combinând APM 2.0 + zonele cu potențial arheologic + LIDAR Scanner
+                         (medie ponderată) și returnează până la 3 rezultate (inele albastre)
                          plus un raport PDF descărcabil. -->
                     <div class="transp-layer-row arch-report-row" data-category="premium" id="archReportRow">
                         <div class="transp-layer-label" style="margin-bottom:6px">
                             <span style="display:flex;align-items:center;gap:7px;min-width:0">
                                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
-                                    <path d="M6.5 1.2 L11 3.6 L11 8.1 L6.5 11.8 L2 8.1 L2 3.6 Z" fill="none" stroke="#ff8a1e" stroke-width="1" />
-                                    <path d="M4.4 7.2 L6 8.6 L8.8 5.2" stroke="#ff8a1e" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+                                    <circle cx="6.5" cy="6.5" r="5" stroke="#66c8ff" stroke-width="1" stroke-dasharray="2 1.5"/>
+                                    <circle cx="6.5" cy="6.5" r="1.5" fill="#66c8ff"/>
                                 </svg>
                                 <span class="t" data-key="layer_arch_report" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">Archeological Report</span>
                             </span>
@@ -2578,12 +2579,15 @@
                         <div class="transp-layer-label" style="margin-bottom:6px;margin-top:4px;align-items:center">
                             <span style="display:flex;align-items:center;gap:6px;min-width:0">
                                 <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
-                                <span style="font-size:0.68rem;opacity:0.55" class="t" data-key="arch_report_desc">5 km² · APM 2.0 + potential zones + LIDAR · PDF</span>
+                                <span style="font-size:0.68rem;opacity:0.55" class="t" data-key="arch_report_desc">1–10 km radius · APM 2.0 + potential zones + LIDAR · PDF</span>
                             </span>
                         </div>
+                        <div class="arch-report-control"><span>Search radius / Rază</span><strong id="archReportDistanceValue">3 km</strong></div>
+                        <input type="range" class="transp-slider" id="archReportDistance" min="1" max="10" value="3" step="1" aria-label="Search radius from 1 to 10 kilometres">
                         <button id="archReportRunBtn" type="button" class="arch-report-button" disabled>
                             <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
-                                <path d="M6.5 1.2 L11 3.6 L11 8.1 L6.5 11.8 L2 8.1 L2 3.6 Z" fill="#ffb066" />
+                                <circle cx="6.5" cy="6.5" r="4.4" fill="none" stroke="#66c8ff" stroke-width="1.2"/>
+                                <circle cx="6.5" cy="6.5" r="1.4" fill="#66c8ff"/>
                             </svg>
                             <span class="t" data-key="arch_report_run_btn">Generate report</span>
                         </button>
@@ -3006,7 +3010,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260828-arch-report-v3"></script>
+    <script src="js/translations.js?v=20260831-arch-report-v4"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -3044,8 +3048,8 @@
     <!-- Premium "Archeological Report" / "Raport arheologic": PDF writer →
          PDF layout → the analysis layer itself (this order matters). -->
     <script src="js/pdf-writer.js?v=20260827-arch-report"></script>
-    <script src="js/archeo-report-pdf.js?v=20260828-arch-report-v3"></script>
-    <script src="js/archeo-report.js?v=20260828-arch-report-v3"></script>
+    <script src="js/archeo-report-pdf.js?v=20260831-arch-report-v4"></script>
+    <script src="js/archeo-report.js?v=20260831-arch-report-v4"></script>
 
     <!-- AUTH MODAL -->
     <style>
