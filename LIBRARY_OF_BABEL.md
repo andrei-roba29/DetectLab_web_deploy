@@ -2,7 +2,7 @@
 
 Premium layer **Biblioteca din Babel**. The user types a **locality or site**
 (ex. *Sarmizegetusa*, *Apulum*, *Grădiștea Muncelului*) and the agent queries
-**7 open knowledge sources in parallel, directly from the browser**, aggregates
+**8 open knowledge sources in parallel, directly from the browser**, aggregates
 and de-duplicates the findings, and renders them with per-source provenance.
 
 The previous implementation (SIRUTA register + `biblioteca-digitala.ro` crawl
@@ -11,7 +11,7 @@ failure and a hard dependency on one source. The backend dossier pipeline
 still exists as an API (see `HISTORICAL_DOSSIER.md`) but the UI no longer
 calls it.
 
-## The 7 sources
+## The 8 sources
 
 | # | Source | Endpoint | Result type | Rate limit |
 | --- | --- | --- | --- | --- |
@@ -22,8 +22,20 @@ calls it.
 | 5 | DBpedia Lookup | `lookup.dbpedia.org/api/search` | `structured` (semantic resource) | generous |
 | 6 | Archive.org | `archive.org/advancedsearch.php` | `document` / `image` / `audio` / `video` / `collection` | 7 req/s |
 | 7 | Europeana | `api.europeana.eu/record/v2/search.json` | heritage object | 10 req/s — **needs a free `wskey`** |
+| 8 | CIMEC / RAN | `eism.geo-spatial.ro/.../PatrimoniuWM/MapServer/find` (JSONP) | `structured` (fișă de sit, + coordinates) | ArcGIS REST generous |
 
-All seven are called with `Promise.all` — **one source failing never blocks the
+### CIMEC / RAN (Repertoriul Arheologic Național)
+
+Source 8 queries the ArcGIS REST heritage service at `eism.geo-spatial.ro`
+(layers 5 & 6 — archaeological sites and finds) using the **find task** with the
+locality name as `searchText`. The response is fetched via JSONP to bypass CORS
+(same proven approach as the map's 600 m radius circles). Each result carries
+the RAN code (e.g. `54984.77`), the site name, locality, county and a direct
+link to the canonical fișă de sit on `ran.cimec.ro/sel.asp?codran=…`. When the
+feature geometry is available, coordinates are attached so the finding appears
+on the mini-map.
+
+All eight are called with `Promise.all` — **one source failing never blocks the
 others**. Each fetch is wrapped in an `AbortController` timeout and its error
 is classified (`timeout` / `http` / `network` / `nokey`) and shown on that
 source's status chip.
@@ -47,7 +59,7 @@ The modal has a **Cheie API Europeana (opțional)** panel: the key is stored in
    coordinates and year are kept; every contributing source stays linked.
 3. Relevance score = `sources × 100 + rank bonus + image/coords bonuses` →
    multi-source findings rank first.
-4. Statistics: total results, **N/7 active sources**, duplicates removed,
+4. Statistics: total results, **N/8 active sources**, duplicates removed,
    duration — plus a live per-source chip row that doubles as a **source
    filter**.
 
@@ -90,7 +102,7 @@ licence/artist (Commons), data provider (Europeana), mediatype (Archive.org).
 | A source does not answer | the other 6 continue; the chip names the failure class; a note lists the failed sources |
 | 0 results | alternative searches suggested (diacritics-free variant, first word, `… arheologic`, `… archaeological`) |
 | Ambiguous locality | **LOCAȚIE AMBIGUĂ** banner with every OSM match (name · type · county) as one-click refined searches |
-| All 7 sources down | named error + retry + new-search buttons, never a hang |
+| All 8 sources down | named error + retry + new-search buttons, never a hang |
 | Europeana key rejected | `keyInvalid` note prompts the user to fix the stored key |
 
 ## Extensions already included
@@ -107,12 +119,12 @@ licence/artist (Commons), data provider (Europeana), mediatype (Archive.org).
 
 | Path | Role |
 | --- | --- |
-| `js/library-of-babel.js` | the agent: 7 source adapters, aggregation, rendering, filters, exports |
+| `js/library-of-babel.js` | the agent: 8 source adapters, aggregation, rendering, filters, exports |
 | `css/library-of-babel.css` | panel row, modal chrome, chips, timeline, cards, toolbar |
-| `index.html` | modal shell + panel row (crown names the 7 sources) |
+| `index.html` | modal shell + panel row (crown names the 8 sources) |
 | `sw.js` | cache `detectlab-v59-babel-multisource` + precached assets |
 | `test-babel-i18n.js` | ro/en dictionary parity + agent-spec contract |
-| `test-babel-multisource.js` | full render with realistic fixtures for all 7 APIs: aggregation, dedup, provenance, periods, filters, exports |
+| `test-babel-multisource.js` | full render with realistic fixtures for all 8 APIs: aggregation, dedup, provenance, periods, filters, exports |
 | `test-babel-resilience.js` | failing sources, total outage, zero results, ambiguity, cache |
 | `test-babel-periods.js` | period-classification contract: unspecified exclusion + lexicon-driven *Roman* (no *român* false positive) |
 

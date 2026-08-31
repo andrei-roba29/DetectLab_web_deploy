@@ -2,7 +2,7 @@
 'use strict';
 
 // End-to-end contract test of the multi-source archaeological search agent:
-// realistic responses from all 7 APIs (stubbed fetch) → the real frontend
+// realistic responses from all 8 APIs (stubbed fetch + stubbed JSONP) → the real frontend
 // module (stubbed DOM) → aggregation, de-duplication, per-source provenance,
 // automatic period classification, statistics, filters and JSON/CSV exports.
 
@@ -65,6 +65,10 @@ const europeana = {
         { id: '/abc/2', title: ['Roman coin hoard'], edmDataProvider: ['Europeana 280'], edmType: 'TEXT' }
     ]
 };
+const cimec = [
+    { layerId: 5, attributes: { CodRAN: '97042.01', DenumireSit: 'Sarmizegetusa', Localitate: 'Sarmizegetusa', Judet: 'Hunedoara', Comuna: 'Sarmizegetusa', Tip: 'Cetate dacică' }, geometry: { x: 22.785, y: 45.516 } },
+    { layerId: 6, attributes: { CodRAN: '97042.02', DenumireSit: 'Așezare romană', Localitate: 'Sarmizegetusa', Judet: 'Hunedoara', Tip: 'Așezare civilă' }, geometry: { x: 22.787, y: 45.515 } }
+];
 
 function route(url) {
     if (url.includes('ro.wikipedia.org')) return wikiRo;
@@ -100,6 +104,23 @@ function loadEngine() {
         },
         fetch: (u) => Promise.resolve({ ok: true, status: 200, json: async () => route(String(u)) })
     };
+    /* Intercept JSONP script elements: when a script is appended with a src
+     * that targets the CIMEC/RAN ArcGIS find task, look up the callback name
+     * from the URL and invoke it with the stub data. */
+    sandbox.document.head = {
+        appendChild(el) {
+            if (el && el.src && typeof el.src === 'string' && el.src.includes('PatrimoniuWM')) {
+                var m = el.src.match(/callback=(\w+)/);
+                if (m) {
+                    var cbName = m[1];
+                    setTimeout(function () {
+                        try { sandbox[cbName](cimec); } catch (_) { /* guard */ }
+                    }, 0);
+                }
+            }
+        }
+    };
+    sandbox.document.head.removeChild = function () {};
     sandbox.window = sandbox;
     sandbox.window._currentLang = () => currentLangCode;
     sandbox.setLang = (v) => { currentLangCode = v; };
@@ -117,9 +138,9 @@ function loadEngine() {
 
     /* ── STATISTICĂ: total results, active sources, duplicates removed ── */
     assert.ok(/„Sarmizegetusa”/.test(html), 'the head repeats the query');
-    assert.ok(/<b>8<\/b>\s*rezultate/.test(html), `8 aggregated results (got: ${html.match(/<b>(\d+)<\/b>\s*rezultate/)})`);
-    assert.ok(/<b>7\/7<\/b>\s*surse active/.test(html), 'all 7 sources answered');
-    assert.ok(/<b>6<\/b>\s*duplicate eliminate/.test(html), '6 duplicates removed by cross-source merging (16 raw → 8; the 2 period-less findings are dropped)');
+    assert.ok(/<b>9<\/b>\s*rezultate/.test(html), `9 aggregated results (got: ${html.match(/<b>(\d+)<\/b>\s*rezultate/)})`);
+    assert.ok(/<b>8\/8<\/b>\s*surse active/.test(html), 'all 8 sources answered');
+    assert.ok(/<b>7<\/b>\s*duplicate eliminate/.test(html), '7 duplicates removed by cross-source merging (18 raw → 11; the 2 period-less findings are dropped)');
 
     /* ── per-source status chips with counts ── */
     assert.ok(/Wikipedia <b>3<\/b>/.test(html), 'Wikipedia chip reports 3 unique articles (ro+en merged)');
@@ -159,32 +180,32 @@ function loadEngine() {
     /* ── optional filters ── */
     assert.ok(/id="babelTypeFilter"/.test(html), 'type filter present');
     assert.ok(/id="babelPeriodFilter"/.test(html), 'period filter present');
-    assert.ok(/Afișate: 8 din 8/.test(html), 'unfiltered view shows all 8');
+    assert.ok(/Afișate: 9 din 9/.test(html), 'unfiltered view shows all 9');
 
     /* ── type filter: images only (Commons photo + Europeana IMAGE) ── */
     E('babelTypeFilter').value = 'image';
     E('babelTypeFilter').onchange();
-    assert.ok(/Afișate: 2 din 8/.test(app.body()), 'image filter narrows to 2 results');
+    assert.ok(/Afișate: 2 din 9/.test(app.body()), 'image filter narrows to 2 results');
     E('babelTypeFilter').value = 'all';
     E('babelTypeFilter').onchange();
 
     /* ── period filter: Roman (lexicon-driven, "român" without diacritics excluded) ── */
     E('babelPeriodFilter').value = 'roman';
     E('babelPeriodFilter').onchange();
-    assert.ok(/Afișate: 6 din 8/.test(app.body()), 'Roman period filter narrows to 6 results');
+    assert.ok(/Afișate: 7 din 9/.test(app.body()), 'Roman period filter narrows to 7 results (includes CIMEC Așezare romană)');
     E('babelPeriodFilter').value = 'all';
     E('babelPeriodFilter').onchange();
 
     /* ── exports (JSON / CSV) ── */
     const json = JSON.parse(app.sandbox.window.DetectLabEvidenceEngine._export.json());
-    assert.strictEqual(json.results.length, 8, 'JSON export contains all 8 aggregated results');
-    assert.strictEqual(json.stats.activeSources, '7/7', 'JSON export carries the source statistics');
+    assert.strictEqual(json.results.length, 9, 'JSON export contains all 9 aggregated results');
+    assert.strictEqual(json.stats.activeSources, '8/8', 'JSON export carries the source statistics');
     for (const field of ['titlu', 'descriere', 'tip', 'sursa', 'perioade', 'url']) {
         assert.ok(field in json.results[0], `JSON export row has field ${field}`);
     }
     const csv = app.sandbox.window.DetectLabEvidenceEngine._export.csv();
     const lines = csv.split('\r\n');
-    assert.strictEqual(lines.length, 9, 'CSV export = header + 8 rows');
+    assert.strictEqual(lines.length, 10, 'CSV export = header + 9 rows');
     assert.ok(csv.startsWith('\uFEFFtitlu,descriere,tip,sursa,perioade'), 'CSV starts with a BOM and the header row');
     assert.ok(csv.includes('"Castrul roman de la Apulum"'), 'CSV contains a quoted title');
     assert.ok(csv.includes('1930'), 'CSV carries the archive.org year');
@@ -192,7 +213,7 @@ function loadEngine() {
     /* ── EN variant renders the same data in English ── */
     app.sandbox.window.setLang('en'); // the module re-renders the open modal
     const htmlEn = app.body();
-    assert.ok(/8<\/b>\s*results/.test(htmlEn), 'EN: statistics rendered in English');
+    assert.ok(/9<\/b>\s*results/.test(htmlEn), 'EN: statistics rendered in English');
     assert.ok(/>Wikipedia article</.test(htmlEn), 'EN: type badge translated');
     assert.ok(/>SPARQL data</.test(htmlEn), 'EN: Wikidata type label translated');
     assert.ok(/AMBIGUOUS LOCATION/.test(htmlEn), 'EN: ambiguity banner translated');
