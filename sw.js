@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v59-babel-multisource';
+const CACHE_NAME = 'detectlab-v60-babel-cimec';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -68,6 +68,7 @@ const PRECACHE_URLS = [
   'js/library-of-babel.js?v=20260827-historical-dossier',
   'js/library-of-babel.js?v=20260828-evidence-search-fix',
   'js/library-of-babel.js?v=20260831-babel-multisource',
+  'js/library-of-babel.js?v=20260831-babel-cimec',
   'js/library-of-babel.js?v=20260831-babel-periods-lexicon',
   'js/vertical-opacity-control.js',
   'js/vertical-opacity-control.js?v=20260812',

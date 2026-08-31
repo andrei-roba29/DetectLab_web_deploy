@@ -3,7 +3,7 @@
 
 // Guards the "Biblioteca din Babel" multi-source search agent:
 //  1. every UI string exists in BOTH site language variants (ro + en);
-//  2. all 7 sources are named in both variants;
+//  2. all 8 sources are named in both variants;
 //  3. the agent specification's key sentences survive in both variants;
 //  4. the retired backend search (SIRUTA / biblioteca-digitala.ro dossier)
 //     is really gone from the module.
@@ -45,8 +45,8 @@ const missingInRo = [...en].filter((k) => !ro.has(k));
 assert.deepStrictEqual(missingInEn, [], `every ro key has an en translation (missing: ${missingInEn.join(', ')})`);
 assert.deepStrictEqual(missingInRo, [], `every en key has an ro translation (missing: ${missingInRo.join(', ')})`);
 
-// The 7 sources of the multi-source agent must be named in both variants.
-for (const id of ['wikipedia', 'wikidata', 'osm', 'commons', 'dbpedia', 'archive', 'europeana']) {
+// The 8 sources of the multi-source agent must be named in both variants.
+for (const id of ['wikipedia', 'wikidata', 'osm', 'commons', 'dbpedia', 'archive', 'europeana', 'cimec']) {
     assert.ok(ro.has(`src_${id}`), `ro names source ${id}`);
     assert.ok(en.has(`src_${id}`), `en names source ${id}`);
 }
@@ -74,8 +74,8 @@ assert.ok(ro.has('srcTimeout') && ro.has('srcNetwork') && ro.has('srcHttp'), 'pe
 assert.ok(en.has('srcTimeout') && en.has('srcNetwork') && en.has('srcHttp'), 'per-failure wording exists (en)');
 
 // Canonical sentences.
-assert(source.includes("'Căutare arheologică multi-sursă · 7 surse deschise'"), 'ro subtitle names the 7-source mission');
-assert(source.includes("'Multi-source archaeological search · 7 open sources'"), 'en subtitle names the 7-source mission');
+assert(source.includes("'Căutare arheologică multi-sursă · 8 surse deschise'"), 'ro subtitle names the 8-source mission');
+assert(source.includes("'Multi-source archaeological search · 8 open sources'"), 'en subtitle names the 8-source mission');
 assert(source.includes("'LOCAȚIE AMBIGUĂ'"), 'ro ambiguous-location marker present');
 assert(source.includes("'AMBIGUOUS LOCATION'"), 'en ambiguous-location marker present');
 
@@ -86,11 +86,11 @@ assert(!source.includes('biblioteca-digitala'), 'no biblioteca-digitala.ro depen
 assert(!source.includes('MIN_ZOOM'), 'the old zoom gate is gone');
 assert(!source.includes('API_BASE'), 'no backend API base remains');
 
-// The 7 public endpoints are wired in the module itself.
+// The 8 public endpoints are wired in the module itself.
 for (const endpoint of [
     'wikipedia.org/w/api.php', 'query.wikidata.org/sparql', 'nominatim.openstreetmap.org/search',
     'commons.wikimedia.org/w/api.php', 'lookup.dbpedia.org/api/search', 'archive.org/advancedsearch.php',
-    'api.europeana.eu/record/v2/search.json'
+    'api.europeana.eu/record/v2/search.json', 'Patrimoniu/PatrimoniuWM/MapServer'
 ]) {
     assert(source.includes(endpoint), `endpoint ${endpoint} is wired`);
 }

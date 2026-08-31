@@ -1,7 +1,7 @@
 /* DetectLab — "Biblioteca din Babel" multi-source archaeological search agent.
  *
  * The old single-source dossier search was retired; this module now queries
- * 7 open knowledge sources DIRECTLY from the browser, in parallel, aggregates
+ * 8 open knowledge sources DIRECTLY from the browser, in parallel, aggregates
  * and de-duplicates the findings and renders them with per-source provenance:
  *
  *   1. Wikipedia (ro + en)   — articles about localities and sites
@@ -12,6 +12,8 @@
  *   6. Archive.org           — digitised old documents and collections
  *   7. Europeana             — museum objects and cultural collections
  *                              (free API key required, stored locally)
+ *   8. CIMEC / RAN           — fișe de sit arheologic din Repertoriul
+ *                              Arheologic Național (via ArcGIS REST JSONP)
  *
  * Contract (see AGENT spec): a source that fails never blocks the others,
  * zero results yields suggested alternative searches, an ambiguous locality
@@ -26,7 +28,7 @@
     var NOMINATIM_MIN_INTERVAL = 1100;   // hard usage-policy limit: 1 req/sec
     var CACHE_TTL = 30 * 60 * 1000;      // 30 minutes of local result caching
     var WIKI_LIMIT = 8, COMMONS_LIMIT = 12, OTHER_LIMIT = 10;
-    var SOURCE_ORDER = ['wikipedia', 'wikidata', 'osm', 'commons', 'dbpedia', 'archive', 'europeana'];
+    var SOURCE_ORDER = ['wikipedia', 'wikidata', 'osm', 'commons', 'dbpedia', 'archive', 'europeana', 'cimec'];
     /* dominant type wins when the same finding arrives from several sources */
     var TYPE_PRIORITY = { place: 9, article: 8, structured: 7, document: 6, map: 5, image: 4, collection: 3, audio: 2, video: 2 };
     var TYPE_ORDER = ['article', 'structured', 'place', 'document', 'map', 'image', 'collection', 'audio', 'video'];
@@ -44,16 +46,16 @@
     var C = {
         ro: {
             title: 'Biblioteca din Babel',
-            subtitle: 'Căutare arheologică multi-sursă · 7 surse deschise',
+            subtitle: 'Căutare arheologică multi-sursă · 8 surse deschise',
             button: 'Caută o localitate',
             close: 'Închide',
-            intro: 'Introdu o localitate sau un sit (ex. Sarmizegetusa, Apulum). Căutarea pornește simultan în 7 surse deschise; rezultatele sunt agregate, deduplicate și marcate cu sursa de proveniență.',
-            sourcesPolicy: 'Surse: Wikipedia (ro/en) · Wikidata · OpenStreetMap · Wikimedia Commons · DBpedia · Archive.org · Europeana',
+            intro: 'Introdu o localitate sau un sit (ex. Sarmizegetusa, Apulum). Căutarea pornește simultan în 8 surse deschise; rezultatele sunt agregate, deduplicate și marcate cu sursa de proveniență.',
+            sourcesPolicy: 'Surse: Wikipedia (ro/en) · Wikidata · OpenStreetMap · Wikimedia Commons · DBpedia · Archive.org · Europeana · CIMEC/RAN',
             locality: 'Localitate / sit arheologic',
             placeholder: 'ex. Sarmizegetusa, Apulum, Grădiștea Muncelului…',
-            run: 'Caută', searching: 'Interogăm cele 7 surse în paralel…',
+            run: 'Caută', searching: 'Interogăm cele 8 surse în paralel…',
             failed: 'Căutarea nu a putut fi finalizată.',
-            allSourcesFailed: 'Niciuna dintre cele 7 surse nu a răspuns. Verifică conexiunea la internet și reîncearcă.',
+            allSourcesFailed: 'Niciuna dintre cele 8 surse nu a răspuns. Verifică conexiunea la internet și reîncearcă.',
             retry: 'Reîncearcă', newSearch: 'Caută altceva',
             noResults: 'Nu am găsit niciun rezultat pentru',
             noResultsHelp: 'Încearcă o variantă de mai jos, un nume istoric (ex. Ulpia Traiana în loc de Sarmizegetusa) sau forma engleză / maghiară / germană a numelui.',
@@ -72,7 +74,8 @@
             heritageObject: 'Obiect de patrimoniu', digitalDocument: 'Document digital',
             src_wikipedia: 'Wikipedia', src_wikidata: 'Wikidata', src_osm: 'OpenStreetMap',
             src_commons: 'Wikimedia Commons', src_dbpedia: 'DBpedia', src_archive: 'Archive.org',
-            src_europeana: 'Europeana',
+            src_europeana: 'Europeana', src_cimec: 'CIMEC / RAN',
+            sitArheologic: 'Fișă de sit arheologic',
             p_prehistory: 'Preistorie', p_bronze: 'Epoca bronzului', p_iron: 'Epoca fierului',
             p_dacian: 'Dacic', p_roman: 'Roman', p_migration: 'Epoca migrațiilor',
             p_medieval: 'Medieval', p_modern: 'Modern', p_unspecified: 'Nespecificată',
@@ -82,7 +85,7 @@
             ambiguousHelp: 'OpenStreetMap a găsit mai multe potriviri pentru acest nume. Alege una pentru a rafina căutarea:',
             exportJson: 'Export JSON', exportCsv: 'Export CSV',
             cachedFrom: 'Rezultate din cache local', refresh: 'Reîmprospătează',
-            keyTitle: 'Cheie API Europeana (opțional)', keyHelp: 'Europeana cere o cheie API gratuită, obținută în câteva minute la europeana.eu/api. Cheia se salvează doar local, în browserul tău. Fără cheie, căutarea continuă automat cu celelalte 6 surse.',
+            keyTitle: 'Cheie API Europeana (opțional)', keyHelp: 'Europeana cere o cheie API gratuită, obținută în câteva minute la europeana.eu/api. Cheia se salvează doar local, în browserul tău. Fără cheie, căutarea continuă automat cu celelalte 7 surse.',
             keyPlaceholder: 'wskey Europeana', keySave: 'Salvează cheia', keySaved: 'Cheia a fost salvată local.',
             keyInvalid: 'Cheia a fost respinsă de Europeana — verifică-o și salveaz-o din nou.',
             year: 'An', generated: 'Generat', query: 'Căutare',
@@ -92,16 +95,16 @@
         },
         en: {
             title: 'Library of Babel',
-            subtitle: 'Multi-source archaeological search · 7 open sources',
+            subtitle: 'Multi-source archaeological search · 8 open sources',
             button: 'Search a locality',
             close: 'Close',
-            intro: 'Enter a locality or site (e.g. Sarmizegetusa, Apulum). The search runs simultaneously across 7 open sources; results are aggregated, de-duplicated and tagged with their source.',
-            sourcesPolicy: 'Sources: Wikipedia (ro/en) · Wikidata · OpenStreetMap · Wikimedia Commons · DBpedia · Archive.org · Europeana',
+            intro: 'Enter a locality or site (e.g. Sarmizegetusa, Apulum). The search runs simultaneously across 8 open sources; results are aggregated, de-duplicated and tagged with their source.',
+            sourcesPolicy: 'Sources: Wikipedia (ro/en) · Wikidata · OpenStreetMap · Wikimedia Commons · DBpedia · Archive.org · Europeana · CIMEC/RAN',
             locality: 'Locality / archaeological site',
             placeholder: 'e.g. Sarmizegetusa, Apulum, Grădiștea Muncelului…',
-            run: 'Search', searching: 'Querying all 7 sources in parallel…',
+            run: 'Search', searching: 'Querying all 8 sources in parallel…',
             failed: 'The search could not be completed.',
-            allSourcesFailed: 'None of the 7 sources responded. Check your internet connection and try again.',
+            allSourcesFailed: 'None of the 8 sources responded. Check your internet connection and try again.',
             retry: 'Try again', newSearch: 'Search something else',
             noResults: 'No results found for',
             noResultsHelp: 'Try one of the variants below, a historical name (e.g. Ulpia Traiana instead of Sarmizegetusa) or the English / Hungarian / German form of the name.',
@@ -120,7 +123,8 @@
             heritageObject: 'Heritage object', digitalDocument: 'Digital document',
             src_wikipedia: 'Wikipedia', src_wikidata: 'Wikidata', src_osm: 'OpenStreetMap',
             src_commons: 'Wikimedia Commons', src_dbpedia: 'DBpedia', src_archive: 'Archive.org',
-            src_europeana: 'Europeana',
+            src_europeana: 'Europeana', src_cimec: 'CIMEC / RAN',
+            sitArheologic: 'Archaeological site record',
             p_prehistory: 'Prehistoric', p_bronze: 'Bronze Age', p_iron: 'Iron Age',
             p_dacian: 'Dacian', p_roman: 'Roman', p_migration: 'Migration period',
             p_medieval: 'Medieval', p_modern: 'Modern', p_unspecified: 'Unspecified',
@@ -130,7 +134,7 @@
             ambiguousHelp: 'OpenStreetMap found several matches for this name. Pick one to refine the search:',
             exportJson: 'Export JSON', exportCsv: 'Export CSV',
             cachedFrom: 'Results from local cache', refresh: 'Refresh',
-            keyTitle: 'Europeana API key (optional)', keyHelp: 'Europeana requires a free API key, obtainable in a few minutes at europeana.eu/api. The key is stored locally in your browser only. Without a key the search automatically continues with the other 6 sources.',
+            keyTitle: 'Europeana API key (optional)', keyHelp: 'Europeana requires a free API key, obtainable in a few minutes at europeana.eu/api. The key is stored locally in your browser only. Without a key the search automatically continues with the other 7 sources.',
             keyPlaceholder: 'Europeana wskey', keySave: 'Save key', keySaved: 'The key was saved locally.',
             keyInvalid: 'The key was rejected by Europeana — check it and save it again.',
             year: 'Year', generated: 'Generated', query: 'Query',
@@ -432,6 +436,110 @@
         });
     }
 
+    /* ════════════════════════ JSONP helper (for ArcGIS REST) ════════════════════════ */
+    var _jsonpCounter = 0;
+    function jsonpFetch(url, timeout) {
+        timeout = timeout || 18000;
+        return new Promise(function (resolve, reject) {
+            var cbName = '__babelJsonp' + (++_jsonpCounter);
+            var script = document.createElement('script');
+            var timer = setTimeout(function () {
+                cleanup();
+                reject(new Error('JSONP timeout'));
+            }, timeout);
+            function cleanup() {
+                clearTimeout(timer);
+                try { delete window[cbName]; } catch (_) { window[cbName] = undefined; }
+                if (script.parentNode) script.parentNode.removeChild(script);
+            }
+            window[cbName] = function (data) {
+                cleanup();
+                resolve(data);
+            };
+            script.onerror = function () {
+                cleanup();
+                reject(new Error('JSONP script load error'));
+            };
+            script.src = url + '&callback=' + cbName;
+            document.head.appendChild(script);
+        });
+    }
+
+    /* 8. CIMEC / RAN — fișe de sit arheologic din Repertoriul Arheologic Național.
+     * The RAN data is exposed via the ArcGIS REST heritage service at
+     * eism.geo-spatial.ro (layers 5 & 6 — archaeological sites). We use a find
+     * task with the locality name as searchText and JSONP to bypass CORS. */
+    var CIMEC_REST_BASE = 'https://eism.geo-spatial.ro/eismgeo/rest/services/Patrimoniu/PatrimoniuWM/MapServer';
+    var CIMEC_SEARCH_LAYERS = [5, 6]; // layer 5: situri arheologice, layer 6: descoperiri
+    var CIMEC_SEARCH_FIELDS = ['Localitate', 'Nume', 'Toponim', 'Denumire', 'DenumireSit', 'DESCRIERE', 'DESCRIPTION'];
+    function sourceCimec(query) {
+        /* Build a find task URL that searches across heritage layers */
+        var searchText = query;
+        var layersParam = CIMEC_SEARCH_LAYERS.join(',');
+        var fieldsParam = CIMEC_SEARCH_FIELDS.join(',');
+        var u = CIMEC_REST_BASE + '/find'
+            + '?searchText=' + encodeURIComponent(searchText)
+            + '&layers=' + layersParam
+            + '&searchFields=' + encodeURIComponent(fieldsParam)
+            + '&contains=true'
+            + '&sr=4326'
+            + '&outFields=*'
+            + '&returnGeometry=true'
+            + '&f=json';
+        return jsonpFetch(u, 20000).then(function (data) {
+            if (!data || !Array.isArray(data)) return { results: [] };
+            var seen = {}, results = [];
+            data.forEach(function (feat, i) {
+                var attrs = feat.attributes || {};
+                /* Extract RAN code from various possible field names */
+                var ranCode = attrs.CodRAN || attrs.COD_RAN || attrs.Cod_RAN || attrs.CODSIT || attrs.NR_RAN || attrs.COD || attrs.Cod || null;
+                var name = attrs.DenumireSit || attrs.Denumire || attrs.Denumire_sit || attrs.Nume || attrs.Toponim || attrs.Localitate || attrs.DESCRIPCION || null;
+                if (!name && !ranCode) return;
+                var key = normKey(name || ranCode);
+                if (!key || seen[key]) return;
+                seen[key] = true;
+                /* Extract coordinates from geometry */
+                var coords = null;
+                if (feat.geometry) {
+                    if (typeof feat.geometry.x === 'number' && typeof feat.geometry.y === 'number') {
+                        coords = { lat: feat.geometry.y, lng: feat.geometry.x };
+                    }
+                }
+                /* Build a locality/county description */
+                var locality = attrs.Localitate || attrs.Localitat || '';
+                var county = attrs.Judet || attrs.Județ || attrs.JUDEȚ || attrs.JUDET || '';
+                var commune = attrs.Comuna || attrs.COMUNA || '';
+                var descParts = [name];
+                if (locality && locality !== name) descParts.push(locality);
+                if (commune && commune !== locality) descParts.push(commune);
+                if (county) descParts.push(county);
+                var description = descParts.filter(Boolean).join(' · ');
+                /* Determine the URL — link to RAN portal if we have a code */
+                var url = ranCode
+                    ? 'https://ran.cimec.ro/sel.asp?codran=' + encodeURIComponent(ranCode)
+                    : 'https://ran.cimec.ro/sel.asp?descript=' + encodeURIComponent(name || query);
+                /* Layer type hint */
+                var layerId = feat.layerId;
+                var meta = {
+                    ranCode: ranCode || null,
+                    layerId: layerId,
+                    locality: locality || null,
+                    county: county || null,
+                    commune: commune || null,
+                    tip: attrs.Tip || attrs.Eticheta || null
+                };
+                results.push({
+                    title: name || (ranCode ? 'Sit RAN ' + ranCode : 'Sit arheologic'),
+                    description: clampDesc(description),
+                    type: 'structured', source: 'cimec',
+                    typeKey: 'sitArheologic',
+                    url: url, rank: i, coords: coords, meta: meta
+                });
+            });
+            return { results: results.slice(0, 30) };
+        });
+    }
+
     /* ══════════════════ parallel orchestration + aggregation ══════════════════ */
 
     function searchAll(query, lg, key, seq, onSource) {
@@ -443,7 +551,8 @@
             { id: 'commons', run: function () { return sourceCommons(query); } },
             { id: 'dbpedia', run: function () { return sourceDbpedia(query); } },
             { id: 'archive', run: function () { return sourceArchive(query); } },
-            { id: 'europeana', run: function () { return sourceEuropeana(query, key); } }
+            { id: 'europeana', run: function () { return sourceEuropeana(query, key); } },
+            { id: 'cimec', run: function () { return sourceCimec(query); } }
         ];
         var tasks = runners.map(function (r) {
             return r.run().then(function (out) {
@@ -610,7 +719,7 @@
         runState = 'form';
         destroyMap();
         document.getElementById('babelBody').innerHTML =
-            '<div class="babel-intro"><span class="babel-intro-seal">7×</span><div>' +
+            '<div class="babel-intro"><span class="babel-intro-seal">8×</span><div>' +
             '<h2>' + esc(t('title')) + '</h2><p>' + esc(t('intro')) + '</p>' +
             '<p class="babel-policy">' + esc(t('sourcesPolicy')) + '</p></div></div>' +
             '<form id="babelForm" class="babel-searchbar">' +
@@ -685,7 +794,7 @@
         /* head + stats */
         var html =
             '<header class="babel-results-head"><div><span>DETECTLAB · MULTI-SOURCE SEARCH</span>' +
-            '<h2>„' + esc(q) + '”</h2><p><b>' + total + '</b> ' + esc(t('results')) + ' · <b>' + active + '/7</b> ' + esc(t('activeSources')) +
+            '<h2>„' + esc(q) + '”</h2><p><b>' + total + '</b> ' + esc(t('results')) + ' · <b>' + active + '/8</b> ' + esc(t('activeSources')) +
             (s.duplicatesRemoved > 0 ? ' · <b>' + s.duplicatesRemoved + '</b> ' + esc(t('duplicates')) : '') +
             ' · ' + (s.durationMs / 1000).toFixed(1) + ' ' + esc(t('seconds')) + '</p></div>' +
             '<button type="button" id="babelNew">' + esc(t('newSearch')) + '</button></header>';
@@ -827,7 +936,7 @@
         return JSON.stringify({
             query: lastQuery, language: lang(), generatedAt: lastStats && lastStats.generatedAt,
             stats: {
-                total: lastStats.total, activeSources: lastStats.active + '/7',
+                total: lastStats.total, activeSources: lastStats.active + '/8',
                 duplicatesRemoved: lastStats.duplicatesRemoved, durationMs: lastStats.durationMs,
                 sources: lastStats.sources.map(function (s) { return { source: s.id, status: s.status, results: s.count }; })
             },

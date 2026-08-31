@@ -8,7 +8,7 @@
 //   3. zero results → alternative searches are suggested;
 //   4. ambiguous locality → the OSM matches are offered as refinements;
 //   5. Europeana without an API key → source marked "no key", search
-//      continues with the other 6;
+//      continues with the other 7;
 //   6. repeated search serves from the local cache (no new requests).
 
 const assert = require('assert');
@@ -44,6 +44,30 @@ function loadEngine(fetchImpl, opts) {
         const store = {};
         sandbox.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
     }
+    /* Intercept JSONP script elements for CIMEC/RAN — return empty array by
+     * default (the source answers but has no sites), or a custom payload if
+     * opts.cimecData is set. Pass false to simulate CIMEC failing immediately
+     * (script onerror fires, JSONP rejects). */
+    const cimecData = opts.cimecData !== undefined ? opts.cimecData : [];
+    sandbox.document.head = {
+        appendChild(el) {
+            if (el && el.src && typeof el.src === 'string' && el.src.includes('PatrimoniuWM')) {
+                if (cimecData === false) {
+                    // simulate immediate JSONP failure (script load error)
+                    setTimeout(function () { if (typeof el.onerror === 'function') el.onerror(); }, 0);
+                    return;
+                }
+                var m = el.src.match(/callback=(\w+)/);
+                if (m) {
+                    var cbName = m[1];
+                    setTimeout(function () {
+                        try { sandbox[cbName](cimecData); } catch (_) { }
+                    }, 0);
+                }
+            }
+        },
+        removeChild() {}
+    };
     sandbox.window = sandbox;
     sandbox.window._currentLang = () => currentLangCode;
     sandbox.setLang = (v) => { currentLangCode = v; };
@@ -82,7 +106,7 @@ const osmThree = [
     let html = app.body();
 
     assert.ok(/Testville Roman fort/.test(html), 'results from the surviving sources still render');
-    assert.ok(/<b>4\/7<\/b>\s*surse active/.test(html), '4/7 sources stayed active (wikipedia, wikidata, osm, archive)');
+    assert.ok(/<b>5\/8<\/b>\s*surse active/.test(html), '5/8 sources stayed active (wikipedia, wikidata, osm, archive, cimec)');
     assert.ok(/parțial/.test(html), 'the wikipedia chip flags the partial ro-only answer');
     assert.ok(/fără răspuns \(timeout\)/.test(html), 'Commons timeout is named on its chip');
     assert.ok(/eroare server/.test(html), 'the DBpedia 500 is named on its chip');
@@ -93,10 +117,10 @@ const osmThree = [
     assert.ok((html.match(/class="babel-pick" data-query="Testville"/g) || []).length === 3, 'every OSM match offers a refined search');
 
     /* ── 2: every source down → named failure + retry, no hang ── */
-    app = loadEngine(() => netFail());
+    app = loadEngine(() => netFail(), { cimecData: false });
     await app.sandbox.window.DetectLabEvidenceEngine.research('Nowhere');
     html = app.body();
-    assert.ok(/Niciuna dintre cele 7 surse nu a răspuns/.test(html), 'RO: total outage is named');
+    assert.ok(/Niciuna dintre cele 8 surse nu a răspuns/.test(html), 'RO: total outage is named');
     assert.ok(/id="babelRetry"/.test(html), 'a retry action is offered');
     assert.ok(!/babel-result/.test(html), 'no result cards are invented from nothing');
 
@@ -105,7 +129,7 @@ const osmThree = [
     app.sandbox.window.setLang('en');
     await app.sandbox.window.DetectLabEvidenceEngine.research('Nowhere', { bypassCache: true });
     html = app.body();
-    assert.ok(/None of the 7 sources responded/.test(html), 'EN: total outage is translated');
+    assert.ok(/None of the 8 sources responded/.test(html), 'EN: total outage is translated');
 
     /* ── 3: zero results → suggested alternative searches ── */
     app = loadEngine((url) => {
@@ -124,7 +148,7 @@ const osmThree = [
     assert.ok(/Căutări sugerate/.test(html), 'alternative searches are suggested');
     assert.ok(/data-query="Xyzzyville arheologic"/.test(html), 'a locality-specific variant is suggested');
     assert.ok(/data-query="Xyzzyville archaeological"/.test(html), 'an English variant is suggested');
-    assert.ok(/6\/7/.test(html), 'the reachable sources all answered — a genuine zero, not an outage');
+    assert.ok(/7\/8/.test(html), 'the reachable sources all answered — a genuine zero, not an outage');
 
     /* ── 6: local cache — a repeated search does not re-query the APIs ── */
     app = loadEngine((url) => {
