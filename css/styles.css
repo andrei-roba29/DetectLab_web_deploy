@@ -4709,16 +4709,17 @@
             text-align: center;
         }
 
-        /* Period mirrors (e.g. the Battles century range) render a full
-           century label — „Sec. XIV d.Hr.” — instead of a percentage, so the
-           control grows a little to keep it on one or two tidy lines. */
-        .vertical-opacity-control[data-kind="period"] {
-            width: 96px;
-        }
+        /* Period mirrors (e.g. the Battles century range) use exactly the same
+           compact container as every opacity slider. The longer century value
+           wraps inside the existing width instead of widening the map control. */
         .vertical-opacity-control[data-kind="period"] .vertical-opacity-value {
-            min-width: 78px;
+            width: 100%;
+            min-width: 0;
+            padding-right: 2px;
+            padding-left: 2px;
             font-size: 0.62rem;
             line-height: 1.3;
+            white-space: normal;
         }
 
         /* Cursor/focus/selection feedback makes both top-level cards and the

@@ -26,6 +26,15 @@ assert(!/id="battlesPeriodSlider"[^>]*title=/.test(indexHtml), 'battles slider n
 assert(indexHtml.includes('id="verticalOpacityCaption"'), 'vertical control caption should be addressable for PERIOD/OPACITY switching');
 assert(indexHtml.includes('body.is-pwa .transp-panel'), 'page should retain its installed-PWA layer panel mode');
 
+// The Battles mirror must stay as compact as every other map-side slider.
+// Its longer century label may wrap, but must never widen the container.
+const stylesCss = fs.readFileSync(path.join(__dirname, 'css/styles.css'), 'utf8');
+const periodContainerRules = stylesCss.match(/\.vertical-opacity-control\[data-kind=["']period["']\]\s*\{[^}]*\}/g) || [];
+assert(periodContainerRules.every(function (rule) { return !/\bwidth\s*:/.test(rule); }),
+    'battles period control must not override the standard control width');
+assert(/\.vertical-opacity-control\[data-kind="period"\]\s+\.vertical-opacity-value\s*\{[^}]*min-width\s*:\s*0/.test(stylesCss),
+    'the century value should wrap inside the standard compact width');
+
 class ClassList {
     constructor(classes) { this._set = new Set(classes || []); }
     add(name) { this._set.add(name); }
