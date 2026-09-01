@@ -285,29 +285,94 @@
         });
     }
 
-    /* 3. OpenStreetMap Nominatim — gazetteer + ambiguity detection.
-     * Strictly throttled to 1 request/second (usage policy). */
-    function sourceOsm(query, lg) {
-        var wait = NOMINATIM_MIN_INTERVAL - (Date.now() - lastNominatimAt);
-        return (wait > 0 ? sleep(wait) : Promise.resolve()).then(function () {
-            lastNominatimAt = Date.now();
-            var u = new URL('https://nominatim.openstreetmap.org/search');
-            u.search = new URLSearchParams({ q: query, format: 'jsonv2', limit: 8, addressdetails: 1, 'accept-language': lg });
-            return fetchJson(u.href, 15000);
-        }).then(function (d) {
-            var arr = Array.isArray(d) ? d : [];
-            var results = arr.map(function (r, i) {
-                var name = r.name || String(r.display_name || '').split(',')[0] || '?';
-                return {
-                    title: name, description: clampDesc(r.display_name || name),
-                    type: 'place', source: 'osm',
-                    url: 'https://www.openstreetmap.org/' + (r.osm_type || 'node') + '/' + (r.osm_id || ''),
-                    rank: i, coords: { lat: Number(r.lat), lng: Number(r.lon) },
-                    meta: { category: r.category || null, osmType: r.type || null }
-                };
-            });
-            return { results: results, osmMatches: arr.map(function (r) { return { name: r.name || String(r.display_name || '').split(',')[0], display: r.display_name || '', type: r.type || '', category: r.category || '' }; }) };
+    /* 3. OpenStreetMap — gazetteer + ambiguity detection.
+     *
+     * FIX (2026-09): localities written without Romanian diacritics
+     * ("Sacalaseni" for "Săcălășeni") were missed, and a "Locality, County"
+     * query fell back to matching only the county. The map's own search bar
+     * already solves both, on the static OSM.geojson dataset, so this source
+     * now reuses EXACTLY that matcher (window._osmPlaceLookup) and only falls
+     * back to Nominatim when the dataset is unavailable (tests, other pages).
+     */
+    function osmLocalLookup(query) {
+        if (typeof window === 'undefined' || typeof window._osmPlaceLookup !== 'function') return Promise.resolve(null);
+        try {
+            return Promise.resolve(window._osmPlaceLookup(query, 8)).then(function (m) {
+                return Array.isArray(m) && m.length ? m : null;
+            }, function () { return null; });
+        } catch (_) { return Promise.resolve(null); }
+    }
+
+    function osmFromLocal(matches) {
+        var results = matches.map(function (r, i) {
+            var name = r.display_name || '';
+            var where = [r.judet ? 'jud. ' + r.judet : '', 'România'].filter(Boolean).join(', ');
+            return {
+                title: name, description: clampDesc([name, where].filter(Boolean).join(', ')),
+                type: 'place', source: 'osm',
+                url: 'https://www.openstreetmap.org/?mlat=' + r.lat + '&mlon=' + r.lon + '#map=14/' + r.lat + '/' + r.lon,
+                rank: i, coords: { lat: Number(r.lat), lng: Number(r.lon) },
+                meta: { category: 'place', osmType: r.fclass || null, judet: r.judet || null }
+            };
         });
+        return {
+            results: results,
+            osmMatches: matches.map(function (r) {
+                return {
+                    name: r.display_name || '',
+                    display: [r.display_name, r.judet, 'România'].filter(Boolean).join(', '),
+                    type: r.fclass || '', category: 'place'
+                };
+            })
+        };
+    }
+
+    /* Nominatim fallback — strictly throttled to 1 request/second (usage policy). */
+    function sourceOsm(query, lg) {
+        return osmLocalLookup(query).then(function (local) {
+            if (local) return osmFromLocal(local);
+            var wait = NOMINATIM_MIN_INTERVAL - (Date.now() - lastNominatimAt);
+            return (wait > 0 ? sleep(wait) : Promise.resolve()).then(function () {
+                lastNominatimAt = Date.now();
+                var u = new URL('https://nominatim.openstreetmap.org/search');
+                u.search = new URLSearchParams({ q: query, format: 'jsonv2', limit: 8, addressdetails: 1, 'accept-language': lg });
+                return fetchJson(u.href, 15000);
+            }).then(function (d) {
+                var arr = Array.isArray(d) ? d : [];
+                var results = arr.map(function (r, i) {
+                    var name = r.name || String(r.display_name || '').split(',')[0] || '?';
+                    return {
+                        title: name, description: clampDesc(r.display_name || name),
+                        type: 'place', source: 'osm',
+                        url: 'https://www.openstreetmap.org/' + (r.osm_type || 'node') + '/' + (r.osm_id || ''),
+                        rank: i, coords: { lat: Number(r.lat), lng: Number(r.lon) },
+                        meta: { category: r.category || null, osmType: r.type || null }
+                    };
+                });
+                return { results: results, osmMatches: arr.map(function (r) { return { name: r.name || String(r.display_name || '').split(',')[0], display: r.display_name || '', type: r.type || '', category: r.category || '' }; }) };
+            });
+        });
+    }
+
+    /* Resolve what the user typed to the canonical, diacritics-correct locality
+     * name from the OSM dataset ("sacalaseni, maramures" → "Săcălășeni"), so the
+     * text-based sources (Wikipedia, Wikidata, Commons, DBpedia, CIMEC…) are
+     * queried with the spelling they actually index. Returns null when nothing
+     * matches or when the user already typed the canonical form. */
+    function resolveCanonicalQuery(query) {
+        var typed = String(query || '').trim();
+        if (!typed) return Promise.resolve(null);
+        return osmLocalLookup(typed).then(function (matches) {
+            if (!matches || !matches.length) return null;
+            var name = String(matches[0].display_name || '').trim();
+            if (!name) return null;
+            if (normKey(name) === normKey(typed)) return null;
+            /* only accept it when it is really the same word, just spelled with
+             * diacritics (or with the county qualifier dropped) */
+            var typedName = normKey(typed.split(',')[0]);
+            if (normKey(name) !== typedName) return null;
+            return name;
+        }, function () { return null; });
     }
 
     /* 4. Wikimedia Commons — photos, plans and old maps (namespace File:). */
@@ -542,17 +607,20 @@
 
     /* ══════════════════ parallel orchestration + aggregation ══════════════════ */
 
-    function searchAll(query, lg, key, seq, onSource) {
+    function searchAll(query, lg, key, seq, onSource, textQuery) {
         var t0 = Date.now();
+        /* textQuery = the canonical, diacritics-correct spelling used for the
+         * text-indexed sources; the OSM gazetteer keeps what the user typed. */
+        var tq = textQuery || query;
         var runners = [
-            { id: 'wikipedia', run: function () { return sourceWikipedia(query); } },
-            { id: 'wikidata', run: function () { return sourceWikidata(query, lg); } },
+            { id: 'wikipedia', run: function () { return sourceWikipedia(tq); } },
+            { id: 'wikidata', run: function () { return sourceWikidata(tq, lg); } },
             { id: 'osm', run: function () { return sourceOsm(query, lg); } },
-            { id: 'commons', run: function () { return sourceCommons(query); } },
-            { id: 'dbpedia', run: function () { return sourceDbpedia(query); } },
-            { id: 'archive', run: function () { return sourceArchive(query); } },
-            { id: 'europeana', run: function () { return sourceEuropeana(query, key); } },
-            { id: 'cimec', run: function () { return sourceCimec(query); } }
+            { id: 'commons', run: function () { return sourceCommons(tq); } },
+            { id: 'dbpedia', run: function () { return sourceDbpedia(tq); } },
+            { id: 'archive', run: function () { return sourceArchive(tq); } },
+            { id: 'europeana', run: function () { return sourceEuropeana(tq, key); } },
+            { id: 'cimec', run: function () { return sourceCimec(tq); } }
         ];
         var tasks = runners.map(function (r) {
             return r.run().then(function (out) {
@@ -999,10 +1067,13 @@
         SOURCE_ORDER.forEach(function (id) { sourceStatuses[id] = { id: id, status: 'pending' }; });
         renderSearching();
         try {
-            var out = await searchAll(query, lg, europeanaKey(), seq, chipUpdate);
+            var canonical = await resolveCanonicalQuery(query);
+            if (seq !== searchSeq) return; /* superseded by a newer search */
+            var out = await searchAll(query, lg, europeanaKey(), seq, chipUpdate, canonical);
             if (seq !== searchSeq) return; /* superseded by a newer search */
             var agg = aggregate(out.perSource, out.durationMs);
             var stats = buildStats(query, out.perSource, agg);
+            stats.canonicalQuery = canonical || null;
             lastQuery = query; lastAgg = agg.results; lastStats = stats;
 
             if (stats.active === 0) {
@@ -1059,6 +1130,7 @@
     window.DetectLabEvidenceEngine = {
         open: begin, close: close, research: run,
         _noThrottle: function () { NOMINATIM_MIN_INTERVAL = 0; },
+        _resolveCanonicalQuery: resolveCanonicalQuery,
         _export: { json: buildJsonExport, csv: buildCsvExport, rows: exportRows },
         _filters: function () { return uiFilters; }
     };
