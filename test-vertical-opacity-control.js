@@ -9,7 +9,8 @@ const vm = require('vm');
 
 // Static coverage: every opacity range currently shipped by the real panel is
 // discoverable by the feature selector, while the similarly styled scanner
-// distance range is not.
+// distance range is not. The Battles century range is deliberately NOT an
+// opacity id, yet it must ship in the panel so the control can mirror it.
 const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const rangeTags = indexHtml.match(/<input\b[^>]*>/gis) || [];
 const opacityIds = rangeTags.filter(function (tag) {
@@ -19,6 +20,10 @@ const opacityIds = rangeTags.filter(function (tag) {
 });
 assert.strictEqual(opacityIds.length, 33, 'all 33 shipped layer opacity ranges should be discoverable');
 assert(!opacityIds.includes('lidarScannerDistance'), 'scanner distance is not an opacity range');
+assert(indexHtml.includes('id="battlesPeriodSlider"'), 'battles period slider should be part of the panel');
+assert(indexHtml.includes('id="battlesPeriodValue"'), 'battles century bubble should exist in the panel');
+assert(!/id="battlesPeriodSlider"[^>]*title=/.test(indexHtml), 'battles slider native title tooltip should be gone (replaced by the century bubble)');
+assert(indexHtml.includes('id="verticalOpacityCaption"'), 'vertical control caption should be addressable for PERIOD/OPACITY switching');
 assert(indexHtml.includes('body.is-pwa .transp-panel'), 'page should retain its installed-PWA layer panel mode');
 
 class ClassList {
@@ -86,6 +91,7 @@ function range(id, value) {
 const panel = new MockElement('div', 'transpPanel', ['open']);
 const tab = new MockElement('button', 'transpTab');
 const control = new MockElement('div', 'verticalOpacityControl');
+const caption = new MockElement('span', 'verticalOpacityCaption');
 const vertical = range('verticalOpacitySlider', 80);
 vertical.classList = new ClassList(['vertical-opacity-slider']);
 const output = new MockElement('output', 'verticalOpacityValue');
@@ -112,8 +118,16 @@ const distance = range('lidarScannerDistance', 10);
 distanceOwner.appendChild(distance);
 panel.appendChild(distanceOwner);
 
+// The Battles century range: min -8 … max 20 (8th c. BC … 20th c. AD).
+const battlesOwner = new MockElement('div', 'battlesOwner', ['transp-layer-row']);
+const battles = range('battlesPeriodSlider', 14);
+battles.min = '-8';
+battles.max = '20';
+battlesOwner.appendChild(battles);
+panel.appendChild(battlesOwner);
+
 const byId = {};
-[panel, tab, control, vertical, output, label, close, apm, lidar, distance].forEach(function (el) {
+[panel, tab, control, caption, vertical, output, label, close, apm, lidar, distance, battles].forEach(function (el) {
     byId[el.id] = el;
 });
 
@@ -127,7 +141,7 @@ const documentMock = new (class extends EventTarget {
     constructor() { super(); this.readyState = 'complete'; }
     getElementById(id) { return byId[id] || null; }
     querySelectorAll(selector) {
-        if (selector.indexOf('[id*="Opacity"]') !== -1) return [apm, lidar];
+        if (selector.indexOf('[id*="Opacity"]') !== -1) return [apm, lidar, battles];
         return [];
     }
 })();
@@ -137,6 +151,13 @@ let intervalId = 0;
 const windowMock = {
     setInterval(fn) { const id = ++intervalId; intervals.set(id, fn); return id; },
     clearInterval(id) { intervals.delete(id); }
+};
+
+// battles-layer.js exposes the century formatter + caption (bilingual).
+let captionLang = 'ro';
+windowMock.DetectLabBattlesPeriod = {
+    format: function (value) { return 'century ' + value; },
+    caption: function () { return captionLang === 'ro' ? 'PERIOADĂ' : 'PERIOD'; }
 };
 
 const sandbox = {
@@ -160,6 +181,7 @@ vm.runInContext(
 
 assert(apmOwner.classList.contains('opacity-layer-selectable'), 'APM row should be clickable');
 assert(lidarOwner.classList.contains('opacity-layer-selectable'), 'nested LIDAR row should be clickable');
+assert(battlesOwner.classList.contains('opacity-layer-selectable'), 'battles period row should be clickable');
 assert(!distanceOwner.classList.contains('opacity-layer-selectable'), 'distance range must not register as opacity');
 
 // Clicking a layer row selects it, opens the vertical mirror and closes the panel.
@@ -169,6 +191,8 @@ assert(control.classList.contains('visible'), 'vertical control should become vi
 assert(apmOwner.classList.contains('opacity-layer-selected'), 'selected row should be highlighted');
 assert.strictEqual(panelCloseClicks, 1, 'existing layer panel should close via its own tab');
 assert.strictEqual(label.textContent, 'APM Layer', 'translated live layer title should be used');
+assert.strictEqual(caption.textContent, 'OPACITY', 'opacity sources keep the OPACITY caption');
+assert.strictEqual(control.getAttribute('data-kind'), 'opacity');
 assert.strictEqual(vertical.value, '80');
 assert.strictEqual(output.textContent, '80%');
 
@@ -195,9 +219,38 @@ intervals.forEach(function (fn) { fn(); });
 assert.strictEqual(vertical.value, '64');
 assert.strictEqual(output.textContent, '64%');
 
+// ── Battles period mirror: centuries instead of percentages ──
+windowMock.DetectLabVerticalOpacity.select('battlesPeriodSlider');
+assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), 'battlesPeriodSlider');
+assert(battlesOwner.classList.contains('opacity-layer-selected'), 'battles row should be highlighted');
+assert(!lidarOwner.classList.contains('opacity-layer-selected'), 'previous row highlight should clear');
+assert.strictEqual(label.textContent, 'Battles / Bătălii', 'fallback layer name should be used');
+assert.strictEqual(vertical.min, '-8', 'century range min should mirror the source');
+assert.strictEqual(vertical.max, '20', 'century range max should mirror the source');
+assert.strictEqual(vertical.value, '14');
+assert.strictEqual(output.textContent, 'century 14', 'century formatter should replace percentages');
+assert.strictEqual(caption.textContent, 'PERIOADĂ', 'caption should switch to the period wording');
+assert.strictEqual(control.getAttribute('data-kind'), 'period');
+
+// Dragging the vertical century mirror drives the battles source range.
+let battlesInputs = 0;
+battles.addEventListener('input', function () { battlesInputs++; });
+vertical.value = '17';
+vertical.dispatchEvent(new Event('input'));
+assert.strictEqual(battles.value, '17', 'vertical century should propagate to the source');
+assert.strictEqual(battlesInputs, 1, 'source input event should fire exactly once');
+assert.strictEqual(output.textContent, 'century 17');
+
+// A language switch refreshes caption, layer name and formatted value in place.
+captionLang = 'en';
+documentMock.dispatchEvent(new Event('detectlab:langchange'));
+assert.strictEqual(caption.textContent, 'PERIOD', 'caption should follow the live language');
+assert.strictEqual(output.textContent, 'century 17', 'value should re-render after the language switch');
+
+// Closing resets the mirror state.
 close.click();
 assert(!control.classList.contains('visible'), 'close button should hide the mirror');
 assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), null);
 assert.strictEqual(intervals.size, 0, 'sync timer should stop when closed');
 
-console.log('✅ test-vertical-opacity-control.js passed: layer click, vertical sync, filtering and close behavior work.');
+console.log('✅ test-vertical-opacity-control.js passed: layer click, vertical sync, century mirror, filtering and close behavior work.');

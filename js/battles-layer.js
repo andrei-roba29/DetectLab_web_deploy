@@ -8,6 +8,10 @@
  *  • switch master (premium) — toggleBattlesLayer(on)
  *  • slider DE PERIOADĂ (nu de opacitate!): secolele -8 … 20 (VIII î.Hr. – XX d.Hr.);
  *    fiecare secol afișează evenimentele aferente
+ *  • secolul selectat NU mai apare static deasupra sliderului: apare ca o
+ *    bulă „on hover” ancorată pe thumb (hover mouse, drag touch, focus tastatură)
+ *    și este oglindit în controlul vertical de pe hartă, ca sliderele de
+ *    opacitate ale celorlalte straturi (vertical-opacity-control.js)
  *  • fiecare eveniment: zonă colorată semitransparentă cu contur punctat +
  *    etichetă permanentă cu titlul bătăliei, ANCORATĂ PE PROPRIA RAZĂ
  *    (marginea cercului); etichetele se redistribuie automat în jurul cercului
@@ -191,10 +195,124 @@
         return html;
     }
 
-    // ── Panoul de control (doar eticheta secolului) ──
+    // ── Panoul de control: bulă „on hover” cu secolul ──
+    // Secolul curent nu mai este afișat static deasupra sliderului; el apare
+    // doar când sliderul este atins (pointerenter / pointerdown / focus).
     function updatePanel() {
+        var label = centuryLabel(_period);
         var valEl = document.getElementById('battlesPeriodValue');
-        if (valEl) valEl.textContent = centuryLabel(_period);
+        if (valEl) valEl.textContent = label;
+        var sliderEl = document.getElementById('battlesPeriodSlider');
+        if (sliderEl && typeof sliderEl.setAttribute === 'function') {
+            sliderEl.setAttribute('aria-valuetext', label);
+        }
+        positionPeriodTip();
+    }
+
+    // ── Bulă „on hover” cu secolul, ancorată pe thumb-ul sliderului ──
+    var TIP_THUMB_W = 15;      // lățimea thumb-ului (.transp-slider::-webkit-slider-thumb)
+    var TIP_GAP = 7;           // distanța dintre bulă și slider (px)
+    var TIP_HIDE_DELAY = 900;  // ms — cât rămâne bula după ridicarea degetului
+    var _tipPinned = false;    // true cât timp durează un drag (touch / mouse apăsat)
+    var _tipTimer = null;
+    var _sliderHooked = false;
+
+    function positionPeriodTip() {
+        var sliderEl = document.getElementById('battlesPeriodSlider');
+        var tip = document.getElementById('battlesPeriodValue');
+        if (!sliderEl || !tip) return;
+        var min = parseFloat(sliderEl.min);
+        var max = parseFloat(sliderEl.max);
+        // Fără layout (teste) sau fără min/max valid: bula rămâne centrată din CSS.
+        if (!isFinite(min) || !isFinite(max) || max <= min) return;
+        if (typeof sliderEl.offsetLeft !== 'number' || !sliderEl.offsetWidth) return;
+
+        var frac = (_period - min) / (max - min);
+        frac = Math.max(0, Math.min(1, frac));
+        var track = Math.max(0, sliderEl.offsetWidth - TIP_THUMB_W);
+        var x = sliderEl.offsetLeft + TIP_THUMB_W / 2 + frac * track;
+
+        // Clamping: bula nu iese din cardul stratului.
+        var host = sliderEl.offsetParent || null;
+        var hostW = host ? host.offsetWidth : 0;
+        var tipW = tip.offsetWidth || 0;
+        if (hostW && tipW) {
+            x = Math.max(tipW / 2 + 2, Math.min(hostW - tipW / 2 - 2, x));
+        }
+        tip.style.left = Math.round(x) + 'px';
+        tip.style.top = Math.round(sliderEl.offsetTop - TIP_GAP) + 'px';
+    }
+
+    function showPeriodTip() {
+        var tip = document.getElementById('battlesPeriodValue');
+        if (!tip) return;
+        if (_tipTimer) { clearTimeout(_tipTimer); _tipTimer = null; }
+        positionPeriodTip();
+        tip.classList.add('visible');
+    }
+
+    function hidePeriodTip(delay) {
+        var tip = document.getElementById('battlesPeriodValue');
+        if (!tip) return;
+        if (_tipTimer) clearTimeout(_tipTimer);
+        _tipTimer = setTimeout(function () {
+            _tipTimer = null;
+            var t = document.getElementById('battlesPeriodValue');
+            if (t) t.classList.remove('visible');
+        }, delay || 0);
+    }
+
+    function hookPeriodSlider() {
+        if (_sliderHooked) return;
+        var sliderEl = document.getElementById('battlesPeriodSlider');
+        if (!sliderEl || typeof sliderEl.addEventListener !== 'function') return;
+        _sliderHooked = true;
+
+        // Hover (mouse / stylus): bulă instantaneousă, dispare la ieșire.
+        sliderEl.addEventListener('pointerenter', showPeriodTip);
+        sliderEl.addEventListener('pointerleave', function () {
+            if (!_tipPinned) hidePeriodTip(0);
+        });
+        // Touch / click: bula e „prinsă” cât timp durează drag-ul, apoi
+        // mai zăbovește puțin (TIP_HIDE_DELAY) ca să poată fi citită.
+        sliderEl.addEventListener('pointerdown', function () {
+            _tipPinned = true;
+            showPeriodTip();
+        });
+        sliderEl.addEventListener('pointerup', function () {
+            _tipPinned = false;
+            hidePeriodTip(TIP_HIDE_DELAY);
+        });
+        sliderEl.addEventListener('pointercancel', function () {
+            _tipPinned = false;
+            hidePeriodTip(0);
+        });
+        // Fallback pentru browsere vechi fără PointerEvent.
+        sliderEl.addEventListener('touchstart', function () {
+            _tipPinned = true;
+            showPeriodTip();
+        }, { passive: true });
+        sliderEl.addEventListener('touchend', function () {
+            _tipPinned = false;
+            hidePeriodTip(TIP_HIDE_DELAY);
+        });
+        // Tastatură: apare la focus, dispare la blur.
+        sliderEl.addEventListener('focus', showPeriodTip);
+        sliderEl.addEventListener('blur', function () { hidePeriodTip(0); });
+        // Mișcarea thumb-ului doar repoziționează bala (dacă e vizibilă);
+        // valoarea poate veni și din oglinda verticală de pe hartă, caz în
+        // care bala nu trebuie să apară de la sine.
+        sliderEl.addEventListener('input', function () {
+            var tip = document.getElementById('battlesPeriodValue');
+            if (tip && tip.classList && tip.classList.contains('visible')) positionPeriodTip();
+        });
+        // La redimensionare bala se repoziționează doar dacă e vizibilă.
+        if (typeof window.addEventListener === 'function') {
+            window.addEventListener('resize', function () {
+                var tip = document.getElementById('battlesPeriodValue');
+                if (tip && tip.classList && tip.classList.contains('visible')) positionPeriodTip();
+            });
+        }
     }
 
     // ── Etichete ancorate pe fiecare rază (fără suprapunere) ──
@@ -435,10 +553,23 @@
         updatePanel();
     });
 
-    // Sincronizare inițială a etichetei de secol
+    // Descriptor pentru oglinda verticală de pe hartă (vertical-opacity-control.js):
+    // sliderul de perioadă al straturilor „Bătălii” se comportă ca sliderele de
+    // opacitate ale celorlalte straturi, dar afișează secole în loc de procente.
+    window.DetectLabBattlesPeriod = {
+        format: function (val) { return centuryLabel(parseInt(val, 10)); },
+        caption: function () {
+            var t = T();
+            var raw = (t && t.battles_period_label) ? t.battles_period_label : null;
+            if (!raw) raw = (lang() === 'ro') ? 'Perioadă' : 'Period';
+            return String(raw).toUpperCase();
+        }
+    };
+
+    // Sincronizare inițială a etichetei de secol + evenimentele sliderului
     function initPanel() {
-        var valEl = document.getElementById('battlesPeriodValue');
-        if (valEl) valEl.textContent = centuryLabel(_period);
+        updatePanel();
+        hookPeriodSlider();
     }
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
         initPanel();

@@ -42,16 +42,19 @@
         ww2MapOpacitySlider: 'WWII',
         moldova1771MapOpacitySlider: 'Moldova 1771',
         banatMapOpacitySlider: 'Banat 1769–1772',
-        satellite60sMapOpacitySlider: "Satellite imagery 60's"
+        satellite60sMapOpacitySlider: "Satellite imagery 60's",
+        battlesPeriodSlider: 'Battles / Bătălii'
     };
 
     var control;
     var verticalSlider;
     var valueOutput;
     var layerLabel;
+    var captionEl;
     var closeButton;
     var activeSource = null;
     var activeOwner = null;
+    var activeFormatter = percentageText;
     var syncTimer = null;
 
     function compactText(value) {
@@ -79,12 +82,40 @@
         return (Math.round(number * 100) / 100) + '%';
     }
 
+    /* The Battles layer mirrors a period (century) range, not an opacity one.
+       Its value formatter and caption come from battles-layer.js
+       (window.DetectLabBattlesPeriod); percentage formatting stays the default
+       for every other range. */
+    function sourceFormatter(source) {
+        if (source.id === 'battlesPeriodSlider') {
+            if (window.DetectLabBattlesPeriod && typeof window.DetectLabBattlesPeriod.format === 'function') {
+                return window.DetectLabBattlesPeriod.format;
+            }
+            return function (value) { return String(value); };
+        }
+        return percentageText;
+    }
+
+    function sourceCaption(source) {
+        if (source.id === 'battlesPeriodSlider') {
+            if (window.DetectLabBattlesPeriod && typeof window.DetectLabBattlesPeriod.caption === 'function') {
+                return window.DetectLabBattlesPeriod.caption();
+            }
+            return 'PERIOD';
+        }
+        return 'OPACITY';
+    }
+
+    function sourceKind(source) {
+        return source.id === 'battlesPeriodSlider' ? 'period' : 'opacity';
+    }
+
     function syncFromSource() {
         if (!activeSource || !verticalSlider) return;
         if (String(verticalSlider.value) !== String(activeSource.value)) {
             verticalSlider.value = activeSource.value;
         }
-        valueOutput.textContent = percentageText(activeSource.value);
+        valueOutput.textContent = activeFormatter(activeSource.value);
         verticalSlider.setAttribute('aria-valuetext', valueOutput.textContent);
     }
 
@@ -115,16 +146,20 @@
         activeOwner = source.parentElement;
         activeOwner.classList.add('opacity-layer-selected');
 
+        var kind = sourceKind(source);
         var name = getLayerName(source, activeOwner);
         layerLabel.textContent = name;
         layerLabel.title = name;
+        if (captionEl) captionEl.textContent = sourceCaption(source);
+        control.setAttribute('data-kind', kind);
 
         verticalSlider.min = source.min || '0';
         verticalSlider.max = source.max || '100';
         verticalSlider.step = source.step || '1';
         verticalSlider.value = source.value;
-        verticalSlider.setAttribute('aria-label', name + ' opacity');
-        control.setAttribute('aria-label', name + ' opacity');
+        verticalSlider.setAttribute('aria-label', name + ' ' + kind);
+        control.setAttribute('aria-label', name + ' ' + kind);
+        activeFormatter = sourceFormatter(source);
 
         syncFromSource();
         control.classList.add('visible');
@@ -159,7 +194,7 @@
         owner.classList.add('opacity-layer-selectable');
         owner.setAttribute('tabindex', '0');
         owner.setAttribute('role', 'group');
-        owner.setAttribute('aria-label', 'Select ' + getLayerName(source, owner) + ' opacity control');
+        owner.setAttribute('aria-label', 'Select ' + getLayerName(source, owner) + ' ' + sourceKind(source) + ' control');
 
         owner.addEventListener('click', function (event) {
             /* Sliders/toggles retain their normal behaviour. Touching the
@@ -207,13 +242,17 @@
         verticalSlider = document.getElementById('verticalOpacitySlider');
         valueOutput = document.getElementById('verticalOpacityValue');
         layerLabel = document.getElementById('verticalOpacityLayer');
+        captionEl = document.getElementById('verticalOpacityCaption');
         closeButton = document.getElementById('verticalOpacityClose');
         if (!control || !verticalSlider || !valueOutput || !layerLabel || !closeButton) return;
 
         /* Opacity in the id intentionally excludes the LIDAR Scanner distance
-           range, which shares the panel's visual .transp-slider class. */
+           range, which shares the panel's visual .transp-slider class. The
+           Battles century range is the one deliberate non-opacity mirror: it
+           is registered explicitly and renders century labels, not %. */
         var sources = document.querySelectorAll(
-            '#transpPanel input.transp-slider[type="range"][id*="Opacity"]'
+            '#transpPanel input.transp-slider[type="range"][id*="Opacity"],' +
+            '#transpPanel input.transp-slider[type="range"]#battlesPeriodSlider'
         );
         for (var i = 0; i < sources.length; i++) registerSource(sources[i]);
 
@@ -229,6 +268,17 @@
             if (event.key === 'Escape' && control.classList.contains('visible')) {
                 hideControl();
             }
+        });
+
+        /* Bilingual mirrors: the layer name, the caption (OPACITY ↔ PERIOADĂ)
+           and the formatted value follow the live language. */
+        document.addEventListener('detectlab:langchange', function () {
+            if (!activeSource || !activeOwner) return;
+            var name = getLayerName(activeSource, activeOwner);
+            layerLabel.textContent = name;
+            layerLabel.title = name;
+            if (captionEl) captionEl.textContent = sourceCaption(activeSource);
+            syncFromSource();
         });
 
         /* Small public surface for integration tests and for any map module
