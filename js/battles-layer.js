@@ -14,11 +14,17 @@
  *    opacitate ale celorlalte straturi (vertical-opacity-control.js)
  *  • fiecare eveniment: zonă colorată semitransparentă cu contur punctat +
  *    etichetă permanentă cu titlul bătăliei, ANCORATĂ STATIC DEASUPRA
- *    PROPRIEI RAZE (marginea de sus a cercului); poziția rămâne pe aceeași
- *    axă la pan/zoom, fără redistribuire în jurul cercului
- *  • click pe zonă SAU etichetă → fereastră extinsă cu descrierea completă
- *    (bilingvă) + buton „Caută mai mult / Search more" → căutare Google
- *    cu titlul și anul bătăliei
+ *    PROPRIEI RAZE (marginea de sus a cercului), dar cu urcarea limitată la
+ *    LABEL_MAX_RISE px deasupra punctului: altfel, la zoom mare, raza în
+ *    pixeli explodează și eticheta „fuge" spre marginea ecranului.
+ *    Etichetele primesc leaflet-zoom-animated și sunt mutate și la `zoomanim`
+ *    (aceeași matematică ca L.Marker._animateZoom), deci glisează odată cu
+ *    harta în loc să stea pe loc 250 ms și apoi să sară — săritura care părea
+ *    „tagurile se mișcă la zoom in/out".
+ *  • click pe zonă SAU etichetă → fereastră compactă (nu mai acoperă ecranul:
+ *    lățime adaptată viewportului, rânduri trunchiate, descriere scrollabilă)
+ *    cu descrierea completă (bilingvă) + buton „Caută mai mult / Search more"
+ *    → căutare Google cu titlul și anul bătăliei
  * ===================================================================== */
 (function () {
     'use strict';
@@ -62,6 +68,37 @@
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // ── Dimensiuni fereastră de informații ──
+    // Popup-ul clasic (430 px, nelimitat pe verticală) acoperea aproape tot
+    // ecranul pe telefon și o felie mare din hartă pe desktop. Lățimea și
+    // înălțimea se calculează acum din viewport: Leaflet limitează singur
+    // înălțimea conținutului la `maxHeight` și activează clasa
+    // `leaflet-popup-scrolled` (scroll), iar descrierea are propriul plafon în
+    // CSS, ca titlul, datarea și butonul să rămână vizibile.
+    function popupMetrics() {
+        var vw = (typeof window.innerWidth === 'number' && window.innerWidth) ? window.innerWidth : 1024;
+        var vh = (typeof window.innerHeight === 'number' && window.innerHeight) ? window.innerHeight : 768;
+        var wide = vw > 760;
+        return {
+            maxWidth: wide ? 320 : Math.round(Math.max(180, Math.min(300, vw * 0.78))),
+            minWidth: wide ? 230 : 0,
+            maxHeight: Math.round(Math.min(wide ? 400 : 300, vh * (wide ? 0.55 : 0.44)))
+        };
+    }
+
+    function bindBattlePopup(circle, ev) {
+        var m = popupMetrics();
+        circle.bindPopup(buildPopupContent(ev), {
+            maxWidth: m.maxWidth,
+            minWidth: m.minWidth,
+            maxHeight: m.maxHeight,
+            className: 'battles-popup',
+            autoPan: true,
+            autoPanPadding: [16, 16],
+            closeButton: true
+        });
     }
 
     // ── Etichete de secol (RO + EN) ──
@@ -137,10 +174,22 @@
             window._battlesGroup = _group;
         }
         // Repoziționăm etichetele la fiecare schimbare de hartă (pan / zoom / resize)
+        // și, mai ales, în timpul animației de zoom: fără `zoomanim` etichetele ar
+        // sta pe loc cât scalează harta și ar sări brusc la final (efectul de
+        // „tagurile se mișcă la zoom in/out").
         if (!_mapHooked) {
             _mapHooked = true;
-            var relayout = function () { if (_visible) relayoutLabels(); };
-            map.on('moveend zoomend resize viewreset', relayout);
+            var relayout = function () { relayoutLabels(); };
+            map.on('moveend zoomend resize viewreset zoom', relayout);
+            map.on('resize', remeasureLabels);
+            map.on('zoomanim', function (e) {
+                if (!_visible || !e || e.center == null || e.zoom == null) return;
+                // În timpul animației CSS, harta are deja zoom-ul/pixelOrigin-ul
+                // țintă; singura scrisură permisă e cea care fixează poziția
+                // finală (interpolată de tranziția Leaflet).
+                if (map._animatingZoom) placeLabels(e.zoom, e.center);
+                else placeLabels();
+            });
         }
     }
 
@@ -165,6 +214,16 @@
     }
 
     // ── Conținutul popup-ului (bilingv) ──
+    // Un rând „cheie + valoare". Valorile lungi sunt trunchiate în CSS
+    // (3 linii) și textul complet rămâne disponibil prin `title`, ca să nu
+    // umfle fereastra peste ecran.
+    function popupRow(key, value) {
+        var v = String(value == null ? '' : value);
+        if (!v) return '';
+        return '<div class="battles-popup-row"><span class="battles-popup-k">' + esc(key) +
+            '</span><span class="battles-popup-v" title="' + esc(v) + '">' + esc(v) + '</span></div>';
+    }
+
     function buildPopupContent(ev) {
         var l = lang();
         var txt = ev[l] || ev.ro;
@@ -183,9 +242,11 @@
         if (isContext) {
             html += '<div class="battles-popup-context">' + esc(tt('battles_context_note')) + '</div>';
         }
-        html += '<div class="battles-popup-row"><span class="battles-popup-k">' + esc(tt('battles_popup_location')) + '</span><span>' + esc(txt.locatie) + '</span></div>';
-        html += '<div class="battles-popup-row"><span class="battles-popup-k">' + esc(tt('battles_popup_participants')) + '</span><span>' + esc(txt.participanti) + '</span></div>';
-        html += '<div class="battles-popup-row"><span class="battles-popup-k">' + esc(tt('battles_popup_result')) + '</span><span>' + esc(txt.rezultat) + '</span></div>';
+        html += '<div class="battles-popup-rows">';
+        html += popupRow(tt('battles_popup_location'), txt.locatie);
+        html += popupRow(tt('battles_popup_participants'), txt.participanti);
+        html += popupRow(tt('battles_popup_result'), txt.rezultat);
+        html += '</div>';
         html += '<div class="battles-popup-desc">' + esc(txt.descriere) + '</div>';
         html += '<a class="battles-popup-search" href="' + googleUrl + '" target="_blank" rel="noopener">' +
             '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex-shrink:0"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="2"/><line x1="15.5" y1="15.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' +
@@ -316,45 +377,104 @@
     }
 
     // ── Etichete ancorate static deasupra fiecărei raze ──
-    var LABEL_GAP = 8; // distanța etichetei față de marginea de sus a cercului (px)
+    var LABEL_GAP = 6;        // distanța etichetei față de marginea de sus a cercului (px)
+    var LABEL_MAX_RISE = 28;  // cel mai mult cât urcă eticheta deasupra punctului (px)
 
-    // Raza cercului exprimată în pixeli (în sistemul de coordonate al hărții).
-    function circlePixelRadius(map, latlng, radiusMeters) {
-        if (typeof map.latLngToContainerPoint !== 'function' ||
-            typeof map.containerPointToLatLng !== 'function' ||
-            typeof map.distance !== 'function' || !radiusMeters) return 0;
-        var pt = map.latLngToContainerPoint(latlng);
-        var mpp = map.distance(latlng, map.containerPointToLatLng([pt.x, pt.y - 1]));
-        return mpp > 0 ? radiusMeters / mpp : 0;
+    // Câți pixeli revin unui metru la un anumit zoom, calculat din aceeași
+    // proiecție Leaflet cu care este desenat cercul. Nu citim starea vizuală
+    // (containerPointToLatLng), deci rămâne valabil și în timpul animației de
+    // zoom, când harta are deja zoom-ul și pixelOrigin-ul țintă.
+    function pixelsPerMeter(map, latlng, zoom) {
+        if (typeof map.project !== 'function' || typeof map.distance !== 'function') return 0;
+        var step = 0.02; // ≈2,2 km: mic față de curbura proiecției, destul
+                         // de mare cât să nu vină din rotunjiri
+        var p0 = map.project(latlng, zoom);
+        var p1 = map.project([latlng.lat + step, latlng.lng], zoom);
+        var meters = map.distance(latlng, [latlng.lat + step, latlng.lng]);
+        var dy = Math.abs(p1.y - p0.y);
+        return (meters > 0 && dy > 0) ? dy / meters : 0;
     }
 
-    // Fiecare etichetă rămâne centrată pe axa verticală a propriului cerc și
-    // lipită de marginea lui de sus. Nu mai alegem o altă latură în funcție de
-    // vecini, eliminând astfel salturile vizibile la fiecare nivel de zoom.
-    function relayoutLabels() {
-        var map = getMap();
-        if (!map || typeof map.latLngToLayerPoint !== 'function') return;
+    // Marginea de jos (centrul ei orizontal) a etichetei, în layer points.
+    // Cu `zoom` + `center` primite de la `zoomanim`, calculăm poziția țintă a
+    // animației — exact ceea ce face L.Marker._animateZoom — altfel eticheta
+    // ar rămâne pe loc în timp ce harta scalează și ar sări la zoomend.
+    // Urcarea spre marginea cercului e limitată la LABEL_MAX_RISE: altfel, cu
+    // raze de 9–26 km, fiecare nivel de zoom dublează distanța și eticheta
+    // „fuge" din ecran.
+    function labelAnchorPoint(map, circle, zoom, center) {
+        var latlng = (circle && typeof circle.getLatLng === 'function') ? circle.getLatLng() : null;
+        if (!latlng || typeof map.latLngToLayerPoint !== 'function') return null;
+        var animated = (zoom != null && center != null && typeof map._latLngToNewLayerPoint === 'function');
+        var point = animated ? map._latLngToNewLayerPoint(latlng, zoom, center)
+            : map.latLngToLayerPoint(latlng);
+        if (!point) return null;
 
+        var rMeters = (typeof circle.getRadius === 'function') ? circle.getRadius() : 0;
+        var rise = 0;
+        if (rMeters) {
+            var ppm = pixelsPerMeter(map, latlng, animated ? zoom : map.getZoom());
+            if (ppm > 0) rise = Math.min(rMeters * ppm + LABEL_GAP, LABEL_MAX_RISE + LABEL_GAP);
+        }
+        return { x: point.x, y: point.y - rise };
+    }
+
+    // Fiecare etichetă rămâne centrată pe axa verticală a propriului cerc.
+    // Dimensiunile sunt memorate (offsetWidth forțează reflow, iar acest pas
+    // rulează la fiecare cadru de pinch-zoom); se invalidează la randare,
+    // schimbare de limbă, resize și după încărcarea fonturilor.
+    function placeLabels(zoom, center) {
+        var map = getMap();
+        if (!map) return;
         Object.keys(_labelById).forEach(function (id) {
             var rec = _labelById[id];
-            var circle = rec.circle;
             var el = rec.el;
-            var latlng = (typeof circle.getLatLng === 'function') ? circle.getLatLng() : null;
-            if (!latlng) return;
+            if (!el) return;
 
-            var w = el.offsetWidth || 0;
-            var h = el.offsetHeight || 0;
+            var base = labelAnchorPoint(map, rec.circle, zoom, center);
+            if (!base) return;
+
+            if (rec.w == null || rec.h == null) {
+                rec.w = el.offsetWidth || 0;
+                rec.h = el.offsetHeight || 0;
+            }
+            var w = rec.w, h = rec.h;
             if (!w || !h) return; // se reia după încărcarea fonturilor / resize
 
-            var center = map.latLngToLayerPoint(latlng);
-            var rMeters = (typeof circle.getRadius === 'function') ? circle.getRadius() : 0;
-            var rPx = circlePixelRadius(map, latlng, rMeters);
-            var x = center.x - w / 2;
-            var y = center.y - rPx - LABEL_GAP - h;
+            var x = Math.round(base.x - w / 2);
+            var y = Math.round(base.y - h);
 
-            el.style.transform = 'translate3d(' +
-                Math.round(x) + 'px,' + Math.round(y) + 'px,0)';
+            if (L.DomUtil && L.DomUtil.setTransform) {
+                L.DomUtil.setTransform(el, { x: x, y: y });
+            } else {
+                el.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)';
+            }
         });
+    }
+
+    function relayoutLabels() {
+        if (_visible) placeLabels();
+    }
+
+    // Dimensiunile etichetelor se pot schimba (fonturi, limbă, resize):
+    // le recăutăm o singură dată, în cadrul următor, după ce layout-ul e stabil.
+    function invalidateLabelSizes() {
+        Object.keys(_labelById).forEach(function (id) {
+            _labelById[id].w = null;
+            _labelById[id].h = null;
+        });
+    }
+
+    function remeasureLabels() {
+        if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(function () {
+                if (!_visible) return;
+                invalidateLabelSizes();
+                placeLabels();
+            });
+        } else {
+            if (_visible) { invalidateLabelSizes(); placeLabels(); }
+        }
     }
 
     // ── Randare markeri pentru secolul curent ──
@@ -403,23 +523,20 @@
                 bubblingMouseEvents: false
             });
 
-            // Popup-ul complet; click pe zonă SAU pe etichetă îl deschide
-            // (eticheta interactivă redirecționează click-ul către cerc,
-            //  iar bindPopup are toggle-ul standard Leaflet)
-            circle.bindPopup(buildPopupContent(ev), {
-                maxWidth: 430,
-                minWidth: 280,
-                className: 'battles-popup',
-                autoPan: true,
-                closeButton: true
-            });
+            // Popup-ul complet, dar compact (vezi popupMetrics); click pe zonă
+            // SAU pe etichetă îl deschide (eticheta interactivă redirecționează
+            // click-ul către cerc, iar bindPopup are toggle-ul standard Leaflet)
+            bindBattlePopup(circle, ev);
 
-            // Eticheta permanentă — centrată mereu deasupra marginii de sus
-            // a cercului (poziția e calculată în relayoutLabels).
+            // Eticheta permanentă — centrată mereu deasupra marginii de sus a
+            // cercului, fără să urce mai mult de LABEL_MAX_RISE px (vezi
+            // labelAnchorPoint). Clasa leaflet-zoom-animated îi dă
+            // transform-origin: 0 0 + tranziția CSS de 250 ms din leaflet.css,
+            // deci eticheta glisează odată cu harta la zoom în loc să sară.
             var txt = ev[mapL] || ev.ro;
             circle._labelText = txt.titlu; // expus pentru teste
             var el = document.createElement('div');
-            el.className = 'battles-label';
+            el.className = 'battles-label leaflet-zoom-animated';
             el.textContent = txt.titlu;
             el.title = txt.titlu;
             el.addEventListener('click', function (e) {
@@ -441,7 +558,7 @@
         // Fonturile se pot încărca după randare și schimbă lățimea etichetelor
         if (document.fonts && document.fonts.ready) {
             document.fonts.ready.then(function () {
-                if (_visible) relayoutLabels();
+                if (_visible) remeasureLabels();
             });
         }
     }
@@ -498,7 +615,9 @@
             var ev = _evById[id];
             if (!c || !ev) return;
             var txt = ev[mapL] || ev.ro;
-            if (c.bindPopup) c.bindPopup(buildPopupContent(ev)); // refolosește instanța → update live
+            // Refolosește instanța popup-ului → update live, fără flicker;
+            // metricile se recalculează (lățimea ferestrei ține de viewport).
+            bindBattlePopup(c, ev);
             c._labelText = txt.titlu; // expus pentru teste
             var rec = _labelById[id];
             if (rec && rec.el) {
@@ -506,7 +625,9 @@
                 rec.el.title = txt.titlu;
             }
         });
-        relayoutLabels();
+        // Titlurile în engleză au alte dimensiuni → recăutăm layout-ul etichetelor.
+        invalidateLabelSizes();
+        remeasureLabels();
         updatePanel();
     });
 
