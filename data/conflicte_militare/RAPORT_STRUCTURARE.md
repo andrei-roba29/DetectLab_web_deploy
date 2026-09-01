@@ -12,12 +12,12 @@
 ## Statistici
 | Indicator | Valoare |
 |---|---|
-| Total evenimente | **{total}** |
-| Pe teritoriul actual al României | {on_territory} |
-| Parțial (graniță / zona învecinată) | {partial} |
-| Context regional (participare românească, în afara granițelor) | {context} |
-| Evenimente cu locație aproximativă (zona) | {approx_locations} |
-| Evenimente cu coordonate | {with_coords} |
+| Total evenimente | **166** |
+| Pe teritoriul actual al României | 151 |
+| Parțial (graniță / zona învecinată) | 7 |
+| Context regional (participare românească, în afara granițelor) | 8 |
+| Evenimente cu locație aproximativă (zona) | 137 |
+| Evenimente cu coordonate | 166 |
 
 ## Structura unei înregistrări
 | Câmp | Descriere |
