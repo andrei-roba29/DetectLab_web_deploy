@@ -13,9 +13,9 @@
  *    și este oglindit în controlul vertical de pe hartă, ca sliderele de
  *    opacitate ale celorlalte straturi (vertical-opacity-control.js)
  *  • fiecare eveniment: zonă colorată semitransparentă cu contur punctat +
- *    etichetă permanentă cu titlul bătăliei, ANCORATĂ PE PROPRIA RAZĂ
- *    (marginea cercului); etichetele se redistribuie automat în jurul cercului
- *    la pan/zoom, ca să nu se suprapună între ele
+ *    etichetă permanentă cu titlul bătăliei, ANCORATĂ STATIC DEASUPRA
+ *    PROPRIEI RAZE (marginea de sus a cercului); poziția rămâne pe aceeași
+ *    axă la pan/zoom, fără redistribuire în jurul cercului
  *  • click pe zonă SAU etichetă → fereastră extinsă cu descrierea completă
  *    (bilingvă) + buton „Caută mai mult / Search more" → căutare Google
  *    cu titlul și anul bătăliei
@@ -315,20 +315,8 @@
         }
     }
 
-    // ── Etichete ancorate pe fiecare rază (fără suprapunere) ──
-    // Direcții în jurul cercului, pornind dinspre nord (sus), în sens orar.
-    var LABEL_DIRS = [
-        [0, -1], [0.7071, -0.7071], [1, 0], [0.7071, 0.7071],
-        [0, 1], [-0.7071, 0.7071], [-1, 0], [-0.7071, -0.7071]
-    ];
-    // Pentru fiecare direcție: unde se „prinde" eticheta de punctul de ancorare
-    // (fracțiuni din lățimea / înălțimea etichetei, raportate la centrul ei).
-    var LABEL_ATTACH = [
-        [0, -0.5], [-0.5, -0.5], [-0.5, 0], [-0.5, 0.5],
-        [0, 0.5], [0.5, 0.5], [0.5, 0], [0.5, -0.5]
-    ];
-    var LABEL_GAP = 8;   // distanța etichetei față de marginea cercului (px)
-    var LABEL_PAD = 3;   // spațiu de siguranță între etichete (px)
+    // ── Etichete ancorate static deasupra fiecărei raze ──
+    var LABEL_GAP = 8; // distanța etichetei față de marginea de sus a cercului (px)
 
     // Raza cercului exprimată în pixeli (în sistemul de coordonate al hărții).
     function circlePixelRadius(map, latlng, radiusMeters) {
@@ -340,63 +328,32 @@
         return mpp > 0 ? radiusMeters / mpp : 0;
     }
 
-    function boxesOverlap(a, b) {
-        return a.minX < b.maxX && a.maxX > b.minX &&
-               a.minY < b.maxY && a.maxY > b.minY;
-    }
-
-    function overlapArea(a, b) {
-        if (!boxesOverlap(a, b)) return 0;
-        var w = Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX);
-        var h = Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY);
-        return w * h;
-    }
-
-    // Repoziționează toate etichetele: fiecare este ancorată pe marginea
-    // propriului cerc („pe propria rază") și, dacă se suprapune cu altele,
-    // este mutată în jurul cercului până găsește un loc liber.
+    // Fiecare etichetă rămâne centrată pe axa verticală a propriului cerc și
+    // lipită de marginea lui de sus. Nu mai alegem o altă latură în funcție de
+    // vecini, eliminând astfel salturile vizibile la fiecare nivel de zoom.
     function relayoutLabels() {
         var map = getMap();
-        if (!map) return;
-        var ids = Object.keys(_labelById);
-        if (!ids.length) return;
-        if (typeof map.latLngToLayerPoint !== 'function') return;
+        if (!map || typeof map.latLngToLayerPoint !== 'function') return;
 
-        var placed = []; // casetele deja ocupate
-        ids.forEach(function (id) {
+        Object.keys(_labelById).forEach(function (id) {
             var rec = _labelById[id];
-            var circle = rec.circle, el = rec.el;
+            var circle = rec.circle;
+            var el = rec.el;
             var latlng = (typeof circle.getLatLng === 'function') ? circle.getLatLng() : null;
             if (!latlng) return;
+
             var w = el.offsetWidth || 0;
             var h = el.offsetHeight || 0;
-            if (!w || !h) return; // încă nemăsurată — se reia la următorul relayout
+            if (!w || !h) return; // se reia după încărcarea fonturilor / resize
 
             var center = map.latLngToLayerPoint(latlng);
             var rMeters = (typeof circle.getRadius === 'function') ? circle.getRadius() : 0;
             var rPx = circlePixelRadius(map, latlng, rMeters);
+            var x = center.x - w / 2;
+            var y = center.y - rPx - LABEL_GAP - h;
 
-            var best = null, bestOverlap = Infinity;
-            for (var i = 0; i < LABEL_DIRS.length; i++) {
-                var d = LABEL_DIRS[i];
-                var at = LABEL_ATTACH[i];
-                var ax = center.x + d[0] * (rPx + LABEL_GAP);
-                var ay = center.y + d[1] * (rPx + LABEL_GAP);
-                var cx = ax + at[0] * w;
-                var cy = ay + at[1] * h;
-                var box = {
-                    minX: cx - w / 2 - LABEL_PAD, minY: cy - h / 2 - LABEL_PAD,
-                    maxX: cx + w / 2 + LABEL_PAD, maxY: cy + h / 2 + LABEL_PAD
-                };
-                var ov = 0;
-                for (var j = 0; j < placed.length; j++) ov += overlapArea(box, placed[j]);
-                if (ov === 0) { best = { cx: cx, cy: cy, box: box }; break; }
-                if (ov < bestOverlap) { bestOverlap = ov; best = { cx: cx, cy: cy, box: box }; }
-            }
-            placed.push(best.box);
             el.style.transform = 'translate3d(' +
-                Math.round(best.cx - w / 2) + 'px,' +
-                Math.round(best.cy - h / 2) + 'px,0)';
+                Math.round(x) + 'px,' + Math.round(y) + 'px,0)';
         });
     }
 
@@ -457,8 +414,8 @@
                 closeButton: true
             });
 
-            // Eticheta permanentă — element propriu, ancorat pe marginea
-            // cercului (poziția e calculată în relayoutLabels).
+            // Eticheta permanentă — centrată mereu deasupra marginii de sus
+            // a cercului (poziția e calculată în relayoutLabels).
             var txt = ev[mapL] || ev.ro;
             circle._labelText = txt.titlu; // expus pentru teste
             var el = document.createElement('div');
