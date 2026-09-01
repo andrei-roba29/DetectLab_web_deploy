@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260831-battles-v2">
+    <link rel="stylesheet" href="css/styles.css?v=20260901-battles-v3">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260831-babel-multisource">
     <style>
         /* PWA Specific Styles */
@@ -1065,7 +1065,7 @@
                      role="group" aria-label="Selected layer opacity" aria-hidden="true">
                     <button type="button" class="vertical-opacity-close" id="verticalOpacityClose"
                             title="Close opacity control" aria-label="Close opacity control">×</button>
-                    <span class="vertical-opacity-caption">OPACITY</span>
+                    <span class="vertical-opacity-caption" id="verticalOpacityCaption">OPACITY</span>
                     <span class="vertical-opacity-layer" id="verticalOpacityLayer">Layer</span>
                     <div class="vertical-opacity-slider-wrap">
                         <input type="range" class="vertical-opacity-slider" id="verticalOpacitySlider"
@@ -2060,8 +2060,9 @@
                         </div><!-- /romanSubLayers -->
                     </div><!-- /roman transp-layer-row -->
 
-                    <!-- Bătălii / Battles (premium) — între Imperiul Roman și Hărți istorice -->
-                    <div class="transp-layer-row" data-category="premium">
+                    <!-- Bătălii / Battles (premium) — între Imperiul Roman și Hărți istorice.
+                         position:relative ancorează bula de secol (.battles-century-tip). -->
+                    <div class="transp-layer-row" data-category="premium" style="position:relative">
                         <!-- Group header: master toggle -->
                         <div class="transp-layer-label" style="margin-bottom:6px">
                             <span style="display:flex;align-items:center;gap:7px">
@@ -2084,20 +2085,21 @@
                             </span>
                         </div>
 
-                        <!-- Period slider (NOT opacity): century -8 … 20 -->
+                        <!-- Period slider (NOT opacity): century -8 … 20.
+                             The selected century no longer sits in the row above:
+                             it shows up as an on-hover / on-touch bubble anchored
+                             to the slider thumb (.battles-century-tip). -->
                         <div class="transp-layer-label" style="margin-bottom:6px;margin-top:2px">
                             <span style="display:flex;align-items:center;gap:6px;min-width:0">
                                 <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="battles_period_label">Period</span>
                                 <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
                             </span>
-                            <span style="display:flex;align-items:center;gap:5px;flex-shrink:0">
-                                <span class="pct" id="battlesPeriodValue" style="min-width:74px;text-align:right">Sec. XIV d.Hr.</span>
-                            </span>
                         </div>
                         <input type="range" class="transp-slider" id="battlesPeriodSlider"
                                min="-8" max="20" step="1" value="14"
-                               title="Period / Perioadă — 8th c. BC … 20th c. AD"
                                oninput="setBattlesPeriod(this.value)">
+                        <!-- On-hover century bubble — text + position driven by battles-layer.js -->
+                        <span class="battles-century-tip" id="battlesPeriodValue" aria-hidden="true">Sec. XIV d.Hr.</span>
                         <div style="display:flex;justify-content:space-between;font-size:0.6rem;opacity:0.5;margin-top:3px">
                             <span class="t" data-key="battles_slider_min">8th c. BC</span>
                             <span class="t" data-key="battles_slider_max">20th c. AD</span>
@@ -3038,8 +3040,8 @@
          Web-Mercator tiles. Must load before map-app.js. -->
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <script src="js/map-app.js?v=20260819-sat60-premium-layer"></script>
-    <script src="js/battles-layer.js?v=20260831-battles-v2"></script>
-    <script src="js/vertical-opacity-control.js?v=20260812"></script>
+    <script src="js/battles-layer.js?v=20260901-battles-v3"></script>
+    <script src="js/vertical-opacity-control.js?v=20260901-battles-v3"></script>
     <script src="js/archeo-potential.js?v=20260827-arch-report"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
     <script src="js/lidar-scanner.js?v=20260827-arch-report"></script>

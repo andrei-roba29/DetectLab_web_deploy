@@ -11,20 +11,32 @@ const ROOT = __dirname;
 // ── Minimal stubs ──
 const elements = {};
 function makeEl(id) {
+    const listeners = {};
+    const classes = new Set();
+    const attrs = {};
     return {
-        id, _text: '', _checked: false, _value: '14',
+        id,
+        _text: '', _checked: false, _value: '14',
         set textContent(v) { this._text = v; },
         get textContent() { return this._text; },
         set value(v) { this._value = String(v); },
         get value() { return this._value; },
         set checked(v) { this._checked = !!v; },
         get checked() { return this._checked; },
-        classList: { add() {}, remove() {}, toggle() {} },
+        classList: {
+            add: c => classes.add(c),
+            remove: c => classes.delete(c),
+            toggle: (c, on) => { if (on === undefined) on = !classes.has(c); if (on) classes.add(c); else classes.delete(c); return on; },
+            contains: c => classes.has(c),
+        },
         style: {},
-        setAttribute() {}, getAttribute() { return null; },
+        setAttribute(k, v) { attrs[k] = String(v); },
+        getAttribute(k) { return Object.prototype.hasOwnProperty.call(attrs, k) ? attrs[k] : null; },
         querySelector() { return null; },
         querySelectorAll() { return []; },
-        addEventListener() {},
+        addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
+        removeEventListener() {},
+        dispatchEvent(evt) { (listeners[evt.type] || []).forEach(fn => fn(evt)); return true; },
         appendChild() {},
         setPopupContent() {},
         bindPopup() { return this; },
@@ -188,7 +200,49 @@ function assert(cond, msg) {
     assert(c2._popupContent && c2._popupContent.includes('Search more'), 'EN search button label');
     assert(c2._popupContent && /google\.com\/search\?q=Battle%20of%20Posada%201330/.test(c2._popupContent), 'Google query = "Battle of Posada 1330"');
 
-    console.log('8) Toggle off clears:');
+    console.log('8) Century bubble: hidden by default, shown only on hover/touch:');
+    // Back to RO and give the slider mock a measurable layout.
+    langState.current = 'ro';
+    document.dispatchEvent({ type: 'detectlab:langchange' });
+    const sliderEl = elements['battlesPeriodSlider'];
+    sliderEl.min = '-8'; sliderEl.max = '20';
+    sliderEl.offsetLeft = 0; sliderEl.offsetTop = 40; sliderEl.offsetWidth = 240;
+    sliderEl.offsetParent = { offsetWidth: 272 };
+    const tipEl = elements['battlesPeriodValue'];
+    tipEl.offsetWidth = 84; tipEl.offsetHeight = 20;
+    assert(!tipEl.classList.contains('visible'), 'bubble starts hidden — no static century above the slider');
+    assert(sliderEl.getAttribute('aria-valuetext') === 'Sec. XIV d.Hr.', 'aria-valuetext carries the century → ' + sliderEl.getAttribute('aria-valuetext'));
+
+    // Hover (mouse) shows the bubble anchored above the thumb.
+    sliderEl.dispatchEvent({ type: 'pointerenter' });
+    assert(tipEl.classList.contains('visible'), 'hover shows the century bubble');
+    assert(tipEl.style.left === '184px', 'bubble follows the century-XIV thumb → ' + tipEl.style.left);
+    assert(tipEl.style.top === '33px', 'bubble sits above the slider track → ' + tipEl.style.top);
+
+    // Leaving the slider hides it again.
+    sliderEl.dispatchEvent({ type: 'pointerleave' });
+    await new Promise(res => setTimeout(res, 20));
+    assert(!tipEl.classList.contains('visible'), 'pointerleave hides the bubble');
+
+    // While dragging (pointerdown … pointerup) the bubble stays pinned and follows.
+    sliderEl.dispatchEvent({ type: 'pointerdown' });
+    sliderEl.dispatchEvent({ type: 'pointerleave' }); // drag peste margini — nu ascunde
+    assert(tipEl.classList.contains('visible'), 'pinned bubble survives pointerleave during a drag');
+    window.setBattlesPeriod(20);
+    assert(tipEl.textContent === 'Sec. XX d.Hr.', 'bubble text updates while dragging → ' + tipEl.textContent);
+    assert(tipEl.style.left === '228px', 'bubble follows the thumb and clamps inside the card → ' + tipEl.style.left);
+    sliderEl.dispatchEvent({ type: 'pointerup' });
+    await new Promise(res => setTimeout(res, 950));
+    assert(!tipEl.classList.contains('visible'), 'bubble hides shortly after the drag ends');
+
+    // Keyboard: focus shows, blur hides.
+    sliderEl.dispatchEvent({ type: 'focus' });
+    assert(tipEl.classList.contains('visible'), 'keyboard focus shows the bubble');
+    sliderEl.dispatchEvent({ type: 'blur' });
+    await new Promise(res => setTimeout(res, 20));
+    assert(!tipEl.classList.contains('visible'), 'blur hides the bubble');
+
+    console.log('9) Toggle off clears:');
     circles.length = 0;
     window.toggleBattlesLayer(false);
     assert(elements['battlesToggle'].checked === false, 'checkbox unchecked');

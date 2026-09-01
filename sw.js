@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v61-battles-v2';
+const CACHE_NAME = 'detectlab-v62-battles-v3';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -123,7 +123,12 @@ const PRECACHE_URLS = [
   'js/archeo-report-pdf.js?v=20260831-arch-report-v4',
   'js/archeo-report.js?v=20260831-arch-report-v4',
   'js/translations.js?v=20260831-arch-report-v4',
-  'css/styles.css?v=20260831-arch-report-v4'
+  'css/styles.css?v=20260831-arch-report-v4',
+  // Battles v3: on-hover century bubble on the period slider + the century
+  // range mirrored in the map-side vertical control like every other layer.
+  'js/battles-layer.js?v=20260901-battles-v3',
+  'js/vertical-opacity-control.js?v=20260901-battles-v3',
+  'css/styles.css?v=20260901-battles-v3'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──
