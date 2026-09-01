@@ -150,6 +150,15 @@ CONFLICTS_EN_5 = {
         "descriere": "Stephen the Great repelled an expedition of the King of Hungary, Matthias Corvinus, determined to subdue Moldavia. In the Battle of Baia, the Moldavian army defeated the Hungarian king, who was wounded and withdrew."
     },
     "RM-113": {
+        "titlu": "Battle of Lipnic",
+        "tip": "Battle",
+        "locatie": "Lipnic (Lipinți), on the Dniester — today Ocnița district, Republic of Moldova",
+        "regiune": "Northern Bessarabia (Republic of Moldova)",
+        "participanti": "Moldavia (Stephen the Great) vs. the Golden Horde (Khan Mamac)",
+        "rezultat": "Decisive Moldavian victory; repulse of the Tatar invasion",
+        "descriere": "The Tatars of the Golden Horde, led by Khan Mamac, invaded and pillaged Moldavia up to the Dniester; Stephen the Great pursued them and caught them in the grove of Lipnic, near the river. The battle ended in a crushing Moldavian victory, with the khan's son and brother taken prisoner."
+    },
+    "RM-114": {
         "titlu": "Battle of Vaslui (Podul Înalt)",
         "tip": "Battle",
         "locatie": "Podul Înalt, south-east of Vaslui (Vaslui county)",
@@ -158,7 +167,7 @@ CONFLICTS_EN_5 = {
         "rezultat": "Decisive Moldavian victory",
         "descriere": "Stephen the Great won a brilliant victory against a numerically far superior Ottoman army, led by Suleiman Pasha, using the marshy terrain and ambush tactics. The victory of Vaslui had a major European echo."
     },
-    "RM-114": {
+    "RM-115": {
         "titlu": "Battle of Războieni / Valea Albă",
         "tip": "Battle",
         "locatie": "Războieni / Valea Albă (Neamț county)",
@@ -167,7 +176,25 @@ CONFLICTS_EN_5 = {
         "rezultat": "Tactical military defeat, but strategic victory of Moldavia",
         "descriere": "The Moldavian army was defeated by Sultan Mehmed II, who had invaded Moldavia with a huge army. However, the Ottomans could not conquer the country because of the resistance of the fortresses and the harassment tactics, eventually withdrawing."
     },
-    "RM-115": {
+    "RM-116": {
+        "titlu": "Battle of the Breadfield (Câmpul Pâinii)",
+        "tip": "Battle",
+        "locatie": "Breadfield, on the Mureș floodplain between Șibot (Alba) and Orăștie (Hunedoara)",
+        "regiune": "Transylvania",
+        "participanti": "Kingdom of Hungary / Transylvania (Voivode Stephen Báthory, Ban Paul Kinizsi, Judge Georg Hecht) vs. the Ottoman Empire (Ali Mihaloglu, Iskender bey) and Wallachia (Basarab Țepeluș)",
+        "rezultat": "Decisive victory of the Christian armies; repulse of the great Ottoman invasion",
+        "descriere": "A powerful Ottoman army, supported by a Wallachian corps, broke into Transylvania through the Olt Valley and the Sebeș Valley, plundering Sebeș, Alba Iulia and Hunedoara. Voivode Stephen Báthory and Ban Paul Kinizsi concentrated their forces on the Breadfield on the Mureș floodplain, where they won a resounding victory over the Ottomans — one of the greatest Christian anti-Ottoman successes in Transylvania."
+    },
+    "RM-117": {
+        "titlu": "Battle of the Cosmin Forest (Codrii Cosminului)",
+        "tip": "Battle",
+        "locatie": "Cosmin Forest, on the Siret Valley — today the Chernivtsi region, Ukraine",
+        "regiune": "Bukovina (today Ukraine)",
+        "participanti": "Moldavia (Stephen the Great) vs. the Kingdom of Poland (King John I Albert)",
+        "rezultat": "Decisive Moldavian victory; repulse of the Polish expedition",
+        "descriere": "The Polish King John I Albert launched a campaign ostensibly to recover Chilia and Cetatea Albă, but besieged Suceava instead. Stephen the Great let the army wear itself out and ambushed the retreating Polish host in the Cosmin Forest, in the woods between the Siret and Prut valleys. The Poles suffered heavy losses and the campaign ended in a resounding Moldavian victory, regarded as Stephen the Great's last great battle."
+    },
+    "RM-118": {
         "titlu": "Radu de la Afumați's wars (1522–1525)",
         "tip": "Wars / campaigns",
         "locatie": "Wallachia (battles at Ștefănești, Gubavi, Bucharest)",
@@ -176,7 +203,7 @@ CONFLICTS_EN_5 = {
         "rezultat": "Autonomy maintained, but with tribute and chronic instability",
         "descriere": "After the death of Neagoe Basarab, Wallachia went through a deep succession crisis. Radu de la Afumați fought about 20 battles against the Ottomans and the pretenders they supported, temporarily managing to prevent the country from becoming a Turkish pashalik."
     },
-    "RM-116": {
+    "RM-119": {
         "titlu": "Battle of Mohács (context — outside Romania)",
         "tip": "Battle (regional context)",
         "locatie": "Mohács (Hungary) — outside present-day Romania",
@@ -185,7 +212,7 @@ CONFLICTS_EN_5 = {
         "rezultat": "Fall of the medieval Kingdom of Hungary; Ottoman autonomy for Transylvania",
         "descriere": "The battle was fought on the territory of today's Hungary, but the collapse of the Hungarian Kingdom directly led to the transformation of Transylvania into an autonomous principality under Ottoman suzerainty (1541), generating internal conflicts between pro-Habsburg and pro-Ottoman noble factions throughout the century."
     },
-    "RM-117": {
+    "RM-120": {
         "titlu": "Battle of Feldioara",
         "tip": "Battle / military intervention",
         "locatie": "Feldioara (Brașov county)",
@@ -194,7 +221,7 @@ CONFLICTS_EN_5 = {
         "rezultat": "Categorical victory of Peter Rareș and Zápolya",
         "descriere": "Peter Rareș intervened militarily in Transylvania in support of King John Zápolya and won a categorical victory against the supporters of Ferdinand of Habsburg, consolidating the Moldavian influence in the region."
     },
-    "RM-118": {
+    "RM-121": {
         "titlu": "The Ottoman invasion of 1538 in Moldavia",
         "tip": "Invasion",
         "locatie": "Moldavia: Suceava (Suceava county)",
@@ -203,7 +230,7 @@ CONFLICTS_EN_5 = {
         "rezultat": "Occupation of Moldavia; dethronement of Peter Rareș",
         "descriere": "Sultan Suleiman the Magnificent organised a massive campaign against Moldavia to punish Peter Rareș. Because of the betrayal of the great boyars, the ruler was forced to flee to Transylvania, and Suceava was occupied without a fight."
     },
-    "RM-119": {
+    "RM-122": {
         "titlu": "Battle of the Cahul Lake",
         "tip": "Battle",
         "locatie": "Cahul Lake, on the Prut (today in the Republic of Moldova)",
@@ -212,7 +239,7 @@ CONFLICTS_EN_5 = {
         "rezultat": "Moldavian defeat; execution of Ioan Vodă",
         "descriere": "Because of the lack of water and the betrayal of the pârcălab Ieremia Golia, the Moldavian army was encircled. Although the Moldavians fought heroically, they were defeated, and Ioan Vodă was executed by the Ottomans."
     },
-    "RM-120": {
+    "RM-123": {
         "titlu": "Ioan Vodă the Brave's wars — the Battle of Jiliște",
         "tip": "Battle",
         "locatie": "Jiliște — south-east of Moldavia, the Prut area (disputed location)",

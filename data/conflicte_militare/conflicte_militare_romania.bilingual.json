@@ -3,8 +3,8 @@
   "titlu": "Baza de date bilingvă a conflictelor militare de pe teritoriul României",
   "descriere": "Conflicte militare de pe teritoriul actual al României, sec. VIII î.Hr. – 1944 (RO + EN)",
   "sursa_principala": "batalii.csv + completări din istoriografia consacrată",
-  "generat": "2026-08-31",
-  "numar_inregistrari": 163,
+  "generat": "2026-09-01",
+  "numar_inregistrari": 166,
   "structura": "câmpuri comune + blocuri `ro` și `en` cu câmpurile textuale"
  },
  "conflicte": [
@@ -3370,6 +3370,36 @@
   },
   {
    "id": "RM-113",
+   "data_start": "1469-08-20",
+   "data_end": "1470-08-20",
+   "an_start": 1469,
+   "an_end": 1470,
+   "secol_n": 15,
+   "lat": 48.3,
+   "lng": 27.36,
+   "zona_aprox": 1,
+   "teritoriu": "partial",
+   "ro": {
+    "titlu": "Bătălia de la Lipnic",
+    "tip": "Bătălie",
+    "locatie": "Lipnic (Lipinți), pe Nistru — azi raionul Ocnița, Republica Moldova",
+    "regiune": "Basarabia de Nord (Rep. Moldova)",
+    "participanti": "Moldova (Ștefan cel Mare) vs. Hoarda de Aur (hanul Mamac)",
+    "descriere": "Tătarii Hoardei de Aur, conduși de hanul Mamac, invadează Moldova și pradă ținuturile ajungând la Nistru; Ștefan cel Mare îi urmărește și îi prinde în dumbrava de la Lipnic, aproape de râu. Bătălia se încheie cu o victorie zdrobitoare a moldovenilor, fiul și fratele hanului fiind luați prizonieri.",
+    "rezultat": "Victorie decisivă moldovenească; respingerea invaziei tătare"
+   },
+   "en": {
+    "titlu": "Battle of Lipnic",
+    "tip": "Battle",
+    "locatie": "Lipnic (Lipinți), on the Dniester — today Ocnița district, Republic of Moldova",
+    "regiune": "Northern Bessarabia (Republic of Moldova)",
+    "participanti": "Moldavia (Stephen the Great) vs. the Golden Horde (Khan Mamac)",
+    "descriere": "The Tatars of the Golden Horde, led by Khan Mamac, invaded and pillaged Moldavia up to the Dniester; Stephen the Great pursued them and caught them in the grove of Lipnic, near the river. The battle ended in a crushing Moldavian victory, with the khan's son and brother taken prisoner.",
+    "rezultat": "Decisive Moldavian victory; repulse of the Tatar invasion"
+   }
+  },
+  {
+   "id": "RM-114",
    "data_start": "1475-01-10",
    "data_end": "1475-01-10",
    "an_start": 1475,
@@ -3399,7 +3429,7 @@
    }
   },
   {
-   "id": "RM-114",
+   "id": "RM-115",
    "data_start": "1476-07-26",
    "data_end": "1476-07-26",
    "an_start": 1476,
@@ -3429,7 +3459,67 @@
    }
   },
   {
-   "id": "RM-115",
+   "id": "RM-116",
+   "data_start": "1479-10-13",
+   "data_end": "1479-10-13",
+   "an_start": 1479,
+   "an_end": 1479,
+   "secol_n": 15,
+   "lat": 45.9,
+   "lng": 23.3,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Câmpul Pâinii",
+    "tip": "Bătălie",
+    "locatie": "Câmpul Pâinii, pe luncă Mureșului între Șibot (Alba) și Orăștie (Hunedoara)",
+    "regiune": "Transilvania",
+    "participanti": "Regatul Ungariei / Transilvania (voievodul Ștefan Báthory, banul Pavel Chinezul, judele Georg Hecht) vs. Imperiul Otoman (Ali Mihaloglu, Iskender bey) și Muntenia (Basarab Țepeluș)",
+    "descriere": "O oaste otomană puternică, sprijinită de un corp muntean, pătrunde în Transilvania prin Valea Oltului și pe Valea Sebeșului, jefuind Sebeșul, Alba Iulia și Hunedoara. Voievodul Ștefan Báthory și banul Pavel Chinezul concentrează oștile la Câmpul Pâinii, pe luncă Mureșului, unde obțin o victorie răsunătoare asupra otomanilor — una dintre cele mai mari izbânzi creștine anti-otomane din Transilvania.",
+    "rezultat": "Victorie decisivă a oștilor creștine; respingerea marii invazii otomane"
+   },
+   "en": {
+    "titlu": "Battle of the Breadfield (Câmpul Pâinii)",
+    "tip": "Battle",
+    "locatie": "Breadfield, on the Mureș floodplain between Șibot (Alba) and Orăștie (Hunedoara)",
+    "regiune": "Transylvania",
+    "participanti": "Kingdom of Hungary / Transylvania (Voivode Stephen Báthory, Ban Paul Kinizsi, Judge Georg Hecht) vs. the Ottoman Empire (Ali Mihaloglu, Iskender bey) and Wallachia (Basarab Țepeluș)",
+    "descriere": "A powerful Ottoman army, supported by a Wallachian corps, broke into Transylvania through the Olt Valley and the Sebeș Valley, plundering Sebeș, Alba Iulia and Hunedoara. Voivode Stephen Báthory and Ban Paul Kinizsi concentrated their forces on the Breadfield on the Mureș floodplain, where they won a resounding victory over the Ottomans — one of the greatest Christian anti-Ottoman successes in Transylvania.",
+    "rezultat": "Decisive victory of the Christian armies; repulse of the great Ottoman invasion"
+   }
+  },
+  {
+   "id": "RM-117",
+   "data_start": "1497-10-26",
+   "data_end": "1497-10-26",
+   "an_start": 1497,
+   "an_end": 1497,
+   "secol_n": 15,
+   "lat": 48.15,
+   "lng": 26.1,
+   "zona_aprox": 1,
+   "teritoriu": "nu",
+   "ro": {
+    "titlu": "Bătălia de la Codrii Cosminului",
+    "tip": "Bătălie",
+    "locatie": "Codrii Cosminului, pe valea Siretului — azi regiunea Cernăuți, Ucraina",
+    "regiune": "Bucovina (azi Ucraina)",
+    "participanti": "Moldova (Ștefan cel Mare) vs. Regatul Poloniei (regele Ioan I Albert)",
+    "descriere": "Regele polon Ioan I Albert pornește o campanie cu pretextul recuceririi Chiliei și Cetății Albe, dar asediază Suceava. Ștefan cel Mare îl lasă să se epuizeze și atacă în ambuscadă oastea poloneză aflată în retragere prin Codrii Cosminului, în pădurile care despart valea Siretului de valea Prutului. Polonezii suferă pierderi grele, iar campania se încheie printr-o victorie moldovenească răsunătoare, considerată ultima mare bătălie a lui Ștefan cel Mare.",
+    "rezultat": "Victorie decisivă moldovenească; respingerea expediției poloneze"
+   },
+   "en": {
+    "titlu": "Battle of the Cosmin Forest (Codrii Cosminului)",
+    "tip": "Battle",
+    "locatie": "Cosmin Forest, on the Siret Valley — today the Chernivtsi region, Ukraine",
+    "regiune": "Bukovina (today Ukraine)",
+    "participanti": "Moldavia (Stephen the Great) vs. the Kingdom of Poland (King John I Albert)",
+    "descriere": "The Polish King John I Albert launched a campaign ostensibly to recover Chilia and Cetatea Albă, but besieged Suceava instead. Stephen the Great let the army wear itself out and ambushed the retreating Polish host in the Cosmin Forest, in the woods between the Siret and Prut valleys. The Poles suffered heavy losses and the campaign ended in a resounding Moldavian victory, regarded as Stephen the Great's last great battle.",
+    "rezultat": "Decisive Moldavian victory; repulse of the Polish expedition"
+   }
+  },
+  {
+   "id": "RM-118",
    "data_start": "1522",
    "data_end": "1525",
    "an_start": 1522,
@@ -3459,7 +3549,7 @@
    }
   },
   {
-   "id": "RM-116",
+   "id": "RM-119",
    "data_start": "1526-08-29",
    "data_end": "1526-08-29",
    "an_start": 1526,
@@ -3489,7 +3579,7 @@
    }
   },
   {
-   "id": "RM-117",
+   "id": "RM-120",
    "data_start": "1529-06-22",
    "data_end": "1529-06-22",
    "an_start": 1529,
@@ -3519,7 +3609,7 @@
    }
   },
   {
-   "id": "RM-118",
+   "id": "RM-121",
    "data_start": "1538",
    "data_end": "1538",
    "an_start": 1538,
@@ -3549,7 +3639,7 @@
    }
   },
   {
-   "id": "RM-119",
+   "id": "RM-122",
    "data_start": "1574-06",
    "data_end": "1574-06",
    "an_start": 1574,
@@ -3579,7 +3669,7 @@
    }
   },
   {
-   "id": "RM-120",
+   "id": "RM-123",
    "data_start": "1574-04",
    "data_end": "1574-04",
    "an_start": 1574,
@@ -3609,7 +3699,7 @@
    }
   },
   {
-   "id": "RM-121",
+   "id": "RM-124",
    "data_start": "1595-08-23",
    "data_end": "1595-08-23",
    "an_start": 1595,
@@ -3639,7 +3729,7 @@
    }
   },
   {
-   "id": "RM-122",
+   "id": "RM-125",
    "data_start": "1595-10",
    "data_end": "1595-10",
    "an_start": 1595,
@@ -3669,7 +3759,7 @@
    }
   },
   {
-   "id": "RM-123",
+   "id": "RM-126",
    "data_start": "1599-10-28",
    "data_end": "1599-10-28",
    "an_start": 1599,
@@ -3699,7 +3789,7 @@
    }
   },
   {
-   "id": "RM-124",
+   "id": "RM-127",
    "data_start": "1600-10",
    "data_end": "1600-10",
    "an_start": 1600,
@@ -3729,7 +3819,7 @@
    }
   },
   {
-   "id": "RM-125",
+   "id": "RM-128",
    "data_start": "1600-09-18",
    "data_end": "1600-09-18",
    "an_start": 1600,
@@ -3759,7 +3849,7 @@
    }
   },
   {
-   "id": "RM-126",
+   "id": "RM-129",
    "data_start": "1601-08-03",
    "data_end": "1601-08-03",
    "an_start": 1601,
@@ -3789,7 +3879,7 @@
    }
   },
   {
-   "id": "RM-127",
+   "id": "RM-130",
    "data_start": "1620-09",
    "data_end": "1620-09",
    "an_start": 1620,
@@ -3819,7 +3909,7 @@
    }
   },
   {
-   "id": "RM-128",
+   "id": "RM-131",
    "data_start": "1621-09",
    "data_end": "1621-10",
    "an_start": 1621,
@@ -3849,7 +3939,7 @@
    }
   },
   {
-   "id": "RM-129",
+   "id": "RM-132",
    "data_start": "1637",
    "data_end": "1637",
    "an_start": 1637,
@@ -3879,7 +3969,7 @@
    }
   },
   {
-   "id": "RM-130",
+   "id": "RM-133",
    "data_start": "1639",
    "data_end": "1639",
    "an_start": 1639,
@@ -3909,7 +3999,7 @@
    }
   },
   {
-   "id": "RM-131",
+   "id": "RM-134",
    "data_start": "1653-05-27",
    "data_end": "1653-05-27",
    "an_start": 1653,
@@ -3939,7 +4029,7 @@
    }
   },
   {
-   "id": "RM-132",
+   "id": "RM-135",
    "data_start": "1657",
    "data_end": "1662",
    "an_start": 1657,
@@ -3969,7 +4059,7 @@
    }
   },
   {
-   "id": "RM-133",
+   "id": "RM-136",
    "data_start": "1680",
    "data_end": "1690",
    "an_start": 1680,
@@ -3999,7 +4089,7 @@
    }
   },
   {
-   "id": "RM-134",
+   "id": "RM-137",
    "data_start": "1685",
    "data_end": "1685",
    "an_start": 1685,
@@ -4029,7 +4119,7 @@
    }
   },
   {
-   "id": "RM-135",
+   "id": "RM-138",
    "data_start": "1690-08-21",
    "data_end": "1690-08-21",
    "an_start": 1690,
@@ -4059,7 +4149,7 @@
    }
   },
   {
-   "id": "RM-136",
+   "id": "RM-139",
    "data_start": "1710",
    "data_end": "1711",
    "an_start": 1710,
@@ -4089,7 +4179,7 @@
    }
   },
   {
-   "id": "RM-137",
+   "id": "RM-140",
    "data_start": "1716",
    "data_end": "1718",
    "an_start": 1716,
@@ -4119,7 +4209,7 @@
    }
   },
   {
-   "id": "RM-138",
+   "id": "RM-141",
    "data_start": "1735",
    "data_end": "1739",
    "an_start": 1735,
@@ -4149,7 +4239,7 @@
    }
   },
   {
-   "id": "RM-139",
+   "id": "RM-142",
    "data_start": "1768",
    "data_end": "1774",
    "an_start": 1768,
@@ -4179,7 +4269,7 @@
    }
   },
   {
-   "id": "RM-140",
+   "id": "RM-143",
    "data_start": "1787",
    "data_end": "1792",
    "an_start": 1787,
@@ -4209,7 +4299,7 @@
    }
   },
   {
-   "id": "RM-141",
+   "id": "RM-144",
    "data_start": "1806",
    "data_end": "1812",
    "an_start": 1806,
@@ -4239,7 +4329,7 @@
    }
   },
   {
-   "id": "RM-142",
+   "id": "RM-145",
    "data_start": "1821",
    "data_end": "1821",
    "an_start": 1821,
@@ -4269,7 +4359,7 @@
    }
   },
   {
-   "id": "RM-143",
+   "id": "RM-146",
    "data_start": "1828",
    "data_end": "1829",
    "an_start": 1828,
@@ -4299,7 +4389,7 @@
    }
   },
   {
-   "id": "RM-144",
+   "id": "RM-147",
    "data_start": "1848",
    "data_end": "1849",
    "an_start": 1848,
@@ -4329,7 +4419,7 @@
    }
   },
   {
-   "id": "RM-145",
+   "id": "RM-148",
    "data_start": "1853",
    "data_end": "1856",
    "an_start": 1853,
@@ -4359,7 +4449,7 @@
    }
   },
   {
-   "id": "RM-146",
+   "id": "RM-149",
    "data_start": "1877-04",
    "data_end": "1878",
    "an_start": 1877,
@@ -4389,7 +4479,7 @@
    }
   },
   {
-   "id": "RM-147",
+   "id": "RM-150",
    "data_start": "1916-09-02",
    "data_end": "1916-09-06",
    "an_start": 1916,
@@ -4419,7 +4509,7 @@
    }
   },
   {
-   "id": "RM-148",
+   "id": "RM-151",
    "data_start": "1916-11",
    "data_end": "1916-12",
    "an_start": 1916,
@@ -4449,7 +4539,7 @@
    }
   },
   {
-   "id": "RM-149",
+   "id": "RM-152",
    "data_start": "1916-10",
    "data_end": "1916-11",
    "an_start": 1916,
@@ -4479,7 +4569,7 @@
    }
   },
   {
-   "id": "RM-150",
+   "id": "RM-153",
    "data_start": "1916-08-27",
    "data_end": "1916-12",
    "an_start": 1916,
@@ -4509,7 +4599,7 @@
    }
   },
   {
-   "id": "RM-151",
+   "id": "RM-154",
    "data_start": "1917-08-06",
    "data_end": "1917-09-03",
    "an_start": 1917,
@@ -4539,7 +4629,7 @@
    }
   },
   {
-   "id": "RM-152",
+   "id": "RM-155",
    "data_start": "1917-07-22",
    "data_end": "1917-08-01",
    "an_start": 1917,
@@ -4569,7 +4659,7 @@
    }
   },
   {
-   "id": "RM-153",
+   "id": "RM-156",
    "data_start": "1917-08-08",
    "data_end": "1917-08-20",
    "an_start": 1917,
@@ -4599,7 +4689,7 @@
    }
   },
   {
-   "id": "RM-154",
+   "id": "RM-157",
    "data_start": "1943-08-01",
    "data_end": "1943-08-01",
    "an_start": 1943,
@@ -4629,7 +4719,7 @@
    }
   },
   {
-   "id": "RM-155",
+   "id": "RM-158",
    "data_start": "1943",
    "data_end": "1944",
    "an_start": 1943,
@@ -4659,7 +4749,7 @@
    }
   },
   {
-   "id": "RM-156",
+   "id": "RM-159",
    "data_start": "1944-08-20",
    "data_end": "1944-08-29",
    "an_start": 1944,
@@ -4689,7 +4779,7 @@
    }
   },
   {
-   "id": "RM-157",
+   "id": "RM-160",
    "data_start": "1944-09-14",
    "data_end": "1944-09-19",
    "an_start": 1944,
@@ -4719,7 +4809,7 @@
    }
   },
   {
-   "id": "RM-158",
+   "id": "RM-161",
    "data_start": "1944-09",
    "data_end": "1944-10",
    "an_start": 1944,
@@ -4749,7 +4839,7 @@
    }
   },
   {
-   "id": "RM-159",
+   "id": "RM-162",
    "data_start": "1944-08-24",
    "data_end": "1944-09",
    "an_start": 1944,
@@ -4779,7 +4869,7 @@
    }
   },
   {
-   "id": "RM-160",
+   "id": "RM-163",
    "data_start": "1944-10",
    "data_end": "1944-10-25",
    "an_start": 1944,
@@ -4809,7 +4899,7 @@
    }
   },
   {
-   "id": "RM-161",
+   "id": "RM-164",
    "data_start": "1944-08",
    "data_end": "1944-09",
    "an_start": 1944,
@@ -4839,7 +4929,7 @@
    }
   },
   {
-   "id": "RM-162",
+   "id": "RM-165",
    "data_start": "1944-03",
    "data_end": "1944-04",
    "an_start": 1944,
@@ -4869,7 +4959,7 @@
    }
   },
   {
-   "id": "RM-163",
+   "id": "RM-166",
    "data_start": "1944-04-08",
    "data_end": "1944-06-06",
    "an_start": 1944,

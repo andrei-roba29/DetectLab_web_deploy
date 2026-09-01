@@ -133,18 +133,21 @@
 - **RM-108** Bătălia de la Rovine · 1394 — Datarea exactă (1394/1395) este disputată; localizarea Rovine lor este controversată.
 - **RM-109** Cruciada de la Nicopole (context — în afara teritoriului României) · 1396 — Inclus ca eveniment de context regional cu participare românească.
 - **RM-110** Campaniile antiotomane ale lui Iancu de Hunedoara · 1440 — Bătăliile majore (Varna, Kosovo) au avut loc în afara teritoriului actual al României.
-- **RM-115** Războaiele lui Radu de la Afumați (1522–1525) · 1522 — Inclus ca campanie (bătăliile individuale nu sunt detaliate în sursă).
-- **RM-116** Bătălia de la Mohács (context — în afara teritoriului României) · 1526-08-29 — Inclus ca eveniment de context regional.
-- **RM-119** Bătălia de la Iezerul Cahulului · 1574-06 — Zona se află în afara granițelor actuale ale României (Republica Moldova).
-- **RM-120** Războaiele lui Ioan Vodă cel Viteaz — Bătălia de la Jiliște · 1574-04 — Localizarea exactă a bătăliei de la Jiliște este disputată.
-- **RM-125** Bătălia de la Mirăslău · 1600-09-18 — Sursa îl menționează și la sec. XVII d.Hr. (recapitulare).
-- **RM-128** Bătălia de la Hotin (1621) · 1621-09 — Hotinul este azi în Ucraina; inclus ca eveniment de la granița istorică a Moldovei.
-- **RM-130** Bătălia de la Ojogeni · 1639 — Localizarea exactă a bătăliei este disputată.
-- **RM-134** Bătălia de la Sânmartin (1685) · 1685 — Localizarea exactă a bătăliei este disputată.
-- **RM-139** Războiul Ruso-Turc (1768–1774) și ocupația Principatelor · 1768 — Bătăliile de la Larga și Cahul au avut loc în afara granițelor actuale ale României.
-- **RM-141** Războiul Ruso-Turc (1806–1812) și anexarea Basarabiei · 1806 — Moștenirea teritorială a evenimentului privește și Republica Moldova de azi.
-- **RM-146** Războiul de Independență (Russo-Turc 1877–1878) · 1877-04 — Luptele principale au avut loc în afara granițelor actuale (Bulgaria); trecerea Dunării și mobilizarea s-au desfășurat pe teritoriul românesc.
-- **RM-147** Bătălia de la Turtucaia · 1916-09-02 — Turtucaia este azi în Bulgaria, imediat la frontiera cu România.
+- **RM-113** Bătălia de la Lipnic · 1469-08-20 — Datarea este disputată între 20 august 1469 și 1470; localitatea se află azi în Republica Moldova.
+- **RM-116** Bătălia de la Câmpul Pâinii · 1479-10-13 — Locația câmpului de luptă se află între Șibot și Orăștie, pe luncă Mureșului; data este 13 octombrie 1479.
+- **RM-117** Bătălia de la Codrii Cosminului · 1497-10-26 — Câmpul de luptă se află azi în nordul Bucovinei (regiunea Cernăuți, Ucraina), la circa 100 km nord de Suceava; localizarea este aproximativă.
+- **RM-118** Războaiele lui Radu de la Afumați (1522–1525) · 1522 — Inclus ca campanie (bătăliile individuale nu sunt detaliate în sursă).
+- **RM-119** Bătălia de la Mohács (context — în afara teritoriului României) · 1526-08-29 — Inclus ca eveniment de context regional.
+- **RM-122** Bătălia de la Iezerul Cahulului · 1574-06 — Zona se află în afara granițelor actuale ale României (Republica Moldova).
+- **RM-123** Războaiele lui Ioan Vodă cel Viteaz — Bătălia de la Jiliște · 1574-04 — Localizarea exactă a bătăliei de la Jiliște este disputată.
+- **RM-128** Bătălia de la Mirăslău · 1600-09-18 — Sursa îl menționează și la sec. XVII d.Hr. (recapitulare).
+- **RM-131** Bătălia de la Hotin (1621) · 1621-09 — Hotinul este azi în Ucraina; inclus ca eveniment de la granița istorică a Moldovei.
+- **RM-133** Bătălia de la Ojogeni · 1639 — Localizarea exactă a bătăliei este disputată.
+- **RM-137** Bătălia de la Sânmartin (1685) · 1685 — Localizarea exactă a bătăliei este disputată.
+- **RM-142** Războiul Ruso-Turc (1768–1774) și ocupația Principatelor · 1768 — Bătăliile de la Larga și Cahul au avut loc în afara granițelor actuale ale României.
+- **RM-144** Războiul Ruso-Turc (1806–1812) și anexarea Basarabiei · 1806 — Moștenirea teritorială a evenimentului privește și Republica Moldova de azi.
+- **RM-149** Războiul de Independență (Russo-Turc 1877–1878) · 1877-04 — Luptele principale au avut loc în afara granițelor actuale (Bulgaria); trecerea Dunării și mobilizarea s-au desfășurat pe teritoriul românesc.
+- **RM-150** Bătălia de la Turtucaia · 1916-09-02 — Turtucaia este azi în Bulgaria, imediat la frontiera cu România.
 
 ## Cum poate fi folosită
 - **Excel**: filtrați după `Secol`, `Tip conflict` sau `Regiune istorică`.

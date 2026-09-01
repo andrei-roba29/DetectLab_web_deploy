@@ -108,7 +108,7 @@ def write_json(events):
             "titlu": "Baza de date a conflictelor militare de pe teritoriul României",
             "descriere": "Conflicte militare de pe teritoriul actual al României, sec. VIII î.Hr. – 1944",
             "sursa_principala": "batalii.csv (fișierul utilizatorului) + completări din istoriografia consacrată",
-            "generat": "2026-08-31",
+            "generat": "2026-09-01",
             "numar_inregistrari": len(events),
             "campi": {k: d for k, d, _ in FIELDS},
         },
