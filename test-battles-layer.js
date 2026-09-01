@@ -167,6 +167,8 @@ function assert(cond, msg) {
     assert(circle._opts.fillOpacity === 0.30, 'semi-transparent fill (0.30)');
     assert(circle._opts.pane === 'pane_battles', 'renders in pane_battles');
     assert(circle._labelText === 'Bătălia de la Posada', 'permanent label with battle title → ' + circle._labelText);
+    assert(!src.includes('LABEL_DIRS'), 'labels no longer jump between sides to avoid neighbours');
+    assert(src.includes('center.y - rPx - LABEL_GAP - h'), 'every label stays statically above its own radius');
     assert(circle._popupContent && circle._popupContent.includes('battles-popup-search'), 'popup bound with full content + search button');
 
     console.log('4) Popup content is bilingual (RO):');
