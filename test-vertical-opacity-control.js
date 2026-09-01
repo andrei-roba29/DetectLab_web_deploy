@@ -33,7 +33,9 @@ const periodContainerRules = stylesCss.match(/\.vertical-opacity-control\[data-k
 assert(periodContainerRules.every(function (rule) { return !/\bwidth\s*:/.test(rule); }),
     'battles period control must not override the standard control width');
 assert(/\.vertical-opacity-control\[data-kind="period"\]\s+\.vertical-opacity-value\s*\{[^}]*min-width\s*:\s*0/.test(stylesCss),
-    'the century value should wrap inside the standard compact width');
+    'the century value should fit without changing the standard compact width');
+assert(/\.vertical-opacity-control\[data-kind="period"\]\s+\.vertical-opacity-value\.visible/.test(stylesCss),
+    'the map-side century value should have an on-hover visible state');
 
 class ClassList {
     constructor(classes) { this._set = new Set(classes || []); }
@@ -56,6 +58,7 @@ class MockElement extends EventTarget {
         this.parentElement = null;
         this.children = [];
         this.attributes = {};
+        this.style = {};
         this.textContent = '';
         this.title = '';
         this.value = '';
@@ -156,10 +159,14 @@ const documentMock = new (class extends EventTarget {
 })();
 
 const intervals = new Map();
+const timeouts = new Map();
 let intervalId = 0;
+let timeoutId = 0;
 const windowMock = {
     setInterval(fn) { const id = ++intervalId; intervals.set(id, fn); return id; },
-    clearInterval(id) { intervals.delete(id); }
+    clearInterval(id) { intervals.delete(id); },
+    setTimeout(fn) { const id = ++timeoutId; timeouts.set(id, fn); return id; },
+    clearTimeout(id) { timeouts.delete(id); }
 };
 
 // battles-layer.js exposes the century formatter + caption (bilingual).
@@ -240,6 +247,16 @@ assert.strictEqual(vertical.value, '14');
 assert.strictEqual(output.textContent, 'century 14', 'century formatter should replace percentages');
 assert.strictEqual(caption.textContent, 'PERIOADĂ', 'caption should switch to the period wording');
 assert.strictEqual(control.getAttribute('data-kind'), 'period');
+assert(!output.classList.contains('visible'), 'map-side century starts hidden');
+
+// The century appears only while the map-side slider is hovered or operated.
+vertical.dispatchEvent(new Event('pointerenter'));
+assert(output.classList.contains('visible'), 'hover reveals the map-side century');
+vertical.dispatchEvent(new Event('pointerleave'));
+timeouts.forEach(function (fn, id) { timeouts.delete(id); fn(); });
+assert(!output.classList.contains('visible'), 'century hides when hover ends');
+vertical.dispatchEvent(new Event('pointerdown'));
+assert(output.classList.contains('visible'), 'drag reveals and pins the map-side century');
 
 // Dragging the vertical century mirror drives the battles source range.
 let battlesInputs = 0;
@@ -249,6 +266,11 @@ vertical.dispatchEvent(new Event('input'));
 assert.strictEqual(battles.value, '17', 'vertical century should propagate to the source');
 assert.strictEqual(battlesInputs, 1, 'source input event should fire exactly once');
 assert.strictEqual(output.textContent, 'century 17');
+assert(output.classList.contains('visible'), 'century stays visible throughout the drag');
+vertical.dispatchEvent(new Event('pointerup'));
+assert(output.classList.contains('visible'), 'century remains briefly readable after release');
+timeouts.forEach(function (fn, id) { timeouts.delete(id); fn(); });
+assert(!output.classList.contains('visible'), 'century hides after the release delay');
 
 // A language switch refreshes caption, layer name and formatted value in place.
 captionLang = 'en';

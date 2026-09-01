@@ -56,6 +56,10 @@
     var activeOwner = null;
     var activeFormatter = percentageText;
     var syncTimer = null;
+    var periodTipTimer = null;
+    var periodTipPinned = false;
+    var PERIOD_THUMB_SIZE = 20;
+    var PERIOD_TIP_HIDE_DELAY = 900;
 
     function compactText(value) {
         return String(value || '').replace(/\s+/g, ' ').trim();
@@ -110,6 +114,65 @@
         return source.id === 'battlesPeriodSlider' ? 'period' : 'opacity';
     }
 
+    function positionPeriodTip() {
+        if (!activeSource || sourceKind(activeSource) !== 'period' || !verticalSlider || !valueOutput) return;
+        var min = Number(verticalSlider.min);
+        var max = Number(verticalSlider.max);
+        var value = Number(verticalSlider.value);
+        if (!isFinite(min) || !isFinite(max) || !isFinite(value) || max <= min) return;
+
+        var wrap = verticalSlider.parentElement;
+        if (!wrap) return;
+        var sliderLength = verticalSlider.offsetWidth || 0;
+        if (!sliderLength && typeof verticalSlider.getBoundingClientRect === 'function') {
+            sliderLength = verticalSlider.getBoundingClientRect().height || 0;
+        }
+        if (!sliderLength) return; // no layout (e.g. DOM-only integration tests)
+
+        var fraction = Math.max(0, Math.min(1, (value - min) / (max - min)));
+        var travel = Math.max(0, sliderLength - PERIOD_THUMB_SIZE);
+        var centre = (wrap.offsetTop || 0) + (wrap.offsetHeight || 0) / 2;
+        var y = centre + (0.5 - fraction) * travel; // rotated range: max is at the top
+        var tipHalf = (valueOutput.offsetHeight || 0) / 2;
+        var controlHeight = control.clientHeight || control.offsetHeight || 0;
+        if (controlHeight && tipHalf) y = Math.max(tipHalf + 4, Math.min(controlHeight - tipHalf - 4, y));
+        valueOutput.style.top = Math.round(y) + 'px';
+    }
+
+    function showPeriodTip() {
+        if (!activeSource || sourceKind(activeSource) !== 'period') return;
+        if (periodTipTimer !== null) {
+            window.clearTimeout(periodTipTimer);
+            periodTipTimer = null;
+        }
+        positionPeriodTip();
+        valueOutput.classList.add('visible');
+    }
+
+    function hidePeriodTip(delay) {
+        if (!activeSource || sourceKind(activeSource) !== 'period') {
+            if (valueOutput) valueOutput.classList.remove('visible');
+            return;
+        }
+        if (periodTipTimer !== null) window.clearTimeout(periodTipTimer);
+        periodTipTimer = window.setTimeout(function () {
+            periodTipTimer = null;
+            if (valueOutput) valueOutput.classList.remove('visible');
+        }, delay || 0);
+    }
+
+    function resetPeriodTip() {
+        if (periodTipTimer !== null) {
+            window.clearTimeout(periodTipTimer);
+            periodTipTimer = null;
+        }
+        periodTipPinned = false;
+        if (valueOutput) {
+            valueOutput.classList.remove('visible');
+            valueOutput.style.top = '';
+        }
+    }
+
     function syncFromSource() {
         if (!activeSource || !verticalSlider) return;
         if (String(verticalSlider.value) !== String(activeSource.value)) {
@@ -117,6 +180,7 @@
         }
         valueOutput.textContent = activeFormatter(activeSource.value);
         verticalSlider.setAttribute('aria-valuetext', valueOutput.textContent);
+        if (valueOutput.classList.contains('visible')) positionPeriodTip();
     }
 
     function startProgrammaticSync() {
@@ -140,6 +204,7 @@
     function selectSource(source, closePanel) {
         if (!source || !source.parentElement) return;
 
+        resetPeriodTip();
         if (activeOwner) activeOwner.classList.remove('opacity-layer-selected');
 
         activeSource = source;
@@ -170,6 +235,7 @@
     }
 
     function hideControl() {
+        resetPeriodTip();
         control.classList.remove('visible');
         control.setAttribute('aria-hidden', 'true');
         if (activeOwner) activeOwner.classList.remove('opacity-layer-selected');
@@ -258,10 +324,40 @@
 
         verticalSlider.addEventListener('input', function () {
             emitSourceEvent('input');
+            if (periodTipPinned || valueOutput.classList.contains('visible')) showPeriodTip();
         });
         verticalSlider.addEventListener('change', function () {
             emitSourceEvent('change');
         });
+
+        // Just like the panel's horizontal Battles range, its map-side mirror
+        // reveals the century only while hovered, dragged or keyboard-focused.
+        verticalSlider.addEventListener('pointerenter', showPeriodTip);
+        verticalSlider.addEventListener('pointerleave', function () {
+            if (!periodTipPinned) hidePeriodTip(0);
+        });
+        verticalSlider.addEventListener('pointerdown', function () {
+            if (!activeSource || sourceKind(activeSource) !== 'period') return;
+            periodTipPinned = true;
+            showPeriodTip();
+        });
+        verticalSlider.addEventListener('pointerup', function () {
+            if (!periodTipPinned) return;
+            periodTipPinned = false;
+            hidePeriodTip(PERIOD_TIP_HIDE_DELAY);
+        });
+        verticalSlider.addEventListener('pointercancel', function () {
+            periodTipPinned = false;
+            hidePeriodTip(0);
+        });
+        verticalSlider.addEventListener('focus', showPeriodTip);
+        verticalSlider.addEventListener('blur', function () { hidePeriodTip(0); });
+        if (typeof window.addEventListener === 'function') {
+            window.addEventListener('resize', function () {
+                if (valueOutput.classList.contains('visible')) positionPeriodTip();
+            });
+        }
+
         closeButton.addEventListener('click', hideControl);
 
         document.addEventListener('keydown', function (event) {
