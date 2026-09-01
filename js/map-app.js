@@ -63,6 +63,72 @@
                     .replace(/î/g, 'i');
             }
 
+            // Împarte un termen de căutare de forma "Săcălășeni, Maramureș" în
+            // numele localității și un calificator (județ). Fără virgulă, tot
+            // textul e tratat drept nume de localitate.
+            function splitLocalityQuery(term) {
+                var parts = String(term || '').split(',');
+                var name = normalizeRoDiacritics(String(parts.shift() || '').trim().toLowerCase());
+                var qualifier = normalizeRoDiacritics(
+                    parts.join(' ').toLowerCase()
+                        .replace(/\b(jud|jude[țt]|judetul|jude[țt]ul|county)\b\.?/g, ' ')
+                        .replace(/[.]/g, ' ')
+                ).replace(/\s+/g, ' ').trim();
+                return { name: name, qualifier: qualifier };
+            }
+
+            // Căutarea de localități folosită de bara de search — expusă și pentru
+            // alte funcționalități (ex. „Biblioteca din Babel”), ca toate să
+            // găsească aceleași localități, insensibil la diacritice.
+            function osmPlaceLookup(term, limit) {
+                var parsed = splitLocalityQuery(term);
+                var searchNorm = parsed.name;
+                var qualifier = parsed.qualifier;
+                if (!searchNorm) return Promise.resolve([]);
+                return loadOsmGeojson().then(function (features) {
+                    var matches = [];
+                    for (var i = 0; i < features.length; i++) {
+                        var feat = features[i];
+                        var lnameNorm = feat._lnameNorm || '';
+                        var ljudetNorm = feat._ljudetNorm || '';
+                        if (!lnameNorm) continue;
+                        var hit = lnameNorm.indexOf(searchNorm) === 0;
+                        var hitJudet = !hit && !qualifier && ljudetNorm && ljudetNorm.indexOf(searchNorm) === 0;
+                        // Potrivire după numele localității are prioritate; dacă nu
+                        // există, dar termenul căutat se potrivește cu județul,
+                        // afișăm și localitățile din acel județ.
+                        if (!hit && !hitJudet) continue;
+                        // "Săcălășeni, Maramureș" — calificatorul restrânge la județ.
+                        if (qualifier && ljudetNorm.indexOf(qualifier) !== 0 && qualifier.indexOf(ljudetNorm) !== 0) continue;
+                        var coords = feat.geometry && feat.geometry.coordinates;
+                        if (!coords) continue;
+                        var props = feat.properties || {};
+                        matches.push({
+                            lat: coords[1],
+                            lon: coords[0],
+                            display_name: props.name || props.NAME || '',
+                            fclass: props.fclass || props.type || '',
+                            judet: feat._judet || '',
+                            population: props.population || props.pop || 0,
+                            _exact: lnameNorm === searchNorm,
+                            _matchedByJudet: !hit && hitJudet
+                        });
+                    }
+                    // Localitățile care se potrivesc direct după nume apar înaintea
+                    // celor găsite doar prin numele județului; în interiorul fiecărui
+                    // grup, ordonăm după potrivire exactă și apoi după populație.
+                    matches.sort(function (a, b) {
+                        if (a._matchedByJudet !== b._matchedByJudet) {
+                            return a._matchedByJudet ? 1 : -1;
+                        }
+                        if (a._exact !== b._exact) return a._exact ? -1 : 1;
+                        return (b.population || 0) - (a.population || 0);
+                    });
+                    return matches.slice(0, limit || 8);
+                });
+            }
+            window._osmPlaceLookup = osmPlaceLookup;
+
             function loadOsmGeojson() {
                 if (_osmGeojsonFeatures) return Promise.resolve(_osmGeojsonFeatures);
                 if (_osmGeojsonPromise) return _osmGeojsonPromise;
@@ -422,45 +488,8 @@
                 ul.classList.add('open');
                 selectedIndex = -1;
 
-                var searchNorm = cacheKey;
-
-                loadOsmGeojson()
-                    .then(function (features) {
-                        var matches = [];
-                        for (var i = 0; i < features.length; i++) {
-                            var feat = features[i];
-                            var lnameNorm = feat._lnameNorm || '';
-                            var ljudetNorm = feat._ljudetNorm || '';
-                            if (!lnameNorm) continue;
-                            var hit = lnameNorm.indexOf(searchNorm) === 0;
-                            var hitJudet = !hit && ljudetNorm && ljudetNorm.indexOf(searchNorm) === 0;
-                            // Potrivire după numele localității are prioritate; dacă nu
-                            // există, dar termenul căutat se potrivește cu județul,
-                            // afișăm și localitățile din acel județ.
-                            if (!hit && !hitJudet) continue;
-                            var coords = feat.geometry && feat.geometry.coordinates;
-                            if (!coords) continue;
-                            var props = feat.properties || {};
-                            matches.push({
-                                lat: coords[1],
-                                lon: coords[0],
-                                display_name: props.name || props.NAME || '',
-                                fclass: props.fclass || props.type || '',
-                                judet: feat._judet || '',
-                                population: props.population || props.pop || 0,
-                                _matchedByJudet: !hit && hitJudet
-                            });
-                        }
-                        // Localitățile care se potrivesc direct după nume apar înaintea
-                        // celor găsite doar prin numele județului; în interiorul fiecărui
-                        // grup, ordonăm după populație.
-                        matches.sort(function (a, b) {
-                            if (a._matchedByJudet !== b._matchedByJudet) {
-                                return a._matchedByJudet ? 1 : -1;
-                            }
-                            return (b.population || 0) - (a.population || 0);
-                        });
-                        matches = matches.slice(0, 8);
+                osmPlaceLookup(searchTerm, 8)
+                    .then(function (matches) {
                         _searchCache[cacheKey] = matches;
                         displaySearchResults(matches, searchTerm);
                     })
