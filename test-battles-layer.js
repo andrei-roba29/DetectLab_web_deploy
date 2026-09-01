@@ -176,10 +176,10 @@ function assert(cond, msg) {
     assert(circle._popupContent.includes('Caută mai mult'), 'RO search button label');
     assert(circle._popupContent.includes('google.com/search?q='), 'Google search URL present');
 
-    console.log('5) Slider to century 20 (1901–2000) → 17 events:');
+    console.log('5) Slider to century 20 (1901–2000) → 26 events:');
     circles.length = 0;
     window.setBattlesPeriod(20);
-    assert(circles.length === 17, 'century XX shows 17 events, got ' + circles.length);
+    assert(circles.length === 26, 'century XX shows 26 events, got ' + circles.length);
     assert(/XX/.test(elements['battlesPeriodValue'].textContent), 'RO label "Sec. XX d.Hr." → ' + elements['battlesPeriodValue'].textContent);
 
     console.log('6) Slider to century -8 (800–701 BC) → 3 events:');

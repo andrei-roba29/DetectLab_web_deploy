@@ -108,7 +108,7 @@ def write_json(events):
             "titlu": "Baza de date a conflictelor militare de pe teritoriul României",
             "descriere": "Conflicte militare de pe teritoriul actual al României, sec. VIII î.Hr. – 1944",
             "sursa_principala": "batalii.csv (fișierul utilizatorului) + completări din istoriografia consacrată",
-            "generat": "2026-08-31",
+            "generat": "2026-09-01",
             "numar_inregistrari": len(events),
             "campi": {k: d for k, d, _ in FIELDS},
         },
@@ -255,7 +255,8 @@ def write_report(events):
 6. **Surse secundare**: pentru completarea locațiilor, județelor și a diacriticelor am folosit cunoștințe istorice generale și toponimia standard; nu a fost folosită internetul în acest pas. Evenimentele cu datare/locație disputată sunt marcate în `observatii`.
 
 ## Evenimente cu datare sau locație disputată (de verificat)
-"""]
+""".format(total=total, on_territory=on_territory, partial=partial, context=context,
+             approx_locations=approx_locations, with_coords=with_coords)]
     disputed = [e for e in events if e.get("observatii") and e["observatii"] != "—"]
     for e in disputed:
         lines.append(f"- **{e['id']}** {e['titlu']} · {e['data_start']} — {e['observatii']}")
