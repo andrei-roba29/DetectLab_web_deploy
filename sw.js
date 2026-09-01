@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v62-battles-v3';
+const CACHE_NAME = 'detectlab-v63-battles-v6';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -128,7 +128,13 @@ const PRECACHE_URLS = [
   // range mirrored in the map-side vertical control like every other layer.
   'js/battles-layer.js?v=20260901-battles-v3',
   'js/vertical-opacity-control.js?v=20260901-battles-v3',
-  'css/styles.css?v=20260901-battles-v3'
+  'css/styles.css?v=20260901-battles-v3',
+  // Battles v5/v6: compact info windows (viewport-sized popup, clamped rows
+  // and description) + battle title tags that no longer jump on zoom in/out
+  // (leaflet-zoom-animated + zoomanim anchor, rise clamped to the point).
+  'js/battles-layer.js?v=20260901-battles-v5',
+  'js/vertical-opacity-control.js?v=20260901-battles-v5',
+  'css/styles.css?v=20260901-battles-v6'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

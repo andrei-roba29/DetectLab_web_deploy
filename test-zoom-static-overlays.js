@@ -18,6 +18,7 @@ const mapApp = read('js/map-app.js');
 const mapRotate = read('js/map-rotate.js');
 const lidar = read('js/lidar-scanner.js');
 const archeo = read('js/archeo-potential.js');
+const battles = read('js/battles-layer.js');
 const css = read('css/styles.css');
 
 console.log('[Test] Overlay zoom-lock (heritage / LIDAR / archeo)...');
@@ -91,6 +92,48 @@ assert.match(
     lidar,
     /bindTooltip\([\s\S]*assignPane\(\{[\s\S]*permanent:\s*true/,
     'LIDAR result tags must be permanent tooltips (Leaflet repositions them on zoomanim)'
+);
+
+// ── Battles: title tags glued to their circle, without a snap ─────────
+// Raw <div>s in a custom pane are NOT touched by Leaflet's zoom animation,
+// so they used to sit still for the 250 ms CSS zoom and then jump — the
+// "tags keep moving when I zoom" complaint. They must be zoom-animated like
+// L.Marker (class + zoomanim target transform), and the rise above the point
+// must be clamped: a 9–26 km radius doubles in pixels at every zoom level.
+assert.match(
+    battles,
+    /className = 'battles-label leaflet-zoom-animated'/,
+    'battle title tags must carry leaflet-zoom-animated (constant size + the 0.25s transform transition)'
+);
+assert.match(
+    battles,
+    /map\.on\('zoomanim'/,
+    'battle tags must be repositioned on zoomanim, not only on zoomend'
+);
+assert.match(
+    battles,
+    /if \(map\._animatingZoom\) placeLabels\(e\.zoom, e\.center\)/,
+    'battle tags must be written once, at the target zoom, while the CSS zoom is in flight'
+);
+assert.match(
+    battles,
+    /map\._latLngToNewLayerPoint\(latlng, zoom, center\)/,
+    'battle tag anchor must use the Renderer/Marker target-layer-point maths so zoomend cannot snap'
+);
+assert.match(
+    battles,
+    /Math\.min\(rMeters \* ppm \+ LABEL_GAP, LABEL_MAX_RISE \+ LABEL_GAP\)/,
+    'battle tag rise must be clamped so the tag never flies away with the growing radius'
+);
+assert.match(
+    battles,
+    /map\.on\('moveend zoomend resize viewreset zoom'/,
+    'battle tags must also follow pinch-zoom (continuous zoom events)'
+);
+assert.match(
+    css,
+    /\.battles-label\s*\{[\s\S]*?transform-origin:\s*0 0/,
+    'battle tags must keep transform-origin 0 0 (same contract as .leaflet-zoom-animated)'
 );
 
 // ── Archeological potential: candidate circles at lat/lng ────────────
