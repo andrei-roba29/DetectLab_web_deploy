@@ -17,8 +17,9 @@ Stripe** are wired in — including how to go live and receive payouts.
 > portal keep working exactly as before.
 >
 > **Promo codes** are the second way to get Premium: a valid code grants
-> access for a fixed number of hours with no payment. The first campaign
-> is **TRIAL24 — 24 hours free, once per account**. See
+> access for a fixed number of hours with no payment. Campaigns so far:
+> **TRIAL24 — 24 hours free, once per account** and the four **one-year
+> gift codes** (`DL1Y-…`, single-use, redeemable until 1 Oct 2026). See
 > [Promo codes](#promo-codes-free-trials) below.
 
 ---
@@ -253,6 +254,25 @@ premium layer unlocks immediately and expires on its own.
 It is seeded by `backend/migrations/006_promo_codes.sql`, so applying the
 migration is all that is needed to make it live.
 
+### One-year gift codes: `DL1Y-…` (single-use)
+
+Seeded by `backend/migrations/010_premium_year_gift_codes.sql`
+(`supabase/migrations/20260901000000_premium_year_gift_codes.sql` for
+`supabase db push`). Four independent, unguessable codes — hand each one
+to a specific person, like a gift card:
+
+| | |
+|---|---|
+| Codes | `DL1Y-3PRY-T5DJ` · `DL1Y-878N-E4S5` · `DL1Y-TPJN-A3GG` · `DL1Y-HRUZ-MH5E` |
+| Grants | **one year** (8 760 hours) of Premium, from the moment of redemption |
+| Per code | **one redemption, ever** (`max_redemptions = 1` → further attempts get 409 `code_exhausted`) |
+| If Premium is already active | **stacks** — the year is added on top of the current expiry (`kind = 'bonus'`) |
+| Code validity | redeemable through **1 October 2026** (end of day, UTC); a redemption on the last day still grants the full year |
+
+The codes were generated with `crypto.randomBytes` over an alphabet
+without look-alike characters (no `0/O`, `1/I/L`), so they survive being
+copied from a chat message.
+
 ### Where users redeem
 
 Both entry points call the same endpoint and show the same messages:
@@ -343,6 +363,9 @@ select code, kind, duration_hours, starts_at, expires_at,
 -- Extend / end the current campaign
 update public.promo_codes set expires_at = '2026-12-31T23:59:59Z' where code = 'TRIAL24';
 update public.promo_codes set active = false                      where code = 'TRIAL24';
+
+-- End one of the one-year gift codes early (grants already made are untouched)
+update public.promo_codes set active = false where code = 'DL1Y-3PRY-T5DJ';
 
 -- A new 7-day bonus, capped at 500 redemptions, running for two weeks
 insert into public.promo_codes
