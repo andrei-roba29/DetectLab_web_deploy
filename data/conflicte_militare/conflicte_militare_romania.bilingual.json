@@ -4,7 +4,7 @@
   "descriere": "Conflicte militare de pe teritoriul actual al României, sec. VIII î.Hr. – 1944 (RO + EN)",
   "sursa_principala": "batalii.csv + completări din istoriografia consacrată",
   "generat": "2026-09-01",
-  "numar_inregistrari": 166,
+  "numar_inregistrari": 198,
   "structura": "câmpuri comune + blocuri `ro` și `en` cu câmpurile textuale"
  },
  "conflicte": [
@@ -3310,6 +3310,96 @@
   },
   {
    "id": "RM-111",
+   "data_start": "1442-03-22",
+   "data_end": "1442-03-22",
+   "an_start": 1442,
+   "an_end": 1442,
+   "secol_n": 15,
+   "lat": 45.8,
+   "lng": 24.15,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Sibiu (Vaskapu)",
+    "tip": "Bătălie",
+    "locatie": "Între Sântimbru și Sibiu (locul zis Vaskapu, județul Sibiu / Alba)",
+    "regiune": "Transilvania",
+    "participanti": "Regatul Ungariei / Transilvania (Iancu de Hunedoara, judele Anton Trautenberger) vs. Imperiul Otoman (Mezid bei de Vidin)",
+    "descriere": "După înfrângerea de la Sântimbru, Iancu de Hunedoara își reface armata și îl surprinde pe Mezid bei. Printr-o stratagemă (nobilul Simion Kamonyai îmbrăcat în armura voievodului), otomanii își lasă flancurile descoperite și sunt zdrobiți: Mezid și fiul său cad pe câmpul de luptă, iar restul oștii este nimicită în retragere spre pasul Turnu Roșu.",
+    "rezultat": "Victorie decisivă creștină; uciderea lui Mezid bei"
+   },
+   "en": {
+    "titlu": "Battle of Sibiu (Vaskapu)",
+    "tip": "Battle",
+    "locatie": "Between Sântimbru and Sibiu (the place called Vaskapu, Sibiu / Alba county)",
+    "regiune": "Transylvania",
+    "participanti": "Kingdom of Hungary / Transylvania (John Hunyadi, royal judge Anton Trautenberger) vs. the Ottoman Empire (Mezid Bey of Vidin)",
+    "descriere": "After the defeat at Sântimbru, John Hunyadi rebuilt his army and surprised Mezid Bey. Through a stratagem (the nobleman Simion Kamonyai dressed in the voivode's armour), the Ottomans left their flanks exposed and were crushed: Mezid and his son fell on the battlefield, and the rest of the host was annihilated in the retreat towards the Turnu Roșu pass.",
+    "rezultat": "Decisive Christian victory; death of Mezid Bey"
+   }
+  },
+  {
+   "id": "RM-112",
+   "data_start": "1442-03-18",
+   "data_end": "1442-03-18",
+   "an_start": 1442,
+   "an_end": 1442,
+   "secol_n": 15,
+   "lat": 46.13,
+   "lng": 23.65,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Sântimbru",
+    "tip": "Bătălie",
+    "locatie": "Sântimbru (județul Alba)",
+    "regiune": "Transilvania",
+    "participanti": "Regatul Ungariei / Transilvania (Iancu de Hunedoara) vs. Imperiul Otoman (Mezid bei de Vidin)",
+    "descriere": "O oaste otomană condusă de Mezid bei pătrunde în Transilvania, jefuiește ținuturile Devei, Albei și Aiudului și întâlnește la Sântimbru oastea adunată în grabă a voievodului Iancu de Hunedoara, pe care o înfrânge. Este prima confruntare a campaniei antiotomane din 1442.",
+    "rezultat": "Înfrângere inițială a oștilor lui Iancu; otomanii înaintează spre Sibiu"
+   },
+   "en": {
+    "titlu": "Battle of Sântimbru",
+    "tip": "Battle",
+    "locatie": "Sântimbru (Alba county)",
+    "regiune": "Transylvania",
+    "participanti": "Kingdom of Hungary / Transylvania (John Hunyadi) vs. the Ottoman Empire (Mezid Bey of Vidin)",
+    "descriere": "An Ottoman host led by Mezid Bey broke into Transylvania, plundered the lands of Deva, Alba Iulia and Aiud and met at Sântimbru the hastily assembled army of voivode John Hunyadi, defeating it. It was the first clash of the anti-Ottoman campaign of 1442.",
+    "rezultat": "Initial defeat of Hunyadi's forces; the Ottomans advance on Sibiu"
+   }
+  },
+  {
+   "id": "RM-113",
+   "data_start": "1442-09-02",
+   "data_end": "1442-09-02",
+   "an_start": 1442,
+   "an_end": 1442,
+   "secol_n": 15,
+   "lat": 45.2,
+   "lng": 25.5,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de pe Ialomița",
+    "tip": "Bătălie",
+    "locatie": "Valea superioară a Ialomiței, la sud de Carpați (județul Dâmbovița / Ialomița)",
+    "regiune": "Țara Românească",
+    "participanti": "Regatul Ungariei / Țara Românească (Iancu de Hunedoara, Basarab al II-lea) vs. Imperiul Otoman (Șehabeddin Pașa, guvernatorul Rumeliei)",
+    "descriere": "O puternică armată otomană condusă de Șehabeddin Pașa trece Dunărea pentru a-l înlătura pe Basarab al II-lea și a transforma Țara Românească în pașalâc. Iancu de Hunedoara o nimicește într-o zonă muntoasă de pe cursul superior al Ialomiței, în locuri muntoase și strâmte, obținând a treia victorie antiotomană din 1442.",
+    "rezultat": "Victoria decisivă a lui Iancu; respingerea marii invazii otomane"
+   },
+   "en": {
+    "titlu": "Battle of the Ialomița",
+    "tip": "Battle",
+    "locatie": "Upper Ialomița valley, south of the Carpathians (Dâmbovița / Ialomița county)",
+    "regiune": "Wallachia",
+    "participanti": "Kingdom of Hungary / Wallachia (John Hunyadi, Basarab II) vs. the Ottoman Empire (Şehabeddin Pasha, governor of Rumelia)",
+    "descriere": "A powerful Ottoman army led by Şehabeddin Pasha crossed the Danube to remove Basarab II and turn Wallachia into a pashalik. John Hunyadi annihilated it in a mountainous area on the upper course of the Ialomița, in narrow and mountainous places, winning his third anti-Ottoman victory of 1442.",
+    "rezultat": "Decisive victory of John Hunyadi; repulse of the great Ottoman invasion"
+   }
+  },
+  {
+   "id": "RM-114",
    "data_start": "1462-06",
    "data_end": "1462-06",
    "an_start": 1462,
@@ -3339,7 +3429,7 @@
    }
   },
   {
-   "id": "RM-112",
+   "id": "RM-115",
    "data_start": "1467-12",
    "data_end": "1467-12",
    "an_start": 1467,
@@ -3369,7 +3459,7 @@
    }
   },
   {
-   "id": "RM-113",
+   "id": "RM-116",
    "data_start": "1469-08-20",
    "data_end": "1470-08-20",
    "an_start": 1469,
@@ -3399,7 +3489,37 @@
    }
   },
   {
-   "id": "RM-114",
+   "id": "RM-117",
+   "data_start": "1471-03-07",
+   "data_end": "1471-03-07",
+   "an_start": 1471,
+   "an_end": 1471,
+   "secol_n": 15,
+   "lat": 46.4,
+   "lng": 26.7,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Soci",
+    "tip": "Bătălie",
+    "locatie": "Soci, lângă târgul de graniță cu Țara Românească (județul Bacău)",
+    "regiune": "Moldova (sud)",
+    "participanti": "Moldova (Ștefan cel Mare) vs. Țara Românească (Radu cel Frumos)",
+    "descriere": "Fără declarație de război, Ștefan cel Mare atacă Țara Românească și, la 7 martie 1471, îl surprinde și îl zdrobește pe Radu cel Frumos lângă târgul Soci, în apropierea graniței dintre cele două țări. Victoria este categorică, iar moldovenii se întorc încărcați de pradă.",
+    "rezultat": "Victorie decisivă moldovenească"
+   },
+   "en": {
+    "titlu": "Battle of Soci",
+    "tip": "Battle",
+    "locatie": "Soci, near the border town with Wallachia (Bacău county)",
+    "regiune": "Moldavia (south)",
+    "participanti": "Moldavia (Stephen the Great) vs. Wallachia (Radu the Handsome)",
+    "descriere": "Without a declaration of war, Stephen the Great attacked Wallachia and, on 7 March 1471, surprised and crushed Radu the Handsome near the town of Soci, close to the border between the two countries. The victory was categorical and the Moldavians returned loaded with plunder.",
+    "rezultat": "Decisive Moldavian victory"
+   }
+  },
+  {
+   "id": "RM-118",
    "data_start": "1475-01-10",
    "data_end": "1475-01-10",
    "an_start": 1475,
@@ -3429,7 +3549,7 @@
    }
   },
   {
-   "id": "RM-115",
+   "id": "RM-119",
    "data_start": "1476-07-26",
    "data_end": "1476-07-26",
    "an_start": 1476,
@@ -3459,7 +3579,7 @@
    }
   },
   {
-   "id": "RM-116",
+   "id": "RM-120",
    "data_start": "1479-10-13",
    "data_end": "1479-10-13",
    "an_start": 1479,
@@ -3489,7 +3609,97 @@
    }
   },
   {
-   "id": "RM-117",
+   "id": "RM-121",
+   "data_start": "1481-07-08",
+   "data_end": "1481-07-08",
+   "an_start": 1481,
+   "an_end": 1481,
+   "secol_n": 15,
+   "lat": 45.43,
+   "lng": 27.05,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Râmnic (1481)",
+    "tip": "Bătălie",
+    "locatie": "Râmnicu Sărat, sub munții de la granița cu Brașovul (județul Vrancea / Buzău)",
+    "regiune": "Țara Românească (nord-est)",
+    "participanti": "Moldova (Ștefan cel Mare, cu sprijin ungar) vs. Țara Românească (Basarab Țepeluș) și Imperiul Otoman (Ali-beg, Skender-beg)",
+    "descriere": "Basarab Țepeluș adună o oaste cu ajutor otoman pentru a ataca cetatea Chilia a Moldovei. Ștefan cel Mare, întărit de trupe maghiare, îl atacă sub munții județului Râmnic și, după o luptă sângeroasă, îl învinge: Țepeluș este ucis, iar în Muntenia este instalat Vlad Călugărul.",
+    "rezultat": "Victorie moldovenească; uciderea lui Basarab Țepeluș"
+   },
+   "en": {
+    "titlu": "Battle of Râmnic (1481)",
+    "tip": "Battle",
+    "locatie": "Râmnicu Sărat, below the mountains on the border with Brașov (Vrancea / Buzău county)",
+    "regiune": "Wallachia (north-east)",
+    "participanti": "Moldavia (Stephen the Great, with Hungarian support) vs. Wallachia (Basarab Țepeluș) and the Ottoman Empire (Ali-beg, Skender-beg)",
+    "descriere": "Basarab Țepeluș assembled an army with Ottoman help to attack Moldavia's Chilia fortress. Stephen the Great, reinforced by Hungarian troops, attacked him below the mountains of Râmnic county and, after a bloody fight, defeated him: Țepeluș was killed and Vlad the Monk was installed in Wallachia.",
+    "rezultat": "Moldavian victory; death of Basarab Țepeluș"
+   }
+  },
+  {
+   "id": "RM-122",
+   "data_start": "1485-11-16",
+   "data_end": "1485-11-16",
+   "an_start": 1485,
+   "an_end": 1485,
+   "secol_n": 15,
+   "lat": 45.5,
+   "lng": 28.8,
+   "zona_aprox": 1,
+   "teritoriu": "partial",
+   "ro": {
+    "titlu": "Bătălia de la Cătlăbuga",
+    "tip": "Bătălie",
+    "locatie": "Lacul Cătlăbuga / zona Chilia (județul Tulcea, sudul Dunării — azi Ucraina)",
+    "regiune": "Dobrogea / Bugeac",
+    "participanti": "Moldova (Ștefan cel Mare) vs. Imperiul Otoman (Bali-beg Malcoci Oglu, pașă de Silistra)",
+    "descriere": "După pierderea Chiliei și a Cetății Albe, Ștefan cel Mare răspunde raidurilor otomane și îl învinge pe Bali-beg Malcoci Oglu la Cătlăbuga, la 16 noiembrie 1485, provocând o grea înfrângere forțelor otomane venite după pradă în sudul Moldovei.",
+    "rezultat": "Victorie moldovenească asupra oastei otomane"
+   },
+   "en": {
+    "titlu": "Battle of Cătlăbuga",
+    "tip": "Battle",
+    "locatie": "Lake Cătlăbuga / Chilia area (Tulcea county, south of the Danube — today Ukraine)",
+    "regiune": "Dobrogea / Bugeac",
+    "participanti": "Moldavia (Stephen the Great) vs. the Ottoman Empire (Bali-beg Malcoci Oglu, pasha of Silistra)",
+    "descriere": "After the loss of Chilia and Cetatea Albă, Stephen the Great responded to Ottoman raids and defeated Bali-beg Malcoci Oglu at Cătlăbuga on 16 November 1485, inflicting a heavy defeat on the Ottoman forces that had come to plunder southern Moldavia.",
+    "rezultat": "Moldavian victory over the Ottoman host"
+   }
+  },
+  {
+   "id": "RM-123",
+   "data_start": "1486-03-06",
+   "data_end": "1486-03-06",
+   "an_start": 1486,
+   "an_end": 1486,
+   "secol_n": 15,
+   "lat": 46.93,
+   "lng": 26.55,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Șcheia",
+    "tip": "Bătălie",
+    "locatie": "Șcheia, lângă orașul Roman (județul Neamț)",
+    "regiune": "Moldova",
+    "participanti": "Moldova (Ștefan cel Mare) vs. Imperiul Otoman (Bali-beg Malcoci Oglu, Iskender bey) și pretendentul Petru Hronoda",
+    "descriere": "Un corp expediționar otoman condus de Bali-beg și Iskender bey, care aducea pretendentul Hronoda pe tronul Moldovei, înaintează pe valea Siretului spre Suceava. Ștefan cel Mare îi întâmpină la Șcheia și, printr-o stratagemă, îi înfrânge: pretendentul Hronoda este capturat și executat. Este ultima confruntare majoră dintre Moldova și Imperiul Otoman din domnia sa.",
+    "rezultat": "Victorie moldovenească; încheierea războiului de 13 ani cu Poarta"
+   },
+   "en": {
+    "titlu": "Battle of Șcheia",
+    "tip": "Battle",
+    "locatie": "Șcheia, near the town of Roman (Neamț county)",
+    "regiune": "Moldavia",
+    "participanti": "Moldavia (Stephen the Great) vs. the Ottoman Empire (Bali-beg Malcoci Oglu, Iskender Bey) and the pretender Petru Hronoda",
+    "descriere": "An Ottoman expeditionary corps led by Bali-beg and Iskender Bey, bringing the pretender Hronoda to the Moldavian throne, advanced up the Siret valley towards Suceava. Stephen the Great confronted them at Șcheia and, through a stratagem, defeated them: the pretender Hronoda was captured and executed. It was the last major clash between Moldavia and the Ottoman Empire of his reign.",
+    "rezultat": "Moldavian victory; end of the 13-year war with the Porte"
+   }
+  },
+  {
+   "id": "RM-124",
    "data_start": "1497-10-26",
    "data_end": "1497-10-26",
    "an_start": 1497,
@@ -3519,7 +3729,7 @@
    }
   },
   {
-   "id": "RM-118",
+   "id": "RM-125",
    "data_start": "1522",
    "data_end": "1525",
    "an_start": 1522,
@@ -3549,7 +3759,7 @@
    }
   },
   {
-   "id": "RM-119",
+   "id": "RM-126",
    "data_start": "1526-08-29",
    "data_end": "1526-08-29",
    "an_start": 1526,
@@ -3579,7 +3789,7 @@
    }
   },
   {
-   "id": "RM-120",
+   "id": "RM-127",
    "data_start": "1529-06-22",
    "data_end": "1529-06-22",
    "an_start": 1529,
@@ -3609,7 +3819,67 @@
    }
   },
   {
-   "id": "RM-121",
+   "id": "RM-128",
+   "data_start": "1531-08-22",
+   "data_end": "1531-08-22",
+   "an_start": 1531,
+   "an_end": 1531,
+   "secol_n": 16,
+   "lat": 48.7,
+   "lng": 25.15,
+   "zona_aprox": 1,
+   "teritoriu": "nu",
+   "ro": {
+    "titlu": "Bătălia de la Obertyn",
+    "tip": "Bătălie",
+    "locatie": "Obertyn, Pocuția (azi în Ucraina)",
+    "regiune": "Pocuția (azi Ucraina)",
+    "participanti": "Moldova (Petru Rareș) vs. Regatul Poloniei",
+    "descriere": "Petru Rareș încearcă să recucerească Pocuția, pierdută de Moldova. În bătălia de la Obertyn, oastea moldoveană este înfrântă de armata poloneză superioară, iar voievodul este nevoit să se retragă, păstrând însă Bucovina. Este una dintre cele mai celebre înfrângeri din timpul primei domnii a lui Petru Rareș.",
+    "rezultat": "Înfrângere moldoveană; pierderea definitivă a Pocuției"
+   },
+   "en": {
+    "titlu": "Battle of Obertyn",
+    "tip": "Battle",
+    "locatie": "Obertyn, Pokuttya (today in Ukraine)",
+    "regiune": "Pokuttya (today Ukraine)",
+    "participanti": "Moldavia (Peter IV Rareș) vs. the Kingdom of Poland",
+    "descriere": "Peter IV Rareș tried to recover Pokuttya, lost by Moldavia. In the Battle of Obertyn, the Moldavian army was defeated by the superior Polish army and the voivode had to withdraw, though he kept Bukovina. It is one of the most famous defeats of Peter Rareș's first reign.",
+    "rezultat": "Moldavian defeat; definitive loss of Pokuttya"
+   }
+  },
+  {
+   "id": "RM-129",
+   "data_start": "1538-02-01",
+   "data_end": "1538-02-01",
+   "an_start": 1538,
+   "an_end": 1538,
+   "secol_n": 16,
+   "lat": 46.9,
+   "lng": 26.6,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Siret",
+    "tip": "Bătălie",
+    "locatie": "Pe râul Siret, în Moldova (județul Suceava / Neamț)",
+    "regiune": "Moldova",
+    "participanti": "Moldova (Petru Rareș) vs. Imperiul Otoman (Soliman Magnificul)",
+    "descriere": "La 1 februarie 1538, trupele moldovene aflate în campanie împotriva otomanilor sunt atacate și înfrânte în zona râului Siret, în contextul marii invazii otomane care avea să ducă la ocuparea Moldovei și detronarea lui Petru Rareș.",
+    "rezultat": "Înfrângere moldoveană; perioadă de criză pentru Moldova"
+   },
+   "en": {
+    "titlu": "Battle of the Siret",
+    "tip": "Battle",
+    "locatie": "On the Siret river, in Moldavia (Suceava / Neamț county)",
+    "regiune": "Moldavia",
+    "participanti": "Moldavia (Peter IV Rareș) vs. the Ottoman Empire (Suleiman the Magnificent)",
+    "descriere": "On 1 February 1538, the Moldavian troops campaigning against the Ottomans were attacked and defeated in the area of the Siret river, in the context of the great Ottoman invasion that would lead to the occupation of Moldavia and the deposition of Peter Rareș.",
+    "rezultat": "Moldavian defeat; period of crisis for Moldavia"
+   }
+  },
+  {
+   "id": "RM-130",
    "data_start": "1538",
    "data_end": "1538",
    "an_start": 1538,
@@ -3639,7 +3909,7 @@
    }
   },
   {
-   "id": "RM-122",
+   "id": "RM-131",
    "data_start": "1574-06",
    "data_end": "1574-06",
    "an_start": 1574,
@@ -3669,7 +3939,37 @@
    }
   },
   {
-   "id": "RM-123",
+   "id": "RM-132",
+   "data_start": "1574-06-11",
+   "data_end": "1574-06-11",
+   "an_start": 1574,
+   "an_end": 1574,
+   "secol_n": 16,
+   "lat": 46.55,
+   "lng": 27.95,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Roșcani",
+    "tip": "Bătălie",
+    "locatie": "Roșcani, în sudul Moldovei (județul Vaslui / Galați)",
+    "regiune": "Moldova",
+    "participanti": "Moldova (Ioan Vodă cel Viteaz) vs. Imperiul Otoman și Țara Românească",
+    "descriere": "În timpul revoltei antiotomane a lui Ioan Vodă cel Viteaz, oștile moldovene obțin la Roșcani o victorie importantă asupra forțelor otomane și muntene, înainte de dezastrul de la Cahul care avea să se încheie cu execuția voievodului.",
+    "rezultat": "Victorie moldoveană temporară în cadrul revoltei"
+   },
+   "en": {
+    "titlu": "Battle of Roșcani",
+    "tip": "Battle",
+    "locatie": "Roșcani, in southern Moldavia (Vaslui / Galați county)",
+    "regiune": "Moldavia",
+    "participanti": "Moldavia (Ioan Vodă the Brave) vs. the Ottoman Empire and Wallachia",
+    "descriere": "During John the Brave's anti-Ottoman revolt, the Moldavian troops won an important victory at Roșcani over the Ottoman and Wallachian forces, before the disaster at Cahul that would end with the execution of the voivode.",
+    "rezultat": "Temporary Moldavian victory within the revolt"
+   }
+  },
+  {
+   "id": "RM-133",
    "data_start": "1574-04",
    "data_end": "1574-04",
    "an_start": 1574,
@@ -3699,7 +3999,67 @@
    }
   },
   {
-   "id": "RM-124",
+   "id": "RM-134",
+   "data_start": "1575-07-09",
+   "data_end": "1575-07-09",
+   "an_start": 1575,
+   "an_end": 1575,
+   "secol_n": 16,
+   "lat": 46.43,
+   "lng": 24.34,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Sânpaul",
+    "tip": "Bătălie",
+    "locatie": "Sânpaul (județul Mureș)",
+    "regiune": "Transilvania",
+    "participanti": "Moldova (Petru Șchiopul) și coaliția anti-Báthory vs. Ioan Sigismund Zápolya (aliat cu principele Ștefan Báthory)",
+    "descriere": "În luptele pentru tronul Transilvaniei, oastea susținătorilor lui Ioan Sigismund Zápolya este înfrântă la Sânpaul de forțele principelui Ștefan Báthory, care sprijinea un alt candidat. Bătălia consolidează puterea lui Báthory, viitorul rege al Poloniei.",
+    "rezultat": "Victorie a lui Ștefan Báthory; consolidarea autorității sale în Transilvania"
+   },
+   "en": {
+    "titlu": "Battle of Sânpaul",
+    "tip": "Battle",
+    "locatie": "Sânpaul (Mureș county)",
+    "regiune": "Transylvania",
+    "participanti": "The anti-Báthory coalition vs. John Sigismund Zápolya (allied with Prince Stephen Báthory)",
+    "descriere": "In the struggles for the throne of Transylvania, the host of the supporters of John Sigismund Zápolya was defeated at Sânpaul by the forces of Prince Stephen Báthory, who supported another candidate. The battle consolidated the power of Báthory, the future king of Poland.",
+    "rezultat": "Victory of Stephen Báthory; consolidation of his authority in Transylvania"
+   }
+  },
+  {
+   "id": "RM-135",
+   "data_start": "1594-11-13",
+   "data_end": "1594-11-13",
+   "an_start": 1594,
+   "an_end": 1594,
+   "secol_n": 16,
+   "lat": 44.43,
+   "lng": 26.1,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Revolta antiotomană și masacrul de la București (1594)",
+    "tip": "Revoltă / insurecție",
+    "locatie": "București și garnizoanele otomane din Țara Românească",
+    "regiune": "Țara Românească",
+    "participanti": "Țara Românească (Mihai Viteazul) vs. Imperiul Otoman (garnizoane și creditori)",
+    "descriere": "Admițând la Liga Sfântă antiotomană, Mihai Viteazul declanșează la 13 noiembrie 1594 o revoltă antiotomană: este masacrată întreaga garnizoană otomană staționată la București, împreună cu creditorii veniți de la Istanbul. Este semnalul deschiderii luptei antiotomane a Țării Românești.",
+    "rezultat": "Declanșarea revoltei antiotomane; Mihai trece la ofensivă peste Dunăre"
+   },
+   "en": {
+    "titlu": "The anti-Ottoman revolt and the massacre of Bucharest (1594)",
+    "tip": "Revolt / insurrection",
+    "locatie": "Bucharest and the Ottoman garrisons of Wallachia",
+    "regiune": "Wallachia",
+    "participanti": "Wallachia (Michael the Brave) vs. the Ottoman Empire (garrisons and creditors)",
+    "descriere": "Joining the anti-Ottoman Holy League, Michael the Brave launched an anti-Ottoman revolt on 13 November 1594: the entire Ottoman garrison stationed in Bucharest was massacred, together with the creditors who had come from Istanbul. It was the signal for the opening of Wallachia's anti-Ottoman struggle.",
+    "rezultat": "Start of the anti-Ottoman revolt; Michael moves on the offensive across the Danube"
+   }
+  },
+  {
+   "id": "RM-136",
    "data_start": "1595-08-23",
    "data_end": "1595-08-23",
    "an_start": 1595,
@@ -3729,7 +4089,7 @@
    }
   },
   {
-   "id": "RM-125",
+   "id": "RM-137",
    "data_start": "1595-10",
    "data_end": "1595-10",
    "an_start": 1595,
@@ -3759,7 +4119,127 @@
    }
   },
   {
-   "id": "RM-126",
+   "id": "RM-138",
+   "data_start": "1595-01-14",
+   "data_end": "1595-01-14",
+   "an_start": 1595,
+   "an_end": 1595,
+   "secol_n": 16,
+   "lat": 43.9,
+   "lng": 25.85,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Putineiu",
+    "tip": "Bătălie",
+    "locatie": "Putineiu, în sudul Țării Românești (județul Giurgiu)",
+    "regiune": "Țara Românească",
+    "participanti": "Țara Românească (Mihai Viteazul) vs. tătari (invadatori)",
+    "descriere": "În cadrul campaniei de iarnă din 1595, Mihai Viteazul obține o victorie importantă împotriva tătarilor invadatori la Putineiu, primul dintr-o serie de succese care au deschis drumul spre victoria de la Șerpătești.",
+    "rezultat": "Victoria lui Mihai Viteazul asupra tătarilor"
+   },
+   "en": {
+    "titlu": "Battle of Putineiu",
+    "tip": "Battle",
+    "locatie": "Putineiu, in southern Wallachia (Giurgiu county)",
+    "regiune": "Wallachia",
+    "participanti": "Wallachia (Michael the Brave) vs. the Tatars (invaders)",
+    "descriere": "In the winter campaign of 1595, Michael the Brave won an important victory against the invading Tatars at Putineiu, the first of a series of successes that opened the way towards the victory at Șerpătești.",
+    "rezultat": "Michael the Brave's victory over the Tatars"
+   }
+  },
+  {
+   "id": "RM-139",
+   "data_start": "1595-01-25",
+   "data_end": "1595-01-25",
+   "an_start": 1595,
+   "an_end": 1595,
+   "secol_n": 16,
+   "lat": 43.95,
+   "lng": 25.95,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Stănești",
+    "tip": "Bătălie",
+    "locatie": "Stănești, în sudul Țării Românești (județul Giurgiu)",
+    "regiune": "Țara Românească",
+    "participanti": "Țara Românească (Mihai Viteazul) vs. otomani și tătari",
+    "descriere": "În continuarea campaniei de iarnă, Mihai Viteazul îi înfrânge pe otomani și pe tătari la Stănești, consolidând controlul românesc asupra liniei Dunării și pregătind marea confruntare de la Călugăreni din vara anului 1595.",
+    "rezultat": "Victoria lui Mihai Viteazul; controlul liniei Dunării"
+   },
+   "en": {
+    "titlu": "Battle of Stănești",
+    "tip": "Battle",
+    "locatie": "Stănești, in southern Wallachia (Giurgiu county)",
+    "regiune": "Wallachia",
+    "participanti": "Wallachia (Michael the Brave) vs. the Ottomans and Tatars",
+    "descriere": "Continuing the winter campaign, Michael the Brave defeated the Ottomans and the Tatars at Stănești, consolidating the Romanian control over the Danube line and preparing the great confrontation at Călugăreni in the summer of 1595.",
+    "rezultat": "Michael the Brave's victory; control of the Danube line"
+   }
+  },
+  {
+   "id": "RM-140",
+   "data_start": "1595-10-05",
+   "data_end": "1595-10-08",
+   "an_start": 1595,
+   "an_end": 1595,
+   "secol_n": 16,
+   "lat": 44.92,
+   "lng": 25.46,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Târgoviște (1595)",
+    "tip": "Bătălie",
+    "locatie": "Târgoviște (județul Dâmbovița)",
+    "regiune": "Țara Românească",
+    "participanti": "Țara Românească (Mihai Viteazul) vs. Imperiul Otoman (Sinan Pașa)",
+    "descriere": "După retragerea strategică de la Călugăreni, Mihai Viteazul revine în forță în fruntea unei armate numeroase, întărită cu sprijin din Transilvania și Moldova, și îi alungă pe otomani din Târgoviște (5–8 octombrie 1595) și apoi din București.",
+    "rezultat": "Recucerirea Târgoviștei; începutul retragerii otomane"
+   },
+   "en": {
+    "titlu": "Battle of Târgoviște (1595)",
+    "tip": "Battle",
+    "locatie": "Târgoviște (Dâmbovița county)",
+    "regiune": "Wallachia",
+    "participanti": "Wallachia (Michael the Brave) vs. the Ottoman Empire (Sinan Pasha)",
+    "descriere": "After the strategic retreat from Călugăreni, Michael the Brave returned in force at the head of a numerous army, reinforced with support from Transylvania and Moldavia, and drove the Ottomans out of Târgoviște (5–8 October 1595) and then from Bucharest.",
+    "rezultat": "Recapture of Târgoviște; the beginning of the Ottoman withdrawal"
+   }
+  },
+  {
+   "id": "RM-141",
+   "data_start": "1595-01-23",
+   "data_end": "1595-01-23",
+   "an_start": 1595,
+   "an_end": 1595,
+   "secol_n": 16,
+   "lat": 43.9,
+   "lng": 26.0,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Șerpătești",
+    "tip": "Bătălie",
+    "locatie": "Șerpătești, la nord de Giurgiu (județul Giurgiu)",
+    "regiune": "Țara Românească",
+    "participanti": "Țara Românească (Mihai Viteazul) vs. Imperiul Otoman și tătari",
+    "descriere": "O invazie tătară și otomană pătrunde în Țara Românească pentru a răzbuna revolta. Mihai Viteazul îi surprinde noaptea la Șerpătești, unde gruparea condusă de banul Manta obține o victorie fulgerătoare, spulberând oastea otomano-tătară și controlând linia Dunării.",
+    "rezultat": "Victorie zdrobitoare a lui Mihai Viteazul asupra tătarilor și otomanilor"
+   },
+   "en": {
+    "titlu": "Battle of Șerpătești",
+    "tip": "Battle",
+    "locatie": "Șerpătești, north of Giurgiu (Giurgiu county)",
+    "regiune": "Wallachia",
+    "participanti": "Wallachia (Michael the Brave) vs. the Ottoman Empire and the Tatars",
+    "descriere": "A Tatar and Ottoman invasion entered Wallachia to avenge the revolt. Michael the Brave surprised them at night at Șerpătești, where the group led by ban Manta won a lightning victory, shattering the Ottoman-Tatar host and taking control of the Danube line.",
+    "rezultat": "Crushing victory of Michael the Brave over the Tatars and Ottomans"
+   }
+  },
+  {
+   "id": "RM-142",
    "data_start": "1599-10-28",
    "data_end": "1599-10-28",
    "an_start": 1599,
@@ -3789,7 +4269,7 @@
    }
   },
   {
-   "id": "RM-127",
+   "id": "RM-143",
    "data_start": "1600-10",
    "data_end": "1600-10",
    "an_start": 1600,
@@ -3819,7 +4299,7 @@
    }
   },
   {
-   "id": "RM-128",
+   "id": "RM-144",
    "data_start": "1600-09-18",
    "data_end": "1600-09-18",
    "an_start": 1600,
@@ -3849,7 +4329,7 @@
    }
   },
   {
-   "id": "RM-129",
+   "id": "RM-145",
    "data_start": "1601-08-03",
    "data_end": "1601-08-03",
    "an_start": 1601,
@@ -3879,7 +4359,7 @@
    }
   },
   {
-   "id": "RM-130",
+   "id": "RM-146",
    "data_start": "1620-09",
    "data_end": "1620-09",
    "an_start": 1620,
@@ -3909,7 +4389,7 @@
    }
   },
   {
-   "id": "RM-131",
+   "id": "RM-147",
    "data_start": "1621-09",
    "data_end": "1621-10",
    "an_start": 1621,
@@ -3939,7 +4419,7 @@
    }
   },
   {
-   "id": "RM-132",
+   "id": "RM-148",
    "data_start": "1637",
    "data_end": "1637",
    "an_start": 1637,
@@ -3969,7 +4449,37 @@
    }
   },
   {
-   "id": "RM-133",
+   "id": "RM-149",
+   "data_start": "1637",
+   "data_end": "1637",
+   "an_start": 1637,
+   "an_end": 1637,
+   "secol_n": 17,
+   "lat": 46.65,
+   "lng": 27.75,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Rabna",
+    "tip": "Bătălie",
+    "locatie": "Zona de la nord de râul Rabna (județul Iași / Vaslui)",
+    "regiune": "Moldova",
+    "participanti": "Moldova (Vasile Lupu) vs. rivali interni sprijiniți de cazaci",
+    "descriere": "În contextul luptelor interne pentru tronul Moldovei, are loc o confruntare la Rabna, la nord de Vaslui. Bătălia face parte din conflictele dintre Vasile Lupu și pretendenții sprijiniți de puterile vecine.",
+    "rezultat": "Victoria lui Vasile Lupu în conflictul intern"
+   },
+   "en": {
+    "titlu": "Battle of Rabna",
+    "tip": "Battle",
+    "locatie": "The area north of the Rabna river (Iași / Vaslui county)",
+    "regiune": "Moldavia",
+    "participanti": "Moldavia (Vasile Lupu) vs. internal rivals supported by the Cossacks",
+    "descriere": "In the context of the internal struggles for the throne of Moldavia, a clash took place at Rabna, north of Vaslui. The battle is part of the conflicts between Vasile Lupu and the pretenders supported by the neighbouring powers.",
+    "rezultat": "Vasile Lupu's victory in the internal conflict"
+   }
+  },
+  {
+   "id": "RM-150",
    "data_start": "1639",
    "data_end": "1639",
    "an_start": 1639,
@@ -3999,7 +4509,7 @@
    }
   },
   {
-   "id": "RM-134",
+   "id": "RM-151",
    "data_start": "1653-05-27",
    "data_end": "1653-05-27",
    "an_start": 1653,
@@ -4029,7 +4539,37 @@
    }
   },
   {
-   "id": "RM-135",
+   "id": "RM-152",
+   "data_start": "1655-06-26",
+   "data_end": "1655-06-26",
+   "an_start": 1655,
+   "an_end": 1655,
+   "secol_n": 17,
+   "lat": 46.45,
+   "lng": 24.4,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Șoplea",
+    "tip": "Bătălie",
+    "locatie": "Șoplea (județul Mureș)",
+    "regiune": "Transilvania",
+    "participanti": "Principatul Transilvaniei (George Rákóczi al II-lea) vs. răsculații (seimenii și husarii)",
+    "descriere": "Răscoala seimenilor (mercenarii) și a husarilor, aflată în plină efervescență, este înfrântă de trupele principelui George Rákóczi al II-lea la Șoplea. Revolta răsculaților, care avea și o componentă antierarhică și antinobiliară, este zdrobită, marcând sfârșitul unei crize interne majore a Transilvaniei.",
+    "rezultat": "Reprimarea răscoalei seimenilor"
+   },
+   "en": {
+    "titlu": "Battle of Șoplea",
+    "tip": "Battle",
+    "locatie": "Șoplea (Mureș county)",
+    "regiune": "Transylvania",
+    "participanti": "Principality of Transylvania (George Rákóczi II) vs. the rebels (the Seimeni and the Hussars)",
+    "descriere": "The revolt of the Seimeni (mercenaries) and the Hussars, in full ferment, was defeated by the troops of Prince George Rákóczi II at Șoplea. The rebellion of the rebels, which also had an anti-hierarchical and anti-noble component, was crushed, marking the end of a major internal crisis in Transylvania.",
+    "rezultat": "Suppression of the Seimeni revolt"
+   }
+  },
+  {
+   "id": "RM-153",
    "data_start": "1657",
    "data_end": "1662",
    "an_start": 1657,
@@ -4059,7 +4599,7 @@
    }
   },
   {
-   "id": "RM-136",
+   "id": "RM-154",
    "data_start": "1680",
    "data_end": "1690",
    "an_start": 1680,
@@ -4089,7 +4629,7 @@
    }
   },
   {
-   "id": "RM-137",
+   "id": "RM-155",
    "data_start": "1685",
    "data_end": "1685",
    "an_start": 1685,
@@ -4119,7 +4659,7 @@
    }
   },
   {
-   "id": "RM-138",
+   "id": "RM-156",
    "data_start": "1690-08-21",
    "data_end": "1690-08-21",
    "an_start": 1690,
@@ -4149,7 +4689,7 @@
    }
   },
   {
-   "id": "RM-139",
+   "id": "RM-157",
    "data_start": "1710",
    "data_end": "1711",
    "an_start": 1710,
@@ -4179,7 +4719,7 @@
    }
   },
   {
-   "id": "RM-140",
+   "id": "RM-158",
    "data_start": "1716",
    "data_end": "1718",
    "an_start": 1716,
@@ -4209,7 +4749,7 @@
    }
   },
   {
-   "id": "RM-141",
+   "id": "RM-159",
    "data_start": "1735",
    "data_end": "1739",
    "an_start": 1735,
@@ -4239,7 +4779,7 @@
    }
   },
   {
-   "id": "RM-142",
+   "id": "RM-160",
    "data_start": "1768",
    "data_end": "1774",
    "an_start": 1768,
@@ -4269,7 +4809,7 @@
    }
   },
   {
-   "id": "RM-143",
+   "id": "RM-161",
    "data_start": "1787",
    "data_end": "1792",
    "an_start": 1787,
@@ -4299,7 +4839,7 @@
    }
   },
   {
-   "id": "RM-144",
+   "id": "RM-162",
    "data_start": "1806",
    "data_end": "1812",
    "an_start": 1806,
@@ -4329,7 +4869,7 @@
    }
   },
   {
-   "id": "RM-145",
+   "id": "RM-163",
    "data_start": "1821",
    "data_end": "1821",
    "an_start": 1821,
@@ -4359,7 +4899,7 @@
    }
   },
   {
-   "id": "RM-146",
+   "id": "RM-164",
    "data_start": "1828",
    "data_end": "1829",
    "an_start": 1828,
@@ -4389,7 +4929,7 @@
    }
   },
   {
-   "id": "RM-147",
+   "id": "RM-165",
    "data_start": "1848",
    "data_end": "1849",
    "an_start": 1848,
@@ -4419,7 +4959,67 @@
    }
   },
   {
-   "id": "RM-148",
+   "id": "RM-166",
+   "data_start": "1849-02",
+   "data_end": "1849-02",
+   "an_start": 1849,
+   "an_end": 1849,
+   "secol_n": 19,
+   "lat": 46.12,
+   "lng": 22.18,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Lupta de la Brad (1849)",
+    "tip": "Bătălie",
+    "locatie": "Brad (județul Hunedoara), Munții Apuseni",
+    "regiune": "Transilvania",
+    "participanti": "Românii din Munții Apuseni (Avram Iancu) vs. revoluționarii maghiari",
+    "descriere": "În confruntările din Munții Apuseni, moții conduși de Avram Iancu obțin o victorie importantă la Brad, consolidând controlul românesc asupra zonei și respingând ofensiva revoluționarilor maghiari.",
+    "rezultat": "Victorie a moților la Brad"
+   },
+   "en": {
+    "titlu": "The fight at Brad (1849)",
+    "tip": "Battle",
+    "locatie": "Brad (Hunedoara county), the Apuseni Mountains",
+    "regiune": "Transylvania",
+    "participanti": "The Romanians of the Apuseni Mountains (Avram Iancu) vs. the Hungarian revolutionaries",
+    "descriere": "In the clashes in the Apuseni Mountains, the Motzen led by Avram Iancu won an important victory at Brad, consolidating the Romanian control over the area and repelling the offensive of the Hungarian revolutionaries.",
+    "rezultat": "Victory of the Motzen at Brad"
+   }
+  },
+  {
+   "id": "RM-167",
+   "data_start": "1849-05",
+   "data_end": "1849-05",
+   "an_start": 1849,
+   "an_end": 1849,
+   "secol_n": 19,
+   "lat": 46.28,
+   "lng": 23.09,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Luptele de la Abrud (1849)",
+    "tip": "Bătălie",
+    "locatie": "Abrud (județul Alba), Munții Apuseni",
+    "regiune": "Transilvania",
+    "participanti": "Românii din Munții Apuseni (Avram Iancu) vs. revoluționarii maghiari (Ioan Hora, generalul Kemeny)",
+    "descriere": "În cadrul războiului civil din Transilvania, Avram Iancu apără cu moții săi localitatea Abrud repetat, provocând înfrângeri grele armatei revoluționare maghiare, care încerca să ocupe Munții Apuseni. Luptele de la Abrud sunt printre cele mai celebre confruntări ale Revoluției de la 1848–1849 din Ardeal.",
+    "rezultat": "Victorie a moților lui Avram Iancu; apărarea Munților Apuseni"
+   },
+   "en": {
+    "titlu": "The fights at Abrud (1849)",
+    "tip": "Battle",
+    "locatie": "Abrud (Alba county), the Apuseni Mountains",
+    "regiune": "Transylvania",
+    "participanti": "The Romanians of the Apuseni Mountains (Avram Iancu) vs. the Hungarian revolutionaries (Ioan Hora, General Kemeny)",
+    "descriere": "During the civil war in Transylvania, Avram Iancu defended Abrud repeatedly with his Motzen, inflicting heavy defeats on the Hungarian revolutionary army that tried to occupy the Apuseni Mountains. The fights at Abrud are among the most famous clashes of the 1848–1849 Revolution in Transylvania.",
+    "rezultat": "Victory of Avram Iancu's Motzen; defence of the Apuseni Mountains"
+   }
+  },
+  {
+   "id": "RM-168",
    "data_start": "1853",
    "data_end": "1856",
    "an_start": 1853,
@@ -4449,7 +5049,67 @@
    }
   },
   {
-   "id": "RM-149",
+   "id": "RM-169",
+   "data_start": "1877-07",
+   "data_end": "1877-12-10",
+   "an_start": 1877,
+   "an_end": 1877,
+   "secol_n": 19,
+   "lat": 43.42,
+   "lng": 24.62,
+   "zona_aprox": 1,
+   "teritoriu": "nu",
+   "ro": {
+    "titlu": "Bătălia de la Plevna",
+    "tip": "Bătălie",
+    "locatie": "Plevna (azi Pleven, Bulgaria)",
+    "regiune": "Bulgaria (în afara actualelor granițe)",
+    "participanti": "România și Imperiul Țarist vs. Imperiul Otoman (Osman Pașa)",
+    "descriere": "Asediul de la Plevna este cea mai sângeroasă confruntare a Războiului de Independență: trupele române și ruse asediază și înfrâng garnizoana otomană a lui Osman Pașa, care capitulează la 10 decembrie 1877. Victoria contribuie decisiv la obținerea independenței României.",
+    "rezultat": "Victoria ruso-română; capitularea garnizoanei otomane"
+   },
+   "en": {
+    "titlu": "Battle of Plevna",
+    "tip": "Battle",
+    "locatie": "Plevna (today Pleven, Bulgaria)",
+    "regiune": "Bulgaria (outside present-day borders)",
+    "participanti": "Romania and the Russian Empire vs. the Ottoman Empire (Osman Pasha)",
+    "descriere": "The siege of Plevna was the bloodiest clash of the War of Independence: the Romanian and Russian troops besieged and defeated the Ottoman garrison of Osman Pasha, which capitulated on 10 December 1877. The victory contributed decisively to the achievement of Romania's independence.",
+    "rezultat": "Russian-Romanian victory; capitulation of the Ottoman garrison"
+   }
+  },
+  {
+   "id": "RM-170",
+   "data_start": "1877-08-30",
+   "data_end": "1877-08-30",
+   "an_start": 1877,
+   "an_end": 1877,
+   "secol_n": 19,
+   "lat": 43.4,
+   "lng": 24.6,
+   "zona_aprox": 1,
+   "teritoriu": "nu",
+   "ro": {
+    "titlu": "Luptele de la Grivița (1877)",
+    "tip": "Bătălie",
+    "locatie": "Reduta Grivița, lângă Plevna (azi Pleven, Bulgaria)",
+    "regiune": "Bulgaria (în afara actualelor granițe)",
+    "participanti": "România (armata română) vs. Imperiul Otoman",
+    "descriere": "Atacul românilor asupra redutei Grivița de la Plevna este una dintre cele mai eroice fapte de arme ale Războiului de Independență, soldată cu cucerirea redutei după lupte extrem de sângeroase, celebrată în cultura românească.",
+    "rezultat": "Cucerirea redutei Grivița de către armata română"
+   },
+   "en": {
+    "titlu": "The fights at Grivița (1877)",
+    "tip": "Battle",
+    "locatie": "Grivița redoubt, near Plevna (today Pleven, Bulgaria)",
+    "regiune": "Bulgaria (outside present-day borders)",
+    "participanti": "Romania (the Romanian army) vs. the Ottoman Empire",
+    "descriere": "The Romanian attack on the Grivița redoubt at Plevna is one of the most heroic feats of arms of the War of Independence, resulting in the capture of the redoubt after extremely bloody fighting, celebrated in Romanian culture.",
+    "rezultat": "Capture of the Grivița redoubt by the Romanian army"
+   }
+  },
+  {
+   "id": "RM-171",
    "data_start": "1877-04",
    "data_end": "1878",
    "an_start": 1877,
@@ -4479,7 +5139,157 @@
    }
   },
   {
-   "id": "RM-150",
+   "id": "RM-172",
+   "data_start": "1878-01-24",
+   "data_end": "1878-01-24",
+   "an_start": 1878,
+   "an_end": 1878,
+   "secol_n": 19,
+   "lat": 44.0,
+   "lng": 22.87,
+   "zona_aprox": 1,
+   "teritoriu": "nu",
+   "ro": {
+    "titlu": "Bătălia de la Smârdan",
+    "tip": "Bătălie",
+    "locatie": "Smârdan, lângă Vidin (Bulgaria)",
+    "regiune": "Bulgaria (în afara actualelor granițe)",
+    "participanti": "România (armata română) vs. Imperiul Otoman",
+    "descriere": "Bătălia de la Smârdan, la 24 ianuarie 1878, este o victorie importantă a armatei române de la finalul Războiului de Independență, marcând ultima mare confruntare a campaniei de peste Dunăre și simbolizând închiderea campaniei victorioase.",
+    "rezultat": "Victoria armatei române; finalul campaniei de peste Dunăre"
+   },
+   "en": {
+    "titlu": "Battle of Smârdan",
+    "tip": "Battle",
+    "locatie": "Smârdan, near Vidin (Bulgaria)",
+    "regiune": "Bulgaria (outside present-day borders)",
+    "participanti": "Romania (the Romanian army) vs. the Ottoman Empire",
+    "descriere": "The Battle of Smârdan, on 24 January 1878, was an important victory of the Romanian army at the end of the War of Independence, marking the last great clash of the campaign beyond the Danube and symbolising the closing of the victorious campaign.",
+    "rezultat": "Victory of the Romanian army; the end of the campaign beyond the Danube"
+   }
+  },
+  {
+   "id": "RM-173",
+   "data_start": "1916-09-05",
+   "data_end": "1916-09-07",
+   "an_start": 1916,
+   "an_end": 1916,
+   "secol_n": 20,
+   "lat": 43.57,
+   "lng": 27.83,
+   "zona_aprox": 1,
+   "teritoriu": "partial",
+   "ro": {
+    "titlu": "Bătălia de la Bazargic (1916)",
+    "tip": "Bătălie",
+    "locatie": "Bazargic (azi Dobrici, Bulgaria) — Dobrogea de sud",
+    "regiune": "Dobrogea",
+    "participanti": "România și Imperiul Țarist vs. Bulgaria și Imperiul German",
+    "descriere": "În fața ofensivei bulgaro-germane în Dobrogea, trupele române și ruse sunt înfrânte la Bazargic (Dobrici), în prima mare bătălie de pe frontul dobrogean din campania din 1916. Înfrângerea contribuie la pierderea Dobrogei.",
+    "rezultat": "Victoria forțelor bulgaro-germane; înaintarea în Dobrogea"
+   },
+   "en": {
+    "titlu": "Battle of Bazargic (1916)",
+    "tip": "Battle",
+    "locatie": "Bazargic (today Dobrich, Bulgaria) — southern Dobruja",
+    "regiune": "Dobruja",
+    "participanti": "Romania and the Russian Empire vs. Bulgaria and the German Empire",
+    "descriere": "Faced with the Bulgarian-German offensive in Dobruja, the Romanian and Russian troops were defeated at Bazargic (Dobrich), in the first great battle on the Dobrujan front of the 1916 campaign. The defeat contributed to the loss of Dobruja.",
+    "rezultat": "Victory of the Bulgarian-German forces; advance into Dobruja"
+   }
+  },
+  {
+   "id": "RM-174",
+   "data_start": "1916-10-07",
+   "data_end": "1916-10-08",
+   "an_start": 1916,
+   "an_end": 1916,
+   "secol_n": 20,
+   "lat": 45.66,
+   "lng": 25.61,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Brașov (1916)",
+    "tip": "Bătălie",
+    "locatie": "Brașov și Țara Bârsei (județul Brașov)",
+    "regiune": "Transilvania",
+    "participanti": "România (Armata a 2-a) vs. Imperiul German (Armata a 9-a)",
+    "descriere": "Armata română a 2-a încercă să oprească înaintarea Armatei a 9-a germane prin Țara Bârsei, dar este înfrântă și se retrage din Brașov, ultima mare confruntare din ofensiva germană din Transilvania de la sfârșitul anului 1916.",
+    "rezultat": "Victorie a Puterilor Centrale; retragerea Armatei a 2-a"
+   },
+   "en": {
+    "titlu": "Battle of Brașov (1916)",
+    "tip": "Battle",
+    "locatie": "Brașov and the Burzenland (Brașov county)",
+    "regiune": "Transylvania",
+    "participanti": "Romania (the 2nd Army) vs. the German Empire (the 9th Army)",
+    "descriere": "The Romanian 2nd Army tried to stop the advance of the German 9th Army through the Burzenland, but was defeated and withdrew from Brașov, the last major clash of the German offensive in Transylvania at the end of 1916.",
+    "rezultat": "Victory of the Central Powers; retreat of the 2nd Army"
+   }
+  },
+  {
+   "id": "RM-175",
+   "data_start": "1916-10",
+   "data_end": "1916-10",
+   "an_start": 1916,
+   "an_end": 1916,
+   "secol_n": 20,
+   "lat": 45.5,
+   "lng": 25.58,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Predeal (1916)",
+    "tip": "Bătălie",
+    "locatie": "Predeal, trecătoarea din Carpații Meridionali (județul Brașov)",
+    "regiune": "Transilvania / Muntenia",
+    "participanti": "România vs. Imperiul German și Austro-Ungaria",
+    "descriere": "În confruntările pentru trecătoarea Predeal, trupele române rezistă eroic, dar sunt nevoite să se retragă spre zona Bran–Câmpulung, în cadrul operației de apărare a trecătorilor din Carpați în campania din 1916.",
+    "rezultat": "Depășirea trecătorii de către Puterile Centrale"
+   },
+   "en": {
+    "titlu": "Battle of Predeal (1916)",
+    "tip": "Battle",
+    "locatie": "Predeal, the pass in the Southern Carpathians (Brașov county)",
+    "regiune": "Transylvania / Wallachia",
+    "participanti": "Romania vs. the German Empire and Austria-Hungary",
+    "descriere": "In the clashes for the Predeal pass, the Romanian troops resisted heroically, but were forced to withdraw towards the Bran–Câmpulung area, within the operation to defend the Carpathian passes in the 1916 campaign.",
+    "rezultat": "Breaking through the pass by the Central Powers"
+   }
+  },
+  {
+   "id": "RM-176",
+   "data_start": "1916-09-26",
+   "data_end": "1916-09-29",
+   "an_start": 1916,
+   "an_end": 1916,
+   "secol_n": 20,
+   "lat": 45.8,
+   "lng": 24.15,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Sibiu (1916)",
+    "tip": "Bătălie",
+    "locatie": "Sibiu și zona trecătorilor din Carpații Meridionali (județul Sibiu)",
+    "regiune": "Transilvania",
+    "participanti": "România vs. Imperiul German și Austro-Ungaria",
+    "descriere": "Bătălia de la Sibiu face parte din apărarea trecătorilor din Carpați: forțele Puterilor Centrale, venite din Transilvania, împing armata română și pătrund în zona Sibiu–Turnu Roșu, deschizând drumul spre sud.",
+    "rezultat": "Victorie a Puterilor Centrale; depășirea apărării române"
+   },
+   "en": {
+    "titlu": "Battle of Sibiu (1916)",
+    "tip": "Battle",
+    "locatie": "Sibiu and the area of the passes in the Southern Carpathians (Sibiu county)",
+    "regiune": "Transylvania",
+    "participanti": "Romania vs. the German Empire and Austria-Hungary",
+    "descriere": "The Battle of Sibiu was part of the defence of the Carpathian passes: the forces of the Central Powers, coming from Transylvania, pushed back the Romanian army and penetrated the Sibiu–Turnu Roșu area, opening the way south.",
+    "rezultat": "Victory of the Central Powers; breaking of the Romanian defence"
+   }
+  },
+  {
+   "id": "RM-177",
    "data_start": "1916-09-02",
    "data_end": "1916-09-06",
    "an_start": 1916,
@@ -4509,7 +5319,37 @@
    }
   },
   {
-   "id": "RM-151",
+   "id": "RM-178",
+   "data_start": "1916-11-16",
+   "data_end": "1916-11-17",
+   "an_start": 1916,
+   "an_end": 1916,
+   "secol_n": 20,
+   "lat": 45.04,
+   "lng": 23.27,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Târgu Jiu (1916)",
+    "tip": "Bătălie",
+    "locatie": "Târgu Jiu (județul Gorj)",
+    "regiune": "Oltenia",
+    "participanti": "România vs. Imperiul German (armata lui Falkenhayn)",
+    "descriere": "Bătălia de la Târgu Jiu are loc în cadrul apărării Olteniei: trupele române, după lupte grele pe Valea Jiului, încearcă să oprească înaintarea germană, dar orașul cade în mâinile Puterilor Centrale, pregătind marea bătălie de la Neajlov–Argeș și ocuparea Bucureștiului.",
+    "rezultat": "Victorie a Puterilor Centrale; căderea Târgu Jiului"
+   },
+   "en": {
+    "titlu": "Battle of Târgu Jiu (1916)",
+    "tip": "Battle",
+    "locatie": "Târgu Jiu (Gorj county)",
+    "regiune": "Oltenia",
+    "participanti": "Romania vs. the German Empire (Falkenhayn's army)",
+    "descriere": "The Battle of Târgu Jiu took place during the defence of Oltenia: after heavy fighting on the Jiu valley, the Romanian troops tried to stop the German advance, but the city fell to the Central Powers, preparing the great battle of Neajlov–Argeș and the occupation of Bucharest.",
+    "rezultat": "Victory of the Central Powers; fall of Târgu Jiu"
+   }
+  },
+  {
+   "id": "RM-179",
    "data_start": "1916-11",
    "data_end": "1916-12",
    "an_start": 1916,
@@ -4539,7 +5379,7 @@
    }
   },
   {
-   "id": "RM-152",
+   "id": "RM-180",
    "data_start": "1916-10",
    "data_end": "1916-11",
    "an_start": 1916,
@@ -4569,7 +5409,127 @@
    }
   },
   {
-   "id": "RM-153",
+   "id": "RM-181",
+   "data_start": "1916-10-09",
+   "data_end": "1916-10-25",
+   "an_start": 1916,
+   "an_end": 1916,
+   "secol_n": 20,
+   "lat": 45.2,
+   "lng": 25.7,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de pe Valea Prahovei (1916)",
+    "tip": "Bătălie",
+    "locatie": "Valea Prahovei, în Carpații Meridionali (județul Prahova)",
+    "regiune": "Muntenia",
+    "participanti": "România vs. Imperiul German și Austro-Ungaria",
+    "descriere": "Confruntări violente pe valea Prahovei, una dintre principalele căi de acces spre București: armata română încearcă să blocheze înaintarea Puterilor Centrale prin Carpați, dar este depășită după lupte grele, contribuind la ocuparea ulterioară a capitalei.",
+    "rezultat": "Depășirea apărării române pe Valea Prahovei"
+   },
+   "en": {
+    "titlu": "Battle of the Prahova Valley (1916)",
+    "tip": "Battle",
+    "locatie": "Prahova Valley, in the Southern Carpathians (Prahova county)",
+    "regiune": "Wallachia",
+    "participanti": "Romania vs. the German Empire and Austria-Hungary",
+    "descriere": "Violent clashes on the Prahova valley, one of the main access routes towards Bucharest: the Romanian army tried to block the advance of the Central Powers through the Carpathians, but was overcome after heavy fighting, contributing to the later occupation of the capital.",
+    "rezultat": "Breaking of the Romanian defence on the Prahova valley"
+   }
+  },
+  {
+   "id": "RM-182",
+   "data_start": "1916-11-30",
+   "data_end": "1916-12-03",
+   "an_start": 1916,
+   "an_end": 1916,
+   "secol_n": 20,
+   "lat": 44.43,
+   "lng": 26.1,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia pentru București (1916)",
+    "tip": "Bătălie",
+    "locatie": "București și zona Neajlov–Argeș (județul Ilfov / Dâmbovița)",
+    "regiune": "Muntenia",
+    "participanti": "România vs. Puterile Centrale (Germania, Austro-Ungaria, Bulgaria)",
+    "descriere": "După înfrângerea de la Neajlov–Argeș, germanii și aliații lor înaintează spre capitală. În pofida rezistenței eroice, Bucureștiul este ocupat la 6 decembrie 1916, iar guvernul și armata se retrag în Moldova, marcând prăbușirea frontului de sud.",
+    "rezultat": "Ocuparea Bucureștiului de către Puterile Centrale"
+   },
+   "en": {
+    "titlu": "The Battle for Bucharest (1916)",
+    "tip": "Battle",
+    "locatie": "Bucharest and the Neajlov–Argeș area (Ilfov / Dâmbovița county)",
+    "regiune": "Wallachia",
+    "participanti": "Romania vs. the Central Powers (Germany, Austria-Hungary, Bulgaria)",
+    "descriere": "After the defeat at Neajlov–Argeș, the Germans and their allies advanced towards the capital. Despite heroic resistance, Bucharest was occupied on 6 December 1916, and the government and the army withdrew to Moldavia, marking the collapse of the southern front.",
+    "rezultat": "Occupation of Bucharest by the Central Powers"
+   }
+  },
+  {
+   "id": "RM-183",
+   "data_start": "1916-09-29",
+   "data_end": "1916-10-05",
+   "an_start": 1916,
+   "an_end": 1916,
+   "secol_n": 20,
+   "lat": 43.95,
+   "lng": 25.0,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Operația de la Flămânda",
+    "tip": "Operație / ofensivă",
+    "locatie": "Zona Flămânda–Oltul și Dunărea de Jos (județul Teleorman / Călărași)",
+    "regiune": "Muntenia (sud)",
+    "participanti": "România (armata a 3-a) vs. Imperiul German și Bulgaria (gruparea Mackensen)",
+    "descriere": "Ofensivă românească menită să forțeze Dunărea și să surprindă forțele bulgaro-germane din spate. Operația, nefinalizată și gândită pripit, se soldează cu eșec și este abandonată pe fondul înfrângerii de la Turtucaia și al lipsei de coordonare.",
+    "rezultat": "Eșecul operației; înfrângerea strategică a României"
+   },
+   "en": {
+    "titlu": "The Flămânda Operation",
+    "tip": "Operation / offensive",
+    "locatie": "The Flămânda–Olt area and the lower Danube (Teleorman / Călărași county)",
+    "regiune": "Wallachia (south)",
+    "participanti": "Romania (the 3rd Army) vs. the German Empire and Bulgaria (Mackensen's group)",
+    "descriere": "A Romanian offensive intended to force the Danube and surprise the Bulgarian-German forces from behind. The operation, unfinished and hastily conceived, ended in failure and was abandoned against the background of the defeat at Turtucaia and the lack of coordination.",
+    "rezultat": "Failure of the operation; strategic defeat of Romania"
+   }
+  },
+  {
+   "id": "RM-184",
+   "data_start": "1916-10-12",
+   "data_end": "1916-10-27",
+   "an_start": 1916,
+   "an_end": 1916,
+   "secol_n": 20,
+   "lat": 46.08,
+   "lng": 26.35,
+   "zona_aprox": 1,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Prima bătălie de la Oituz (1916)",
+    "tip": "Bătălie",
+    "locatie": "Valea Oituzului, Carpații de Curbură (județul Bacău / Covasna)",
+    "regiune": "Moldova",
+    "participanti": "România vs. Imperiul German și Austro-Ungaria",
+    "descriere": "Prima bătălie de la Oituz face parte din apărarea trecătorilor: trupele române opresc înaintarea Puterilor Centrale prin Valea Oituzului, apărând Moldova și împiedicând încercuirea armatei române.",
+    "rezultat": "Victorie defensivă a armatei române"
+   },
+   "en": {
+    "titlu": "First Battle of Oituz (1916)",
+    "tip": "Battle",
+    "locatie": "The Oituz valley, in the Carpathians of the bend (Bacău / Covasna county)",
+    "regiune": "Moldavia",
+    "participanti": "Romania vs. the German Empire and Austria-Hungary",
+    "descriere": "The first Battle of Oituz was part of the defence of the passes: the Romanian troops stopped the advance of the Central Powers through the Oituz valley, defending Moldavia and preventing the encirclement of the Romanian army.",
+    "rezultat": "Defensive victory of the Romanian army"
+   }
+  },
+  {
+   "id": "RM-185",
    "data_start": "1916-08-27",
    "data_end": "1916-12",
    "an_start": 1916,
@@ -4599,7 +5559,7 @@
    }
   },
   {
-   "id": "RM-154",
+   "id": "RM-186",
    "data_start": "1917-08-06",
    "data_end": "1917-09-03",
    "an_start": 1917,
@@ -4629,7 +5589,7 @@
    }
   },
   {
-   "id": "RM-155",
+   "id": "RM-187",
    "data_start": "1917-07-22",
    "data_end": "1917-08-01",
    "an_start": 1917,
@@ -4659,7 +5619,7 @@
    }
   },
   {
-   "id": "RM-156",
+   "id": "RM-188",
    "data_start": "1917-08-08",
    "data_end": "1917-08-20",
    "an_start": 1917,
@@ -4689,7 +5649,7 @@
    }
   },
   {
-   "id": "RM-157",
+   "id": "RM-189",
    "data_start": "1943-08-01",
    "data_end": "1943-08-01",
    "an_start": 1943,
@@ -4719,7 +5679,7 @@
    }
   },
   {
-   "id": "RM-158",
+   "id": "RM-190",
    "data_start": "1943",
    "data_end": "1944",
    "an_start": 1943,
@@ -4749,7 +5709,7 @@
    }
   },
   {
-   "id": "RM-159",
+   "id": "RM-191",
    "data_start": "1944-08-20",
    "data_end": "1944-08-29",
    "an_start": 1944,
@@ -4779,7 +5739,7 @@
    }
   },
   {
-   "id": "RM-160",
+   "id": "RM-192",
    "data_start": "1944-09-14",
    "data_end": "1944-09-19",
    "an_start": 1944,
@@ -4809,7 +5769,7 @@
    }
   },
   {
-   "id": "RM-161",
+   "id": "RM-193",
    "data_start": "1944-09",
    "data_end": "1944-10",
    "an_start": 1944,
@@ -4839,7 +5799,7 @@
    }
   },
   {
-   "id": "RM-162",
+   "id": "RM-194",
    "data_start": "1944-08-24",
    "data_end": "1944-09",
    "an_start": 1944,
@@ -4869,7 +5829,7 @@
    }
   },
   {
-   "id": "RM-163",
+   "id": "RM-195",
    "data_start": "1944-10",
    "data_end": "1944-10-25",
    "an_start": 1944,
@@ -4899,7 +5859,7 @@
    }
   },
   {
-   "id": "RM-164",
+   "id": "RM-196",
    "data_start": "1944-08",
    "data_end": "1944-09",
    "an_start": 1944,
@@ -4929,7 +5889,7 @@
    }
   },
   {
-   "id": "RM-165",
+   "id": "RM-197",
    "data_start": "1944-03",
    "data_end": "1944-04",
    "an_start": 1944,
@@ -4959,7 +5919,7 @@
    }
   },
   {
-   "id": "RM-166",
+   "id": "RM-198",
    "data_start": "1944-04-08",
    "data_end": "1944-06-06",
    "an_start": 1944,

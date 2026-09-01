@@ -12,12 +12,12 @@
 ## Statistici
 | Indicator | Valoare |
 |---|---|
-| Total evenimente | **166** |
-| Pe teritoriul actual al României | 151 |
-| Parțial (graniță / zona învecinată) | 7 |
-| Context regional (participare românească, în afara granițelor) | 8 |
-| Evenimente cu locație aproximativă (zona) | 137 |
-| Evenimente cu coordonate | 166 |
+| Total evenimente | **198** |
+| Pe teritoriul actual al României | 177 |
+| Parțial (graniță / zona învecinată) | 9 |
+| Context regional (participare românească, în afara granițelor) | 12 |
+| Evenimente cu locație aproximativă (zona) | 159 |
+| Evenimente cu coordonate | 198 |
 
 ## Structura unei înregistrări
 | Câmp | Descriere |
@@ -133,21 +133,53 @@
 - **RM-108** Bătălia de la Rovine · 1394 — Datarea exactă (1394/1395) este disputată; localizarea Rovine lor este controversată.
 - **RM-109** Cruciada de la Nicopole (context — în afara teritoriului României) · 1396 — Inclus ca eveniment de context regional cu participare românească.
 - **RM-110** Campaniile antiotomane ale lui Iancu de Hunedoara · 1440 — Bătăliile majore (Varna, Kosovo) au avut loc în afara teritoriului actual al României.
-- **RM-113** Bătălia de la Lipnic · 1469-08-20 — Datarea este disputată între 20 august 1469 și 1470; localitatea se află azi în Republica Moldova.
-- **RM-116** Bătălia de la Câmpul Pâinii · 1479-10-13 — Locația câmpului de luptă se află între Șibot și Orăștie, pe luncă Mureșului; data este 13 octombrie 1479.
-- **RM-117** Bătălia de la Codrii Cosminului · 1497-10-26 — Câmpul de luptă se află azi în nordul Bucovinei (regiunea Cernăuți, Ucraina), la circa 100 km nord de Suceava; localizarea este aproximativă.
-- **RM-118** Războaiele lui Radu de la Afumați (1522–1525) · 1522 — Inclus ca campanie (bătăliile individuale nu sunt detaliate în sursă).
-- **RM-119** Bătălia de la Mohács (context — în afara teritoriului României) · 1526-08-29 — Inclus ca eveniment de context regional.
-- **RM-122** Bătălia de la Iezerul Cahulului · 1574-06 — Zona se află în afara granițelor actuale ale României (Republica Moldova).
-- **RM-123** Războaiele lui Ioan Vodă cel Viteaz — Bătălia de la Jiliște · 1574-04 — Localizarea exactă a bătăliei de la Jiliște este disputată.
-- **RM-128** Bătălia de la Mirăslău · 1600-09-18 — Sursa îl menționează și la sec. XVII d.Hr. (recapitulare).
-- **RM-131** Bătălia de la Hotin (1621) · 1621-09 — Hotinul este azi în Ucraina; inclus ca eveniment de la granița istorică a Moldovei.
-- **RM-133** Bătălia de la Ojogeni · 1639 — Localizarea exactă a bătăliei este disputată.
-- **RM-137** Bătălia de la Sânmartin (1685) · 1685 — Localizarea exactă a bătăliei este disputată.
-- **RM-142** Războiul Ruso-Turc (1768–1774) și ocupația Principatelor · 1768 — Bătăliile de la Larga și Cahul au avut loc în afara granițelor actuale ale României.
-- **RM-144** Războiul Ruso-Turc (1806–1812) și anexarea Basarabiei · 1806 — Moștenirea teritorială a evenimentului privește și Republica Moldova de azi.
-- **RM-149** Războiul de Independență (Russo-Turc 1877–1878) · 1877-04 — Luptele principale au avut loc în afara granițelor actuale (Bulgaria); trecerea Dunării și mobilizarea s-au desfășurat pe teritoriul românesc.
-- **RM-150** Bătălia de la Turtucaia · 1916-09-02 — Turtucaia este azi în Bulgaria, imediat la frontiera cu România.
+- **RM-111** Bătălia de la Sibiu (Vaskapu) · 1442-03-22 — Locația este disputată între zona Sibiel și trecătoarea Vaskapu (județul Hunedoara).
+- **RM-112** Bătălia de la Sântimbru · 1442-03-18 — Faza inițială a conflictului; înfrângerea de la Sântimbru a fost urmată de victoriile de la Sibiu și pe Ialomița.
+- **RM-113** Bătălia de pe Ialomița · 1442-09-02 — Locația exactă este disputată: unii istorici o plasează la Poarta de Fier a Transilvaniei (Zaicani), alții pe valea superioară a Ialomiței.
+- **RM-116** Bătălia de la Lipnic · 1469-08-20 — Datarea este disputată între 20 august 1469 și 1470; localitatea se află azi în Republica Moldova.
+- **RM-117** Bătălia de la Soci · 1471-03-07 — Locația este la granița dintre Moldova și Țara Românească (zona județului Bacău).
+- **RM-120** Bătălia de la Câmpul Pâinii · 1479-10-13 — Locația câmpului de luptă se află între Șibot și Orăștie, pe luncă Mureșului; data este 13 octombrie 1479.
+- **RM-121** Bătălia de la Râmnic (1481) · 1481-07-08 — Locația exactă este în zona Râmnicu Sărat, la poalele munților; datarea 8 iulie 1481.
+- **RM-122** Bătălia de la Cătlăbuga · 1485-11-16 — Locația este în zona lacului Cătlăbuga, la granița cu Bugeacul (azi Ucraina); datarea 16 noiembrie 1485.
+- **RM-123** Bătălia de la Șcheia · 1486-03-06 — Șcheia este localitatea de la circa 25 km nord de Roman, deși unele surse o plasează lângă Suceava.
+- **RM-124** Bătălia de la Codrii Cosminului · 1497-10-26 — Câmpul de luptă se află azi în nordul Bucovinei (regiunea Cernăuți, Ucraina), la circa 100 km nord de Suceava; localizarea este aproximativă.
+- **RM-125** Războaiele lui Radu de la Afumați (1522–1525) · 1522 — Inclus ca campanie (bătăliile individuale nu sunt detaliate în sursă).
+- **RM-126** Bătălia de la Mohács (context — în afara teritoriului României) · 1526-08-29 — Inclus ca eveniment de context regional.
+- **RM-128** Bătălia de la Obertyn · 1531-08-22 — Bătălia s-a dat în Pocuția (azi Ucraina), în afara granițelor actuale ale României.
+- **RM-129** Bătălia de la Siret · 1538-02-01 — Datarea și locația exactă sunt discutate; lupta este legată de campania otomană din 1538.
+- **RM-131** Bătălia de la Iezerul Cahulului · 1574-06 — Zona se află în afara granițelor actuale ale României (Republica Moldova).
+- **RM-132** Bătălia de la Roșcani · 1574-06-11 — Eveniment subordonat revoltei lui Ioan Vodă cel Viteaz.
+- **RM-133** Războaiele lui Ioan Vodă cel Viteaz — Bătălia de la Jiliște · 1574-04 — Localizarea exactă a bătăliei de la Jiliște este disputată.
+- **RM-134** Bătălia de la Sânpaul · 1575-07-09 — Locația este în zona Sânpaul (județul Mureș).
+- **RM-135** Revolta antiotomană și masacrul de la București (1594) · 1594-11-13 — Momentul de început al războaielor antiotomane ale lui Mihai Viteazul.
+- **RM-138** Bătălia de la Putineiu · 1595-01-14 — Face parte din aceeași campanie ca Șerpătești și Stănești.
+- **RM-139** Bătălia de la Stănești · 1595-01-25 — Face parte din campania de iarnă din 1595.
+- **RM-140** Bătălia de la Târgoviște (1595) · 1595-10-05 — Urmează recucerirea Bucureștiului și bătălia de la Giurgiu (1595).
+- **RM-141** Bătălia de la Șerpătești · 1595-01-23 — Împreună cu luptele de la Putineiu și Stănești fac parte din campania de iarnă 1595 a lui Mihai Viteazul.
+- **RM-144** Bătălia de la Mirăslău · 1600-09-18 — Sursa îl menționează și la sec. XVII d.Hr. (recapitulare).
+- **RM-147** Bătălia de la Hotin (1621) · 1621-09 — Hotinul este azi în Ucraina; inclus ca eveniment de la granița istorică a Moldovei.
+- **RM-149** Bătălia de la Rabna · 1637 — Locația exactă a bătăliei este disputată.
+- **RM-150** Bătălia de la Ojogeni · 1639 — Localizarea exactă a bătăliei este disputată.
+- **RM-152** Bătălia de la Șoplea · 1655-06-26 — Una dintre cele mai cunoscute răscoale din Transilvania secolului al XVII-lea.
+- **RM-155** Bătălia de la Sânmartin (1685) · 1685 — Localizarea exactă a bătăliei este disputată.
+- **RM-160** Războiul Ruso-Turc (1768–1774) și ocupația Principatelor · 1768 — Bătăliile de la Larga și Cahul au avut loc în afara granițelor actuale ale României.
+- **RM-162** Războiul Ruso-Turc (1806–1812) și anexarea Basarabiei · 1806 — Moștenirea teritorială a evenimentului privește și Republica Moldova de azi.
+- **RM-166** Lupta de la Brad (1849) · 1849-02 — Se desfășoară în contextul războiului civil din Transilvania (1848–1849).
+- **RM-167** Luptele de la Abrud (1849) · 1849-05 — Se desfășoară în contextul războiului civil din Transilvania (1848–1849).
+- **RM-169** Bătălia de la Plevna · 1877-07 — Bătălia s-a desfășurat în afara teritoriului actual al României, dar este legată direct de Războiul de Independență.
+- **RM-170** Luptele de la Grivița (1877) · 1877-08-30 — În afara granițelor actuale; parte din Războiul de Independență.
+- **RM-171** Războiul de Independență (Russo-Turc 1877–1878) · 1877-04 — Luptele principale au avut loc în afara granițelor actuale (Bulgaria); trecerea Dunării și mobilizarea s-au desfășurat pe teritoriul românesc.
+- **RM-172** Bătălia de la Smârdan · 1878-01-24 — În afara granițelor actuale; parte din Războiul de Independență.
+- **RM-173** Bătălia de la Bazargic (1916) · 1916-09-05 — Bazargic se află la granița actuală dintre România și Bulgaria (Dobrogea de sud).
+- **RM-174** Bătălia de la Brașov (1916) · 1916-10-07 — Parte din operația de apărare a trecătorilor din 1916.
+- **RM-175** Bătălia de la Predeal (1916) · 1916-10 — Parte din operația de apărare a trecătorilor din 1916.
+- **RM-176** Bătălia de la Sibiu (1916) · 1916-09-26 — Parte din operația de apărare a trecătorilor din 1916.
+- **RM-177** Bătălia de la Turtucaia · 1916-09-02 — Turtucaia este azi în Bulgaria, imediat la frontiera cu România.
+- **RM-178** Bătălia de la Târgu Jiu (1916) · 1916-11-16 — Parte din a doua bătălie de pe Valea Jiului și din apărarea Olteniei.
+- **RM-181** Bătălia de pe Valea Prahovei (1916) · 1916-10-09 — Parte din operația de apărare a trecătorilor din 1916.
+- **RM-182** Bătălia pentru București (1916) · 1916-11-30 — Parte din operația de apărare a teritoriului Munteniei.
+- **RM-183** Operația de la Flămânda · 1916-09-29 — Operație de forțare a Dunării, abandonată din cauza lipsei de coordonare.
+- **RM-184** Prima bătălie de la Oituz (1916) · 1916-10-12 — Urmează a doua bătălie de la Oituz (noiembrie 1916) și cea din 1917.
 
 ## Cum poate fi folosită
 - **Excel**: filtrați după `Secol`, `Tip conflict` sau `Regiune istorică`.

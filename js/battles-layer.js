@@ -2,7 +2,7 @@
  * battles-layer.js — strat premium „Bătălii / Battles"
  * ---------------------------------------------------------------------
  * Date bilingve: data/conflicte_militare/conflicte_militare_romania.bilingual.json
- * (166 evenimente, sec. VIII î.Hr. – 1944, RO + EN)
+ * (198 evenimente, sec. VIII î.Hr. – 1944, RO + EN)
  *
  * Comportament:
  *  • switch master (premium) — toggleBattlesLayer(on)

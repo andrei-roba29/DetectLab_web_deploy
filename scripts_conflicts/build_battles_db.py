@@ -6,7 +6,7 @@ Construiește baza de date bilingvă (RO + EN) pentru stratul premium
 "Bătălii / Battles" din DetectLab.
 
 Intrări:
-  • data/conflicte_militare/conflicte_militare_romania.json  (baza RO, 166 evenimente)
+  • data/conflicte_militare/conflicte_militare_romania.json  (baza RO, 198 evenimente)
   • scripts_conflicts/conflicts_en_part1.py … conflicts_en_part7.py
     (module cu traduceri în engleză pentru câmpurile descriptive)
 
