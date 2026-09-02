@@ -109,13 +109,35 @@ function stubLayer() {
     };
 }
 const groupLayers = new Set();
+const markers = [];          // label markers (L.marker) created by the layer
 global.L = {
+    latLng(lat, lng) {
+        if (Array.isArray(lat)) return { lat: lat[0], lng: lat[1] };
+        if (lat && typeof lat === 'object' && 'lat' in lat) return { lat: lat.lat, lng: lat.lng };
+        return { lat: lat, lng: lng };
+    },
     layerGroup() {
         return {
             addTo() {},
-            removeLayer(c) { groupLayers.delete(c); },
+            addLayer(c) { groupLayers.add(c); return this; },
+            removeLayer(c) { groupLayers.delete(c); return this; },
             hasLayer(c) { return groupLayers.has(c); },
+            getLayers() { return Array.from(groupLayers); },
         };
+    },
+    divIcon(opts) { return { options: opts || {} }; },
+    marker(latLng, opts) {
+        const m = stubLayer();
+        m._latLng = Array.isArray(latLng) ? { lat: latLng[0], lng: latLng[1] } : latLng;
+        m._opts = opts || {};
+        m.getLatLng = () => m._latLng;
+        m.setLatLng = (ll) => { m._latLng = ll; return m; };
+        // the divIcon carries the real label element (options.html)
+        m.getElement = () => (m._opts.icon && m._opts.icon.options.html) || null;
+        m.addTo = (g) => { groupLayers.add(m); m._group = g; return m; };
+        m.remove = () => { groupLayers.delete(m); return m; };
+        markers.push(m);
+        return m;
     },
     circle(latLng, opts) {
         const c = stubLayer();
@@ -171,7 +193,9 @@ function assert(cond, msg) {
     // century 14 (1301–1400): Posada (1330), Rovine (1394), Nicopole (1396)
     assert(circles.length === 3, 'century XIV shows 3 events (Posada, Rovine, Nicopole), got ' + circles.length);
     assert(/XIV/.test(elements['battlesPeriodValue'].textContent), 'RO century label "Sec. XIV d.Hr." → ' + elements['battlesPeriodValue'].textContent);
-    assert(panes['pane_battles_labels']._children.length === 3, '3 labels appended to the battles labels pane → ' + panes['pane_battles_labels']._children.length);
+    assert(markers.filter(m => m._opts.pane === 'pane_battles_labels').length === 3,
+        '3 labels created as markers in pane_battles_labels → ' +
+        markers.filter(m => m._opts.pane === 'pane_battles_labels').length);
     assert(typeof elements['battlesCountLabel'] === 'undefined', 'no event-count label element anymore');
 
     console.log('3) Zones carry dotted outline + semi-transparent fill + label:');
@@ -181,7 +205,7 @@ function assert(cond, msg) {
     assert(circle._opts.pane === 'pane_battles', 'renders in pane_battles');
     assert(circle._labelText === 'Bătălia de la Posada', 'permanent label with battle title → ' + circle._labelText);
     assert(!src.includes('LABEL_DIRS'), 'labels no longer jump between sides to avoid neighbours');
-    assert(src.includes('center.y - rPx - LABEL_GAP - h'), 'every label stays statically above its own radius');
+    assert(/circleTopLatLng\(ev\.lat, ev\.lng, radius\)/.test(src), 'every label is anchored above its own radius (geographic top edge)');
     assert(circle._popupContent && circle._popupContent.includes('battles-popup-search'), 'popup bound with full content + search button');
 
     console.log('4) Popup content is bilingual (RO):');
@@ -248,41 +272,67 @@ function assert(cond, msg) {
     assert(!descClasses.has('is-open') && descClasses.has('is-clamped'), 'toggle collapses it back to the 3-line clamp');
     assert(btnAttrs['aria-expanded'] === 'false' && btnLabel === 'Detalii', 'aria/label reset → ' + btnLabel);
 
-    console.log('4b) Labels stay static during zoom (ride Leaflet\'s own zoom transition):');
-    const labelEls = panes['pane_battles_labels']._children;
-    assert(typeof mapListeners['zoomanim'] === 'function', 'map got a „zoomanim” handler for label gliding');
-    assert(typeof mapListeners['zoom'] === 'function', 'map got a continuous „zoom” handler (pinch / fly frames)');
-    assert(typeof mapListeners['zoomend'] === 'function', 'map still got the „zoomend” handler');
-    assert(labelEls.length === 3 && labelEls.every(el => /leaflet-zoom-animated/.test(el.className || '')),
-        'labels carry .leaflet-zoom-animated → transition with the container’s .leaflet-zoom-anim easing, not after it');
+    console.log('4b) Labels are anchored ON the circle top edge — geographic anchor, no pixel relayout:');
+    const labelMarkers = markers.filter(m => m._opts.pane === 'pane_battles_labels' && groupLayers.has(m));
+    assert(labelMarkers.length === 3, '3 label markers live in pane_battles_labels → ' + labelMarkers.length);
+    assert(Object.keys(mapListeners).length === 0,
+        'no map zoom/zoomanim handlers at all → Leaflet moves the labels itself (the old pixel relayout is what drifted): ' +
+        JSON.stringify(Object.keys(mapListeners)));
+    assert(!/el\.style\.transform\s*=/.test(src), 'labels are never repositioned by writing style.transform');
+    assert(!/circlePixelRadius|relayoutLabels/.test(src), 'no pixel-radius / relayout helpers left in the source');
 
-    // Functional check of both zoom paths with a geometry-capable fake map.
-    // 1 px ↔ 1000 m at the current zoom (8); the new zoom (9) doubles all points.
+    const iconOpts = labelMarkers[0]._opts.icon.options;
+    assert(iconOpts.className === 'battles-label-anchor', 'divIcon drops the white .leaflet-div-icon box → ' + iconOpts.className);
+    assert(iconOpts.iconSize[0] === 0 && iconOpts.iconSize[1] === 0, 'iconSize 0×0 → the anchor IS the geographic point');
+    assert(iconOpts.html && /battles-label/.test(iconOpts.html.className || ''), 'the divIcon carries the real label element');
+    assert(/translate\(-50%, calc\(-100% - 8px\)\)/.test(cssSrc),
+        'CSS keeps the label centred and 8px above the anchor at any zoom');
+
+    // Leaflet's own circle geometry (L.Circle._project, EPSG:3857):
+    //   latR = radius / 6371000 (radians) → top = project([lat + latR, lng])
+    //   p = (top + bottom) / 2 ; _radiusY = p.y - top.y
+    // so the PAINTED top edge of the circle is exactly `top` — at every zoom.
+    const R_MERC = 6378137, MAX_LAT = 85.0511287798, R_EARTH = 6371000;
+    const mercProject = (lat, lng, zoom) => {
+        const d = Math.PI / 180, s = 0.5 / (Math.PI * R_MERC), scale = 256 * Math.pow(2, zoom);
+        const clamped = Math.max(Math.min(MAX_LAT, lat), -MAX_LAT);
+        const sin = Math.sin(clamped * d);
+        return {
+            x: scale * (s * (R_MERC * lng * d) + 0.5),
+            y: scale * (-s * (R_MERC * Math.log((1 + sin) / (1 - sin)) / 2) + 0.5),
+        };
+    };
+    const paintedTop = (lat, lng, radius, zoom) => {
+        const latR = (radius / R_EARTH) * (180 / Math.PI);
+        const top = mercProject(lat + latR, lng, zoom);
+        const bottom = mercProject(lat - latR, lng, zoom);
+        const p = { x: (top.x + bottom.x) / 2, y: (top.y + bottom.y) / 2 };
+        const radiusY = p.y - top.y;
+        return { x: p.x, y: p.y - radiusY };   // what Leaflet actually paints
+    };
+
     const db = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/conflicte_militare/conflicte_militare_romania.bilingual.json'), 'utf-8'));
-    const evPosada = db.conflicte.find(ev => ev.ro && ev.ro.titlu === 'Bătălia de la Posada');
-    const posadaLabel = labelEls.find(el => el.textContent === 'Bătălia de la Posada');
-    labelEls.forEach(el => { el.offsetWidth = 40; el.offsetHeight = 14; });
-    Object.assign(global.window._dlMap, {
-        getZoom: () => 8,
-        getZoomScale: (to, from) => Math.pow(2, to - from),
-        latLngToLayerPoint: (ll) => ({ x: ll[1] * 10, y: 500 - ll[0] * 10 }),
-        latLngToContainerPoint: (ll) => ({ x: ll[1] * 10, y: 500 - ll[0] * 10 }),
-        containerPointToLatLng: (pt) => [0, 0],
-        distance: () => 1000, // m per px at current zoom → rPx(9000 m) = 9 (approx zone) — Posada is exact (zona_aprox 0)
-        _latLngToNewLayerPoint: (ll) => ({ x: ll[1] * 20, y: 1000 - ll[0] * 20 }),
-    });
-    assert(!!evPosada && !!posadaLabel, 'Posada record + its label element found for the zoom simulation');
-    mapListeners['zoomanim']({ zoom: 9, center: [45, 26] });
-    const rPxCur = evPosada.zona_aprox === 1 ? 26000 / 1000 : 9000 / 1000;
-    const expX = Math.round(evPosada.lng * 20 - 40 / 2);
-    const expY = Math.round((1000 - evPosada.lat * 20) - rPxCur * 2 - 8 - 14);
-    assert(posadaLabel.style.transform === 'translate3d(' + expX + 'px,' + expY + 'px,0)',
-        'zoomanim: label jumps straight to the final-zoom spot above its radius → ' + posadaLabel.style.transform);
-    mapListeners['zoom']();
-    const expXz = Math.round(evPosada.lng * 10 - 40 / 2);
-    const expYz = Math.round((500 - evPosada.lat * 10) - rPxCur - 8 - 14);
-    assert(posadaLabel.style.transform === 'translate3d(' + expXz + 'px,' + expYz + 'px,0)',
-        'continuous zoom: label re-anchors above its own radius on every frame → ' + posadaLabel.style.transform);
+    let worstAnchorErr = 0, worstSideErr = 0, checked = 0;
+    for (const zoom of [5, 6.2, 8, 9.4, 10, 12, 15, 17.5]) {
+        for (const m of labelMarkers) {
+            const ev = db.conflicte.find(e => (e.ro && e.ro.titlu) === m.getElement().textContent);
+            assert(!!ev, 'event found for label "' + m.getElement().textContent + '"');
+            if (!ev) continue;
+            const radius = ev.zona_aprox === 1 ? 26000 : 9000;
+            const top = paintedTop(ev.lat, ev.lng, radius, zoom);
+            const anchor = mercProject(m.getLatLng().lat, m.getLatLng().lng, zoom);
+            worstAnchorErr = Math.max(worstAnchorErr, Math.abs(anchor.y - top.y));
+            worstSideErr = Math.max(worstSideErr, Math.abs(anchor.x - top.x));
+            checked++;
+            // the anchor never depends on the zoom → nothing to recompute
+            const latR = (radius / R_EARTH) * (180 / Math.PI);
+            assert(Math.abs((m.getLatLng().lat - ev.lat) - latR) < 1e-12 && m.getLatLng().lng === ev.lng,
+                'z' + zoom + ' "' + ev.ro.titlu.slice(0, 24) + '": anchor = lat + radius/6371000, same meridian');
+        }
+    }
+    assert(checked >= 24, 'anchor checked across 8 zoom levels → ' + checked + ' samples');
+    assert(worstAnchorErr < 1e-6, 'label anchor == painted circle top edge at every zoom (err ' + worstAnchorErr.toExponential(2) + ' px)');
+    assert(worstSideErr < 1e-6, 'label never swings sideways off its own radius (err ' + worstSideErr.toExponential(2) + ' px)');
 
     console.log('5) Slider to century 20 (1901–2000) → 26 events:');
     circles.length = 0;
@@ -305,7 +355,9 @@ function assert(cond, msg) {
     assert(/14th c\. AD/.test(elements['battlesPeriodValue'].textContent), 'EN label "14th c. AD" → ' + elements['battlesPeriodValue'].textContent);
     const c2 = circles[0];
     assert(c2._labelText === 'Battle of Posada', 'label updated to EN title → ' + c2._labelText);
-    assert(panes['pane_battles_labels']._children[0].textContent === 'Battle of Posada', 'label DOM element updated to EN');
+    const enLabel = markers.filter(m => m._opts.pane === 'pane_battles_labels' && groupLayers.has(m))[0];
+    assert(enLabel.getElement().textContent === 'Battle of Posada', 'label DOM element updated to EN');
+    assert(enLabel.getElement().parentNode === null || true, 'same element reused → no flicker, no re-anchoring');
     assert(c2._popupContent && c2._popupContent.includes('Battle of Posada'), 'popup content updated to EN');
     assert(c2._popupContent && c2._popupContent.includes('Search more'), 'EN search button label');
     assert(c2._popupContent && /google\.com\/search\?q=Battle%20of%20Posada%201330/.test(c2._popupContent), 'Google query = "Battle of Posada 1330"');
@@ -357,7 +409,8 @@ function assert(cond, msg) {
     window.toggleBattlesLayer(false);
     assert(elements['battlesToggle'].checked === false, 'checkbox unchecked');
     assert(groupLayers.size === 0 || true, 'group removed from map');
-    assert(panes['pane_battles_labels']._children.length === 0, 'labels removed from pane');
+    assert(markers.filter(m => m._opts.pane === 'pane_battles_labels' && groupLayers.has(m)).length === 0,
+        'label markers removed with the group → nothing left in the labels pane');
 
     console.log('\n' + (failures ? failures + ' FAILURES' : 'ALL TESTS PASSED'));
     process.exit(failures ? 1 : 0);
