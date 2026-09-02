@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v64-pwa-launch-sonar';
+const CACHE_NAME = 'detectlab-v65-josephine-sonar';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -101,8 +101,6 @@ const PRECACHE_URLS = [
   'css/checkout.css?v=20260814-promo',
   'css/styles.css?v=20260814-promo',
   'checkout.html',
-  'images/sonar_loading_animation.webp',
-  'images/sonar_loading_animation.webp?v=20260729',
   'images/pwa-icon-192.png',
   'images/pwa-icon-512.png',
   // Archeological Report premium layer: self-contained PDF writer + report +
@@ -130,7 +128,10 @@ const PRECACHE_URLS = [
   // range mirrored in the map-side vertical control like every other layer.
   'js/battles-layer.js?v=20260901-battles-v3',
   'js/vertical-opacity-control.js?v=20260901-battles-v3',
-  'css/styles.css?v=20260901-battles-v3'
+  'css/styles.css?v=20260901-battles-v3',
+  // Josephine source transition: pure CSS/SVG sonar overlay (the animated
+  // sonar webp/mp4 are gone — no more image glitching on the map).
+  'css/styles.css?v=20260902-josephine-sonar'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

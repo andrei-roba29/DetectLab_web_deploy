@@ -1501,21 +1501,103 @@
             transition: opacity 0.16s ease;
         }
 
-        .josephine-source-transition img {
+        /* Pure CSS/SVG sonar animation (no animated image = no glitches) —
+           same motion as the PWA launch screen .launch-sonar (inline <style>
+           in index.html), scoped here and sized down to fit the map-frame
+           overlay (120–150px). */
+        .josephine-source-transition .jst-sonar {
             position: relative;
             z-index: 1;
+            width: clamp(120px, 24vw, 150px);
+            height: clamp(120px, 24vw, 150px);
+            aspect-ratio: 1 / 1;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Expanding sonar ripples — GPU-composited transform/opacity only */
+        .josephine-source-transition .ls-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 2px solid rgba(184, 216, 240, 0.9);
+            opacity: 0;
+            transform: scale(0.34);
+            animation: ls-ripple 2.6s cubic-bezier(0.2, 0.55, 0.4, 1) infinite;
+            will-change: transform, opacity;
+            pointer-events: none;
+        }
+        .josephine-source-transition .ls-ring:nth-child(2) {
+            animation-delay: 0.866s;
+            border-color: rgba(107, 63, 160, 0.85);
+        }
+        .josephine-source-transition .ls-ring:nth-child(3) {
+            animation-delay: 1.733s;
+            border-color: rgba(184, 216, 240, 0.55);
+        }
+        @keyframes ls-ripple {
+            0%   { opacity: 0;    transform: scale(0.34); }
+            12%  { opacity: 0.85; }
+            100% { opacity: 0;    transform: scale(1); }
+        }
+        /* Rotating radar sweep behind the logo */
+        .josephine-source-transition .ls-sweep {
+            position: absolute;
+            inset: 6%;
+            border-radius: 50%;
+            background: conic-gradient(
+                from 0deg,
+                rgba(184, 216, 240, 0) 0deg,
+                rgba(184, 216, 240, 0) 285deg,
+                rgba(184, 216, 240, 0.10) 330deg,
+                rgba(184, 216, 240, 0.38) 359deg,
+                rgba(184, 216, 240, 0) 360deg
+            );
+            -webkit-mask: radial-gradient(circle, transparent 30%, #000 31%);
+            mask: radial-gradient(circle, transparent 30%, #000 31%);
+            animation: ls-rotate 2.6s linear infinite;
+            will-change: transform;
+            pointer-events: none;
+        }
+        @keyframes ls-rotate {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+        /* Vector logo — crisp at any size */
+        .josephine-source-transition .ls-logo {
+            position: relative;
+            width: 46%;
+            height: 46%;
             display: block;
-            width: clamp(96px, 22vw, 172px);
-            height: clamp(96px, 22vw, 172px);
-            max-width: 42%;
-            max-height: 42%;
-            object-fit: contain;
-            filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.52));
+            filter: drop-shadow(0 0 14px rgba(184, 216, 240, 0.28));
+        }
+        .josephine-source-transition .ls-logo .ls-dot {
+            transform-box: fill-box;
+            transform-origin: center;
+            animation: ls-pulse 2.6s ease-in-out infinite;
+        }
+        @keyframes ls-pulse {
+            0%, 100% { transform: scale(1);    opacity: 1; }
+            50%      { transform: scale(1.22); opacity: 0.82; }
         }
 
         @media (prefers-reduced-motion: reduce) {
             .josephine-source-transition {
                 transition: none;
+            }
+            /* Animations off, static rings — same treatment as the launch screen */
+            .josephine-source-transition .ls-ring,
+            .josephine-source-transition .ls-sweep,
+            .josephine-source-transition .ls-logo .ls-dot {
+                animation: none !important;
+            }
+            .josephine-source-transition .ls-ring {
+                opacity: 0.35;
+                transform: scale(0.75);
+            }
+            .josephine-source-transition .ls-sweep {
+                display: none;
             }
         }
 
