@@ -314,8 +314,8 @@ CONFLICTS_EN_6 = {
     "RM-152": {
         "titlu": "Battle of Șoplea",
         "tip": "Battle",
-        "locatie": "Șoplea (Mureș county)",
-        "regiune": "Transylvania",
+        "locatie": "Șoplea (Drăgănești commune, Prahova county)",
+        "regiune": "Wallachia",
         "participanti": "Principality of Transylvania (George Rákóczi II) vs. the rebels (the Seimeni and the Hussars)",
         "rezultat": "Suppression of the Seimeni revolt",
         "descriere": "The revolt of the Seimeni (mercenaries) and the Hussars, in full ferment, was defeated by the troops of Prince George Rákóczi II at Șoplea. The rebellion of the rebels, which also had an anti-hierarchical and anti-noble component, was crushed, marking the end of a major internal crisis in Transylvania."

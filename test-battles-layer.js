@@ -111,6 +111,8 @@ global.L = {
     circle(latLng, opts) {
         const c = stubLayer();
         c._opts = opts; c._latLng = latLng;
+        c.getLatLng = () => c._latLng;
+        c.getRadius = () => c._opts.radius;
         circles.push(c);
         groupLayers.add(c);
         return c;
@@ -147,10 +149,12 @@ function assert(cond, msg) {
         if (el.parentNode === this) el.parentNode = null;
     };
     const panes = {};
+    const mapListeners = {};
     global.window._dlMap = {
         getPane: (name) => panes[name] || (panes[name] = Object.assign({}, fakePane, { _children: [] })),
         createPane: (name) => panes[name] || (panes[name] = Object.assign({}, fakePane, { _children: [] })),
-        addLayer() {}, removeLayer() {}, on() {}, off() {},
+        addLayer() {}, removeLayer() {}, off() {},
+        on(ev, fn) { ev.split(/\s+/).forEach(e => { mapListeners[e] = fn; }); },
     };
     window.toggleBattlesLayer(true);
     await new Promise(res => setTimeout(res, 100));
@@ -175,6 +179,42 @@ function assert(cond, msg) {
     assert(circle._popupContent.includes('Bătălia de la Posada'), 'RO title in popup');
     assert(circle._popupContent.includes('Caută mai mult'), 'RO search button label');
     assert(circle._popupContent.includes('google.com/search?q='), 'Google search URL present');
+
+    console.log('4b) Labels stay static during zoom (ride Leaflet\'s own zoom transition):');
+    const labelEls = panes['pane_battles_labels']._children;
+    assert(typeof mapListeners['zoomanim'] === 'function', 'map got a „zoomanim” handler for label gliding');
+    assert(typeof mapListeners['zoom'] === 'function', 'map got a continuous „zoom” handler (pinch / fly frames)');
+    assert(typeof mapListeners['zoomend'] === 'function', 'map still got the „zoomend” handler');
+    assert(labelEls.length === 3 && labelEls.every(el => /leaflet-zoom-animated/.test(el.className || '')),
+        'labels carry .leaflet-zoom-animated → transition with the container’s .leaflet-zoom-anim easing, not after it');
+
+    // Functional check of both zoom paths with a geometry-capable fake map.
+    // 1 px ↔ 1000 m at the current zoom (8); the new zoom (9) doubles all points.
+    const db = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/conflicte_militare/conflicte_militare_romania.bilingual.json'), 'utf-8'));
+    const evPosada = db.conflicte.find(ev => ev.ro && ev.ro.titlu === 'Bătălia de la Posada');
+    const posadaLabel = labelEls.find(el => el.textContent === 'Bătălia de la Posada');
+    labelEls.forEach(el => { el.offsetWidth = 40; el.offsetHeight = 14; });
+    Object.assign(global.window._dlMap, {
+        getZoom: () => 8,
+        getZoomScale: (to, from) => Math.pow(2, to - from),
+        latLngToLayerPoint: (ll) => ({ x: ll[1] * 10, y: 500 - ll[0] * 10 }),
+        latLngToContainerPoint: (ll) => ({ x: ll[1] * 10, y: 500 - ll[0] * 10 }),
+        containerPointToLatLng: (pt) => [0, 0],
+        distance: () => 1000, // m per px at current zoom → rPx(9000 m) = 9 (approx zone) — Posada is exact (zona_aprox 0)
+        _latLngToNewLayerPoint: (ll) => ({ x: ll[1] * 20, y: 1000 - ll[0] * 20 }),
+    });
+    assert(!!evPosada && !!posadaLabel, 'Posada record + its label element found for the zoom simulation');
+    mapListeners['zoomanim']({ zoom: 9, center: [45, 26] });
+    const rPxCur = evPosada.zona_aprox === 1 ? 26000 / 1000 : 9000 / 1000;
+    const expX = Math.round(evPosada.lng * 20 - 40 / 2);
+    const expY = Math.round((1000 - evPosada.lat * 20) - rPxCur * 2 - 8 - 14);
+    assert(posadaLabel.style.transform === 'translate3d(' + expX + 'px,' + expY + 'px,0)',
+        'zoomanim: label jumps straight to the final-zoom spot above its radius → ' + posadaLabel.style.transform);
+    mapListeners['zoom']();
+    const expXz = Math.round(evPosada.lng * 10 - 40 / 2);
+    const expYz = Math.round((500 - evPosada.lat * 10) - rPxCur - 8 - 14);
+    assert(posadaLabel.style.transform === 'translate3d(' + expXz + 'px,' + expYz + 'px,0)',
+        'continuous zoom: label re-anchors above its own radius on every frame → ' + posadaLabel.style.transform);
 
     console.log('5) Slider to century 20 (1901–2000) → 26 events:');
     circles.length = 0;
