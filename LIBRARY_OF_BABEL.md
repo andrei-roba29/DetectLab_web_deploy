@@ -26,19 +26,53 @@ calls it.
 
 ### CIMEC / RAN (Repertoriul Arheologic Național)
 
-Source 8 queries the ArcGIS REST heritage service at `eism.geo-spatial.ro`
-(layers 5 & 6 — archaeological sites and finds) using the **find task** with the
-locality name as `searchText`. The response is fetched via JSONP to bypass CORS
-(same proven approach as the map's 600 m radius circles). Each result carries
-the RAN code (e.g. `54984.77`), the site name, locality, county and a direct
-link to the canonical fișă de sit on `ran.cimec.ro/sel.asp?codran=…`. When the
-feature geometry is available, coordinates are attached so the finding appears
-on the mini-map.
+Source 8 surfaces the **sites around the searched locality**, not just name
+matches. Resolution order:
+
+1. **Local heritage layers** — on the map page the RAN layers (0, 5, 6) are
+   already loaded as GeoJSON (`window._localLayerData`); the source searches
+   them directly (spatially within **10 km** of the locality's OSM
+   coordinates, plus attribute matches on locality/site name) with zero
+   network traffic.
+2. **ArcGIS REST spatial `query`** — otherwise, layers 0/5/6 of the heritage
+   service at `eism.geo-spatial.ro` are queried with an envelope around the
+   locality coordinates (JSONP to bypass CORS — the same proven approach as
+   the map's 600 m radius circles).
+3. **ArcGIS REST `find`** — an attribute search with the locality name is
+   merged in as well (and is the only path when the locality has no
+   coordinates). **Fix (2026-09):** the find task answers with an *object*
+   (`{"results": [...]}`), not a bare array — the old parser expected an
+   array and silently discarded every live response, which is why site data
+   never appeared.
+
+Results are de-duplicated by RAN code, **sorted by distance to the locality**
+(the distance is printed on each card, e.g. `~2.0 km`) and linked to the
+canonical fișă de sit on `ran.cimec.ro/sel.asp?codran=…`. When geometry is
+available, coordinates are attached so the finding appears on the mini-map.
 
 All eight are called with `Promise.all` — **one source failing never blocks the
 others**. Each fetch is wrapped in an `AbortController` timeout and its error
 is classified (`timeout` / `http` / `network` / `nokey`) and shown on that
 source's status chip.
+
+### OSM-driven locality resolution & relevance guard
+
+Every search first resolves the typed text against the **OSM gazetteer** (the
+map search bar's `window._osmPlaceLookup` on `OSM.geojson`, Nominatim as
+fallback): the canonical diacritics-correct **locality name, its county
+(județ) and its coordinates** are picked up and shown in the results header
+(*📍 Miluani · jud. Sălaj*). The canonical name is what the text-indexed
+sources get, wrapped in **quotes as an exact phrase** (`"Miluani" Sălaj`), so
+their engines stop fuzzy-matching it into unrelated words.
+
+On top of that, once the gazetteer confirms the locality, a **relevance
+guard** removes fuzzy noise after aggregation: a finding must mention the
+locality (typed / canonical spelling, diacritics-insensitive) or lie within
+**30 km** of it (OSM places and CIMEC/RAN spatial results are locality-driven
+by construction and always pass). *„Miljan Miljanić”* has no business among
+the results for *„Miluani, Sălaj”* — the number of removed findings is
+disclosed in the statistics row. A site name the gazetteer does not know
+(e.g. *Apulum*) leaves the guard disarmed, so historical names keep working.
 
 ### Europeana API key
 
@@ -91,6 +125,9 @@ licence/artist (Commons), data provider (Europeana), mediatype (Archive.org).
 * **Unspecified-period findings are excluded** — results the classifier cannot
   place on any period (perioada „nespecificată”) are removed from the Library
   of Babel output, so every shown finding carries at least one period label.
+  Two locality-driven exceptions always stay: **OSM places** (the searched
+  locality itself) and **CIMEC/RAN site records** (archaeological by
+  definition — dropping them was hiding the sites around the locality).
 * **Filter by source** — click a chip.
 * **Export** — JSON and CSV (Excel-safe BOM, quoted fields) over the
   currently filtered rows, as `detectlab-babel-<locality>.{json,csv}`.
@@ -127,12 +164,16 @@ licence/artist (Commons), data provider (Europeana), mediatype (Archive.org).
 | `test-babel-multisource.js` | full render with realistic fixtures for all 8 APIs: aggregation, dedup, provenance, periods, filters, exports |
 | `test-babel-resilience.js` | failing sources, total outage, zero results, ambiguity, cache |
 | `test-babel-periods.js` | period-classification contract: unspecified exclusion + lexicon-driven *Roman* (no *român* false positive) |
+| `test-babel-osm-locality.js` | shared gazetteer matcher, canonical-name resolution |
+| `test-babel-nearby-sites.js` | locality + județ header, relevance guard (Miljan-Miljanić class), nearby RAN sites with distances, exact-phrase queries |
 
 ```bash
 node test-babel-i18n.js
 node test-babel-multisource.js
 node test-babel-resilience.js
 node test-babel-periods.js
+node test-babel-osm-locality.js
+node test-babel-nearby-sites.js
 ```
 
 ## Nominatim usage policy

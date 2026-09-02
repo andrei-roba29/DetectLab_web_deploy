@@ -20,6 +20,13 @@
  * surfaces the OSM matches, results can be filtered by type / period /
  * source and exported as JSON or CSV. Every UI string exists in BOTH site
  * language variants (ro / en — parity is tested).
+ *
+ * OSM-driven search (2026-09): every query is resolved against the OSM
+ * gazetteer first — canonical locality name + county (județ) + coordinates —
+ * shown in the header and used to (a) query the text sources with the exact
+ * locality phrase, (b) drop fuzzy noise that never mentions the locality
+ * ("Miljan Miljanić" for "Miluani"), and (c) list the RAN archaeological
+ * sites AROUND the locality spatially, sorted by distance.
  */
 (function () {
     'use strict';
@@ -28,6 +35,13 @@
     var NOMINATIM_MIN_INTERVAL = 1100;   // hard usage-policy limit: 1 req/sec
     var CACHE_TTL = 30 * 60 * 1000;      // 30 minutes of local result caching
     var WIKI_LIMIT = 8, COMMONS_LIMIT = 12, OTHER_LIMIT = 10;
+    /* relevance guard: when the OSM gazetteer confirms the locality, findings
+     * must actually mention it (or sit within this radius of it) — fuzzy noise
+     * like "Miljan Miljanić" for "Miluani" is removed. */
+    var RELEVANCE_RADIUS_KM = 30;
+    /* "sites around the locality": CIMEC/RAN spatial search radius (m). */
+    var CIMEC_NEARBY_RADIUS_M = 10000;
+    var CIMEC_MAX_RESULTS = 30;
     var SOURCE_ORDER = ['wikipedia', 'wikidata', 'osm', 'commons', 'dbpedia', 'archive', 'europeana', 'cimec'];
     /* dominant type wins when the same finding arrives from several sources */
     var TYPE_PRIORITY = { place: 9, article: 8, structured: 7, document: 6, map: 5, image: 4, collection: 3, audio: 2, video: 2 };
@@ -61,6 +75,9 @@
             noResultsHelp: 'Încearcă o variantă de mai jos, un nume istoric (ex. Ulpia Traiana în loc de Sarmizegetusa) sau forma engleză / maghiară / germană a numelui.',
             suggestions: 'Căutări sugerate',
             results: 'rezultate', activeSources: 'surse active', duplicates: 'duplicate eliminate',
+            irrelevant: 'irelevante eliminate',
+            localityVia: 'localitate identificată prin OpenStreetMap',
+            countyAbbr: 'jud.', nearAbbr: 'la',
             shown: 'Afișate', of: 'din', seconds: 's',
             perSourceTitle: 'Surse',
             srcOk: 'activă', srcEmpty: 'fără rezultate', srcError: 'indisponibilă',
@@ -110,6 +127,9 @@
             noResultsHelp: 'Try one of the variants below, a historical name (e.g. Ulpia Traiana instead of Sarmizegetusa) or the English / Hungarian / German form of the name.',
             suggestions: 'Suggested searches',
             results: 'results', activeSources: 'active sources', duplicates: 'duplicates removed',
+            irrelevant: 'irrelevant removed',
+            localityVia: 'locality identified via OpenStreetMap',
+            countyAbbr: 'county', nearAbbr: 'at',
             shown: 'Showing', of: 'of', seconds: 's',
             perSourceTitle: 'Sources',
             srcOk: 'active', srcEmpty: 'no results', srcError: 'unavailable',
@@ -194,6 +214,28 @@
         return s;
     }
     function slug(v) { return stripDiacritics(v).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'localitate'; }
+    /* great-circle distance in km (haversine) between {lat,lng} points */
+    function distKm(a, b) {
+        var R = 6371, rad = Math.PI / 180;
+        var dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+        var s = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+    }
+    /* "Miluani, Sălaj" → { name: 'Miluani', rest: 'Sălaj' } */
+    function splitPhrase(q) {
+        var parts = String(q == null ? '' : q).split(',');
+        return { name: String(parts.shift() || '').trim(), rest: parts.join(' ').replace(/\s+/g, ' ').trim() };
+    }
+    function phraseName(q) { var p = splitPhrase(q); return p.name || String(q == null ? '' : q).trim(); }
+    /* Exact-phrase query for the full-text sources: the locality name is sent
+     * between quotes, so their engines stop fuzzy-matching it into unrelated
+     * words ("Miluani" → "Miljan Miljanić"); the county stays a plain hint. */
+    function exactPhrase(q) {
+        var p = splitPhrase(q);
+        if (!p.name) return String(q == null ? '' : q).trim();
+        return '"' + p.name.replace(/"/g, '') + '"' + (p.rest ? ' ' + p.rest.replace(/"/g, '') : '');
+    }
 
     function open() { var m = document.getElementById('babelModal'); if (m) { m.hidden = false; document.body.classList.add('babel-modal-open'); } }
     function close() { var m = document.getElementById('babelModal'); if (m) { m.hidden = true; document.body.classList.remove('babel-modal-open'); } destroyMap(); }
@@ -230,7 +272,7 @@
     /* 1. Wikipedia — ro AND en, both attempted; one failing keeps the other. */
     function wikiSearchOnce(query, lg) {
         var u = new URL('https://' + lg + '.wikipedia.org/w/api.php');
-        u.search = new URLSearchParams({ action: 'query', format: 'json', origin: '*', list: 'search', srsearch: query, srlimit: WIKI_LIMIT, srprop: 'snippet|timestamp' });
+        u.search = new URLSearchParams({ action: 'query', format: 'json', origin: '*', list: 'search', srsearch: exactPhrase(query), srlimit: WIKI_LIMIT, srprop: 'snippet|timestamp' });
         return fetchJson(u.href, 12000).then(function (d) {
             return ((d.query && d.query.search) || []).map(function (r, i) {
                 return {
@@ -254,8 +296,11 @@
         });
     }
 
-    /* 2. Wikidata — SPARQL EntitySearch + labels/descriptions/coordinates. */
+    /* 2. Wikidata — SPARQL EntitySearch + labels/descriptions/coordinates.
+     * EntitySearch is label-prefix based: it gets the bare locality name
+     * (no ", county" suffix — that would simply return nothing). */
     function sourceWikidata(query, lg) {
+        query = phraseName(query);
         var sparql = 'SELECT ?item ?itemLabel ?itemDescription ?coord WHERE {'
             + ' SERVICE wikibase:mwapi { bd:serviceParam wikibase:endpoint "www.wikidata.org";'
             + ' wikibase:api "EntitySearch"; mwapi:search "' + String(query).replace(/"/g, '\\"') + '";'
@@ -327,8 +372,21 @@
         };
     }
 
-    /* Nominatim fallback — strictly throttled to 1 request/second (usage policy). */
+    /* Nominatim fallback — strictly throttled to 1 request/second (usage policy).
+     * The call is memoised per query while in flight, because both the OSM
+     * runner and the CIMEC nearby-sites runner need the same locality fix —
+     * one search must never fire two identical Nominatim requests. */
+    var _osmInflight = {};
     function sourceOsm(query, lg) {
+        var k = lg + '\u0000' + query;
+        if (_osmInflight[k]) return _osmInflight[k];
+        var p = sourceOsmRun(query, lg);
+        _osmInflight[k] = p;
+        var clear = function () { if (_osmInflight[k] === p) delete _osmInflight[k]; };
+        p.then(clear, clear);
+        return p;
+    }
+    function sourceOsmRun(query, lg) {
         return osmLocalLookup(query).then(function (local) {
             if (local) return osmFromLocal(local);
             var wait = NOMINATIM_MIN_INTERVAL - (Date.now() - lastNominatimAt);
@@ -341,12 +399,13 @@
                 var arr = Array.isArray(d) ? d : [];
                 var results = arr.map(function (r, i) {
                     var name = r.name || String(r.display_name || '').split(',')[0] || '?';
+                    var judet = (r.address && (r.address.county || r.address.state)) || null;
                     return {
                         title: name, description: clampDesc(r.display_name || name),
                         type: 'place', source: 'osm',
                         url: 'https://www.openstreetmap.org/' + (r.osm_type || 'node') + '/' + (r.osm_id || ''),
                         rank: i, coords: { lat: Number(r.lat), lng: Number(r.lon) },
-                        meta: { category: r.category || null, osmType: r.type || null }
+                        meta: { category: r.category || null, osmType: r.type || null, judet: judet }
                     };
                 });
                 return { results: results, osmMatches: arr.map(function (r) { return { name: r.name || String(r.display_name || '').split(',')[0], display: r.display_name || '', type: r.type || '', category: r.category || '' }; }) };
@@ -354,25 +413,45 @@
         });
     }
 
-    /* Resolve what the user typed to the canonical, diacritics-correct locality
-     * name from the OSM dataset ("sacalaseni, maramures" → "Săcălășeni"), so the
-     * text-based sources (Wikipedia, Wikidata, Commons, DBpedia, CIMEC…) are
-     * queried with the spelling they actually index. Returns null when nothing
-     * matches or when the user already typed the canonical form. */
-    function resolveCanonicalQuery(query) {
+    /* Resolve what the user typed against the OSM gazetteer: the canonical,
+     * diacritics-correct locality name PLUS its county (județ) and coordinates
+     * ("miluani, salaj" → { name: 'Miluani', judet: 'Sălaj', lat, lon }).
+     * Only an exact name match (diacritics-insensitive) is accepted, so a
+     * partial prefix never resolves to a random locality. */
+    function resolveLocality(query) {
         var typed = String(query || '').trim();
         if (!typed) return Promise.resolve(null);
         return osmLocalLookup(typed).then(function (matches) {
             if (!matches || !matches.length) return null;
-            var name = String(matches[0].display_name || '').trim();
-            if (!name) return null;
-            if (normKey(name) === normKey(typed)) return null;
-            /* only accept it when it is really the same word, just spelled with
-             * diacritics (or with the county qualifier dropped) */
             var typedName = normKey(typed.split(',')[0]);
-            if (normKey(name) !== typedName) return null;
-            return name;
+            if (!typedName) return null;
+            for (var i = 0; i < matches.length; i++) {
+                var m = matches[i];
+                var name = String(m.display_name || '').trim();
+                if (name && normKey(name) === typedName) {
+                    return {
+                        name: name,
+                        judet: m.judet || null,
+                        lat: Number(m.lat), lon: Number(m.lon)
+                    };
+                }
+            }
+            return null;
         }, function () { return null; });
+    }
+
+    /* Canonical spelling for the text-indexed sources (Wikipedia, Wikidata,
+     * Commons, DBpedia, CIMEC…): "sacalaseni, maramures" → "Săcălășeni".
+     * Returns null when nothing matches or the user already typed the
+     * canonical form. */
+    function resolveCanonicalQuery(query) {
+        var typed = String(query || '').trim();
+        if (!typed) return Promise.resolve(null);
+        return resolveLocality(typed).then(function (loc) {
+            if (!loc || !loc.name) return null;
+            if (normKey(loc.name) === normKey(typed)) return null;
+            return loc.name;
+        });
     }
 
     /* 4. Wikimedia Commons — photos, plans and old maps (namespace File:). */
@@ -380,7 +459,7 @@
         var u = new URL('https://commons.wikimedia.org/w/api.php');
         u.search = new URLSearchParams({
             action: 'query', format: 'json', origin: '*', generator: 'search',
-            gsrsearch: query, gsrlimit: COMMONS_LIMIT, gsrnamespace: 6,
+            gsrsearch: exactPhrase(query), gsrlimit: COMMONS_LIMIT, gsrnamespace: 6,
             prop: 'imageinfo', iiprop: 'url|extmetadata|mime|size', iiurlwidth: 320
         });
         return fetchJson(u.href, 15000).then(function (d) {
@@ -411,10 +490,11 @@
     }
 
     /* 5. DBpedia Lookup — semantic resources (English DBpedia only; the
-     * de/fr/… interwiki hits are duplicates of the same entities). */
+     * de/fr/… interwiki hits are duplicates of the same entities). The lookup
+     * is label-based, so it gets the bare locality name. */
     function sourceDbpedia(query) {
         var u = new URL('https://lookup.dbpedia.org/api/search');
-        u.search = new URLSearchParams({ query: query, limit: OTHER_LIMIT, format: 'JSON' });
+        u.search = new URLSearchParams({ query: phraseName(query), limit: OTHER_LIMIT, format: 'JSON' });
         return fetchJson(u.href, 15000).then(function (d) {
             var docs = (d && d.docs) || [], results = [];
             docs.forEach(function (doc, i) {
@@ -435,7 +515,7 @@
     /* 6. Archive.org — digitised old documents and collections. */
     function sourceArchive(query) {
         var u = new URL('https://archive.org/advancedsearch.php');
-        var qs = new URLSearchParams({ q: query, rows: OTHER_LIMIT, page: 1, output: 'json' });
+        var qs = new URLSearchParams({ q: exactPhrase(query), rows: OTHER_LIMIT, page: 1, output: 'json' });
         ['identifier', 'title', 'description', 'year', 'mediatype'].forEach(function (f) { qs.append('fl[]', f); });
         u.search = qs;
         return fetchJson(u.href, 15000).then(function (d) {
@@ -476,7 +556,7 @@
     function sourceEuropeana(query, key) {
         if (!key) { var e = new Error('nokey'); e.code = 'nokey'; return Promise.reject(e); }
         var u = new URL('https://api.europeana.eu/record/v2/search.json');
-        u.search = new URLSearchParams({ wskey: key, query: query, rows: OTHER_LIMIT, profile: 'minimal' });
+        u.search = new URLSearchParams({ wskey: key, query: exactPhrase(query), rows: OTHER_LIMIT, profile: 'minimal' });
         return fetchJson(u.href, 15000).then(function (d) {
             if (d && d.success === false) {
                 var err = new Error(d.message || d.error || 'Europeana error');
@@ -531,87 +611,243 @@
     }
 
     /* 8. CIMEC / RAN — fișe de sit arheologic din Repertoriul Arheologic Național.
-     * The RAN data is exposed via the ArcGIS REST heritage service at
-     * eism.geo-spatial.ro (layers 5 & 6 — archaeological sites). We use a find
-     * task with the locality name as searchText and JSONP to bypass CORS. */
+     *
+     * FIX (2026-09): the sites around the searched locality never showed up,
+     * for two reasons. (1) The ArcGIS `find` task answers with an OBJECT —
+     * `{ "results": [...] }` — while the old code expected a bare array, so
+     * every live response was silently discarded. (2) A name-only find misses
+     * sites recorded under a village/toponym other than the typed one. The
+     * source now runs a real SPATIAL search around the locality's OSM
+     * coordinates (radius CIMEC_NEARBY_RADIUS_M) on the heritage layers,
+     * preferring the map's already-loaded local dataset
+     * (window._localLayerData) and falling back to ArcGIS REST `query` +
+     * `find` tasks via JSONP (same proven approach as the 600 m circles).
+     * Every finding carries the distance to the searched locality. */
     var CIMEC_REST_BASE = 'https://eism.geo-spatial.ro/eismgeo/rest/services/Patrimoniu/PatrimoniuWM/MapServer';
-    var CIMEC_SEARCH_LAYERS = [5, 6]; // layer 5: situri arheologice, layer 6: descoperiri
-    var CIMEC_SEARCH_FIELDS = ['Localitate', 'Nume', 'Toponim', 'Denumire', 'DenumireSit', 'DESCRIERE', 'DESCRIPTION'];
-    function sourceCimec(query) {
-        /* Build a find task URL that searches across heritage layers */
-        var searchText = query;
-        var layersParam = CIMEC_SEARCH_LAYERS.join(',');
-        var fieldsParam = CIMEC_SEARCH_FIELDS.join(',');
+    var CIMEC_SEARCH_LAYERS = [0, 5, 6]; // 0: situri (puncte), 5: situri arheologice, 6: descoperiri
+    var CIMEC_SEARCH_FIELDS = ['Localitate', 'Nume', 'Toponim', 'Denumire', 'DenumireSit', 'NUMESIT', 'Comuna', 'Judet'];
+
+    function cimecAttr(attrs, names) {
+        if (!attrs) return null;
+        for (var i = 0; i < names.length; i++) {
+            var v = attrs[names[i]];
+            if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+        }
+        var lower = names.map(function (n) { return n.toLowerCase(); });
+        for (var key in attrs) {
+            if (lower.indexOf(String(key).toLowerCase()) !== -1) {
+                var val = attrs[key];
+                if (val !== undefined && val !== null && String(val).trim() !== '') return String(val).trim();
+            }
+        }
+        return null;
+    }
+    var CIMEC_PROPS = {
+        ran: ['CodRAN', 'COD_RAN', 'Cod_RAN', 'CODRAN', 'CODSIT', 'CodSit', 'NR_RAN', 'RAN'],
+        name: ['DenumireSit', 'Denumire', 'Denumire_sit', 'NUMESIT', 'NumeSit', 'Nume', 'Toponim', 'Eticheta'],
+        locality: ['Localitate', 'LOCALITATE', 'Localitat', 'Sat', 'SAT'],
+        county: ['Judet', 'JUDET', 'Județ', 'JUDEȚ'],
+        commune: ['Comuna', 'COMUNA', 'UAT'],
+        tip: ['Tip', 'TIP', 'TipSit', 'Categorie', 'Eticheta']
+    };
+
+    /* Normalise the three response shapes into one feature list:
+     * find task → {results:[...]}, layer query → {features:[...]},
+     * legacy/test stubs → bare array. An ArcGIS error object throws. */
+    function cimecFeatureList(data) {
+        if (!data) return [];
+        if (data.error) { var e = new Error(data.error.message || 'ArcGIS error'); e.status = data.error.code || 500; throw e; }
+        if (Array.isArray(data)) return data;
+        if (Array.isArray(data.results)) return data.results;
+        if (Array.isArray(data.features)) return data.features;
+        return [];
+    }
+
+    /* Representative {lat,lng} of an ArcGIS (x/y, rings, paths) or GeoJSON geometry. */
+    function cimecPointOf(geom) {
+        if (!geom) return null;
+        if (typeof geom.x === 'number' && typeof geom.y === 'number' && isFinite(geom.x) && isFinite(geom.y)) {
+            return { lat: geom.y, lng: geom.x };
+        }
+        var ring = (geom.rings && geom.rings[0]) || (geom.paths && geom.paths[0]) || null;
+        if (!ring && geom.type === 'Point' && Array.isArray(geom.coordinates)) {
+            return { lat: geom.coordinates[1], lng: geom.coordinates[0] };
+        }
+        if (!ring && geom.type === 'Polygon' && geom.coordinates && geom.coordinates[0]) ring = geom.coordinates[0];
+        if (!ring && geom.type === 'MultiPolygon' && geom.coordinates && geom.coordinates[0]) ring = geom.coordinates[0][0];
+        if (!ring && geom.type === 'LineString' && Array.isArray(geom.coordinates)) ring = geom.coordinates;
+        if (ring && ring.length) {
+            /* average of the vertices — good enough as a representative point */
+            var sLat = 0, sLng = 0, n = 0;
+            for (var i = 0; i < ring.length; i++) {
+                var pt = ring[i];
+                if (Array.isArray(pt) && isFinite(pt[0]) && isFinite(pt[1])) { sLng += pt[0]; sLat += pt[1]; n++; }
+            }
+            if (n) return { lat: sLat / n, lng: sLng / n };
+        }
+        return null;
+    }
+
+    /* One raw heritage feature → one Babel result (with distance to the locality). */
+    function cimecResult(attrs, coords, layerId, loc, rank) {
+        var ranCode = cimecAttr(attrs, CIMEC_PROPS.ran);
+        var name = cimecAttr(attrs, CIMEC_PROPS.name);
+        if (!name && !ranCode) return null;
+        var locality = cimecAttr(attrs, CIMEC_PROPS.locality) || '';
+        var county = cimecAttr(attrs, CIMEC_PROPS.county) || '';
+        var commune = cimecAttr(attrs, CIMEC_PROPS.commune) || '';
+        var distM = (coords && loc && isFinite(loc.lat) && isFinite(loc.lon))
+            ? Math.round(distKm(coords, { lat: loc.lat, lng: loc.lon }) * 1000) : null;
+        var descParts = [name];
+        if (locality && locality !== name) descParts.push(locality);
+        if (commune && commune !== locality) descParts.push(commune);
+        if (county) descParts.push(county);
+        if (distM != null) descParts.push('~' + (distM < 950 ? distM + ' m' : (distM / 1000).toFixed(1) + ' km'));
+        var url = ranCode
+            ? 'https://ran.cimec.ro/sel.asp?codran=' + encodeURIComponent(ranCode)
+            : 'https://ran.cimec.ro/sel.asp?descript=' + encodeURIComponent(name || '');
+        return {
+            title: name || 'Sit RAN ' + ranCode,
+            description: clampDesc(descParts.filter(Boolean).join(' · ')),
+            type: 'structured', source: 'cimec',
+            typeKey: 'sitArheologic',
+            url: url, rank: rank, coords: coords || null,
+            distM: distM,
+            meta: {
+                ranCode: ranCode || null, layerId: layerId,
+                locality: locality || null, county: county || null, commune: commune || null,
+                tip: cimecAttr(attrs, CIMEC_PROPS.tip) || null
+            }
+        };
+    }
+
+    /* De-duplicate, sort by distance to the locality and cap the site list. */
+    function cimecFinish(rawResults) {
+        var seen = {}, out = [];
+        rawResults.forEach(function (r) {
+            if (!r) return;
+            var key = (r.meta && r.meta.ranCode) ? 'ran:' + r.meta.ranCode
+                : normKey(r.title) + (r.coords ? '@' + r.coords.lat.toFixed(3) + ',' + r.coords.lng.toFixed(3) : '');
+            if (!key || seen[key]) return;
+            seen[key] = true;
+            out.push(r);
+        });
+        out.sort(function (a, b) {
+            var da = a.distM == null ? Infinity : a.distM, db = b.distM == null ? Infinity : b.distM;
+            return da - db;
+        });
+        out = out.slice(0, CIMEC_MAX_RESULTS);
+        out.forEach(function (r, i) { r.rank = i; });
+        return { results: out };
+    }
+
+    /* (a) The map page already holds the full heritage layers as GeoJSON
+     * (window._localLayerData, layers 0/5/6) — search them directly, without
+     * any network round-trip. Returns null when the dataset is not loaded. */
+    function cimecFromLocalLayers(query, loc) {
+        var data = (typeof window !== 'undefined') ? window._localLayerData : null;
+        if (!data) return null;
+        var feats = [];
+        CIMEC_SEARCH_LAYERS.forEach(function (id) {
+            var fc = data[id];
+            if (fc && Array.isArray(fc.features)) fc.features.forEach(function (f) { feats.push({ f: f, layerId: id }); });
+        });
+        if (!feats.length) return null;
+        var nameNorm = normKey(phraseName(query));
+        var hasLoc = !!(loc && isFinite(loc.lat) && isFinite(loc.lon));
+        var raw = [];
+        for (var i = 0; i < feats.length; i++) {
+            var props = feats[i].f.properties || {};
+            var coords = cimecPointOf(feats[i].f.geometry);
+            var keep = false;
+            if (hasLoc && coords && distKm(coords, { lat: loc.lat, lng: loc.lon }) * 1000 <= CIMEC_NEARBY_RADIUS_M) keep = true;
+            if (!keep && nameNorm && nameNorm.length >= 3) {
+                var hay = normKey([
+                    cimecAttr(props, CIMEC_PROPS.locality),
+                    cimecAttr(props, CIMEC_PROPS.name),
+                    cimecAttr(props, CIMEC_PROPS.commune)
+                ].filter(Boolean).join(' '));
+                if (hay && hay.indexOf(nameNorm) !== -1) keep = true;
+            }
+            if (!keep) continue;
+            raw.push(cimecResult(props, coords, feats[i].layerId, loc, raw.length));
+        }
+        return cimecFinish(raw);
+    }
+
+    /* (b) Live ArcGIS REST fallbacks via JSONP. */
+    function cimecSpatialQuery(layerId, loc) {
+        var dLat = CIMEC_NEARBY_RADIUS_M / 111320;
+        var dLng = CIMEC_NEARBY_RADIUS_M / (111320 * Math.max(0.2, Math.cos(loc.lat * Math.PI / 180)));
+        var env = [loc.lon - dLng, loc.lat - dLat, loc.lon + dLng, loc.lat + dLat].join(',');
+        var u = CIMEC_REST_BASE + '/' + layerId + '/query'
+            + '?where=1%3D1'
+            + '&geometry=' + encodeURIComponent(env)
+            + '&geometryType=esriGeometryEnvelope'
+            + '&inSR=4326&spatialRel=esriSpatialRelIntersects'
+            + '&outFields=*&returnGeometry=true&outSR=4326'
+            + '&resultRecordCount=200&f=json';
+        return jsonpFetch(u, 20000).then(function (data) {
+            return cimecFeatureList(data).map(function (feat) {
+                return { attrs: feat.attributes || {}, geom: feat.geometry || null, layerId: layerId };
+            });
+        });
+    }
+    function cimecFind(query) {
         var u = CIMEC_REST_BASE + '/find'
-            + '?searchText=' + encodeURIComponent(searchText)
-            + '&layers=' + layersParam
-            + '&searchFields=' + encodeURIComponent(fieldsParam)
+            + '?searchText=' + encodeURIComponent(phraseName(query))
+            + '&layers=' + CIMEC_SEARCH_LAYERS.join(',')
+            + '&searchFields=' + encodeURIComponent(CIMEC_SEARCH_FIELDS.join(','))
             + '&contains=true'
             + '&sr=4326'
-            + '&outFields=*'
             + '&returnGeometry=true'
             + '&f=json';
         return jsonpFetch(u, 20000).then(function (data) {
-            if (!data || !Array.isArray(data)) return { results: [] };
-            var seen = {}, results = [];
-            data.forEach(function (feat, i) {
-                var attrs = feat.attributes || {};
-                /* Extract RAN code from various possible field names */
-                var ranCode = attrs.CodRAN || attrs.COD_RAN || attrs.Cod_RAN || attrs.CODSIT || attrs.NR_RAN || attrs.COD || attrs.Cod || null;
-                var name = attrs.DenumireSit || attrs.Denumire || attrs.Denumire_sit || attrs.Nume || attrs.Toponim || attrs.Localitate || attrs.DESCRIPCION || null;
-                if (!name && !ranCode) return;
-                var key = normKey(name || ranCode);
-                if (!key || seen[key]) return;
-                seen[key] = true;
-                /* Extract coordinates from geometry */
-                var coords = null;
-                if (feat.geometry) {
-                    if (typeof feat.geometry.x === 'number' && typeof feat.geometry.y === 'number') {
-                        coords = { lat: feat.geometry.y, lng: feat.geometry.x };
-                    }
-                }
-                /* Build a locality/county description */
-                var locality = attrs.Localitate || attrs.Localitat || '';
-                var county = attrs.Judet || attrs.Județ || attrs.JUDEȚ || attrs.JUDET || '';
-                var commune = attrs.Comuna || attrs.COMUNA || '';
-                var descParts = [name];
-                if (locality && locality !== name) descParts.push(locality);
-                if (commune && commune !== locality) descParts.push(commune);
-                if (county) descParts.push(county);
-                var description = descParts.filter(Boolean).join(' · ');
-                /* Determine the URL — link to RAN portal if we have a code */
-                var url = ranCode
-                    ? 'https://ran.cimec.ro/sel.asp?codran=' + encodeURIComponent(ranCode)
-                    : 'https://ran.cimec.ro/sel.asp?descript=' + encodeURIComponent(name || query);
-                /* Layer type hint */
-                var layerId = feat.layerId;
-                var meta = {
-                    ranCode: ranCode || null,
-                    layerId: layerId,
-                    locality: locality || null,
-                    county: county || null,
-                    commune: commune || null,
-                    tip: attrs.Tip || attrs.Eticheta || null
-                };
-                results.push({
-                    title: name || (ranCode ? 'Sit RAN ' + ranCode : 'Sit arheologic'),
-                    description: clampDesc(description),
-                    type: 'structured', source: 'cimec',
-                    typeKey: 'sitArheologic',
-                    url: url, rank: i, coords: coords, meta: meta
+            return cimecFeatureList(data).map(function (feat) {
+                return { attrs: feat.attributes || {}, geom: feat.geometry || null, layerId: feat.layerId };
+            });
+        });
+    }
+    function sourceCimec(query, loc) {
+        /* the map's already-loaded dataset wins — zero network needed */
+        var local = null;
+        try { local = cimecFromLocalLayers(query, loc); } catch (_) { local = null; }
+        if (local) return Promise.resolve(local);
+        var tasks = [];
+        if (loc && isFinite(loc.lat) && isFinite(loc.lon)) {
+            CIMEC_SEARCH_LAYERS.forEach(function (layerId) { tasks.push(settle(cimecSpatialQuery(layerId, loc))); });
+        }
+        tasks.push(settle(cimecFind(query)));
+        return Promise.all(tasks).then(function (outs) {
+            var oks = outs.filter(function (o) { return o.ok; });
+            if (!oks.length) throw outs[outs.length - 1].error;
+            var raw = [];
+            oks.forEach(function (o) {
+                (o.value || []).forEach(function (item) {
+                    raw.push(cimecResult(item.attrs, cimecPointOf(item.geom), item.layerId, loc, raw.length));
                 });
             });
-            return { results: results.slice(0, 30) };
+            return cimecFinish(raw);
         });
     }
 
     /* ══════════════════ parallel orchestration + aggregation ══════════════════ */
 
-    function searchAll(query, lg, key, seq, onSource, textQuery) {
+    function searchAll(query, lg, key, seq, onSource, textQuery, locality) {
         var t0 = Date.now();
         /* textQuery = the canonical, diacritics-correct spelling used for the
          * text-indexed sources; the OSM gazetteer keeps what the user typed. */
         var tq = textQuery || query;
+        /* CIMEC needs the locality coordinates for its spatial nearby-sites
+         * search: the gazetteer fix wins, otherwise the (memoised) OSM source
+         * result is reused — never a second identical request. */
+        var localityFix = locality ? Promise.resolve(locality) : sourceOsm(query, lg).then(function (out) {
+            var typedName = normKey(phraseName(query));
+            var places = ((out && out.results) || []).filter(function (r) { return r.coords && isFinite(r.coords.lat); });
+            var exact = places.filter(function (r) { return normKey(r.title) === typedName; })[0];
+            var best = exact || places[0];
+            return best ? { name: best.title, judet: (best.meta && best.meta.judet) || null, lat: best.coords.lat, lon: best.coords.lng } : null;
+        }, function () { return null; });
         var runners = [
             { id: 'wikipedia', run: function () { return sourceWikipedia(tq); } },
             { id: 'wikidata', run: function () { return sourceWikidata(tq, lg); } },
@@ -620,7 +856,7 @@
             { id: 'dbpedia', run: function () { return sourceDbpedia(tq); } },
             { id: 'archive', run: function () { return sourceArchive(tq); } },
             { id: 'europeana', run: function () { return sourceEuropeana(tq, key); } },
-            { id: 'cimec', run: function () { return sourceCimec(tq); } }
+            { id: 'cimec', run: function () { return localityFix.then(function (loc) { return sourceCimec(tq, loc); }); } }
         ];
         var tasks = runners.map(function (r) {
             return r.run().then(function (out) {
@@ -654,7 +890,43 @@
         PERIOD_RULES.forEach(function (rule) { if (rule.re.test(text)) ids.push(rule.id); });
         return ids;
     }
-    function aggregate(outs, durationMs) {
+    /* Relevance context: the locality names (typed / canonical / gazetteer)
+     * and the confirmed coordinates. The filter only arms itself when the
+     * gazetteer (OSM.geojson or Nominatim) actually confirmed the locality —
+     * a historical site name that OSM does not know is left unfiltered. */
+    function buildRelevanceCtx(query, canonical, locality, perSource) {
+        var names = [];
+        [phraseName(query), canonical ? phraseName(canonical) : null, locality ? locality.name : null].forEach(function (n) {
+            var k = normKey(n || '');
+            if (k && k.length >= 3 && names.indexOf(k) === -1) names.push(k);
+        });
+        var coords = (locality && isFinite(locality.lat) && isFinite(locality.lon))
+            ? { lat: locality.lat, lng: locality.lon } : null;
+        var confirmed = !!locality;
+        if (!confirmed && perSource) {
+            var osmOut = (perSource.filter(function (o) { return o.source.id === 'osm'; })[0] || {});
+            ((osmOut.results) || []).forEach(function (r) {
+                if (confirmed) return;
+                if (names.indexOf(normKey(r.title || '')) !== -1) {
+                    confirmed = true;
+                    if (!coords && r.coords && isFinite(r.coords.lat)) coords = r.coords;
+                }
+            });
+        }
+        return { names: names, coords: coords, active: confirmed && names.length > 0 };
+    }
+    function isRelevant(r, ctx) {
+        /* the gazetteer and the RAN spatial search are locality-driven by construction */
+        if ((r.sources || []).some(function (s) { return s.id === 'osm' || s.id === 'cimec'; })) return true;
+        var text = normKey((r.title || '') + ' ' + (r.description || ''));
+        for (var i = 0; i < ctx.names.length; i++) {
+            if (text.indexOf(ctx.names[i]) !== -1) return true;
+        }
+        if (r.coords && ctx.coords && distKm(r.coords, ctx.coords) <= RELEVANCE_RADIUS_KM) return true;
+        return false;
+    }
+
+    function aggregate(outs, durationMs, ctx) {
         var map = {}, order = [], totalBefore = 0;
         outs.forEach(function (out) {
             (out.results || []).forEach(function (item, rank) {
@@ -687,16 +959,31 @@
             r.description = clampDesc(r.description || '');
             r.score = r.sources.length * 100 + Math.max(0, 60 - r.rank * 5) + (r.image ? 4 : 0) + (r.coords ? 4 : 0);
         });
+        /* Fuzzy-noise guard: once the gazetteer confirmed the locality, a
+         * finding must actually mention it (or sit within RELEVANCE_RADIUS_KM
+         * of it) — "Miljan Miljanić" has no business among "Miluani, Sălaj". */
+        var totalDeduped = order.length;
+        var irrelevantRemoved = 0;
+        if (ctx && ctx.active) {
+            var kept = order.filter(function (r) { return isRelevant(r, ctx); });
+            irrelevantRemoved = order.length - kept.length;
+            order = kept;
+        }
         /* Findings with no period at all (perioada "nespecificată") are dropped:
          * the Library of Babel only surfaces results the automatic classifier can
-         * place on the archaeological timeline. */
-        var totalDeduped = order.length;
-        order = order.filter(function (r) { return r.periods.length > 0; });
+         * place on the archaeological timeline. Two locality-driven exceptions:
+         * OSM places (the searched locality itself) and CIMEC/RAN site records
+         * (archaeological by definition) always stay. */
+        order = order.filter(function (r) {
+            if (r.type === 'place') return true;
+            if ((r.sources || []).some(function (s) { return s.id === 'cimec'; })) return true;
+            return r.periods.length > 0;
+        });
         order.sort(function (a, b) { return b.score - a.score; });
-        return { results: order, totalBeforeDedup: totalBefore, totalDeduped: totalDeduped, durationMs: durationMs };
+        return { results: order, totalBeforeDedup: totalBefore, totalDeduped: totalDeduped, irrelevantRemoved: irrelevantRemoved, durationMs: durationMs };
     }
 
-    function buildStats(query, perSource, agg) {
+    function buildStats(query, perSource, agg, locality) {
         var sources = SOURCE_ORDER.map(function (id) {
             var out = perSource.filter(function (o) { return o.source.id === id; })[0];
             return out ? out.source : { id: id, status: 'error', count: 0, message: 'not run' };
@@ -707,6 +994,8 @@
             total: agg.results.length,
             totalBeforeDedup: agg.totalBeforeDedup,
             duplicatesRemoved: agg.totalBeforeDedup - agg.totalDeduped,
+            irrelevantRemoved: agg.irrelevantRemoved || 0,
+            locality: locality || null,
             active: sources.filter(function (s) { return s.status === 'ok' || s.status === 'empty'; }).length,
             sources: sources,
             osmMatches: (perSource.filter(function (o) { return o.source.id === 'osm'; })[0] || { extra: {} }).extra.osmMatches || []
@@ -860,10 +1149,17 @@
         var mapAvailable = typeof window.L !== 'undefined' && typeof window.L.map === 'function';
 
         /* head + stats */
+        var loc = s.locality;
+        var locLine = loc ? '<p class="babel-locality">📍 <b>' + esc(loc.name) + '</b>' +
+            (loc.judet ? ' · ' + esc(t('countyAbbr')) + ' ' + esc(loc.judet) : '') +
+            (isFinite(loc.lat) && isFinite(loc.lon) ? ' · ' + esc(Number(loc.lat).toFixed(4)) + ', ' + esc(Number(loc.lon).toFixed(4)) : '') +
+            ' <small>(' + esc(t('localityVia')) + ')</small></p>' : '';
         var html =
             '<header class="babel-results-head"><div><span>DETECTLAB · MULTI-SOURCE SEARCH</span>' +
-            '<h2>„' + esc(q) + '”</h2><p><b>' + total + '</b> ' + esc(t('results')) + ' · <b>' + active + '/8</b> ' + esc(t('activeSources')) +
+            '<h2>„' + esc(q) + '”</h2>' + locLine +
+            '<p><b>' + total + '</b> ' + esc(t('results')) + ' · <b>' + active + '/8</b> ' + esc(t('activeSources')) +
             (s.duplicatesRemoved > 0 ? ' · <b>' + s.duplicatesRemoved + '</b> ' + esc(t('duplicates')) : '') +
+            (s.irrelevantRemoved > 0 ? ' · <b>' + s.irrelevantRemoved + '</b> ' + esc(t('irrelevant')) : '') +
             ' · ' + (s.durationMs / 1000).toFixed(1) + ' ' + esc(t('seconds')) + '</p></div>' +
             '<button type="button" id="babelNew">' + esc(t('newSearch')) + '</button></header>';
 
@@ -1003,9 +1299,12 @@
     function buildJsonExport() {
         return JSON.stringify({
             query: lastQuery, language: lang(), generatedAt: lastStats && lastStats.generatedAt,
+            locality: (lastStats && lastStats.locality) || null,
             stats: {
                 total: lastStats.total, activeSources: lastStats.active + '/8',
-                duplicatesRemoved: lastStats.duplicatesRemoved, durationMs: lastStats.durationMs,
+                duplicatesRemoved: lastStats.duplicatesRemoved,
+                irrelevantRemoved: lastStats.irrelevantRemoved || 0,
+                durationMs: lastStats.durationMs,
                 sources: lastStats.sources.map(function (s) { return { source: s.id, status: s.status, results: s.count }; })
             },
             results: exportRows()
@@ -1067,12 +1366,15 @@
         SOURCE_ORDER.forEach(function (id) { sourceStatuses[id] = { id: id, status: 'pending' }; });
         renderSearching();
         try {
-            var canonical = await resolveCanonicalQuery(query);
+            /* OSM gazetteer first: canonical name + county + coordinates */
+            var locality = await resolveLocality(query);
             if (seq !== searchSeq) return; /* superseded by a newer search */
-            var out = await searchAll(query, lg, europeanaKey(), seq, chipUpdate, canonical);
+            var canonical = (locality && locality.name && normKey(locality.name) !== normKey(query)) ? locality.name : null;
+            var out = await searchAll(query, lg, europeanaKey(), seq, chipUpdate, canonical, locality);
             if (seq !== searchSeq) return; /* superseded by a newer search */
-            var agg = aggregate(out.perSource, out.durationMs);
-            var stats = buildStats(query, out.perSource, agg);
+            var relCtx = buildRelevanceCtx(query, canonical, locality, out.perSource);
+            var agg = aggregate(out.perSource, out.durationMs, relCtx);
+            var stats = buildStats(query, out.perSource, agg, locality);
             stats.canonicalQuery = canonical || null;
             lastQuery = query; lastAgg = agg.results; lastStats = stats;
 
@@ -1131,6 +1433,7 @@
         open: begin, close: close, research: run,
         _noThrottle: function () { NOMINATIM_MIN_INTERVAL = 0; },
         _resolveCanonicalQuery: resolveCanonicalQuery,
+        _resolveLocality: resolveLocality,
         _export: { json: buildJsonExport, csv: buildCsvExport, rows: exportRows },
         _filters: function () { return uiFilters; }
     };

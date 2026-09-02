@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v67-battles-label-anchor';
+const CACHE_NAME = 'detectlab-v68-babel-osm-nearby';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -64,11 +64,13 @@ const PRECACHE_URLS = [
   'css/library-of-babel.css?v=20260819',
   'css/library-of-babel.css?v=20260827-historical-dossier',
   'css/library-of-babel.css?v=20260831-babel-multisource',
+  'css/library-of-babel.css?v=20260902-babel-osm-nearby',
   'js/library-of-babel.js?v=20260815',
   'js/library-of-babel.js?v=20260819',
   'js/library-of-babel.js?v=20260827-historical-dossier',
   'js/library-of-babel.js?v=20260828-evidence-search-fix',
   'js/library-of-babel.js?v=20260831-babel-multisource',
+  'js/library-of-babel.js?v=20260902-babel-osm-nearby',
   'js/library-of-babel.js?v=20260831-babel-cimec',
   'js/library-of-babel.js?v=20260831-babel-periods-lexicon',
   'js/vertical-opacity-control.js',

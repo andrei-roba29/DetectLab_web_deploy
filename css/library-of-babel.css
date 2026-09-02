@@ -86,6 +86,9 @@ body.is-pwa .babel-modal{padding-top:calc(22px + env(safe-area-inset-top,0px));p
 .babel-results-head h2{margin:4px 0 3px;color:#f1dfbd;font:600 1.2rem Cinzel,serif}
 .babel-results-head p{margin:0;color:#918777;font-size:.68rem}
 .babel-results-head p b{color:#e0c188;font-weight:600}
+.babel-results-head p.babel-locality{margin:0 0 4px;color:#c9b48c;font-size:.72rem}
+.babel-results-head p.babel-locality b{color:#f1dfbd}
+.babel-results-head p.babel-locality small{color:#7f7362;font-size:.58rem}
 .babel-results-head button{padding:8px 10px;border:1px solid rgba(191,143,70,.36);border-radius:5px;background:#17130f;color:#dbc8a8;font-size:.64rem;cursor:pointer;flex:0 0 auto}
 .babel-results-head button:hover{border-color:#d3a35d;color:#fff}
 .babel-cachenote{margin:8px 0 0;color:#8a7357;font-size:.6rem}

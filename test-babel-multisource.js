@@ -19,7 +19,10 @@ const wikiRo = {
     query: { search: [
         { title: 'Ulpia Traiana Sarmizegetusa', snippet: '<span class="searchmatch">Ulpia Traiana</span> a fost capitala și cel mai mare oraș al provinciei romane <span class="searchmatch">Dacia</span>.', timestamp: '2026-03-11T07:20:04Z' },
         { title: 'Sarmizegetusa Regia', snippet: '<span class="searchmatch">Sarmizegetusa Regia</span> a fost capitala statului dac, cetate dacică din epoca fierului din Munții Orăștiei.', timestamp: '2026-06-10T16:57:39Z' },
-        { title: 'Sarmizegetusa', snippet: '<span class="searchmatch">Sarmizegetusa</span> se poate referi la mai multe localități și situri arheologice din județul Hunedoara.', timestamp: '2025-02-24T15:00:54Z' }
+        { title: 'Sarmizegetusa', snippet: '<span class="searchmatch">Sarmizegetusa</span> se poate referi la mai multe localități și situri arheologice din județul Hunedoara.', timestamp: '2025-02-24T15:00:54Z' },
+        /* fuzzy-noise specimen (the "Miljan Miljanić for Miluani" class): a hit
+         * that never mentions the searched locality and must be filtered out */
+        { title: 'Miljan Miljanić', snippet: 'Antrenor iugoslav de fotbal al echipelor Real Madrid și Steaua Roșie, medieval nu are nicio legătură cu situl.', timestamp: '2025-01-01T00:00:00Z' }
     ] }
 };
 const wikiEn = {
@@ -43,7 +46,7 @@ const nominatim = [
 const commons = {
     query: { pages: {
         101: { pageid: 101, ns: 6, title: 'File:Ulpia Traiana Sarmizegetusa amphitheatre.jpg', index: 1, imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/ulpia.jpg/320px-ulpia.jpg', url: 'https://upload.wikimedia.org/wikipedia/commons/a/a1/ulpia.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Ulpia_Traiana_Sarmizegetusa_amphitheatre.jpg', mime: 'image/jpeg', extmetadata: { ImageDescription: { value: 'Amphitheatre of the Roman city Ulpia Traiana' }, Artist: { value: 'Pudelek' }, LicenseShortName: { value: 'CC BY-SA 4.0' }, Categories: { value: 'Ulpia Traiana Sarmizegetusa' } } }] },
-        102: { pageid: 102, ns: 6, title: 'File:Harta castrelor romane din Dacia.svg', index: 2, imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/harta.png/320px-harta.png', url: 'https://upload.wikimedia.org/wikipedia/commons/b/b2/harta.png', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Harta_castrelor_romane_din_Dacia.svg', mime: 'image/svg+xml', extmetadata: { ImageDescription: { value: 'Hartă a castrelor romane din Dacia' }, Artist: { value: 'Autor' }, LicenseShortName: { value: 'CC0' } } }] }
+        102: { pageid: 102, ns: 6, title: 'File:Harta castrelor romane din Dacia.svg', index: 2, imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/harta.png/320px-harta.png', url: 'https://upload.wikimedia.org/wikipedia/commons/b/b2/harta.png', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Harta_castrelor_romane_din_Dacia.svg', mime: 'image/svg+xml', extmetadata: { ImageDescription: { value: 'Hartă a castrelor romane din Dacia, inclusiv Ulpia Traiana Sarmizegetusa' }, Artist: { value: 'Autor' }, LicenseShortName: { value: 'CC0' } } }] }
     } }
 };
 const dbpedia = {
@@ -55,20 +58,25 @@ const dbpedia = {
 };
 const archive = {
     response: { numFound: 2, docs: [
-        { identifier: 'cu31924029544785', title: 'Castrul roman de la Apulum', description: 'Studiu asupra castrului legiunii XIII Gemina de la Apulum.', year: 1930, mediatype: 'texts' },
+        { identifier: 'cu31924029544785', title: 'Castrul roman de la Sarmizegetusa', description: 'Studiu asupra castrului legiunii XIII Gemina de la Ulpia Traiana Sarmizegetusa.', year: 1930, mediatype: 'texts' },
         { identifier: 'sarmizegetusa-photos', title: 'Sarmizegetusa photographs collection', mediatype: 'collection' }
     ] }
 };
 const europeana = {
     itemsFound: 2, items: [
-        { id: '/2048008/10374', title: ['Amphora from Ulpia Traiana'], edmDataProvider: ['Muzeul Național de Istorie a României'], edmType: 'IMAGE' },
+        { id: '/2048008/10374', title: ['Amphora from Ulpia Traiana Sarmizegetusa'], edmDataProvider: ['Muzeul Național de Istorie a României'], edmType: 'IMAGE' },
+        /* full-text noise: an object that never mentions the locality */
         { id: '/abc/2', title: ['Roman coin hoard'], edmDataProvider: ['Europeana 280'], edmType: 'TEXT' }
     ]
 };
-const cimec = [
-    { layerId: 5, attributes: { CodRAN: '97042.01', DenumireSit: 'Sarmizegetusa', Localitate: 'Sarmizegetusa', Judet: 'Hunedoara', Comuna: 'Sarmizegetusa', Tip: 'Cetate dacică' }, geometry: { x: 22.785, y: 45.516 } },
-    { layerId: 6, attributes: { CodRAN: '97042.02', DenumireSit: 'Așezare romană', Localitate: 'Sarmizegetusa', Judet: 'Hunedoara', Tip: 'Așezare civilă' }, geometry: { x: 22.787, y: 45.515 } }
-];
+/* Realistic ArcGIS REST `find` response — an OBJECT with a `results` array
+ * (the old code expected a bare array and silently discarded live data). */
+const cimec = {
+    results: [
+        { layerId: 5, attributes: { CodRAN: '97042.01', DenumireSit: 'Sarmizegetusa', Localitate: 'Sarmizegetusa', Judet: 'Hunedoara', Comuna: 'Sarmizegetusa', Tip: 'Cetate dacică' }, geometry: { x: 22.785, y: 45.516 } },
+        { layerId: 6, attributes: { CodRAN: '97042.02', DenumireSit: 'Așezare romană', Localitate: 'Sarmizegetusa', Judet: 'Hunedoara', Tip: 'Așezare civilă' }, geometry: { x: 22.787, y: 45.515 } }
+    ]
+};
 
 function route(url) {
     if (url.includes('ro.wikipedia.org')) return wikiRo;
@@ -140,14 +148,20 @@ function loadEngine() {
     assert.ok(/„Sarmizegetusa”/.test(html), 'the head repeats the query');
     assert.ok(/<b>9<\/b>\s*rezultate/.test(html), `9 aggregated results (got: ${html.match(/<b>(\d+)<\/b>\s*rezultate/)})`);
     assert.ok(/<b>8\/8<\/b>\s*surse active/.test(html), 'all 8 sources answered');
-    assert.ok(/<b>7<\/b>\s*duplicate eliminate/.test(html), '7 duplicates removed by cross-source merging (18 raw → 11; the 2 period-less findings are dropped)');
+    assert.ok(/<b>7<\/b>\s*duplicate eliminate/.test(html), '7 duplicates removed by cross-source merging (19 raw → 12)');
+    assert.ok(/<b>2<\/b>\s*irelevante eliminate/.test(html), '2 fuzzy-noise findings removed by the relevance guard');
+
+    /* ── relevance guard: fuzzy noise never mentioning the locality is gone ── */
+    assert.ok(!/Miljan Miljanić/.test(html), '"Miljan Miljanić" (fuzzy Wikipedia hit) is filtered out');
+    assert.ok(!/Roman coin hoard/.test(html), 'a Europeana object that never mentions the locality is filtered out');
 
     /* ── per-source status chips with counts ── */
-    assert.ok(/Wikipedia <b>3<\/b>/.test(html), 'Wikipedia chip reports 3 unique articles (ro+en merged)');
+    assert.ok(/Wikipedia <b>4<\/b>/.test(html), 'Wikipedia chip reports the raw 4 hits (ro+en merged, before filtering)');
     assert.ok(/Wikidata <b>3<\/b>/.test(html), 'Wikidata chip reports 3 entities (Q2671791 deduplicated)');
     assert.ok(/OpenStreetMap <b>2<\/b>/.test(html), 'OSM chip reports 2 places');
     assert.ok(/Archive\.org <b>2<\/b>/.test(html), 'Archive.org chip reports 2 documents');
     assert.ok(/Europeana <b>2<\/b>/.test(html), 'Europeana chip reports 2 objects');
+    assert.ok(/CIMEC \/ RAN <b>2<\/b>/.test(html), 'CIMEC/RAN chip reports 2 site records (find response parsed as {results:[…]})');
 
     /* ── aggregation + dedup: one card per finding, multi-source provenance ── */
     const titles = [...html.matchAll(/<h3><a[^>]*>([^<]+)<\/a>/g)].map((m) => m[1]);
@@ -192,7 +206,7 @@ function loadEngine() {
     /* ── period filter: Roman (lexicon-driven, "român" without diacritics excluded) ── */
     E('babelPeriodFilter').value = 'roman';
     E('babelPeriodFilter').onchange();
-    assert.ok(/Afișate: 7 din 9/.test(app.body()), 'Roman period filter narrows to 7 results (includes CIMEC Așezare romană)');
+    assert.ok(/Afișate: 6 din 9/.test(app.body()), 'Roman period filter narrows to 6 results (includes CIMEC Așezare romană)');
     E('babelPeriodFilter').value = 'all';
     E('babelPeriodFilter').onchange();
 
@@ -207,8 +221,9 @@ function loadEngine() {
     const lines = csv.split('\r\n');
     assert.strictEqual(lines.length, 10, 'CSV export = header + 9 rows');
     assert.ok(csv.startsWith('\uFEFFtitlu,descriere,tip,sursa,perioade'), 'CSV starts with a BOM and the header row');
-    assert.ok(csv.includes('"Castrul roman de la Apulum"'), 'CSV contains a quoted title');
+    assert.ok(csv.includes('"Castrul roman de la Sarmizegetusa"'), 'CSV contains a quoted title');
     assert.ok(csv.includes('1930'), 'CSV carries the archive.org year');
+    assert.ok(!csv.includes('Miljan'), 'the filtered fuzzy noise never reaches the CSV export');
 
     /* ── EN variant renders the same data in English ── */
     app.sandbox.window.setLang('en'); // the module re-renders the open modal
