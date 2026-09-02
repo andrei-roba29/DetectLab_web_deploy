@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v68-babel-osm-nearby';
+const CACHE_NAME = 'detectlab-v69-babel-safe-area';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -65,6 +65,7 @@ const PRECACHE_URLS = [
   'css/library-of-babel.css?v=20260827-historical-dossier',
   'css/library-of-babel.css?v=20260831-babel-multisource',
   'css/library-of-babel.css?v=20260902-babel-osm-nearby',
+  'css/library-of-babel.css?v=20260902-babel-safe-area',
   'js/library-of-babel.js?v=20260815',
   'js/library-of-babel.js?v=20260819',
   'js/library-of-babel.js?v=20260827-historical-dossier',
