@@ -37,6 +37,21 @@
             var _osmGeojsonFeatures = null;
             var _osmGeojsonPromise = null;
 
+            // ── LOCALITĂȚI ADAUSE MANUAL (completare pentru OSM.geojson) ──────
+            // Fișierul OSM.geojson de pe R2 e generat în afara repository-ului și
+            // nu conține toate cartierele/cătunele utile pe teren. Listă mică,
+            // întreținută manual: fiecare intrare e transformată într-o facilitate
+            // GeoJSON identică ca structură cu cele din sursă, deci apare automat
+            // și pe layerul „OSM Places”, și în bara de search (și, prin ea, în
+            // „Biblioteca din Babel”). Adăugarea unei localități noi = o linie aici.
+            // Coordonatele se verifică înainte (ex. reverse-geocoding OSM/Nominatim).
+            var OSM_MANUAL_PLACES = [
+                // Colțan — cartier al Bocșei Montane, oraș Bocșa (OSM place=quarter,
+                // nod 13418756573), județul Caraș-Severin.
+                { lat: 45.367584, lon: 21.802154, name: 'Colțan', fclass: 'suburb', judet: 'Caraș-Severin' }
+            ];
+            window.OSM_MANUAL_PLACES = OSM_MANUAL_PLACES;
+
             // Caută prima proprietate existentă (și nenulă) dintr-o listă de nume
             // posibile de câmp — util pentru că fișierul GeoJSON poate avea
             // denumiri diferite pentru județ în funcție de sursă (judet/county/admin...).
@@ -129,6 +144,77 @@
             }
             window._osmPlaceLookup = osmPlaceLookup;
 
+            // Pregătește o facilitate pentru search: nume + județ normalizate
+            // (lowercase, fără diacritice), calculate o singură dată la încărcare.
+            function _annotateOsmFeature(feat) {
+                var props = feat.properties || {};
+                var name = props.name || props.NAME || '';
+                feat._lname = name.toLowerCase();
+                feat._lnameNorm = normalizeRoDiacritics(feat._lname);
+                var judet = _pickOsmProp(props, [
+                    // Structura administrativă reală din fișierul OSM.geojson:
+                    // adm2_name = județul (ex: "Constanța"), adm1_name = macroregiunea (ex: "Sud-Est").
+                    'adm2_name', 'ADM2_NAME',
+                    'judet', 'JUDET', 'Judet', 'județ', 'JUDEȚ', 'Județ',
+                    'county', 'COUNTY', 'County',
+                    'admin', 'ADMIN', 'admin_name', 'ADMIN_NAME',
+                    'NAME_1', 'region', 'REGION', 'Region',
+                    'adm1_name', 'ADM1_NAME'
+                ]);
+                feat._judet = judet || '';
+                feat._ljudet = (judet || '').toLowerCase();
+                feat._ljudetNorm = normalizeRoDiacritics(feat._ljudet);
+                return feat;
+            }
+
+            // Intrările din OSM_MANUAL_PLACES, în același format ca restul sursei.
+            function _manualOsmFeatures() {
+                var out = [];
+                for (var i = 0; i < OSM_MANUAL_PLACES.length; i++) {
+                    var p = OSM_MANUAL_PLACES[i];
+                    if (p == null || !p.name || p.lat == null || p.lon == null) continue;
+                    out.push(_annotateOsmFeature({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+                        properties: {
+                            name: p.name,
+                            fclass: p.fclass || 'locality',
+                            adm2_name: p.judet || '',
+                            population: p.population || 0,
+                            // fid propriu, ca layerul OSM Places să nu-l confunde cu
+                            // o facilitate din sursă (vezi _osmPlacesFetch).
+                            fid: 'manual_' + p.lat + '_' + p.lon,
+                            manual: true
+                        }
+                    }));
+                }
+                return out;
+            }
+
+            // Adaugă localitățile manuale în setul încărcat, fără duplicate: dacă
+            // sursa conține deja același nume la mai puțin de ~1 km, nu mai inserăm
+            // (altfel ar apărea două etichete suprapuse pe hartă).
+            function _mergeManualPlaces(feats) {
+                var extra = _manualOsmFeatures();
+                for (var i = 0; i < extra.length; i++) {
+                    var f = extra[i];
+                    var c = f.geometry.coordinates;
+                    var alreadyThere = false;
+                    for (var j = 0; j < feats.length; j++) {
+                        var o = feats[j].geometry && feats[j].geometry.coordinates;
+                        if (!o) continue;
+                        // 0.01° latitudine ≈ 1.11 km; 0.014° longitudine ≈ 1.1 km la 45°N.
+                        if (feats[j]._lnameNorm === f._lnameNorm &&
+                            Math.abs(o[1] - c[1]) < 0.01 && Math.abs(o[0] - c[0]) < 0.014) {
+                            alreadyThere = true;
+                            break;
+                        }
+                    }
+                    if (!alreadyThere) feats.push(f);
+                }
+                return feats;
+            }
+
             function loadOsmGeojson() {
                 if (_osmGeojsonFeatures) return Promise.resolve(_osmGeojsonFeatures);
                 if (_osmGeojsonPromise) return _osmGeojsonPromise;
@@ -141,25 +227,8 @@
                         var feats = (data && data.features) ? data.features : [];
                         // Precalculăm numele normalizat (lowercase + fără diacritice) o
                         // singură dată, pentru search rapid pe tot setul de date.
-                        for (var i = 0; i < feats.length; i++) {
-                            var props = feats[i].properties || {};
-                            var name = props.name || props.NAME || '';
-                            feats[i]._lname = name.toLowerCase();
-                            feats[i]._lnameNorm = normalizeRoDiacritics(feats[i]._lname);
-                            var judet = _pickOsmProp(props, [
-                                // Structura administrativă reală din fișierul OSM.geojson:
-                                // adm2_name = județul (ex: "Constanța"), adm1_name = macroregiunea (ex: "Sud-Est").
-                                'adm2_name', 'ADM2_NAME',
-                                'judet', 'JUDET', 'Judet', 'județ', 'JUDEȚ', 'Județ',
-                                'county', 'COUNTY', 'County',
-                                'admin', 'ADMIN', 'admin_name', 'ADMIN_NAME',
-                                'NAME_1', 'region', 'REGION', 'Region',
-                                'adm1_name', 'ADM1_NAME'
-                            ]);
-                            feats[i]._judet = judet || '';
-                            feats[i]._ljudet = (judet || '').toLowerCase();
-                            feats[i]._ljudetNorm = normalizeRoDiacritics(feats[i]._ljudet);
-                        }
+                        for (var i = 0; i < feats.length; i++) _annotateOsmFeature(feats[i]);
+                        _mergeManualPlaces(feats);
                         _osmGeojsonFeatures = feats;
                         if (feats.length) {
                             console.log('[OSM DEBUG] Exemplu properties pentru prima localitate:', feats[0].properties);
@@ -169,7 +238,9 @@
                     })
                     .catch(function (err) {
                         console.warn('[OSM] Eroare la încărcarea sursei GeoJSON:', err.message);
-                        _osmGeojsonFeatures = [];
+                        // Chiar fără sursa remote, localitățile adăugate manual rămân
+                        // disponibile (search + layer OSM Places).
+                        _osmGeojsonFeatures = _mergeManualPlaces([]);
                         return _osmGeojsonFeatures;
                     });
                 return _osmGeojsonPromise;
