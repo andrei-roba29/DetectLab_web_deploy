@@ -14,6 +14,10 @@
 /* ── modal chrome ── */
 .babel-modal[hidden]{display:none}
 .babel-modal{position:fixed;inset:0;z-index:10050;padding:22px;display:flex;align-items:center;justify-content:center;background:rgba(4,7,15,.84);backdrop-filter:blur(7px)}
+/* viewport-fit=cover puts the layout under the phone's status bar / notch:
+   keep the dialog (and its × button) out of the top system bar everywhere,
+   not only in PWA mode. */
+.babel-modal{padding:calc(22px + env(safe-area-inset-top,0px)) calc(22px + env(safe-area-inset-right,0px)) calc(22px + env(safe-area-inset-bottom,0px)) calc(22px + env(safe-area-inset-left,0px))}
 body.babel-modal-open{overflow:hidden}
 .babel-dialog{position:relative;width:min(940px,100%);max-height:min(88vh,900px);display:flex;flex-direction:column;overflow:hidden;border:1px solid #b98a42;border-radius:13px;background:radial-gradient(circle at 20% 0,rgba(139,86,33,.18),transparent 35%),linear-gradient(145deg,#18130e,#0b101b 62%,#11101a);box-shadow:0 28px 90px #000,inset 0 0 55px rgba(193,132,51,.06);color:#eee5d5}
 .babel-dialog:before{content:"";position:absolute;inset:7px;border:1px solid rgba(218,175,101,.18);border-radius:9px;pointer-events:none}
@@ -86,6 +90,9 @@ body.is-pwa .babel-modal{padding-top:calc(22px + env(safe-area-inset-top,0px));p
 .babel-results-head h2{margin:4px 0 3px;color:#f1dfbd;font:600 1.2rem Cinzel,serif}
 .babel-results-head p{margin:0;color:#918777;font-size:.68rem}
 .babel-results-head p b{color:#e0c188;font-weight:600}
+.babel-results-head p.babel-locality{margin:0 0 4px;color:#c9b48c;font-size:.72rem}
+.babel-results-head p.babel-locality b{color:#f1dfbd}
+.babel-results-head p.babel-locality small{color:#7f7362;font-size:.58rem}
 .babel-results-head button{padding:8px 10px;border:1px solid rgba(191,143,70,.36);border-radius:5px;background:#17130f;color:#dbc8a8;font-size:.64rem;cursor:pointer;flex:0 0 auto}
 .babel-results-head button:hover{border-color:#d3a35d;color:#fff}
 .babel-cachenote{margin:8px 0 0;color:#8a7357;font-size:.6rem}
@@ -172,8 +179,11 @@ body.is-pwa .babel-modal{padding-top:calc(22px + env(safe-area-inset-top,0px));p
 
 /* ── responsive ── */
 @media(max-width:620px){
-  .babel-modal{padding:8px}
-  .babel-dialog{max-height:94vh}
+  /* keep the safe-area padding on phones — the tall results view used to push
+     the dialog (and the × button) under the phone's status bar */
+  .babel-modal{padding:calc(10px + env(safe-area-inset-top,0px)) calc(8px + env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) calc(8px + env(safe-area-inset-left,0px))}
+  .babel-dialog{max-height:94vh;max-height:calc(100dvh - 20px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px))}
+  .babel-close{top:9px;right:9px;width:38px;height:38px;font-size:28px}
   .babel-dialog-title{padding:14px 17px 8px}
   .babel-dialog-crown{font-size:.5rem;letter-spacing:.12em}
   .babel-body{padding:4px 16px 18px}
