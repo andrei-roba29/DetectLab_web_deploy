@@ -21,9 +21,11 @@
  *    Leaflet (clasa .leaflet-zoom-animated) — iar la pinch-zoom este
  *    repoziționată cadru-cu-cadru pe „zoom”; nu mai așteaptă „zoomend”,
  *    deci nu mai sare după fiecare zoom
- *  • click pe zonă SAU etichetă → fereastră compactă (dimensiuni limitate
- *    raportat la ecran, cu scroll intern la nevoie) cu descrierea completă
- *    (bilingvă) + buton „Caută mai mult / Search more" → căutare Google
+ *  • click pe zonă SAU etichetă → fereastră COMPACTĂ cu informații: lățime și
+ *    înălțime plafonate raportat la ecran (px + vh/vw, din JS și CSS), fonturi
+ *    și spațieri mici, descrierea lungă strânsă implicit în câteva rânduri și
+ *    desfăcută la cerere cu „Detalii / Details" → nu mai acoperă ecranul;
+ *    conținut bilingv + buton „Caută mai mult / Search more" → căutare Google
  *    cu titlul și anul bătăliei
  * ===================================================================== */
 (function () {
@@ -179,7 +181,54 @@
         });
     }
 
+    // ── Dimensiunile ferestrei de informații (popup) ──
+    // Cerință: fereastra NU trebuie să acopere ecranul. Plafonăm lățimea și
+    // înălțimea în JS (Leaflet le scrie inline pe .leaflet-popup-content) și
+    // le mai strângem din CSS pe ecrane mici (vezi .battles-popup în
+    // styles.css). Valorile de aici sunt „tavanul” pentru desktop; pe telefon
+    // popup-ul ocupă ≈ 60% din lățime și ≈ 40% din înălțime.
+    var POPUP_MIN_W = 180;
+    var POPUP_MAX_W = 264;
+    var POPUP_MAX_H = 300;
+
+    function popupMetrics() {
+        var w = window.innerWidth || document.documentElement.clientWidth || 1200;
+        var h = window.innerHeight || document.documentElement.clientHeight || 800;
+        var maxW = POPUP_MAX_W;
+        if (w <= 420) maxW = Math.min(224, w - 48);
+        else if (w <= 600) maxW = Math.min(240, w - 56);
+        else if (w <= 900) maxW = Math.min(256, w - 64);
+        var maxH = Math.min(POPUP_MAX_H, Math.round(h * 0.42));
+        return {
+            maxW: Math.max(POPUP_MIN_W + 10, Math.round(maxW)),
+            minW: Math.min(POPUP_MIN_W, Math.round(maxW) - 20),
+            maxH: Math.max(150, Math.round(maxH))
+        };
+    }
+
     // ── Conținutul popup-ului (bilingv) ──
+    // Fereastra trebuie să rămână MICĂ: ocupă o fracțiune din ecran (mai ales
+    // pe telefon), iar descrierea lungă este strânsă implicit în câteva
+    // rânduri și se desface la cerere cu butonul „Detalii / Ascunde".
+    var DESC_CLAMP_LEN = 120;   // peste această lungime descrierea poate fi strânsă
+
+    // Butonul „Detalii / Ascunde” se arată doar dacă textul chiar nu încape în
+    // rândurile strânse (altfel descrierea rămâne întreagă, fără fade inutil).
+    function fitDescToggle(root) {
+        if (!root || !root.querySelector) return;
+        var desc = root.querySelector('.battles-popup-desc');
+        if (!desc || !desc.classList) return;
+        var btn = root.querySelector('.battles-popup-more');
+        if (!btn) return;                       // descriere scurtă → fără buton
+        if (desc.classList.contains('is-open')) {
+            if (btn.style) btn.style.display = '';
+            return;
+        }
+        var needed = (desc.scrollHeight || 0) > (desc.clientHeight || 0) + 2;
+        if (btn.style) btn.style.display = needed ? '' : 'none';
+        desc.classList.toggle('is-clamped', needed);
+    }
+
     function buildPopupContent(ev) {
         var l = lang();
         var txt = ev[l] || ev.ro;
@@ -188,6 +237,9 @@
         var searchYear = ev.an_start < 0 ? (-ev.an_start) + ' BC' : String(ev.an_start);
         var query = encodeURIComponent(txt.titlu + ' ' + searchYear);
         var googleUrl = 'https://www.google.com/search?q=' + query;
+
+        var desc = String(txt.descriere == null ? '' : txt.descriere);
+        var descClamped = desc.length > DESC_CLAMP_LEN;
 
         var html = '<div class="battles-popup-inner">';
         html += '<div class="battles-popup-title">' + esc(txt.titlu) + '</div>';
@@ -201,13 +253,50 @@
         html += '<div class="battles-popup-row"><span class="battles-popup-k">' + esc(tt('battles_popup_location')) + '</span><span>' + esc(txt.locatie) + '</span></div>';
         html += '<div class="battles-popup-row"><span class="battles-popup-k">' + esc(tt('battles_popup_participants')) + '</span><span>' + esc(txt.participanti) + '</span></div>';
         html += '<div class="battles-popup-row"><span class="battles-popup-k">' + esc(tt('battles_popup_result')) + '</span><span>' + esc(txt.rezultat) + '</span></div>';
-        html += '<div class="battles-popup-desc">' + esc(txt.descriere) + '</div>';
+        html += '<div class="battles-popup-desc' + (descClamped ? ' is-clamped' : '') + '">' + esc(desc) + '</div>';
+        if (descClamped) {
+            html += '<button type="button" class="battles-popup-more" aria-expanded="false" ' +
+                'onclick="DetectLabBattlesPopup.toggleDesc(this)">' +
+                '<span class="battles-popup-more-txt">' + esc(tt('battles_desc_more')) + '</span>' +
+                '<svg class="battles-popup-more-caret" width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 L6 8 L9.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+                '</button>';
+        }
         html += '<a class="battles-popup-search" href="' + googleUrl + '" target="_blank" rel="noopener">' +
             '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex-shrink:0"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="2"/><line x1="15.5" y1="15.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' +
             '<span>' + esc(tt('battles_search_more')) + '</span>' +
             '</a>';
         html += '</div>';
         return html;
+    }
+
+    // Desfacere / strângere a descrierii din interiorul popup-ului.
+    // Apelat din onclick-ul butonului generat mai sus (popup-ul este HTML
+    // inserat de Leaflet, deci nu avem un handler atașat la build).
+    function toggleDesc(btn) {
+        if (!btn) return;
+        var box = btn.previousElementSibling;
+        while (box && !(box.classList && box.classList.contains('battles-popup-desc'))) {
+            box = box.previousElementSibling;
+        }
+        if (!box) return;
+        var expanded = box.classList.toggle('is-open');
+        btn.classList.toggle('is-open', expanded);
+        btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        var label = btn.querySelector('.battles-popup-more-txt');
+        if (label) label.textContent = tt(expanded ? 'battles_desc_less' : 'battles_desc_more');
+        // Popup-ul își recalculează dimensiunea și poziția (autoPan) după ce
+        // descrierea se desface sau se strânge. ATENȚIE: nu folosim update(),
+        // care rescrie innerHTML-ul din string și ar pierde starea „deschis" —
+        // doar layout + poziție + panare.
+        try {
+            var map = getMap();
+            var pop = map && map._popup;
+            if (pop && (!pop.isOpen || pop.isOpen())) {
+                if (pop._updateLayout) pop._updateLayout();
+                if (pop._updatePosition) pop._updatePosition();
+                if (pop._adjustPan) pop._adjustPan();
+            }
+        } catch (e) { /* niciodată critic */ }
     }
 
     // ── Panoul de control: bulă „on hover” cu secolul ──
@@ -436,6 +525,7 @@
 
         var events = eventsForPeriod();
         var mapL = lang();
+        var pm = popupMetrics();   // plafoanele ferestrei de informații, pe ecranul curent
 
         events.forEach(function (ev) {
             if (ev.lat == null || ev.lng == null) return;
@@ -460,17 +550,30 @@
             // Popup-ul complet; click pe zonă SAU pe etichetă îl deschide
             // (eticheta interactivă redirecționează click-ul către cerc,
             //  iar bindPopup are toggle-ul standard Leaflet)
-            // Popup compact, cu dimensiuni limitate și de CSS în funcție de
-            // ecran (vezi .battles-popup în styles.css): nu acoperă tot
-            // ecranul pe telefon.
+            // Popup COMPACT: lățime/înălțime plafonate din JS (maxWidth /
+            // maxHeight) și din CSS (vezi .battles-popup în styles.css, unde
+            // plafoanele scad pe ecrane mici). Descrierea lungă este strânsă
+            // implicit în câteva rânduri → fereastra nu mai acoperă ecranul.
             circle.bindPopup(buildPopupContent(ev), {
-                maxWidth: 320,
-                minWidth: 220,
+                maxWidth: pm.maxW,
+                minWidth: pm.minW,
+                maxHeight: pm.maxH,
                 className: 'battles-popup',
                 autoPan: true,
-                autoPanPadding: [20, 20],
+                autoPanPadding: [16, 16],
+                keepInView: true,
                 closeButton: true
             });
+
+            // La deschidere verificăm dacă descrierea chiar depășește rândurile
+            // strânse; dacă nu, butonul „Detalii” dispare și textul rămâne întreg.
+            if (circle.on) {
+                circle.on('popupopen', function (e) {
+                    var p = (e && e.popup) || (circle.getPopup && circle.getPopup());
+                    var el = p && p.getElement ? p.getElement() : null;
+                    if (el) fitDescToggle(el);
+                });
+            }
 
             // Eticheta permanentă — centrată mereu deasupra marginii de sus
             // a cercului (poziția e calculată în relayoutLabels).
@@ -560,6 +663,12 @@
             if (!c || !ev) return;
             var txt = ev[mapL] || ev.ro;
             if (c.bindPopup) c.bindPopup(buildPopupContent(ev)); // refolosește instanța → update live
+            // Popup deschis? Re-evaluăm strângerea descrierii pe noul text.
+            var pop = c.getPopup ? c.getPopup() : null;
+            if (pop && pop.isOpen && pop.isOpen() && pop.getElement) {
+                var popEl = pop.getElement();
+                if (popEl) fitDescToggle(popEl);
+            }
             c._labelText = txt.titlu; // expus pentru teste
             var rec = _labelById[id];
             if (rec && rec.el) {
@@ -570,6 +679,13 @@
         relayoutLabels();
         updatePanel();
     });
+
+    // API-ul popup-ului: butonul „Detalii / Ascunde” din descriere este HTML
+    // generat (inserat de Leaflet în DOM), deci apelează direct această funcție.
+    window.DetectLabBattlesPopup = {
+        toggleDesc: toggleDesc,
+        metrics: popupMetrics
+    };
 
     // Descriptor pentru oglinda verticală de pe hartă (vertical-opacity-control.js):
     // sliderul de perioadă al straturilor „Bătălii” se comportă ca sliderele de

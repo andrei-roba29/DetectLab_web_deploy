@@ -4452,46 +4452,58 @@
             to   { opacity: 1; transform: scale(1); }
         }
 
+        /* ─────────────────────────────────────────────────────────────
+           Fereastra de informații pentru bătălii (.battles-popup)
+           → COMPACTĂ: nu mai acoperă ecranul. Lățimea și înălțimea sunt
+           plafonate față de viewport (px + vh/vw), fonturile și spațierile
+           sunt reduse, iar descrierea lungă este strânsă implicit în câteva
+           rânduri și se desface cu butonul „Detalii / Ascunde".
+           Plafoanele în px sunt dublate de JS (popupMetrics() în
+           battles-layer.js → maxWidth / minWidth / maxHeight la bindPopup).
+           ───────────────────────────────────────────────────────────── */
         .battles-popup .leaflet-popup-content-wrapper {
             background: #141a22;
             color: #e8edf3;
             border: 1px solid rgba(232, 179, 75, 0.35);
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+            border-radius: 10px;
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
         }
         .battles-popup .leaflet-popup-tip {
             background: #141a22;
             border: 1px solid rgba(232, 179, 75, 0.35);
         }
         .battles-popup .leaflet-popup-content {
-            margin: 10px 12px;
-            line-height: 1.5;
-            /* cap lățimea și înălțimea în funcție de ecran — fereastra nu mai
-               acoperă tot ecranul pe telefoane; conținutul extra se derulează */
-            max-width: min(300px, calc(100vw - 56px));
-            max-height: min(330px, 52vh);
+            margin: 8px 10px;
+            line-height: 1.4;
+            font-size: 0.72rem;
+            /* tavanele ferestrei: ≈ 260×300 px pe desktop, mai puțin pe ecrane
+               mici; conținutul în plus se derulează intern */
+            max-width: min(260px, calc(100vw - 60px));
+            max-height: min(300px, 44vh);
             overflow-y: auto;
+            overscroll-behavior: contain;
         }
         .battles-popup-inner {
             display: flex;
             flex-direction: column;
-            gap: 7px;
+            gap: 5px;
         }
         .battles-popup-title {
             font-family: 'Cinzel', serif;
-            font-size: 1.02rem;
+            font-size: 0.9rem;
             font-weight: 700;
             color: #E8B34B;
-            line-height: 1.25;
-            padding-bottom: 5px;
+            line-height: 1.2;
+            padding-bottom: 4px;
+            padding-right: 18px;   /* loc pentru butonul de închidere Leaflet */
             border-bottom: 1px solid rgba(232, 179, 75, 0.25);
         }
         .battles-popup-meta {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            gap: 5px;
             align-items: center;
-            font-size: 0.7rem;
+            font-size: 0.64rem;
         }
         .battles-popup-date {
             color: var(--sky);
@@ -4502,58 +4514,96 @@
             border: 1px solid rgba(160, 112, 232, 0.4);
             color: #c9a8f2;
             border-radius: 20px;
-            padding: 1px 8px;
+            padding: 0 7px;
         }
         .battles-popup-context {
-            font-size: 0.66rem;
+            font-size: 0.6rem;
             font-style: italic;
             color: rgba(232, 179, 75, 0.85);
             background: rgba(232, 179, 75, 0.08);
             border: 1px dashed rgba(232, 179, 75, 0.4);
-            border-radius: 6px;
-            padding: 4px 8px;
+            border-radius: 5px;
+            padding: 3px 6px;
         }
         .battles-popup-row {
             display: flex;
-            gap: 8px;
-            font-size: 0.76rem;
+            gap: 7px;
+            font-size: 0.7rem;
         }
         .battles-popup-k {
             flex-shrink: 0;
-            min-width: 92px;
+            min-width: 76px;
             color: rgba(245, 240, 235, 0.5);
             font-weight: 600;
             text-transform: uppercase;
-            font-size: 0.62rem;
-            letter-spacing: 0.06em;
-            padding-top: 2px;
+            font-size: 0.55rem;
+            letter-spacing: 0.05em;
+            padding-top: 1px;
         }
         .battles-popup-desc {
-            font-size: 0.78rem;
+            font-size: 0.7rem;
             color: #c9d3df;
-            /* descrierea scrollează intern; pe ecrane mici se limitează și mai mult */
-            max-height: min(150px, 24vh);
-            overflow-y: auto;
-            padding-right: 4px;
             border-top: 1px solid rgba(184, 216, 240, 0.12);
-            padding-top: 8px;
-            margin-top: 3px;
+            padding-top: 6px;
+            margin-top: 1px;
         }
+        /* Descriere strânsă implicit: doar câteva rânduri (cu „…” nativ), ca
+           fereastra să rămână scurtă. Se desface cu butonul de mai jos. */
+        .battles-popup-desc.is-clamped {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+            line-clamp: 3;
+            max-height: 4.4em;   /* fallback pentru motoare fără line-clamp */
+            overflow: hidden;
+        }
+        /* Deschisă: textul curge complet, iar popup-ul (deja plafonat) derulează */
+        .battles-popup-desc.is-open {
+            display: block;
+            -webkit-line-clamp: unset;
+            line-clamp: unset;
+            max-height: none;
+            overflow: visible;
+        }
+        .battles-popup-more {
+            align-self: flex-start;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(184, 216, 240, 0.08);
+            border: 1px solid rgba(184, 216, 240, 0.22);
+            color: var(--sky);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.6rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            border-radius: 6px;
+            padding: 2px 7px;
+            cursor: pointer;
+            transition: background 0.18s, border-color 0.18s;
+        }
+        .battles-popup-more:hover {
+            background: rgba(184, 216, 240, 0.16);
+            border-color: rgba(184, 216, 240, 0.4);
+        }
+        .battles-popup-more-caret { transition: transform 0.2s; }
+        .battles-popup-more.is-open .battles-popup-more-caret { transform: rotate(180deg); }
         .battles-popup-search {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 7px;
-            margin-top: 4px;
+            gap: 6px;
+            margin-top: 2px;
             background: linear-gradient(135deg, #7a4bc0, var(--violet));
             border: 1px solid rgba(160, 112, 232, 0.8);
             color: #fff;
-            font-size: 0.78rem;
+            font-size: 0.72rem;
             font-weight: 700;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.03em;
             text-decoration: none;
-            border-radius: 8px;
-            padding: 8px 12px;
+            border-radius: 7px;
+            padding: 6px 10px;
             transition: filter 0.2s, transform 0.15s;
         }
         .battles-popup-search:hover {
@@ -4571,31 +4621,48 @@
             color: #fff !important;
         }
 
-        /* Telefoane: popup-ul bătăliilor devine compact — margini, fonturi și
-           înălțimi reduse, ca să nu acopere ecranul. */
+        /* Telefoane: fereastra devine și mai mică — ≈ 60% din lățimea și
+           ≈ 40% din înălțimea ecranului, ca să nu acopere harta. */
         @media (max-width: 600px) {
             .battles-popup .leaflet-popup-content {
-                margin: 8px 10px;
-                max-width: calc(100vw - 44px);
-                max-height: 46vh;
+                margin: 7px 9px;
+                font-size: 0.68rem;
+                max-width: min(240px, calc(100vw - 52px));
+                max-height: min(280px, 40vh);
             }
-            .battles-popup-inner { gap: 5px; }
-            .battles-popup-title { font-size: 0.9rem; padding-bottom: 4px; }
-            .battles-popup-meta { font-size: 0.66rem; }
-            .battles-popup-row { font-size: 0.72rem; gap: 6px; }
-            .battles-popup-k { min-width: 74px; font-size: 0.58rem; }
-            .battles-popup-context { font-size: 0.62rem; padding: 3px 6px; }
-            .battles-popup-desc {
-                font-size: 0.74rem;
-                max-height: 20vh;
-                padding-top: 6px;
-            }
-            .battles-popup-search { font-size: 0.72rem; padding: 6px 10px; gap: 5px; }
+            .battles-popup-inner { gap: 4px; }
+            .battles-popup-title { font-size: 0.82rem; padding-bottom: 3px; padding-right: 16px; }
+            .battles-popup-meta { font-size: 0.6rem; gap: 4px; }
+            .battles-popup-row { font-size: 0.66rem; gap: 6px; }
+            .battles-popup-k { min-width: 66px; font-size: 0.52rem; }
+            .battles-popup-context { font-size: 0.56rem; padding: 2px 5px; }
+            .battles-popup-desc { font-size: 0.66rem; padding-top: 5px; }
+            .battles-popup-more { font-size: 0.56rem; padding: 2px 6px; }
+            .battles-popup-search { font-size: 0.66rem; padding: 5px 9px; gap: 5px; }
         }
         @media (max-width: 420px) {
-            .battles-popup .leaflet-popup-content { max-height: 42vh; }
-            .battles-popup-title { font-size: 0.86rem; }
-            .battles-popup-desc { max-height: 18vh; }
+            .battles-popup .leaflet-popup-content {
+                max-width: min(224px, calc(100vw - 44px));
+                max-height: min(270px, 40vh);
+            }
+            .battles-popup-title { font-size: 0.78rem; }
+            .battles-popup-row { font-size: 0.64rem; }
+            .battles-popup-k { min-width: 60px; }
+            .battles-popup-desc { font-size: 0.64rem; }
+            .battles-popup-desc.is-clamped {
+                -webkit-line-clamp: 2;
+                line-clamp: 2;
+                max-height: 3.1em;
+            }
+        }
+        /* Ecrane scunde (telefon în landscape): și mai puțin pe verticală */
+        @media (max-height: 560px) {
+            .battles-popup .leaflet-popup-content { max-height: min(210px, 62vh); }
+            .battles-popup-desc.is-clamped {
+                -webkit-line-clamp: 2;
+                line-clamp: 2;
+                max-height: 3.1em;
+            }
         }
 
         footer .nav-logo span {
