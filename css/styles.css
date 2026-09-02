@@ -4375,12 +4375,23 @@
             cursor: pointer;
             pointer-events: auto;
         }
+        /* Eticheta bătăliei — ancorată pe marginea de sus a razei.
+           battles-layer.js o pune într-un L.marker fixat GEOGRAFIC în vârful
+           cercului (același punct pe care îl desenează L.Circle._project), iar
+           aici doar o centrăm pe orizontală și o ridicăm cu 8 px deasupra
+           conturului. Valorile sunt în CSS (nu în JS), deci eticheta stă lipită
+           de raza ei la pan / zoom / pinch / flyTo, fără recalculări în pixeli. */
+        .battles-label-anchor {
+            background: transparent;
+            border: 0;
+            overflow: visible;
+        }
         .battles-label {
             position: absolute;
             left: 0;
             top: 0;
             margin: 0;
-            will-change: transform;
+            transform: translate(-50%, calc(-100% - 8px));
             background: rgba(12, 15, 20, 0.88);
             border: 1px solid rgba(232, 179, 75, 0.55);
             color: #f0e6d2;
@@ -4397,6 +4408,8 @@
             -webkit-user-select: none;
             user-select: none;
         }
+        /* Textul se poate schimba (RO ↔ EN): lățimea diferită rămâne centrată
+           pe aceeași axă, tot din CSS. */
         .battles-label:hover {
             background: rgba(30, 26, 18, 0.95);
             border-color: #E8B34B;

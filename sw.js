@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v66-battles-compact';
+const CACHE_NAME = 'detectlab-v67-battles-label-anchor';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -137,7 +137,13 @@ const PRECACHE_URLS = [
   // behind a "Detalii / Details" toggle, so the popup no longer covers the screen.
   'js/battles-layer.js?v=20260902-battles-compact',
   'js/translations.js?v=20260902-battles-compact',
-  'css/styles.css?v=20260902-battles-compact'
+  'css/styles.css?v=20260902-battles-compact',
+  // Battles v6: battle title tags are now L.marker anchored GEOGRAPHICALLY on
+  // the top edge of their own radius (lat + radius/6371000 → exactly where
+  // L.Circle._project paints the circle top). Leaflet moves them natively on
+  // pan / zoom / pinch / flyTo, so they no longer drift or jump between zooms.
+  'js/battles-layer.js?v=20260902-battles-label-anchor',
+  'css/styles.css?v=20260902-battles-label-anchor'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

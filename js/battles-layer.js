@@ -13,14 +13,14 @@
  *    și este oglindit în controlul vertical de pe hartă, ca sliderele de
  *    opacitate ale celorlalte straturi (vertical-opacity-control.js)
  *  • fiecare eveniment: zonă colorată semitransparentă cu contur punctat +
- *    etichetă permanentă cu titlul bătăliei, ANCORATĂ STATIC DEASUPRA
- *    PROPRIEI RAZE (marginea de sus a cercului); poziția rămâne pe aceeași
- *    axă la pan/zoom, fără redistribuire în jurul cercului. La zoom animat
- *    (rotiță / dublu-click) eticheta alunecă LINIAR la noua poziție, o dată cu
- *    cercurile — pe evenimentul „zoomanim”, prin tranziția CSS proprie a
- *    Leaflet (clasa .leaflet-zoom-animated) — iar la pinch-zoom este
- *    repoziționată cadru-cu-cadru pe „zoom”; nu mai așteaptă „zoomend”,
- *    deci nu mai sare după fiecare zoom
+ *    etichetă permanentă cu titlul bătăliei, ANCORATĂ GEOGRAFIC PE MARGINEA
+ *    DE SUS A PROPRIEI RAZE. Eticheta este un L.marker așezat exact în punctul
+ *    în care Leaflet desenează vârful cercului (lat + raza/6371000 în radiani
+ *    — vezi L.Circle._project), deci rămâne LIPITĂ de contur la orice zoom,
+ *    fără nicio recalculare în pixeli: pan / zoom / zoomanim / pinch / flyTo
+ *    sunt duse de mecanica nativă Leaflet, identic cu cercurile. Distanța de
+ *    8 px față de contur și centrarea pe orizontală sunt fixe în CSS, așa că
+ *    eticheta nu mai „plutește” și nu mai sare după fiecare zoom
  *  • click pe zonă SAU etichetă → fereastră COMPACTĂ cu informații: lățime și
  *    înălțime plafonate raportat la ecran (px + vh/vw, din JS și CSS), fonturi
  *    și spațieri mici, descrierea lungă strânsă implicit în câteva rânduri și
@@ -41,8 +41,7 @@
     var _group = null;         // L.layerGroup cu cercurile
     var _circleById = {};      // id → L.circle (evenimente afișate)
     var _evById = {};          // id → eveniment (pentru refresh i18n)
-    var _labelById = {};       // id → { el, circle, ev } — etichetele proprii
-    var _mapHooked = false;    // evenimentele de hartă sunt deja legate?
+    var _labelById = {};       // id → { el, marker, circle, ev } — etichetele proprii
 
     // ── Paleta de culori pe epoci (culori sugestive, semitransparente) ──
     var EPOCHS = [
@@ -144,21 +143,11 @@
             _group = L.layerGroup([], { pane: 'pane_battles' });
             window._battlesGroup = _group;
         }
-        // Repoziționăm etichetele la fiecare schimbare de hartă (pan / zoom / resize)
-        if (!_mapHooked) {
-            _mapHooked = true;
-            var relayout = function () { if (_visible) relayoutLabels(); };
-            map.on('moveend zoomend resize viewreset', relayout);
-            // „zoom” se emite continuu în timpul pinch-zoom (touch / trackpad):
-            // etichetele urmăresc cercurile cadru-cu-cadru, fără salt final.
-            map.on('zoom', relayout);
-            // „zoomanim” se emite o singură dată la zoom-ul animat (rotiță /
-            // dublu-click): etichetele primesc poziția finală o dată cu începutul
-            // animației, iar tranziția CSS de 0.25s (activă doar cât conținătorul
-            // are clasa .leaflet-zoom-anim) le duce lin la loc — identic cu
-            // comportamentul markerilor Leaflet, fără să se scaleze textul.
-            map.on('zoomanim', function (e) { if (_visible) relayoutLabelsZoomAnim(e); });
-        }
+        // Etichetele sunt L.marker ancorați geografic pe marginea de sus a
+        // fiecărui cerc: Leaflet le repoziționează nativ la pan / zoom /
+        // pinch / flyTo (aceleași evenimente „zoomanim” ca la markere), deci
+        // nu mai e nevoie de niciun handler propriu de „relayout” — acela era
+        // sursa salturilor: recalcula poziția în pixeli, din urmă, după hartă.
     }
 
     // ── Evenimentele din secolul selectat ──
@@ -419,86 +408,28 @@
         }
     }
 
-    // ── Etichete ancorate static deasupra fiecărei raze ──
-    var LABEL_GAP = 8; // distanța etichetei față de marginea de sus a cercului (px)
+    // ── Ancora etichetei: marginea de SUS a razei, în coordonate geografice ──
+    // Leaflet desenează un L.Circle pornind de la latR = raza / R (în radiani,
+    // R = 6371000 m, raza Pământului din L.CRS.Earth) și pune vârful cercului
+    // exact în punctul PROJECTED al latitudinii (lat + latR) — vezi
+    // L.Circle._project: top = map.project([lat + latR, lng]);
+    //                   _radiusY = p.y - top.y.
+    // Un marker așezat în acel punct stă deci lipit de contur la ORICE zoom,
+    // pentru că ambele sunt mutate de aceeași mecanică Leaflet (latLngToLayerPoint
+    // la pan, _latLngToNewLayerPoint + tranziția CSS la zoomanim, cadru-cu-cadru
+    // la pinch / flyTo). Nu mai calculăm nimic în pixeli, deci nimic nu poate
+    // întârzia, roti sau sări față de cerc.
+    var EARTH_R = 6371000;      // L.CRS.Earth.R
+    var RAD2DEG = 180 / Math.PI;
 
-    // Raza cercului exprimată în pixeli (în sistemul de coordonate al hărții).
-    function circlePixelRadius(map, latlng, radiusMeters) {
-        if (typeof map.latLngToContainerPoint !== 'function' ||
-            typeof map.containerPointToLatLng !== 'function' ||
-            typeof map.distance !== 'function' || !radiusMeters) return 0;
-        var pt = map.latLngToContainerPoint(latlng);
-        var mpp = map.distance(latlng, map.containerPointToLatLng([pt.x, pt.y - 1]));
-        return mpp > 0 ? radiusMeters / mpp : 0;
+    function circleTopLatLng(lat, lng, radiusMeters) {
+        var latR = (radiusMeters / EARTH_R) * RAD2DEG;
+        return L.latLng(lat + latR, lng);
     }
 
-    // Fiecare etichetă rămâne centrată pe axa verticală a propriului cerc și
-    // lipită de marginea lui de sus. Nu mai alegem o altă latură în funcție de
-    // vecini, eliminând astfel salturile vizibile la fiecare nivel de zoom.
-    function relayoutLabels() {
-        var map = getMap();
-        if (!map || typeof map.latLngToLayerPoint !== 'function') return;
-
-        Object.keys(_labelById).forEach(function (id) {
-            var rec = _labelById[id];
-            var circle = rec.circle;
-            var el = rec.el;
-            var latlng = (typeof circle.getLatLng === 'function') ? circle.getLatLng() : null;
-            if (!latlng) return;
-
-            var w = el.offsetWidth || 0;
-            var h = el.offsetHeight || 0;
-            if (!w || !h) return; // se reia după încărcarea fonturilor / resize
-
-            var center = map.latLngToLayerPoint(latlng);
-            var rMeters = (typeof circle.getRadius === 'function') ? circle.getRadius() : 0;
-            var rPx = circlePixelRadius(map, latlng, rMeters);
-            var x = center.x - w / 2;
-            var y = center.y - rPx - LABEL_GAP - h;
-
-            el.style.transform = 'translate3d(' +
-                Math.round(x) + 'px,' + Math.round(y) + 'px,0)';
-        });
-    }
-
-    // Varianta pentru evenimentul „zoomanim” (zoom animat cu rotița /
-    // dublu-click): calculăm poziția FINALĂ a etichetei în coordonatele noului
-    // nivel de zoom (Leaflet expune _latLngToNewLayerPoint, la fel ca pentru
-    // markere). Clasa .leaflet-zoom-animated de pe etichetă + clasa
-    // .leaflet-zoom-anim pusă de Leaflet pe conținător în timpul animației
-    // produc tranziția CSS lin spre poziția finală; fără aceasta, etichetele
-    // rămâneau înghețate pe durata animației și săreau abia la „zoomend”.
-    function relayoutLabelsZoomAnim(e) {
-        var map = getMap();
-        if (!map || typeof map._latLngToNewLayerPoint !== 'function') return;
-
-        var fromZoom = (typeof map.getZoom === 'function') ? map.getZoom() : e.zoom;
-        var scale = (typeof map.getZoomScale === 'function')
-            ? map.getZoomScale(e.zoom, fromZoom)
-            : Math.pow(2, e.zoom - fromZoom);
-
-        Object.keys(_labelById).forEach(function (id) {
-            var rec = _labelById[id];
-            var circle = rec.circle;
-            var el = rec.el;
-            var latlng = (typeof circle.getLatLng === 'function') ? circle.getLatLng() : null;
-            if (!latlng) return;
-
-            var w = el.offsetWidth || 0;
-            var h = el.offsetHeight || 0;
-            if (!w || !h) return;
-
-            var center = map._latLngToNewLayerPoint(latlng, e.zoom, e.center);
-            var rMeters = (typeof circle.getRadius === 'function') ? circle.getRadius() : 0;
-            // raza în pixeli la noul nivel de zoom = raza curentă × factorul de zoom
-            var rPx = circlePixelRadius(map, latlng, rMeters) * scale;
-            var x = center.x - w / 2;
-            var y = center.y - rPx - LABEL_GAP - h;
-
-            el.style.transform = 'translate3d(' +
-                Math.round(x) + 'px,' + Math.round(y) + 'px,0)';
-        });
-    }
+    // Distanța fixă (px) dintre etichetă și contur, plus centrarea pe orizontală,
+    // trăiesc în CSS (.battles-label → translate(-50%, calc(-100% - 8px))),
+    // ca să nu depindă de măsurători offsetWidth/offsetHeight făcute „din urmă”.
 
     // ── Randare markeri pentru secolul curent ──
     function render() {
@@ -516,11 +447,8 @@
         _circleById = {};
         _evById = {};
 
-        // curățăm etichetele vechi
-        Object.keys(_labelById).forEach(function (id) {
-            var rec = _labelById[id];
-            if (rec && rec.el && rec.el.parentNode) rec.el.parentNode.removeChild(rec.el);
-        });
+        // curățăm etichetele vechi (markeri Leaflet → ies o dată cu grupul)
+        removeLabels();
         _labelById = {};
 
         var events = eventsForPeriod();
@@ -575,39 +503,56 @@
                 });
             }
 
-            // Eticheta permanentă — centrată mereu deasupra marginii de sus
-            // a cercului (poziția e calculată în relayoutLabels).
+            // Eticheta permanentă — L.marker ancorat GEOGRAFIC pe marginea de
+            // sus a cercului (circleTopLatLng). Leaflet mișcă markerul o dată cu
+            // harta la pan / zoom / pinch / flyTo, exact ca cercul, așa că
+            // eticheta rămâne mereu lipită de propria rază; centrarea pe
+            // orizontală și distanța de 8 px față de contur sunt fixe în CSS
+            // (.battles-label), nu măsurători în pixeli recalculate din urmă.
             var txt = ev[mapL] || ev.ro;
             circle._labelText = txt.titlu; // expus pentru teste
             var el = document.createElement('div');
-            // „leaflet-zoom-animated”: tranziția CSS de zoom (activă doar pe
-            // durata .leaflet-zoom-anim) mișcă liniar eticheta la schimbarea
-            // transform-ului din handlerul „zoomanim”, ca la markere.
-            el.className = 'battles-label leaflet-zoom-animated';
+            el.className = 'battles-label';
             el.textContent = txt.titlu;
             el.title = txt.titlu;
             el.addEventListener('click', function (e) {
                 e.stopPropagation();
                 circle.openPopup();
             });
-            var pane = map.getPane('pane_battles_labels');
-            if (pane) pane.appendChild(el);
-            _labelById[ev.id] = { el: el, circle: circle, ev: ev };
+            var labelMarker = L.marker(circleTopLatLng(ev.lat, ev.lng, radius), {
+                pane: 'pane_battles_labels',
+                icon: L.divIcon({
+                    className: 'battles-label-anchor',  // fără cutia albă .leaflet-div-icon
+                    html: el,                           // divIcon acceptă direct elementul
+                    iconSize: [0, 0],                   // ancora e punctul geographic
+                    iconAnchor: [0, 0]
+                }),
+                interactive: true,
+                keyboard: false,          // ca înainte: eticheta nu e focusabilă
+                bubblingMouseEvents: false // click-ul pe etichetă nu „atinge” harta
+            });
+            labelMarker.addTo(_group);
+            _labelById[ev.id] = { el: el, marker: labelMarker, circle: circle, ev: ev };
 
             _circleById[ev.id] = circle;
             _evById[ev.id] = ev;
             circle.addTo(_group);
         });
 
-        relayoutLabels();
         updatePanel();
+    }
 
-        // Fonturile se pot încărca după randare și schimbă lățimea etichetelor
-        if (document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(function () {
-                if (_visible) relayoutLabels();
-            });
-        }
+    // Scoate etichetele de pe hartă (markerii ies din pane o dată cu iconul).
+    function removeLabels() {
+        Object.keys(_labelById).forEach(function (id) {
+            var rec = _labelById[id];
+            if (!rec) return;
+            if (rec.marker) {
+                if (_group && _group.hasLayer(rec.marker)) _group.removeLayer(rec.marker);
+                else if (rec.marker.remove) rec.marker.remove();
+            }
+            if (rec.el && rec.el.parentNode) rec.el.parentNode.removeChild(rec.el);
+        });
     }
 
     // ── API public ──
@@ -629,10 +574,7 @@
             });
         } else {
             if (_group) map.removeLayer(_group);
-            Object.keys(_labelById).forEach(function (id) {
-                var rec = _labelById[id];
-                if (rec && rec.el && rec.el.parentNode) rec.el.parentNode.removeChild(rec.el);
-            });
+            removeLabels();
             _labelById = {};
         }
     };
@@ -672,11 +614,15 @@
             c._labelText = txt.titlu; // expus pentru teste
             var rec = _labelById[id];
             if (rec && rec.el) {
+                // Elementul trăiește deja în iconul markerului (divIcon.html),
+                // deci textul se schimbă pe loc, fără flicker. Ancora geografică
+                // nu depinde de text, iar centrarea pe orizontală e făcută în
+                // CSS (translate(-50%, …)) → noul titlu rămâne exact deasupra
+                // aceleiași raze, fără nicio repoziționare.
                 rec.el.textContent = txt.titlu;
                 rec.el.title = txt.titlu;
             }
         });
-        relayoutLabels();
         updatePanel();
     });
 
