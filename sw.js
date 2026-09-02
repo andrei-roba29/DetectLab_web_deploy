@@ -1,10 +1,10 @@
 /* ============================================================
-   DetectLab — Service Worker v1.4.4
+   DetectLab — Service Worker v1.4.5
    ============================================================ */
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v62-battles-v3';
+const CACHE_NAME = 'detectlab-v63-satbase-native18';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -51,6 +51,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20260814-coordinate-search',
   'js/map-app.js?v=20260815-last-location',
   'js/map-app.js?v=20260819-sat60-premium-layer',
+  'js/map-app.js?v=20260902-satbase-native18',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',
@@ -122,6 +123,7 @@ const PRECACHE_URLS = [
   // Archaeological Report: circular 1–10 km radius, blue LIDAR-like UI, dark PDF.
   'js/archeo-report-pdf.js?v=20260831-arch-report-v4',
   'js/archeo-report.js?v=20260831-arch-report-v4',
+  'js/archeo-report.js?v=20260902-arch-report-v4',
   'js/translations.js?v=20260831-arch-report-v4',
   'css/styles.css?v=20260831-arch-report-v4',
   // Battles v3: on-hover century bubble on the period slider + the century

@@ -2066,6 +2066,20 @@
                 };
             })();
 
+            // ── NIVELUL NATIV MAXIM AL IMAGERIEI DE BAZĂ (ESRI WORLD IMAGERY) ──
+            // Esri NU are tile-uri de satelit până la același zoom peste tot: în zonele
+            // fără imagini de detaliu (mare parte din rural), cererea unui nivel peste
+            // ultimul disponibil răspunde HTTP 200 cu un tile-placeholder gri pe care
+            // scrie "Map data not yet available". Pentru Leaflet tile-ul e "valid" (nu
+            // e eroare de rețea), deci placeholderul rămâne afișat peste harta de bază
+            // și e scalat mai departe la fiecare zoom — exact bug-ul raportat la z19/z20.
+            // Ultimul nivel cu acoperire reală completă în România (inclusiv rural) e
+            // 18; îl forțăm ca maxNativeZoom, iar Leaflet face overzoom cu tile-urile
+            // reale de la 18 la z19/z20, fără să mai ceară vreodată niveluri inexistente.
+            // Reglabil live din consolă, fără redeploy: window.SATELLITE_MAX_NATIVE_Z.
+            var SATELLITE_LAST_NATIVE_Z =
+                (window.SATELLITE_MAX_NATIVE_Z !== undefined) ? window.SATELLITE_MAX_NATIVE_Z : 18;
+
             map.createPane('pane_satellite');
             map.getPane('pane_satellite').style.zIndex = 400;
             var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -2073,11 +2087,14 @@
                 opacity: 1.0,
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
                 minZoom: 1,
-                // maxZoom must reach the map's own max (20): with maxZoom 19 Leaflet
-                // removed every satellite tile as soon as the map hit z20, leaving a
-                // fully white base map. maxNativeZoom 19 makes z20 reuse scaled z19 tiles.
+                // maxZoom trebuie să ajungă la maximul hărții (20): cu maxZoom 19 Leaflet
+                // scotea toate tile-urile satelit la z20, lăsând harta complet albă.
+                // maxNativeZoom e ținut la SATELLITE_LAST_NATIVE_Z (18), ca Leaflet să nu
+                // ceară NICIODATĂ nivele peste 18: la z19/z20 refolosește (overzoom)
+                // tile-urile reale de la 18 în loc de placeholder-ele "Map data not yet
+                // available" pe care le răspunde Esri la nivelurile fără acoperire.
                 maxZoom: 20,
-                maxNativeZoom: 19
+                maxNativeZoom: SATELLITE_LAST_NATIVE_Z
             }).addTo(map);
             window._satLayer = satelliteLayer;
 

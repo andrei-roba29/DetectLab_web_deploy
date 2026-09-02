@@ -1908,8 +1908,12 @@
     function loadSourceTiles(source, proj, lat0) {
         var spanDegLng = proj.spanM / (111320 * Math.cos(lat0 * Math.PI / 180));
         var spanDegLat = proj.spanM / 111320;
+        // maxNativeZoom implicit 18: peste 18 Esri World Imagery răspunde 200 cu
+        // tile-placeholder "Map data not yet available" în zonele fără acoperire
+        // (vezi js/map-app.js, SATELLITE_LAST_NATIVE_Z) — figurile nu trebuie să
+        // prindă astfel de tile-uri.
         var z = Math.max(source.minZoom || 0,
-            Math.min(source.maxNativeZoom || 19, proj.z + (source.zOffset || 0)));
+            Math.min(source.maxNativeZoom || 18, proj.z + (source.zOffset || 0)));
         var tiles = tileRangeFor(
             proj.centerLat - spanDegLat / 2, proj.centerLat + spanDegLat / 2,
             proj.centerLng - spanDegLng / 2, proj.centerLng + spanDegLng / 2, z
@@ -2183,7 +2187,7 @@
         var apmPolys = (ctx && ctx.apmGrid) ? apmGridPolygons(ctx.apmGrid) : [];
         tasks.push(captureFigure({
             centerLat: c.lat, centerLng: c.lng, spanM: spanM,
-            sources: [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 19 }],
+            sources: [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 18 }],
             title: trx('arch_report_fig_apm_title'),
             badge: 'APM 2.0',
             draw: function (g, proj) {
@@ -2203,7 +2207,7 @@
         }));
 
         if (model.meta.lidarInArea > 0 || model.meta.lidarCount > 0) {
-            var lidarSources = [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 19 }]
+            var lidarSources = [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 18 }]
                 .concat(lidarImageSources());
             tasks.push(captureFigure({
                 centerLat: c.lat, centerLng: c.lng, spanM: spanM,
@@ -2221,7 +2225,7 @@
         if (model.meta.bubblesInArea > 0) {
             tasks.push(captureFigure({
                 centerLat: c.lat, centerLng: c.lng, spanM: spanM,
-                sources: [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 19 }],
+                sources: [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 18 }],
                 title: trx('arch_report_fig_potential_title'),
                 badge: trx('arch_report_fig_potential_badge'),
                 draw: function (g, proj) {
