@@ -4382,9 +4382,13 @@
             border: 1px solid rgba(232, 179, 75, 0.35);
         }
         .battles-popup .leaflet-popup-content {
-            margin: 14px 16px;
+            margin: 10px 12px;
             line-height: 1.5;
-            max-width: 400px;
+            /* cap lățimea și înălțimea în funcție de ecran — fereastra nu mai
+               acoperă tot ecranul pe telefoane; conținutul extra se derulează */
+            max-width: min(300px, calc(100vw - 56px));
+            max-height: min(330px, 52vh);
+            overflow-y: auto;
         }
         .battles-popup-inner {
             display: flex;
@@ -4445,7 +4449,8 @@
         .battles-popup-desc {
             font-size: 0.78rem;
             color: #c9d3df;
-            max-height: 180px;
+            /* descrierea scrollează intern; pe ecrane mici se limitează și mai mult */
+            max-height: min(150px, 24vh);
             overflow-y: auto;
             padding-right: 4px;
             border-top: 1px solid rgba(184, 216, 240, 0.12);
@@ -4482,6 +4487,33 @@
         }
         .battles-popup .leaflet-popup-close-button:hover {
             color: #fff !important;
+        }
+
+        /* Telefoane: popup-ul bătăliilor devine compact — margini, fonturi și
+           înălțimi reduse, ca să nu acopere ecranul. */
+        @media (max-width: 600px) {
+            .battles-popup .leaflet-popup-content {
+                margin: 8px 10px;
+                max-width: calc(100vw - 44px);
+                max-height: 46vh;
+            }
+            .battles-popup-inner { gap: 5px; }
+            .battles-popup-title { font-size: 0.9rem; padding-bottom: 4px; }
+            .battles-popup-meta { font-size: 0.66rem; }
+            .battles-popup-row { font-size: 0.72rem; gap: 6px; }
+            .battles-popup-k { min-width: 74px; font-size: 0.58rem; }
+            .battles-popup-context { font-size: 0.62rem; padding: 3px 6px; }
+            .battles-popup-desc {
+                font-size: 0.74rem;
+                max-height: 20vh;
+                padding-top: 6px;
+            }
+            .battles-popup-search { font-size: 0.72rem; padding: 6px 10px; gap: 5px; }
+        }
+        @media (max-width: 420px) {
+            .battles-popup .leaflet-popup-content { max-height: 42vh; }
+            .battles-popup-title { font-size: 0.86rem; }
+            .battles-popup-desc { max-height: 18vh; }
         }
 
         footer .nav-logo span {

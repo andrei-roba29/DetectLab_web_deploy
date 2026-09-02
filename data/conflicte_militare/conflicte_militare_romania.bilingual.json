@@ -4545,15 +4545,15 @@
    "an_start": 1655,
    "an_end": 1655,
    "secol_n": 17,
-   "lat": 46.45,
-   "lng": 24.4,
+   "lat": 44.828,
+   "lng": 26.288,
    "zona_aprox": 0,
    "teritoriu": "da",
    "ro": {
     "titlu": "Bătălia de la Șoplea",
     "tip": "Bătălie",
-    "locatie": "Șoplea (județul Mureș)",
-    "regiune": "Transilvania",
+    "locatie": "Șoplea (comuna Drăgănești, județul Prahova)",
+    "regiune": "Țara Românească",
     "participanti": "Principatul Transilvaniei (George Rákóczi al II-lea) vs. răsculații (seimenii și husarii)",
     "descriere": "Răscoala seimenilor (mercenarii) și a husarilor, aflată în plină efervescență, este înfrântă de trupele principelui George Rákóczi al II-lea la Șoplea. Revolta răsculaților, care avea și o componentă antierarhică și antinobiliară, este zdrobită, marcând sfârșitul unei crize interne majore a Transilvaniei.",
     "rezultat": "Reprimarea răscoalei seimenilor"
@@ -4561,8 +4561,8 @@
    "en": {
     "titlu": "Battle of Șoplea",
     "tip": "Battle",
-    "locatie": "Șoplea (Mureș county)",
-    "regiune": "Transylvania",
+    "locatie": "Șoplea (Drăgănești commune, Prahova county)",
+    "regiune": "Wallachia",
     "participanti": "Principality of Transylvania (George Rákóczi II) vs. the rebels (the Seimeni and the Hussars)",
     "descriere": "The revolt of the Seimeni (mercenaries) and the Hussars, in full ferment, was defeated by the troops of Prince George Rákóczi II at Șoplea. The rebellion of the rebels, which also had an anti-hierarchical and anti-noble component, was crushed, marking the end of a major internal crisis in Transylvania.",
     "rezultat": "Suppression of the Seimeni revolt"

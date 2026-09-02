@@ -160,7 +160,7 @@
 - **RM-147** Bătălia de la Hotin (1621) · 1621-09 — Hotinul este azi în Ucraina; inclus ca eveniment de la granița istorică a Moldovei.
 - **RM-149** Bătălia de la Rabna · 1637 — Locația exactă a bătăliei este disputată.
 - **RM-150** Bătălia de la Ojogeni · 1639 — Localizarea exactă a bătăliei este disputată.
-- **RM-152** Bătălia de la Șoplea · 1655-06-26 — Una dintre cele mai cunoscute răscoale din Transilvania secolului al XVII-lea.
+- **RM-152** Bătălia de la Șoplea · 1655-06-26 — Una dintre cele mai cunoscute răscoale din Transilvania secolului al XVII-lea; bătălia finală a avut loc la Șoplea, azi în comuna Drăgănești (județul Prahova).
 - **RM-155** Bătălia de la Sânmartin (1685) · 1685 — Localizarea exactă a bătăliei este disputată.
 - **RM-160** Războiul Ruso-Turc (1768–1774) și ocupația Principatelor · 1768 — Bătăliile de la Larga și Cahul au avut loc în afara granițelor actuale ale României.
 - **RM-162** Războiul Ruso-Turc (1806–1812) și anexarea Basarabiei · 1806 — Moștenirea teritorială a evenimentului privește și Republica Moldova de azi.

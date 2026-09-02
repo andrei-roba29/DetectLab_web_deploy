@@ -15,8 +15,14 @@
  *  • fiecare eveniment: zonă colorată semitransparentă cu contur punctat +
  *    etichetă permanentă cu titlul bătăliei, ANCORATĂ STATIC DEASUPRA
  *    PROPRIEI RAZE (marginea de sus a cercului); poziția rămâne pe aceeași
- *    axă la pan/zoom, fără redistribuire în jurul cercului
- *  • click pe zonă SAU etichetă → fereastră extinsă cu descrierea completă
+ *    axă la pan/zoom, fără redistribuire în jurul cercului. La zoom animat
+ *    (rotiță / dublu-click) eticheta alunecă LINIAR la noua poziție, o dată cu
+ *    cercurile — pe evenimentul „zoomanim”, prin tranziția CSS proprie a
+ *    Leaflet (clasa .leaflet-zoom-animated) — iar la pinch-zoom este
+ *    repoziționată cadru-cu-cadru pe „zoom”; nu mai așteaptă „zoomend”,
+ *    deci nu mai sare după fiecare zoom
+ *  • click pe zonă SAU etichetă → fereastră compactă (dimensiuni limitate
+ *    raportat la ecran, cu scroll intern la nevoie) cu descrierea completă
  *    (bilingvă) + buton „Caută mai mult / Search more" → căutare Google
  *    cu titlul și anul bătăliei
  * ===================================================================== */
@@ -141,6 +147,15 @@
             _mapHooked = true;
             var relayout = function () { if (_visible) relayoutLabels(); };
             map.on('moveend zoomend resize viewreset', relayout);
+            // „zoom” se emite continuu în timpul pinch-zoom (touch / trackpad):
+            // etichetele urmăresc cercurile cadru-cu-cadru, fără salt final.
+            map.on('zoom', relayout);
+            // „zoomanim” se emite o singură dată la zoom-ul animat (rotiță /
+            // dublu-click): etichetele primesc poziția finală o dată cu începutul
+            // animației, iar tranziția CSS de 0.25s (activă doar cât conținătorul
+            // are clasa .leaflet-zoom-anim) le duce lin la loc — identic cu
+            // comportamentul markerilor Leaflet, fără să se scaleze textul.
+            map.on('zoomanim', function (e) { if (_visible) relayoutLabelsZoomAnim(e); });
         }
     }
 
@@ -357,6 +372,45 @@
         });
     }
 
+    // Varianta pentru evenimentul „zoomanim” (zoom animat cu rotița /
+    // dublu-click): calculăm poziția FINALĂ a etichetei în coordonatele noului
+    // nivel de zoom (Leaflet expune _latLngToNewLayerPoint, la fel ca pentru
+    // markere). Clasa .leaflet-zoom-animated de pe etichetă + clasa
+    // .leaflet-zoom-anim pusă de Leaflet pe conținător în timpul animației
+    // produc tranziția CSS lin spre poziția finală; fără aceasta, etichetele
+    // rămâneau înghețate pe durata animației și săreau abia la „zoomend”.
+    function relayoutLabelsZoomAnim(e) {
+        var map = getMap();
+        if (!map || typeof map._latLngToNewLayerPoint !== 'function') return;
+
+        var fromZoom = (typeof map.getZoom === 'function') ? map.getZoom() : e.zoom;
+        var scale = (typeof map.getZoomScale === 'function')
+            ? map.getZoomScale(e.zoom, fromZoom)
+            : Math.pow(2, e.zoom - fromZoom);
+
+        Object.keys(_labelById).forEach(function (id) {
+            var rec = _labelById[id];
+            var circle = rec.circle;
+            var el = rec.el;
+            var latlng = (typeof circle.getLatLng === 'function') ? circle.getLatLng() : null;
+            if (!latlng) return;
+
+            var w = el.offsetWidth || 0;
+            var h = el.offsetHeight || 0;
+            if (!w || !h) return;
+
+            var center = map._latLngToNewLayerPoint(latlng, e.zoom, e.center);
+            var rMeters = (typeof circle.getRadius === 'function') ? circle.getRadius() : 0;
+            // raza în pixeli la noul nivel de zoom = raza curentă × factorul de zoom
+            var rPx = circlePixelRadius(map, latlng, rMeters) * scale;
+            var x = center.x - w / 2;
+            var y = center.y - rPx - LABEL_GAP - h;
+
+            el.style.transform = 'translate3d(' +
+                Math.round(x) + 'px,' + Math.round(y) + 'px,0)';
+        });
+    }
+
     // ── Randare markeri pentru secolul curent ──
     function render() {
         var map = getMap();
@@ -406,11 +460,15 @@
             // Popup-ul complet; click pe zonă SAU pe etichetă îl deschide
             // (eticheta interactivă redirecționează click-ul către cerc,
             //  iar bindPopup are toggle-ul standard Leaflet)
+            // Popup compact, cu dimensiuni limitate și de CSS în funcție de
+            // ecran (vezi .battles-popup în styles.css): nu acoperă tot
+            // ecranul pe telefon.
             circle.bindPopup(buildPopupContent(ev), {
-                maxWidth: 430,
-                minWidth: 280,
+                maxWidth: 320,
+                minWidth: 220,
                 className: 'battles-popup',
                 autoPan: true,
+                autoPanPadding: [20, 20],
                 closeButton: true
             });
 
@@ -419,7 +477,10 @@
             var txt = ev[mapL] || ev.ro;
             circle._labelText = txt.titlu; // expus pentru teste
             var el = document.createElement('div');
-            el.className = 'battles-label';
+            // „leaflet-zoom-animated”: tranziția CSS de zoom (activă doar pe
+            // durata .leaflet-zoom-anim) mișcă liniar eticheta la schimbarea
+            // transform-ului din handlerul „zoomanim”, ca la markere.
+            el.className = 'battles-label leaflet-zoom-animated';
             el.textContent = txt.titlu;
             el.title = txt.titlu;
             el.addEventListener('click', function (e) {
