@@ -1045,18 +1045,23 @@ section('End-to-end analysis (runReport)');
     {
         const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
         const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-        const V = '?v=20260831-arch-report-v4';      // this release's versioned assets
+        // Sat-base native-zoom fix: only js/archeo-report.js changed, so it gets its
+        // own ?v= tag; the PDF builder, translations and styles keep their page tags.
+        const Vpdf = '?v=20260831-arch-report-v4';   // archeo-report-pdf.js (unchanged this fix)
+        const Vfix = '?v=20260902-arch-report-v4';   // archeo-report.js — this fix's tag
         const V0 = '?v=20260827-arch-report';        // pdf-writer.js is unchanged this release
-        ['js/archeo-report-pdf.js', 'js/archeo-report.js', 'js/translations.js'].forEach(function (f) {
-            check(f + ' is loaded by index.html (this release)', html.indexOf('src="' + f + V + '"') !== -1);
-        });
-        check('styles.css is versioned for this release', html.indexOf('href="css/styles.css' + V + '"') !== -1);
+        const Vtr = '?v=20260831-battles-v2';        // translations.js (current page tag)
+        const Vcss = '?v=20260901-battles-v5';       // styles.css (current page tag)
+        check('js/archeo-report.js is loaded by index.html (this fix)', html.indexOf('src="js/archeo-report.js' + Vfix + '"') !== -1);
+        check('js/archeo-report-pdf.js is loaded by index.html', html.indexOf('src="js/archeo-report-pdf.js' + Vpdf + '"') !== -1);
+        check('js/translations.js is loaded by index.html', html.indexOf('src="js/translations.js' + Vtr + '"') !== -1);
+        check('styles.css is versioned on the page', html.indexOf('href="css/styles.css' + Vcss + '"') !== -1);
         check('js/pdf-writer.js is still loaded', html.indexOf('src="js/pdf-writer.js' + V0 + '"') !== -1);
         check('pdf-writer loads before the report PDF builder',
-            html.indexOf('js/pdf-writer.js' + V0) < html.indexOf('js/archeo-report-pdf.js' + V));
+            html.indexOf('js/pdf-writer.js' + V0) < html.indexOf('js/archeo-report-pdf.js' + Vpdf));
         check('the report script loads after its data sources',
-            html.indexOf('js/archeo-potential.js') < html.indexOf('js/archeo-report.js' + V) &&
-            html.indexOf('js/lidar-scanner.js') < html.indexOf('js/archeo-report.js' + V));
+            html.indexOf('js/archeo-potential.js') < html.indexOf('js/archeo-report.js' + Vfix) &&
+            html.indexOf('js/lidar-scanner.js') < html.indexOf('js/archeo-report.js' + Vfix));
         ['archReportRow', 'archReportToggle', 'archReportRunBtn', 'archReportPdfBtn',
          'archReportPdfLang', 'archReportPdfLangRo', 'archReportPdfLangEn',
          'archReportResultsToggleWrap', 'archReportResultsToggle', 'archReportStatus', 'archReportSummary',
@@ -1068,7 +1073,7 @@ section('End-to-end analysis (runReport)');
         check('the row sits in the premium category',
             /class="transp-layer-row[^"]*" data-category="premium"[^>]*id="archReportRow"/.test(html));
 
-        const versioned = (html.match(/(?:src|href)="((?:js|css)\/[^"]+\?v=20260827-arch-report[^"]*)"/g) || [])
+        const versioned = (html.match(/(?:src|href)="((?:js|css)\/[^"]+\?v=2026\d{4}-arch-report[^"]*)"/g) || [])
             .map(function (m) { return m.slice(m.indexOf('"') + 1, -1); });
         const missing = versioned.filter(function (u) { return sw.indexOf("'" + u + "'") === -1; });
         check('every cache-busted asset is pre-cached by the SW (' + versioned.length + ')',
@@ -1082,7 +1087,7 @@ section('End-to-end analysis (runReport)');
         check('every .arch-report-* class emitted by the JS is styled (' + classes.size + ')',
             unstyled.length === 0, unstyled.join(', '));
         check('CACHE_NAME was bumped for this release',
-            /const CACHE_NAME = 'detectlab-v59-babel-multisource'/.test(sw),
+            /const CACHE_NAME = 'detectlab-v63-satbase-native18'/.test(sw),
             (sw.match(/const CACHE_NAME = '[^']+'/) || [])[0]);
     }
 
