@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v65-josephine-sonar';
+const CACHE_NAME = 'detectlab-v66-battles-compact';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -131,7 +131,13 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20260901-battles-v3',
   // Josephine source transition: pure CSS/SVG sonar overlay (the animated
   // sonar webp/mp4 are gone — no more image glitching on the map).
-  'css/styles.css?v=20260902-josephine-sonar'
+  'css/styles.css?v=20260902-josephine-sonar',
+  // Battles v5: compact battle info window — hard width/height caps (px + vh/vw),
+  // smaller type and spacing, and a long description collapsed to a few lines
+  // behind a "Detalii / Details" toggle, so the popup no longer covers the screen.
+  'js/battles-layer.js?v=20260902-battles-compact',
+  'js/translations.js?v=20260902-battles-compact',
+  'css/styles.css?v=20260902-battles-compact'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

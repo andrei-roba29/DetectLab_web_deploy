@@ -74,12 +74,14 @@ global.translations = {
         battles_context_note: 'Eveniment de context — în afara granițelor actuale',
         battles_popup_location: 'Locație', battles_popup_participants: 'Participanți',
         battles_popup_result: 'Rezultat', battles_search_more: 'Caută mai mult',
+        battles_desc_more: 'Detalii', battles_desc_less: 'Ascunde',
     },
     en: {
         battles_count: '{n} events',
         battles_context_note: 'Context event — outside today\'s borders',
         battles_popup_location: 'Location', battles_popup_participants: 'Participants',
         battles_popup_result: 'Outcome', battles_search_more: 'Search more',
+        battles_desc_more: 'Details', battles_desc_less: 'Hide',
     },
 };
 
@@ -87,8 +89,15 @@ global.translations = {
 const circles = [];
 function stubLayer() {
     return {
-        _popupContent: null, _tooltipContent: null, _popupOpen: false,
-        bindPopup(content) { this._popupContent = content; return this; },
+        _popupContent: null, _popupOptions: null, _tooltipContent: null, _popupOpen: false,
+        // Leaflet reuses the existing Popup instance when no options are passed
+        // (live content update) and creates a new one when options are given.
+        bindPopup(content, options) {
+            this._popupContent = content;
+            if (options) this._popupOptions = options;
+            return this;
+        },
+        on() { return this; },
         setPopupContent(content) { this._popupContent = content; return this; },
         openPopup() { this._popupOpen = true; return this; },
         closePopup() { this._popupOpen = false; return this; },
@@ -179,6 +188,65 @@ function assert(cond, msg) {
     assert(circle._popupContent.includes('Bătălia de la Posada'), 'RO title in popup');
     assert(circle._popupContent.includes('Caută mai mult'), 'RO search button label');
     assert(circle._popupContent.includes('google.com/search?q='), 'Google search URL present');
+
+    console.log('4a) Info window stays COMPACT — hard caps + collapsed description:');
+    const popOpts = circle._popupOptions;
+    assert(!!popOpts, 'popup bound with explicit size options');
+    assert(popOpts.className === 'battles-popup', 'popup carries .battles-popup (CSS caps it per screen)');
+    assert(popOpts.maxWidth <= 264, 'maxWidth capped to a compact ' + popOpts.maxWidth + 'px (was 320)');
+    assert(popOpts.minWidth <= popOpts.maxWidth - 20, 'minWidth stays below maxWidth → ' + popOpts.minWidth);
+    assert(popOpts.maxHeight > 0 && popOpts.maxHeight <= 300, 'maxHeight set → the window cannot grow past ' + popOpts.maxHeight + 'px');
+    assert(popOpts.keepInView === true, 'keepInView keeps the whole window inside the viewport');
+    assert(/battles-popup-desc is-clamped/.test(circle._popupContent), 'long description starts collapsed (.is-clamped)');
+    assert(/DetectLabBattlesPopup\.toggleDesc\(this\)/.test(circle._popupContent), 'collapsed description offers a Details toggle');
+    assert(circle._popupContent.includes('Detalii'), 'RO toggle label = „Detalii”');
+
+    const cssSrc = fs.readFileSync(path.join(ROOT, 'css/styles.css'), 'utf-8');
+    const popupCss = cssSrc.slice(cssSrc.indexOf('.battles-popup .leaflet-popup-content-wrapper'),
+                                  cssSrc.indexOf('footer .nav-logo span'));
+    assert(/max-width: min\(260px/.test(popupCss), 'CSS caps the desktop width at 260px');
+    assert(/max-height: min\(300px, 44vh\)/.test(popupCss), 'CSS caps the desktop height at 300px / 44vh');
+    assert(/@media \(max-width: 600px\)[\s\S]*?max-width: min\(240px/.test(popupCss), 'phones: ≤ 240px wide');
+    assert(/@media \(max-width: 600px\)[\s\S]*?max-height: min\(280px, 40vh\)/.test(popupCss), 'phones: ≤ 280px / 40vh tall');
+    assert(/@media \(max-width: 420px\)[\s\S]*?max-width: min\(224px/.test(popupCss), 'small phones: ≤ 224px wide');
+    assert(/-webkit-line-clamp: 3/.test(popupCss), 'description clamped to 3 lines by default');
+    assert(!/maxWidth: 320/.test(src) && !/minWidth: 220/.test(src), 'old oversized popup values are gone from JS');
+
+    console.log('4a2) popupMetrics() follows the screen size:');
+    const metricsFn = window.DetectLabBattlesPopup.metrics;
+    window.innerWidth = 360; window.innerHeight = 640;
+    let pmPhone = metricsFn();
+    assert(pmPhone.maxW <= 224, 'phone 360px wide → popup ≤ 224px, got ' + pmPhone.maxW);
+    assert(pmPhone.maxH <= Math.round(640 * 0.42), 'phone 640px tall → popup ≤ 42vh (' + Math.round(640 * 0.42) + 'px), got ' + pmPhone.maxH);
+    window.innerWidth = 1440; window.innerHeight = 900;
+    const pmDesk = metricsFn();
+    assert(pmDesk.maxW === 264 && pmDesk.maxH === 300, 'desktop → 264×300 cap, got ' + pmDesk.maxW + '×' + pmDesk.maxH);
+    delete window.innerWidth; delete window.innerHeight;
+
+    console.log('4a3) „Detalii / Ascunde” expands and collapses the description:');
+    const descClasses = new Set(['battles-popup-desc', 'is-clamped']);
+    const descEl = {
+        classList: {
+            contains: c => descClasses.has(c),
+            toggle: (c, on) => { if (on === undefined) on = !descClasses.has(c); if (on) descClasses.add(c); else descClasses.delete(c); return on; },
+        },
+    };
+    const btnAttrs = {};
+    let btnLabel = 'Detalii';
+    const btnEl = {
+        previousElementSibling: descEl,
+        style: {},
+        classList: { toggle: () => {} },
+        setAttribute: (k, v) => { btnAttrs[k] = String(v); },
+        querySelector: () => ({ set textContent(v) { btnLabel = v; }, get textContent() { return btnLabel; } }),
+    };
+    window.DetectLabBattlesPopup.toggleDesc(btnEl);
+    assert(descClasses.has('is-open'), 'toggle opens the description');
+    assert(btnAttrs['aria-expanded'] === 'true', 'aria-expanded → true');
+    assert(btnLabel === 'Ascunde', 'label becomes „Ascunde” → ' + btnLabel);
+    window.DetectLabBattlesPopup.toggleDesc(btnEl);
+    assert(!descClasses.has('is-open') && descClasses.has('is-clamped'), 'toggle collapses it back to the 3-line clamp');
+    assert(btnAttrs['aria-expanded'] === 'false' && btnLabel === 'Detalii', 'aria/label reset → ' + btnLabel);
 
     console.log('4b) Labels stay static during zoom (ride Leaflet\'s own zoom transition):');
     const labelEls = panes['pane_battles_labels']._children;
