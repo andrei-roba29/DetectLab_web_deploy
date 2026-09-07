@@ -6751,36 +6751,73 @@
     margin-top: 0.45em;
 }
 
-/* ── Layer visibility highlight (neon green) ──
-   Fiecare strat conturat verde neon când viewport-ul intersectează acoperirea sa.
-   Pentru grupuri cu substraturi: doar săgeata de expand verde, substraturile individuale verzi. */
+/* ── Layer coverage highlight ──
+   Partial viewport intersection = green. Group rows keep their normal style;
+   only the expand arrow and each intersecting leaf row are highlighted.
+   Keep transitions on the base elements so fading out is smooth too. */
+#transpPanel .transp-layer-row,
+#histSubLayers > div,
+#lidarSubLayers > div,
+#romanSubLayers > div,
+#histPremiumSubLayers > div {
+    outline: 1px solid transparent;
+    outline-offset: -1px;
+    transition: background-color 0.25s ease, border-color 0.25s ease,
+        border-radius 0.25s ease, outline-color 0.25s ease,
+        box-shadow 0.25s ease, transform 0.25s ease;
+}
+
 .layer-visible-highlight {
-    border: 2px solid #39ff14 !important;
-    box-shadow:
-        0 0 8px #39ff14,
-        0 0 16px rgba(57,255,20,0.6),
-        0 0 28px rgba(57,255,20,0.35),
-        inset 0 0 6px rgba(57,255,20,0.25) !important;
-    border-radius: 8px !important;
-    transition: border 0.3s ease, box-shadow 0.3s ease !important;
+    /* An inward outline stays visible inside clipped/blurred PWA panels.
+       No border-width or padding changes: sliders and text never move. */
+    outline: 1px solid rgba(57,255,20,0.85) !important;
+    outline-offset: -1px;
+    border-radius: 6px !important;
+    box-shadow: 0 0 0 1px rgba(57,255,20,0.15),
+        0 0 8px rgba(57,255,20,0.35) !important;
+    background-color: rgba(57,255,20,0.04) !important;
 }
 
-.layer-group-arrow-highlight {
-    color: #39ff14 !important;
-    filter: drop-shadow(0 0 6px #39ff14) drop-shadow(0 0 12px rgba(57,255,20,0.85)) !important;
-    transition: color 0.3s ease, filter 0.3s ease !important;
-}
-
-/* Sublayers inside hist/lidar/roman/histPremium need same neon when visible */
+/* A fine outline plus a left accent in the containers' existing 6px gutter.
+   The shadow draws the 2px accent without adding a layout-affecting border. */
 #histSubLayers .layer-visible-highlight,
 #lidarSubLayers .layer-visible-highlight,
 #romanSubLayers .layer-visible-highlight,
 #histPremiumSubLayers .layer-visible-highlight {
-    border: 2px solid #39ff14 !important;
-    box-shadow:
-        0 0 6px #39ff14,
-        0 0 14px rgba(57,255,20,0.55),
-        inset 0 0 4px rgba(57,255,20,0.2) !important;
-    border-radius: 6px !important;
-    padding: 6px 6px !important;
+    outline-color: rgba(57,255,20,0.15) !important;
+    box-shadow: -2px 0 0 #39ff14 !important;
+}
+
+/* Coverage is not keyboard focus: keep the existing, distinct focus ring.
+   The green shadow/accent remains visible underneath it. */
+#transpPanel .layer-visible-highlight:focus-visible {
+    outline: 2px solid rgba(184,216,240,0.75) !important;
+    outline-offset: 3px;
+}
+
+/* Preserve the inline expand/collapse rotation as well as the colour fade. */
+#histExpandIcon,
+#lidarExpandIcon,
+#romanExpandIcon,
+#histPremiumExpandIcon {
+    transition: transform 0.25s ease, color 0.25s ease, filter 0.25s ease !important;
+}
+
+.layer-group-arrow-highlight {
+    color: #39ff14 !important;
+    filter: drop-shadow(0 0 3px rgba(57,255,20,0.6)) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #transpPanel .transp-layer-row,
+    #histSubLayers > div,
+    #lidarSubLayers > div,
+    #romanSubLayers > div,
+    #histPremiumSubLayers > div,
+    #histExpandIcon,
+    #lidarExpandIcon,
+    #romanExpandIcon,
+    #histPremiumExpandIcon {
+        transition: none !important;
+    }
 }
