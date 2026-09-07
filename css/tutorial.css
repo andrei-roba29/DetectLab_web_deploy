@@ -1,0 +1,549 @@
+/* ──────────────────────────────────────────────────────────────
+   DetectLab — Mini tutorial (slides) + help button
+   Purple theme, transparent blurred background.
+   The overlay is built by js/tutorial.js and appended to <body>.
+   ────────────────────────────────────────────────────────────── */
+
+:root {
+    --tut-purple: #a070e8;
+    --tut-purple-soft: #c9a6ff;
+    --tut-purple-deep: #6B3FA0;
+}
+
+/* ── Help ("?") button — top-right corner of the map ── */
+.map-help-btn {
+    position: absolute;
+    top: 14px;
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    right: 14px;
+    /* Below .transp-panel (1001) on purpose: the open layers panel simply
+       covers the button instead of floating on top of it. */
+    z-index: 1000;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(107, 63, 160, 0.55);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(201, 166, 255, 0.55);
+    color: #efe4ff;
+    cursor: pointer;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45), 0 0 14px rgba(160, 112, 232, 0.35);
+    transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.map-help-btn:hover {
+    background: rgba(140, 88, 205, 0.75);
+    border-color: rgba(201, 166, 255, 0.9);
+    box-shadow: 0 4px 22px rgba(0, 0, 0, 0.5), 0 0 22px rgba(160, 112, 232, 0.6);
+}
+
+.map-help-btn:active {
+    transform: scale(0.94);
+}
+
+.map-help-btn svg {
+    flex-shrink: 0;
+}
+
+/* Hidden together with the other map controls behind the auth gate */
+.map-help-btn.auth-hidden {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+}
+
+/* Desktop fullscreen: float above the fixed map frame, left of the ✕ button */
+.map-frame.is-fullscreen .map-help-btn {
+    position: fixed;
+    top: 16px;
+    top: calc(16px + env(safe-area-inset-top, 0px));
+    right: 64px;
+    z-index: 10001;
+}
+
+/* ── Overlay root ── */
+.dl-tut {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: none;
+    font-family: inherit;
+    color: #f3ebff;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: contain;
+}
+
+.dl-tut.open {
+    display: block;
+    animation: dlTutFade 0.22s ease-out;
+}
+
+@keyframes dlTutFade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* Blurred, transparent purple scrim. js punches holes over the
+   highlighted controls with clip-path so they stay readable. */
+.dl-tut-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(28, 10, 56, 0.52);
+    -webkit-backdrop-filter: blur(9px) saturate(115%);
+    backdrop-filter: blur(9px) saturate(115%);
+}
+
+/* ── Arrows layer ── */
+.dl-tut-arrows {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+}
+
+.dl-tut-arrow-path {
+    fill: none;
+    stroke: var(--tut-purple-soft);
+    stroke-width: 2;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 4px rgba(160, 112, 232, 0.9));
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+    animation: dlTutDraw 0.55s ease-out forwards;
+}
+
+@keyframes dlTutDraw {
+    to { stroke-dashoffset: 0; }
+}
+
+.dl-tut-arrow-head {
+    fill: var(--tut-purple-soft);
+    filter: drop-shadow(0 0 4px rgba(160, 112, 232, 0.9));
+    opacity: 0;
+    animation: dlTutHead 0.25s ease-out 0.45s forwards;
+}
+
+@keyframes dlTutHead {
+    to { opacity: 1; }
+}
+
+/* ── Highlight ring around a target control ── */
+.dl-tut-ring {
+    position: absolute;
+    border: 2px solid var(--tut-purple-soft);
+    border-radius: 11px;
+    box-shadow:
+        0 0 0 3px rgba(160, 112, 232, 0.22),
+        0 0 16px rgba(160, 112, 232, 0.75),
+        inset 0 0 12px rgba(160, 112, 232, 0.25);
+    pointer-events: none;
+    animation: dlTutPulse 2s ease-in-out infinite;
+}
+
+@keyframes dlTutPulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(160,112,232,0.18), 0 0 12px rgba(160,112,232,0.6), inset 0 0 10px rgba(160,112,232,0.2); }
+    50%      { box-shadow: 0 0 0 5px rgba(160,112,232,0.28), 0 0 22px rgba(160,112,232,0.95), inset 0 0 14px rgba(160,112,232,0.32); }
+}
+
+/* ── Callout bubble ── */
+.dl-tut-callout {
+    position: absolute;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border-radius: 11px;
+    background: rgba(63, 30, 112, 0.46);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    backdrop-filter: blur(16px) saturate(130%);
+    border: 1px solid rgba(201, 166, 255, 0.5);
+    box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45), 0 0 18px rgba(160, 112, 232, 0.25);
+    pointer-events: none;
+    opacity: 0;
+    animation: dlTutPop 0.3s ease-out forwards;
+}
+
+@keyframes dlTutPop {
+    from { opacity: 0; transform: scale(0.94); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+.dl-tut-callout .dl-tut-c-title {
+    display: block;
+    font-family: 'Cinzel', serif;
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    color: #e6d4ff;
+    margin-bottom: 3px;
+    text-shadow: 0 0 10px rgba(160, 112, 232, 0.55);
+}
+
+.dl-tut-callout .dl-tut-c-desc {
+    display: block;
+    font-size: 0.68rem;
+    line-height: 1.42;
+    color: rgba(243, 235, 255, 0.85);
+}
+
+/* Auto-shrink when many callouts must fit on a short screen */
+.dl-tut.compact .dl-tut-callout {
+    padding: 6px 8px;
+    border-radius: 9px;
+}
+
+.dl-tut.compact .dl-tut-callout .dl-tut-c-title {
+    font-size: 0.68rem;
+    margin-bottom: 2px;
+}
+
+.dl-tut.compact .dl-tut-callout .dl-tut-c-desc {
+    font-size: 0.62rem;
+    line-height: 1.34;
+}
+
+/* ── Extra note card (slide 3) ── */
+.dl-tut-note {
+    position: absolute;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(63, 30, 112, 0.5);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    backdrop-filter: blur(16px) saturate(130%);
+    border: 1px solid rgba(201, 166, 255, 0.45);
+    box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
+.dl-tut-note-item {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    font-size: 0.68rem;
+    line-height: 1.45;
+    color: rgba(243, 235, 255, 0.88);
+}
+
+.dl-tut-note-item + .dl-tut-note-item {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(201, 166, 255, 0.16);
+}
+
+.dl-tut-note-item b {
+    color: #e6d4ff;
+    font-weight: 600;
+}
+
+.dl-tut-note-ico {
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.dl-tut-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 2px solid #39ff14;
+    box-shadow: 0 0 6px #39ff14, 0 0 12px rgba(57, 255, 20, 0.6);
+    vertical-align: -1px;
+    margin: 0 2px;
+}
+
+/* ── Top toolbar: prev · dots · next · close ── */
+.dl-tut-bar {
+    position: absolute;
+    top: 10px;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px;
+    border-radius: 999px;
+    background: rgba(63, 30, 112, 0.55);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    backdrop-filter: blur(16px) saturate(130%);
+    border: 1px solid rgba(201, 166, 255, 0.45);
+    box-shadow: 0 6px 26px rgba(0, 0, 0, 0.5);
+    z-index: 4;
+}
+
+.dl-tut-nav-btn {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(160, 112, 232, 0.18);
+    border: 1px solid rgba(201, 166, 255, 0.4);
+    color: #efe4ff;
+    cursor: pointer;
+    transition: background 0.18s, opacity 0.18s;
+}
+
+.dl-tut-nav-btn:hover {
+    background: rgba(160, 112, 232, 0.42);
+}
+
+.dl-tut-nav-btn[disabled] {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.dl-tut-nav-btn.dl-tut-close {
+    background: rgba(196, 43, 43, 0.18);
+    border-color: rgba(255, 140, 140, 0.4);
+    color: #ffd9d9;
+}
+
+.dl-tut-nav-btn.dl-tut-close:hover {
+    background: rgba(196, 43, 43, 0.5);
+}
+
+.dl-tut-dots {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 4px;
+}
+
+.dl-tut-dot {
+    width: 7px;
+    height: 7px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(201, 166, 255, 0.3);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.dl-tut-dot.active {
+    background: var(--tut-purple-soft);
+    transform: scale(1.4);
+    box-shadow: 0 0 10px rgba(160, 112, 232, 0.9);
+}
+
+.dl-tut-sep {
+    width: 1px;
+    height: 18px;
+    background: rgba(201, 166, 255, 0.25);
+    flex-shrink: 0;
+}
+
+/* ── Step title pill (under the toolbar) ── */
+.dl-tut-title {
+    position: absolute;
+    top: 56px;
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: min(320px, calc(100% - 24px));
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: rgba(63, 30, 112, 0.5);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(201, 166, 255, 0.35);
+    font-family: 'Cinzel', serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #e6d4ff;
+    text-shadow: 0 0 12px rgba(160, 112, 232, 0.6);
+    z-index: 4;
+}
+
+/* ── Card slides (layer catalogue / performance tips) ── */
+.dl-tut-card {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(520px, calc(100% - 24px));
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    border-radius: 16px;
+    background: rgba(50, 22, 94, 0.44);
+    -webkit-backdrop-filter: blur(20px) saturate(135%);
+    backdrop-filter: blur(20px) saturate(135%);
+    border: 1px solid rgba(201, 166, 255, 0.45);
+    box-shadow: 0 14px 50px rgba(0, 0, 0, 0.55), 0 0 30px rgba(160, 112, 232, 0.2);
+    animation: dlTutPop 0.28s ease-out;
+}
+
+.dl-tut-card-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+}
+
+.dl-tut-tab {
+    flex: 1;
+    padding: 8px 6px;
+    border-radius: 9px;
+    font-family: 'Cinzel', serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    background: rgba(160, 112, 232, 0.12);
+    border: 1px solid rgba(201, 166, 255, 0.28);
+    color: rgba(243, 235, 255, 0.65);
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.dl-tut-tab:hover {
+    background: rgba(160, 112, 232, 0.25);
+    color: #f3ebff;
+}
+
+.dl-tut-tab.active {
+    background: rgba(160, 112, 232, 0.5);
+    border-color: rgba(201, 166, 255, 0.85);
+    color: #fff;
+    box-shadow: 0 0 16px rgba(160, 112, 232, 0.55);
+}
+
+.dl-tut-tab.premium.active {
+    background: rgba(255, 200, 50, 0.22);
+    border-color: rgba(255, 200, 50, 0.7);
+    color: #ffe6a3;
+    box-shadow: 0 0 16px rgba(255, 200, 50, 0.3);
+}
+
+.dl-tut-card-body {
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    padding-right: 4px;
+}
+
+.dl-tut-card-body::-webkit-scrollbar {
+    width: 5px;
+}
+
+.dl-tut-card-body::-webkit-scrollbar-thumb {
+    background: rgba(201, 166, 255, 0.35);
+    border-radius: 3px;
+}
+
+.dl-tut-layer {
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(201, 166, 255, 0.14);
+}
+
+.dl-tut-layer:last-child {
+    border-bottom: none;
+}
+
+.dl-tut-layer-name {
+    display: block;
+    font-family: 'Cinzel', serif;
+    font-size: 0.78rem;
+    color: #e6d4ff;
+    margin-bottom: 3px;
+    text-shadow: 0 0 10px rgba(160, 112, 232, 0.45);
+}
+
+.dl-tut-layer-desc {
+    display: block;
+    font-size: 0.72rem;
+    line-height: 1.55;
+    color: rgba(243, 235, 255, 0.82);
+}
+
+.dl-tut-perf {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 4px 2px 2px;
+}
+
+.dl-tut-perf-ico {
+    flex-shrink: 0;
+    font-size: 1.5rem;
+    line-height: 1.2;
+    filter: drop-shadow(0 0 8px rgba(160, 112, 232, 0.7));
+}
+
+.dl-tut-perf p {
+    margin: 0 0 10px;
+    font-size: 0.76rem;
+    line-height: 1.62;
+    color: rgba(243, 235, 255, 0.85);
+}
+
+.dl-tut-perf p:last-child {
+    margin-bottom: 0;
+}
+
+.dl-tut-perf b {
+    color: #e6d4ff;
+    font-weight: 600;
+}
+
+.dl-tut-perf .dl-tut-tip {
+    display: block;
+    margin-top: 10px;
+    padding: 9px 11px;
+    border-radius: 10px;
+    background: rgba(160, 112, 232, 0.16);
+    border: 1px solid rgba(201, 166, 255, 0.35);
+    color: #f0e6ff;
+}
+
+/* Final "Got it" button on the last slide */
+.dl-tut-finish {
+    margin-top: 14px;
+    flex-shrink: 0;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-family: 'Cinzel', serif;
+    font-size: 0.76rem;
+    letter-spacing: 0.08em;
+    background: rgba(160, 112, 232, 0.42);
+    border: 1px solid rgba(201, 166, 255, 0.7);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+}
+
+.dl-tut-finish:hover {
+    background: rgba(160, 112, 232, 0.65);
+    box-shadow: 0 0 20px rgba(160, 112, 232, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dl-tut-ring,
+    .dl-tut-callout,
+    .dl-tut-card,
+    .dl-tut-arrow-path,
+    .dl-tut-arrow-head,
+    .dl-tut.open {
+        animation: none !important;
+    }
+    .dl-tut-arrow-path { stroke-dashoffset: 0; }
+    .dl-tut-arrow-head { opacity: 1; }
+    .dl-tut-callout { opacity: 1; }
+}
