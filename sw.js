@@ -150,7 +150,7 @@ const PRECACHE_URLS = [
   // Mini tutorial: "?" button (top-right of the map) + 5 purple, blurred
   // slides with arrows pointing at the real side / bottom-bar controls,
   // the layers panel, the free & premium layer catalogue and perf tips.
-  'js/tutorial.js?v=20260908-tutorial',
+  'js/tutorial.js?v=20260907-tutorial-events',
   'css/tutorial.css?v=20260908-tutorial',
   // Nearby detectorists: the popup card (.map-place-popup) used to be
   // position:absolute, which pulled it out of the Leaflet popup's flow and left

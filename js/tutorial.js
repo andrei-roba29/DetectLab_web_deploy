@@ -10,7 +10,7 @@
      3. the layers panel: on/off switch, opacity slider, the vertical
         slider on the map, the neon-green "visible on screen" frame
      4. the layer catalogue with GRATIS / PREMIUM tabs
-     5. layers & optimal performance
+     5. tips for optimal performance
 
    Everything is purple with a transparent, blurred background.
    Targets are resolved at runtime from the real DOM, so the guide
@@ -84,8 +84,8 @@
                     sel: '#btnCoord',
                     title: { ro: 'Coordonate', en: 'Coordinates' },
                     desc: {
-                        ro: 'Alege un punct pe hartă și îi vezi coordonatele exacte; le poți copia sau salva.',
-                        en: 'Pick a point on the map to see its exact coordinates; you can copy or save them.'
+                        ro: 'Alege un punct pe hartă și îi vezi coordonatele exacte; le poți copia, salva ca pin sau crea un eveniment din el.',
+                        en: 'Pick a point on the map to see its exact coordinates; you can copy them, save them as a pin, or create an event from it.'
                     }
                 },
                 {
@@ -102,6 +102,22 @@
                     desc: {
                         ro: 'Arată nordul și readuce harta la 0°. Trage-o în jos pe „LOCK” ca să blochezi rotirea hărții.',
                         en: 'Show north and reset the map to 0°. Drag it down onto “LOCK” to lock map rotation.'
+                    }
+                }
+            ],
+            notes: [
+                {
+                    ico: '📅',
+                    text: {
+                        ro: '<b>Creare eveniment:</b> cu butonul Coordonate (sau dintr-un pin salvat) marchezi un punct, apoi apeși „Creează un eveniment”. Poți face evenimentul public sau anonim (cu cod de invitație).',
+                        en: '<b>Create an event:</b> with the Coordinates button (or from a saved pin) mark a point, then tap “Create event”. You can make it public or anonymous (with an invite code).'
+                    }
+                },
+                {
+                    ico: '🎟',
+                    text: {
+                        ro: '<b>Participare la evenimente:</b> evenimentele publice apar pe hartă ca un coif — atinge-l și trimite o cerere de participare. Pentru evenimente anonime, deschide Contul tău → Evenimente și introdu codul primit.',
+                        en: '<b>Join events:</b> public events appear on the map as a helmet — tap it and send a join request. For anonymous events, open Your account → Events and enter the code you were given.'
                     }
                 }
             ]
@@ -210,7 +226,7 @@
         },
         {
             id: 'performance',
-            title: { ro: 'Straturi & performanță optimă', en: 'Layers & optimal performance' },
+            title: { ro: 'Sfaturi pentru performanță optimă', en: 'Tips for optimal performance' },
             type: 'performance'
         }
     ];
@@ -327,7 +343,7 @@
     };
 
     var PERF = {
-        title: { ro: 'Straturi pentru performanță optimă', en: 'Layers for optimal performance' },
+        title: { ro: 'Sfaturi pentru performanță optimă', en: 'Tips for optimal performance' },
         body: {
             ro: 'Straturi precum <b>LIDAR</b> sau <b>Imagini satelitare anii ’60</b> sunt servite de pe web ca servicii <b>WMS</b> și sunt niște straturi foarte dense și detaliate care, deservite simultan, pot bloca temporar aplicația.',
             en: 'Layers such as <b>LIDAR</b> or <b>Satellite imagery 60\'s</b> are served from the web as <b>WMS</b> services and are very dense, highly detailed layers which, when served simultaneously, can temporarily freeze the app.'
