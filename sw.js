@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v73-tutorial-pwa-video';
+const CACHE_NAME = 'detectlab-v74-layer-visibility-pwa';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -156,7 +156,11 @@ const PRECACHE_URLS = [
   // position:absolute, which pulled it out of the Leaflet popup's flow and left
   // an empty little popup box next to the info card — two windows, one of them
   // blank, on every nearby pin (offline bubbles included). Now in-flow only.
-  'css/styles.css?v=20260907-nearby-popup'
+  'css/styles.css?v=20260907-nearby-popup',
+  // Subtle layer coverage highlights + standalone map/layout/auth hooks.
+  // Keep the installed/offline PWA on the same CSS and JS as index.html.
+  'css/styles.css?v=20260907-layer-visibility-pwa',
+  'js/map-app.js?v=20260907-layer-visibility-pwa'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

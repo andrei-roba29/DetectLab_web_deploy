@@ -15,6 +15,7 @@
                     el.classList.add('active');
                 }
             });
+            if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
         }
 
         // Initialize with "free" tab active on page load
@@ -9455,11 +9456,11 @@
             map.on('zoomend', window.updatePremiumMapCoverageVisibility);
             window.updatePremiumMapCoverageVisibility();
 
-            // ── LAYER VISIBILITY HIGHLIGHT (neon green outline) ──
-            // Fiecare strat conturat verde neon când viewport-ul intersectează acoperirea sa.
-            // Dacă stratul are substraturi: doar săgeata lui de expand colorată în verde,
-            // iar substraturile care îndeplinesc criteriul conturate în verde.
-            // Partial intersection counts.
+            // ── LAYER VISIBILITY HIGHLIGHT ──
+            // Partial intersection with coverage highlights each leaf row and
+            // only the expand arrow of its group, in desktop and standalone PWA.
+            // Both modes use the same rows inside #transpPanel (not the bottom bar).
+            // Resolve rows on every check: auth/layer UI may not be ready yet.
             (function() {
                 // Helper: get direct child div of container that contains a given element
                 function getDirectChildRowByElement(el, containerId) {
@@ -9481,19 +9482,7 @@
                     return null;
                 }
 
-                function getRowByToggle(toggleId) {
-                    var toggle = document.getElementById(toggleId);
-                    if (!toggle) return null;
-                    // If it's inside a specific row id (like iosfreeRow), return that
-                    var closestRow = toggle.closest && toggle.closest('[id$=\"Row\"]');
-                    // For generic .transp-layer-row
-                    var transpRow = toggle.closest ? toggle.closest('.transp-layer-row') : null;
-                    // Prefer specific Row id if it exists and is not the transp-layer-row itself
-                    // We'll check if toggle is inside histSubLayers etc and return specific
-                    return transpRow;
-                }
-
-                // Approximate bounds for LIDAR counties (used for neon highlight)
+                // Approximate bounds for LIDAR counties (coverage highlight only)
                 var LIDAR_COUNTY_BOUNDS = {
                     hd: [[45.20, 22.00], [46.20, 23.30]],
                     ar: [[45.80, 20.70], [46.80, 22.50]],
@@ -9750,88 +9739,92 @@
                     }
                 }
 
+                var visibilityMap = null;
+                function bindVisibilityMap(activeMap) {
+                    if (visibilityMap === activeMap) return;
+                    if (visibilityMap && typeof visibilityMap.off === 'function') {
+                        visibilityMap.off('moveend zoomend resize', window.checkLayerVisibility);
+                    }
+                    visibilityMap = activeMap;
+                    if (activeMap && typeof activeMap.on === 'function') {
+                        activeMap.on('moveend zoomend resize', window.checkLayerVisibility);
+                    }
+                }
+
                 window.checkLayerVisibility = function() {
-                    if (!map || typeof map.getBounds !== 'function') return;
+                    var activeMap = window._dlMap || map || window.map;
+                    // Keep event listeners on the same instance whose bounds we read,
+                    // including when a restored PWA exposes a replacement _dlMap.
+                    bindVisibilityMap(activeMap);
+                    if (!activeMap || typeof activeMap.getBounds !== 'function') return;
                     var mapBounds;
-                    try { mapBounds = map.getBounds(); } catch(e) { return; }
+                    try { mapBounds = activeMap.getBounds(); } catch(e) { return; }
                     if (!mapBounds) return;
 
-                    // Track which groups have at least one visible sublayer
                     var groupVisible = { hist: false, lidar: false, roman: false, histPremium: false };
-
                     layerDefs.forEach(function(def) {
+                        var visible = isIntersecting(mapBounds, def.bounds);
+                        if (def.group && visible) groupVisible[def.group] = true;
+
+                        // Do not gate on panel.open, offsetParent or toggle.checked:
+                        // collapsed/hidden rows must already be correct when revealed.
                         var rowEl = null;
                         try { rowEl = def.getRow(); } catch(e) { rowEl = null; }
-                        if (!rowEl) return;
-
-                        var visible = isIntersecting(mapBounds, def.bounds);
-
-                        if (def.group) {
-                            if (visible) groupVisible[def.group] = true;
-                            // Sublayer highlight
-                            if (visible) {
-                                rowEl.classList.add('layer-visible-highlight');
-                            } else {
-                                rowEl.classList.remove('layer-visible-highlight');
-                            }
-                        } else {
-                            // Top-level leaf layer
-                            if (visible) {
-                                rowEl.classList.add('layer-visible-highlight');
-                            } else {
-                                rowEl.classList.remove('layer-visible-highlight');
-                            }
-                        }
+                        if (rowEl) rowEl.classList.toggle('layer-visible-highlight', visible);
                     });
 
-                    // Update group arrows: only arrow green, not the group row
+                    // Only arrows go green. Clear any stale group-row highlight even
+                    // when outside coverage or while its sublayer DOM is unavailable.
                     Object.keys(groups).forEach(function(gKey) {
-                        var g = groups[gKey];
-                        var icon = document.getElementById(g.expandIconId);
+                        var icon = document.getElementById(groups[gKey].expandIconId);
                         if (!icon) return;
-                        if (groupVisible[gKey]) {
-                            icon.classList.add('layer-group-arrow-highlight');
-                            // Also ensure group row itself is NOT highlighted (per requirement)
-                            var groupRow = icon.closest ? icon.closest('.transp-layer-row') : null;
-                            if (groupRow) groupRow.classList.remove('layer-visible-highlight');
-                        } else {
-                            icon.classList.remove('layer-group-arrow-highlight');
-                        }
+                        icon.classList.toggle('layer-group-arrow-highlight', groupVisible[gKey]);
+                        var groupRow = icon.closest ? icon.closest('.transp-layer-row') : null;
+                        if (groupRow) groupRow.classList.remove('layer-visible-highlight');
                     });
                 };
 
-                // Hook to map events
-                map.on('moveend', window.checkLayerVisibility);
-                map.on('zoomend', window.checkLayerVisibility);
-                // Also run after a short delay on load and whenever panel toggles
-                setTimeout(function() {
-                    window.checkLayerVisibility();
-                }, 600);
+                // Auth handlers and PWA controls can change layout after this listener
+                // runs. Coalesce their checks into the next frame. The map's resize
+                // event also re-checks after PWA invalidateSize() has updated its bounds.
+                var visibilityFrame = null;
+                function scheduleLayerVisibilityCheck() {
+                    if (visibilityFrame !== null) return;
+                    visibilityFrame = window.requestAnimationFrame(function() {
+                        visibilityFrame = null;
+                        window.checkLayerVisibility();
+                    });
+                }
 
-                // Also re-check when switching free/premium tabs (global function defined outside initMap)
-                try {
-                    var origSwitchTab = window.switchLayerTab;
-                    if (typeof origSwitchTab === 'function' && !origSwitchTab._wrappedVisibility) {
-                        var wrappedSwitchTab = function() {
-                            var res = origSwitchTab.apply(this, arguments);
-                            setTimeout(function() {
-                                if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
-                            }, 100);
-                            return res;
-                        };
-                        wrappedSwitchTab._wrappedVisibility = true;
-                        window.switchLayerTab = wrappedSwitchTab;
-                        // Also update the global function reference if it exists
-                        if (typeof switchLayerTab === 'function') {
-                            try { switchLayerTab = window.switchLayerTab; } catch(e) {}
-                        }
-                    }
-                } catch(e) {}
+                window.addEventListener('detectlab:authchange', scheduleLayerVisibilityCheck);
+                window.addEventListener('resize', scheduleLayerVisibilityCheck);
+                window.addEventListener('pageshow', scheduleLayerVisibilityCheck);
+                document.addEventListener('visibilitychange', function() {
+                    if (!document.hidden) scheduleLayerVisibilityCheck();
+                });
+                if (window.visualViewport) {
+                    window.visualViewport.addEventListener('resize', scheduleLayerVisibilityCheck);
+                }
 
-                // Periodic re-check for safety (e.g., after async layer load)
+                // togglePwa* functions are defined later in index.html. Listen on the
+                // shared bar instead of wrapping functions that do not exist yet;
+                // click/change cover dropdowns, touch/keyboard actions and detection.
+                var pwaBottomBar = document.getElementById('pwaBottomBar');
+                if (pwaBottomBar) {
+                    pwaBottomBar.addEventListener('click', scheduleLayerVisibilityCheck);
+                    pwaBottomBar.addEventListener('change', scheduleLayerVisibilityCheck);
+                }
+
+                window.checkLayerVisibility();
+                setTimeout(scheduleLayerVisibilityCheck, 600);
+
+                // Catch late row creation and PWA resume even with the panel closed.
+                // Desktop keeps the open-panel guard to avoid unnecessary polling.
                 setInterval(function() {
-                    if (document.getElementById('transpPanel') && document.getElementById('transpPanel').classList.contains('open')) {
-                        if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
+                    var panel = document.getElementById('transpPanel');
+                    var isPwa = document.body && document.body.classList.contains('is-pwa');
+                    if (isPwa || (panel && panel.classList.contains('open'))) {
+                        window.checkLayerVisibility();
                     }
                 }, 2000);
 
