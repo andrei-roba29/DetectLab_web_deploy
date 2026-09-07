@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v71-tutorial';
+const CACHE_NAME = 'detectlab-v72-nearby-popup';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -151,7 +151,12 @@ const PRECACHE_URLS = [
   // slides with arrows pointing at the real side / bottom-bar controls,
   // the layers panel, the free & premium layer catalogue and perf tips.
   'js/tutorial.js?v=20260908-tutorial',
-  'css/tutorial.css?v=20260908-tutorial'
+  'css/tutorial.css?v=20260908-tutorial',
+  // Nearby detectorists: the popup card (.map-place-popup) used to be
+  // position:absolute, which pulled it out of the Leaflet popup's flow and left
+  // an empty little popup box next to the info card — two windows, one of them
+  // blank, on every nearby pin (offline bubbles included). Now in-flow only.
+  'css/styles.css?v=20260907-nearby-popup'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──
