@@ -4181,6 +4181,9 @@
                     if (icon) icon.style.transform = 'rotate(-90deg)';
                     if (btn) btn.style.color = 'rgba(232,119,42,0.8)';
                 }
+                setTimeout(function() {
+                    if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
+                }, 350);
             };
 
             window.setRomanOpacity = function(val) {
@@ -4449,6 +4452,9 @@
                     panel.style.marginTop = '0';
                     icon.style.transform = 'rotate(-90deg)';
                 }
+                setTimeout(function() {
+                    if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
+                }, 350);
             };
 
             // ── Public: HD opacity slider ──
@@ -5276,6 +5282,11 @@
                 transpPanelOpen = !transpPanelOpen;
                 document.getElementById('transpPanel').classList.toggle('open', transpPanelOpen);
                 document.getElementById('transpTab').classList.toggle('open', transpPanelOpen);
+                if (transpPanelOpen) {
+                    setTimeout(function() {
+                        if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
+                    }, 100);
+                }
             };
 
             // Close panel when clicking outside
@@ -6344,6 +6355,9 @@
                         panel.style.maxHeight = '0'; panel.style.opacity = '0'; panel.style.marginTop = '0';
                         icon.style.transform = 'rotate(-90deg)';
                     }
+                    setTimeout(function() {
+                        if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
+                    }, 350);
                 };
 
                 window.setHistOpacity = function (val) {
@@ -9441,6 +9455,388 @@
             map.on('zoomend', window.updatePremiumMapCoverageVisibility);
             window.updatePremiumMapCoverageVisibility();
 
+            // ── LAYER VISIBILITY HIGHLIGHT (neon green outline) ──
+            // Fiecare strat conturat verde neon când viewport-ul intersectează acoperirea sa.
+            // Dacă stratul are substraturi: doar săgeata lui de expand colorată în verde,
+            // iar substraturile care îndeplinesc criteriul conturate în verde.
+            // Partial intersection counts.
+            (function() {
+                // Helper: get direct child div of container that contains a given element
+                function getDirectChildRowByElement(el, containerId) {
+                    if (!el) return null;
+                    var container = document.getElementById(containerId);
+                    if (!container) return null;
+                    var cur = el;
+                    // Walk up until parent is container
+                    while (cur && cur.parentElement) {
+                        if (cur.parentElement === container) {
+                            return cur;
+                        }
+                        if (cur.parentElement.id === containerId) {
+                            return cur;
+                        }
+                        cur = cur.parentElement;
+                        if (!cur || cur === container) break;
+                    }
+                    return null;
+                }
+
+                function getRowByToggle(toggleId) {
+                    var toggle = document.getElementById(toggleId);
+                    if (!toggle) return null;
+                    // If it's inside a specific row id (like iosfreeRow), return that
+                    var closestRow = toggle.closest && toggle.closest('[id$=\"Row\"]');
+                    // For generic .transp-layer-row
+                    var transpRow = toggle.closest ? toggle.closest('.transp-layer-row') : null;
+                    // Prefer specific Row id if it exists and is not the transp-layer-row itself
+                    // We'll check if toggle is inside histSubLayers etc and return specific
+                    return transpRow;
+                }
+
+                // Approximate bounds for LIDAR counties (used for neon highlight)
+                var LIDAR_COUNTY_BOUNDS = {
+                    hd: [[45.20, 22.00], [46.20, 23.30]],
+                    ar: [[45.80, 20.70], [46.80, 22.50]],
+                    ab: [[45.70, 23.00], [46.60, 24.00]],
+                    bh: [[46.40, 21.30], [47.50, 22.80]],
+                    cs: [[44.60, 21.30], [45.70, 22.60]],
+                    ro2m: [[43.5, 19.5], [48.5, 30.5]],
+                    ro1m: [[43.5, 19.5], [48.5, 30.5]],
+                    cs917: [[44.70, 21.50], [45.60, 22.80]],
+                    dj917: [[43.90, 23.00], [44.80, 24.50]],
+                    gj917: [[44.60, 22.70], [45.50, 24.00]],
+                    mh917: [[44.30, 22.20], [45.00, 23.20]]
+                };
+
+                // Central config: each leaf layer with its bounds and row getter
+                var layerDefs = [];
+
+                // Helper to create L.latLngBounds safely
+                function toBounds(arr) {
+                    try { return L.latLngBounds(arr); } catch(e) { return ROMANIA_BOUNDS; }
+                }
+
+                var APM_BOUNDS_LATLNG = (typeof APM_BOUNDS !== 'undefined' ? toBounds(APM_BOUNDS) : ROMANIA_BOUNDS);
+
+                // Free top-level layers
+                layerDefs.push({
+                    key: 'apm',
+                    bounds: APM_BOUNDS_LATLNG,
+                    getRow: function() {
+                        var el = document.getElementById('apmToggle');
+                        return el ? el.closest('.transp-layer-row') : null;
+                    },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'sat',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() {
+                        var el = document.getElementById('satOpacitySlider');
+                        return el ? el.closest('.transp-layer-row') : null;
+                    },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'osmPlaces',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() {
+                        var el = document.getElementById('osmPlacesToggle');
+                        return el ? el.closest('.transp-layer-row') : null;
+                    },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'uat',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() {
+                        var el = document.getElementById('uatToggle');
+                        return el ? el.closest('.transp-layer-row') : null;
+                    },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'patrimoniu',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() {
+                        var el = document.getElementById('patrimoniuToggle');
+                        return el ? el.closest('.transp-layer-row') : null;
+                    },
+                    group: null
+                });
+
+                // Free historical sublayers
+                layerDefs.push({
+                    key: 'iosfree',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('iosfreeRow'); },
+                    group: 'hist'
+                });
+                layerDefs.push({
+                    key: 'austrianMap',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('austrianMapRow'); },
+                    group: 'hist'
+                });
+                layerDefs.push({
+                    key: 'firingPlans',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('firingPlansRow'); },
+                    group: 'hist'
+                });
+                layerDefs.push({
+                    key: 'sovietMap',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('sovietMapRow'); },
+                    group: 'hist'
+                });
+
+                // LIDAR sublayers
+                Object.keys(LIDAR_COUNTY_BOUNDS).forEach(function(k) {
+                    var sliderId = 'lidar' + k.charAt(0).toUpperCase() + k.slice(1) + 'OpacitySlider';
+                    // Special case: ro2m, ro1m, cs917 etc have specific casing
+                    // Map k to actual slider IDs used in HTML
+                    var mapping = {
+                        hd: 'lidarHdOpacitySlider',
+                        ar: 'lidarArOpacitySlider',
+                        ab: 'lidarAbOpacitySlider',
+                        bh: 'lidarBhOpacitySlider',
+                        cs: 'lidarCsOpacitySlider',
+                        ro2m: 'lidarRo2mOpacitySlider',
+                        ro1m: 'lidarRo1mOpacitySlider',
+                        cs917: 'lidarCs917OpacitySlider',
+                        dj917: 'lidarDj917OpacitySlider',
+                        gj917: 'lidarGj917OpacitySlider',
+                        mh917: 'lidarMh917OpacitySlider'
+                    };
+                    var realSliderId = mapping[k] || sliderId;
+                    layerDefs.push({
+                        key: 'lidar_' + k,
+                        bounds: toBounds(LIDAR_COUNTY_BOUNDS[k]),
+                        getRow: (function(sId) {
+                            return function() {
+                                var s = document.getElementById(sId);
+                                if (!s) return null;
+                                // The wrapper div is parentElement (slider's direct parent)
+                                // But ensure we return the child of lidarSubLayers
+                                var direct = getDirectChildRowByElement(s, 'lidarSubLayers');
+                                return direct || s.parentElement;
+                            };
+                        })(realSliderId),
+                        group: 'lidar'
+                    });
+                });
+
+                // Premium top-level leaf layers
+                layerDefs.push({
+                    key: 'babel',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('babelScroll'); },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'apm20',
+                    bounds: APM_BOUNDS_LATLNG,
+                    getRow: function() {
+                        var el = document.getElementById('apm20Toggle');
+                        return el ? el.closest('.transp-layer-row') : null;
+                    },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'battles',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() {
+                        var el = document.getElementById('battlesToggle');
+                        return el ? el.closest('.transp-layer-row') : null;
+                    },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'satellite60s',
+                    bounds: toBounds(premiumMapCoverageBounds.satellite60s ? premiumMapCoverageBounds.satellite60s.bounds : [[43.5,19.5],[48.5,30.5]]),
+                    getRow: function() { return document.getElementById('satellite60sRow'); },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'lidarScanner',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('lidarScannerRow'); },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'archeoPotential',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('archeoPotentialRow'); },
+                    group: null
+                });
+                layerDefs.push({
+                    key: 'archReport',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('archReportRow'); },
+                    group: null
+                });
+
+                // Premium historical sublayers (use precise bounds from premiumMapCoverageBounds)
+                var premiumKeys = [
+                    { key: 'josephine', toggle: 'josephineToggle', row: 'josephineRow' },
+                    { key: 'bucovina', toggle: 'bucovinaMapToggle', row: 'bucovinaRow' },
+                    { key: 'austrohu', toggle: 'austrohuMapToggle', row: 'austrohuRow' },
+                    { key: 'moldova1868', toggle: 'moldova1868MapToggle', row: 'moldova1868Row' },
+                    { key: 'moldovawwii', toggle: 'moldovaWwiiMapToggle', row: 'moldovaWwiiRow' },
+                    { key: 'polishtactical1933', toggle: 'polishTactical1933MapToggle', row: 'polishTactical1933Row' },
+                    { key: 'ww1', toggle: 'ww1MapToggle', row: 'ww1Row' },
+                    { key: 'ww2', toggle: 'ww2MapToggle', row: 'ww2Row' },
+                    { key: 'moldova1771', toggle: 'moldova1771MapToggle', row: 'moldova1771Row' },
+                    { key: 'banat', toggle: 'banatMapToggle', row: 'banatRow' }
+                ];
+                premiumKeys.forEach(function(item) {
+                    var b = premiumMapCoverageBounds[item.key] ? premiumMapCoverageBounds[item.key].bounds : [[43.5,19.5],[48.5,30.5]];
+                    // moldova1771 doesn't have coverage entry, reuse moldova1868 bounds
+                    if (item.key === 'moldova1771' && premiumMapCoverageBounds.moldova1868) {
+                        b = premiumMapCoverageBounds.moldova1868.bounds;
+                    }
+                    layerDefs.push({
+                        key: 'premium_' + item.key,
+                        bounds: toBounds(b),
+                        getRow: (function(rowId) {
+                            return function() { return document.getElementById(rowId); };
+                        })(item.row),
+                        group: 'histPremium'
+                    });
+                });
+
+                // Roman Empire sublayers (all share ROMANIA_BOUNDS for highlight purposes, but we list them)
+                var romanToggleIds = [
+                    'roman_roads',
+                    'roman_dare_11','roman_dare_17','roman_dare_13','roman_dare_12','roman_dare_18','roman_dare_53',
+                    'roman_dare_16','roman_dare_61','roman_dare_66','roman_dare_32','roman_dare_63','roman_dare_21',
+                    'roman_dare_24','roman_dare_14','roman_dare_57','roman_dare_49','roman_dare_51','roman_dare_55',
+                    'roman_dare_52','roman_dare_64','roman_walls',
+                    'roman_shade_117','roman_shade_60bce','roman_shade_200','roman_shade_alexander',
+                    'roman_shade_persian','roman_shade_diocletian','roman_shade_herod','roman_shade_hasmonean'
+                ];
+                romanToggleIds.forEach(function(tid) {
+                    layerDefs.push({
+                        key: 'roman_' + tid,
+                        bounds: ROMANIA_BOUNDS,
+                        getRow: (function(toggleId) {
+                            return function() {
+                                var el = document.getElementById(toggleId);
+                                if (!el) return null;
+                                var direct = getDirectChildRowByElement(el, 'romanSubLayers');
+                                return direct || (el.parentElement ? el.parentElement.parentElement : null);
+                            };
+                        })(tid),
+                        group: 'roman'
+                    });
+                });
+
+                // Group definitions: expand icon + sublayer keys
+                var groups = {
+                    hist: { expandIconId: 'histExpandIcon', sublayerKeys: ['iosfree','austrianMap','firingPlans','sovietMap'] },
+                    lidar: { expandIconId: 'lidarExpandIcon', sublayerKeys: Object.keys(LIDAR_COUNTY_BOUNDS).map(function(k){ return 'lidar_' + k; }) },
+                    roman: { expandIconId: 'romanExpandIcon', sublayerKeys: romanToggleIds.map(function(tid){ return 'roman_' + tid; }) },
+                    histPremium: { expandIconId: 'histPremiumExpandIcon', sublayerKeys: premiumKeys.map(function(it){ return 'premium_' + it.key; }) }
+                };
+
+                function isIntersecting(mapBounds, layerBounds) {
+                    try {
+                        if (!mapBounds || !layerBounds) return false;
+                        // L.latLngBounds.intersects handles partial overlap
+                        return mapBounds.intersects(layerBounds);
+                    } catch(e) {
+                        return false;
+                    }
+                }
+
+                window.checkLayerVisibility = function() {
+                    if (!map || typeof map.getBounds !== 'function') return;
+                    var mapBounds;
+                    try { mapBounds = map.getBounds(); } catch(e) { return; }
+                    if (!mapBounds) return;
+
+                    // Track which groups have at least one visible sublayer
+                    var groupVisible = { hist: false, lidar: false, roman: false, histPremium: false };
+
+                    layerDefs.forEach(function(def) {
+                        var rowEl = null;
+                        try { rowEl = def.getRow(); } catch(e) { rowEl = null; }
+                        if (!rowEl) return;
+
+                        var visible = isIntersecting(mapBounds, def.bounds);
+
+                        if (def.group) {
+                            if (visible) groupVisible[def.group] = true;
+                            // Sublayer highlight
+                            if (visible) {
+                                rowEl.classList.add('layer-visible-highlight');
+                            } else {
+                                rowEl.classList.remove('layer-visible-highlight');
+                            }
+                        } else {
+                            // Top-level leaf layer
+                            if (visible) {
+                                rowEl.classList.add('layer-visible-highlight');
+                            } else {
+                                rowEl.classList.remove('layer-visible-highlight');
+                            }
+                        }
+                    });
+
+                    // Update group arrows: only arrow green, not the group row
+                    Object.keys(groups).forEach(function(gKey) {
+                        var g = groups[gKey];
+                        var icon = document.getElementById(g.expandIconId);
+                        if (!icon) return;
+                        if (groupVisible[gKey]) {
+                            icon.classList.add('layer-group-arrow-highlight');
+                            // Also ensure group row itself is NOT highlighted (per requirement)
+                            var groupRow = icon.closest ? icon.closest('.transp-layer-row') : null;
+                            if (groupRow) groupRow.classList.remove('layer-visible-highlight');
+                        } else {
+                            icon.classList.remove('layer-group-arrow-highlight');
+                        }
+                    });
+                };
+
+                // Hook to map events
+                map.on('moveend', window.checkLayerVisibility);
+                map.on('zoomend', window.checkLayerVisibility);
+                // Also run after a short delay on load and whenever panel toggles
+                setTimeout(function() {
+                    window.checkLayerVisibility();
+                }, 600);
+
+                // Also re-check when switching free/premium tabs (global function defined outside initMap)
+                try {
+                    var origSwitchTab = window.switchLayerTab;
+                    if (typeof origSwitchTab === 'function' && !origSwitchTab._wrappedVisibility) {
+                        var wrappedSwitchTab = function() {
+                            var res = origSwitchTab.apply(this, arguments);
+                            setTimeout(function() {
+                                if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
+                            }, 100);
+                            return res;
+                        };
+                        wrappedSwitchTab._wrappedVisibility = true;
+                        window.switchLayerTab = wrappedSwitchTab;
+                        // Also update the global function reference if it exists
+                        if (typeof switchLayerTab === 'function') {
+                            try { switchLayerTab = window.switchLayerTab; } catch(e) {}
+                        }
+                    }
+                } catch(e) {}
+
+                // Periodic re-check for safety (e.g., after async layer load)
+                setInterval(function() {
+                    if (document.getElementById('transpPanel') && document.getElementById('transpPanel').classList.contains('open')) {
+                        if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
+                    }
+                }, 2000);
+
+            })();
+
             // ── BUCOVINA 1861-1864 (XYZ tiles, JPG, direct din Cloudflare R2) ──
             // Strat premium nou. Spre deosebire de Austrian/Soviet (WMS, geo-spatial.org),
             // sursa e raster XYZ pe R2, la fel ca Josephine Map + — vezi acolo (var _jLayer
@@ -10158,6 +10554,9 @@
                     panel.style.marginTop = '0';
                     icon.style.transform = 'rotate(-90deg)';
                 }
+                setTimeout(function() {
+                    if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
+                }, 350);
             };
 
             // Substraturile grupului "Harti istorice / Historical maps" (premium).
