@@ -6715,3 +6715,37 @@
     align-self: flex-start;
     margin-top: 0.45em;
 }
+
+/* ── Layer visibility highlight (neon green) ──
+   Fiecare strat conturat verde neon când viewport-ul intersectează acoperirea sa.
+   Pentru grupuri cu substraturi: doar săgeata de expand verde, substraturile individuale verzi. */
+.layer-visible-highlight {
+    border: 2px solid #39ff14 !important;
+    box-shadow:
+        0 0 8px #39ff14,
+        0 0 16px rgba(57,255,20,0.6),
+        0 0 28px rgba(57,255,20,0.35),
+        inset 0 0 6px rgba(57,255,20,0.25) !important;
+    border-radius: 8px !important;
+    transition: border 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+.layer-group-arrow-highlight {
+    color: #39ff14 !important;
+    filter: drop-shadow(0 0 6px #39ff14) drop-shadow(0 0 12px rgba(57,255,20,0.85)) !important;
+    transition: color 0.3s ease, filter 0.3s ease !important;
+}
+
+/* Sublayers inside hist/lidar/roman/histPremium need same neon when visible */
+#histSubLayers .layer-visible-highlight,
+#lidarSubLayers .layer-visible-highlight,
+#romanSubLayers .layer-visible-highlight,
+#histPremiumSubLayers .layer-visible-highlight {
+    border: 2px solid #39ff14 !important;
+    box-shadow:
+        0 0 6px #39ff14,
+        0 0 14px rgba(57,255,20,0.55),
+        inset 0 0 4px rgba(57,255,20,0.2) !important;
+    border-radius: 6px !important;
+    padding: 6px 6px !important;
+}
