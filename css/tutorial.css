@@ -175,13 +175,42 @@
 }
 
 .dl-tut-callout .dl-tut-c-title {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-family: 'Cinzel', serif;
     font-size: 0.75rem;
     letter-spacing: 0.02em;
     color: #e6d4ff;
     margin-bottom: 3px;
     text-shadow: 0 0 10px rgba(160, 112, 232, 0.55);
+}
+
+.dl-tut-c-num,
+.dl-tut-ring-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: rgba(107, 63, 160, 0.95);
+    border: 1px solid rgba(201, 166, 255, 0.95);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 0 8px rgba(160, 112, 232, 0.75);
+}
+
+.dl-tut-ring-num {
+    position: absolute;
+    top: -7px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
 }
 
 .dl-tut-callout .dl-tut-c-desc {
@@ -471,6 +500,48 @@
     font-size: 0.72rem;
     line-height: 1.55;
     color: rgba(243, 235, 255, 0.82);
+}
+
+.dl-tut-card.dl-tut-card-perf {
+    width: min(720px, calc(100% - 24px));
+}
+
+.dl-tut-perf-layout {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+}
+
+.dl-tut-perf-layout .dl-tut-perf {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.dl-tut-perf-video {
+    flex: 0 0 auto;
+    width: min(210px, 40%);
+}
+
+.dl-tut-perf-video video {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: min(52vh, 420px);
+    border-radius: 12px;
+    background: #1a0a2e;
+    border: 1px solid rgba(201, 166, 255, 0.35);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 620px) {
+    .dl-tut-perf-layout {
+        flex-direction: column;
+        align-items: center;
+    }
+    .dl-tut-perf-video {
+        width: min(240px, 72%);
+        order: -1;
+    }
 }
 
 .dl-tut-perf {

@@ -404,6 +404,18 @@
     function vw() { return window.innerWidth || document.documentElement.clientWidth; }
     function vh() { return window.innerHeight || document.documentElement.clientHeight; }
 
+    function isPwa() {
+        return !!(document.body && document.body.classList.contains('is-pwa'));
+    }
+
+    var TUTORIAL_VIDEO_URL = 'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/Tutorial.mp4';
+
+    function stopTutorialVideo() {
+        var v = document.getElementById('dlTutVideo');
+        if (!v) return;
+        try { v.pause(); } catch (e) { /* ignore */ }
+    }
+
     // ── Overlay construction ─────────────────────────────────────
     function build() {
         if (root) return;
@@ -616,18 +628,23 @@
         return { x: box.x, y: box.y + box.h / 2 }; // 'right'
     }
 
-    function addRing(r) {
+    function addRing(r, num) {
         var pad = 5;
         var n = el('div', 'dl-tut-ring', stage);
         n.style.left = (r.x - pad) + 'px';
         n.style.top = (r.y - pad) + 'px';
         n.style.width = (r.w + pad * 2) + 'px';
         n.style.height = (r.h + pad * 2) + 'px';
+        if (num != null) {
+            var badge = el('span', 'dl-tut-ring-num', n);
+            badge.textContent = String(num);
+        }
         return n;
     }
 
     // ── Rendering ────────────────────────────────────────────────
     function clearStage() {
+        stopTutorialVideo();
         while (svg.firstChild) svg.removeChild(svg.firstChild);
         stage.innerHTML = '';
         scrim.style.clipPath = '';
@@ -721,14 +738,29 @@
         // so the callouts drop underneath the highlighted row instead.
         if (placement === 'left' && (uni.x1 - 30) < 190) placement = 'below';
 
+        // PWA bottom bar: number each button left-to-right so the callout
+        // clearly maps to its control even when arrows cross.
+        var numberBar = placement === 'top' && isPwa();
+        var nums = [];
+        if (numberBar) {
+            found.map(function (f, i) { return i; })
+                .sort(function (a, b) { return found[a].rect.x - found[b].rect.x; })
+                .forEach(function (idx, n) { nums[idx] = n + 1; });
+        }
+
         // Build the callouts first so we can measure their heights.
-        var boxes = found.map(function (f) {
+        var boxes = found.map(function (f, i) {
             var c = el('div', 'dl-tut-callout', stage);
+            var numHtml = numberBar && nums[i]
+                ? '<span class="dl-tut-c-num">' + nums[i] + '</span>'
+                : '';
             c.innerHTML =
-                '<span class="dl-tut-c-title">' + tr(f.def.title) + '</span>' +
+                '<span class="dl-tut-c-title">' + numHtml + tr(f.def.title) + '</span>' +
                 '<span class="dl-tut-c-desc">' + tr(f.def.desc) + '</span>';
-            return { node: c, f: f };
+            return { node: c, f: f, num: nums[i] || null };
         });
+
+        if (numberBar) root.classList.add('compact');
 
         var note = null;
         if (step.notes && step.notes.length) {
@@ -797,15 +829,49 @@
             // stack them upwards from just above the bar.
             var lowerBound = Math.max(top, minTargetTop - 16);
             items.sort(function (a, b) { return a.box.f.rect.x - b.box.f.rect.x; });
-            var y = lowerBound;
-            for (var i = items.length - 1; i >= 0; i--) {
-                y -= items[i].h;
-                items[i].y = y;
-                y -= 8;
-            }
-            if (items.length && items[0].y < top) {
-                var shift = top - items[0].y;
-                items.forEach(function (it) { it.y += shift; });
+
+            if (numberBar && items.length >= 2) {
+                // Two columns above the PWA bar: left buttons → left column,
+                // right buttons → right column. Arrows stay mostly vertical.
+                var split = Math.ceil(items.length / 2);
+                var leftCol = items.slice(0, split);
+                var rightCol = items.slice(split);
+                var colW2 = Math.min(200, Math.max(136, Math.floor((vw() - 24) / 2)));
+                var leftX = 8;
+                var rightX = vw() - colW2 - 8;
+
+                function layoutBarCol(col, x) {
+                    col.forEach(function (it) {
+                        it.x = x;
+                        it.w = colW2;
+                        it.box.node.style.left = x + 'px';
+                        it.box.node.style.width = colW2 + 'px';
+                    });
+                    col.forEach(function (it) { it.h = it.box.node.offsetHeight; });
+                    var yy = lowerBound;
+                    for (var ci = col.length - 1; ci >= 0; ci--) {
+                        yy -= col[ci].h;
+                        col[ci].y = yy;
+                        yy -= 6;
+                    }
+                    if (col.length && col[0].y < top) {
+                        var sh = top - col[0].y;
+                        col.forEach(function (it) { it.y += sh; });
+                    }
+                }
+                layoutBarCol(leftCol, leftX);
+                layoutBarCol(rightCol, rightX);
+            } else {
+                var y = lowerBound;
+                for (var i = items.length - 1; i >= 0; i--) {
+                    y -= items[i].h;
+                    items[i].y = y;
+                    y -= 8;
+                }
+                if (items.length && items[0].y < top) {
+                    var shift = top - items[0].y;
+                    items.forEach(function (it) { it.y += shift; });
+                }
             }
         } else if (placement === 'below') {
             // Stack downwards, starting just under the highlighted controls.
@@ -825,6 +891,7 @@
         }
 
         items.forEach(function (it) {
+            if (it.x == null) { it.x = colX; it.w = colW; }
             it.box.node.style.top = Math.round(it.y) + 'px';
         });
 
@@ -835,14 +902,14 @@
 
         // ── Rings, holes and arrows ──
         var holes = [];
-        found.forEach(function (f) {
-            addRing(f.rect);
+        found.forEach(function (f, fi) {
+            addRing(f.rect, numberBar ? nums[fi] : null);
             holes.push({ x: f.rect.x - 5, y: f.rect.y - 5, w: f.rect.w + 10, h: f.rect.h + 10 });
         });
         applyScrimHoles(holes);
 
         items.forEach(function (it) {
-            var box = { x: colX, y: it.y, w: colW, h: it.h };
+            var box = { x: it.x, y: it.y, w: it.w, h: it.h };
             drawArrow(anchorFor(placement, box, it.box.f.rect), it.box.f.rect);
         });
     }
@@ -898,15 +965,22 @@
     }
 
     function paintPerformance(step) {
-        var card = cardShell();
+        var card = cardShell('dl-tut-card-perf');
         var body = el('div', 'dl-tut-card-body', card);
         body.innerHTML =
-            '<div class="dl-tut-perf">' +
-                '<span class="dl-tut-perf-ico">⚡</span>' +
-                '<div>' +
-                    '<span class="dl-tut-layer-name" style="margin-bottom:6px">' + tr(PERF.title) + '</span>' +
-                    '<p>' + tr(PERF.body) + '</p>' +
-                    '<span class="dl-tut-tip">' + tr(PERF.tip) + '</span>' +
+            '<div class="dl-tut-perf-layout">' +
+                '<div class="dl-tut-perf">' +
+                    '<span class="dl-tut-perf-ico">⚡</span>' +
+                    '<div>' +
+                        '<span class="dl-tut-layer-name" style="margin-bottom:6px">' + tr(PERF.title) + '</span>' +
+                        '<p>' + tr(PERF.body) + '</p>' +
+                        '<span class="dl-tut-tip">' + tr(PERF.tip) + '</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="dl-tut-perf-video">' +
+                    '<video id="dlTutVideo" playsinline webkit-playsinline controls preload="metadata">' +
+                        '<source src="' + TUTORIAL_VIDEO_URL + '" type="video/mp4">' +
+                    '</video>' +
                 '</div>' +
             '</div>';
 

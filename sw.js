@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v72-nearby-popup';
+const CACHE_NAME = 'detectlab-v73-tutorial-pwa-video';
 
 // ── Detection settings ──
 let detectionEnabled = false;
