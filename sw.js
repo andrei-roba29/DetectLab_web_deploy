@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v70-tutorial';
+const CACHE_NAME = 'detectlab-v71-tutorial';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -150,8 +150,8 @@ const PRECACHE_URLS = [
   // Mini tutorial: "?" button (top-right of the map) + 5 purple, blurred
   // slides with arrows pointing at the real side / bottom-bar controls,
   // the layers panel, the free & premium layer catalogue and perf tips.
-  'js/tutorial.js?v=20260907-tutorial',
-  'css/tutorial.css?v=20260907-tutorial'
+  'js/tutorial.js?v=20260908-tutorial',
+  'css/tutorial.css?v=20260908-tutorial'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──
