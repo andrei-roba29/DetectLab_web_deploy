@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v69-babel-safe-area';
+const CACHE_NAME = 'detectlab-v70-tutorial';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -146,7 +146,12 @@ const PRECACHE_URLS = [
   // L.Circle._project paints the circle top). Leaflet moves them natively on
   // pan / zoom / pinch / flyTo, so they no longer drift or jump between zooms.
   'js/battles-layer.js?v=20260902-battles-label-anchor',
-  'css/styles.css?v=20260902-battles-label-anchor'
+  'css/styles.css?v=20260902-battles-label-anchor',
+  // Mini tutorial: "?" button (top-right of the map) + 5 purple, blurred
+  // slides with arrows pointing at the real side / bottom-bar controls,
+  // the layers panel, the free & premium layer catalogue and perf tips.
+  'js/tutorial.js?v=20260907-tutorial',
+  'css/tutorial.css?v=20260907-tutorial'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

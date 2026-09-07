@@ -577,7 +577,8 @@ function _setMapControlsHidden(hidden) {
         'mapSearchWrap',
         'transpTab',
         'transpPanel',
-        'verticalOpacityControl'
+        'verticalOpacityControl',
+        'mapHelpBtn'
     ];
     elements.forEach(function(elId) {
         var el = document.getElementById(elId);
