@@ -69,7 +69,7 @@
                     title: { ro: 'Locația mea', en: 'My location' },
                     desc: {
                         ro: 'Pornește / oprește urmărirea GPS în timp real și centrează harta pe poziția ta.',
-                        en: 'Starts / stops real-time GPS tracking and centres the map on your position.'
+                        en: 'Start / stop real-time GPS tracking and centre the map on your position.'
                     }
                 },
                 {
@@ -93,7 +93,7 @@
                     title: { ro: 'Înregistrare traseu', en: 'Record trail' },
                     desc: {
                         ro: 'Înregistrează pe hartă traseul parcurs pe teren, cu distanța și durata sesiunii.',
-                        en: 'Records the trail you walk in the field on the map, with distance and session time.'
+                        en: 'Record the trail you walk in the field on the map, with distance and session time.'
                     }
                 },
                 {
@@ -101,7 +101,7 @@
                     title: { ro: 'Busolă & blocare rotire', en: 'Compass & rotation lock' },
                     desc: {
                         ro: 'Arată nordul și readuce harta la 0°. Trage-o în jos pe „LOCK” ca să blochezi rotirea hărții.',
-                        en: 'Shows north and resets the map to 0°. Drag it down onto “LOCK” to lock map rotation.'
+                        en: 'Show north and reset the map to 0°. Drag it down onto “LOCK” to lock map rotation.'
                     }
                 }
             ]
@@ -117,7 +117,7 @@
                     title: { ro: 'Detectare activitate', en: 'Activity detection' },
                     desc: {
                         ro: 'Te avertizează în timp real când te apropii de un sit arheologic sau de zona lui de protecție.',
-                        en: 'Warns you in real time when you get close to an archaeological site or its protection zone.'
+                        en: 'Get real-time warnings when you approach an archaeological site or its protection zone.'
                     }
                 },
                 {
@@ -125,7 +125,7 @@
                     title: { ro: 'Locații salvate', en: 'Saved locations' },
                     desc: {
                         ro: 'Deschide lista coordonatelor salvate; atinge una și harta sare direct la ea.',
-                        en: 'Opens the list of saved coordinates; tap one and the map jumps straight to it.'
+                        en: 'Open the list of saved coordinates; tap one and the map jumps straight to it.'
                     }
                 },
                 {
@@ -133,7 +133,7 @@
                     title: { ro: 'Limbă', en: 'Language' },
                     desc: {
                         ro: 'Schimbă limba aplicației între română și engleză.',
-                        en: 'Switches the app language between Romanian and English.'
+                        en: 'Switch the app language between Romanian and English.'
                     }
                 },
                 {
@@ -157,7 +157,7 @@
                     title: { ro: 'Ecran complet', en: 'Full screen' },
                     desc: {
                         ro: 'Extinde harta pe tot ecranul.',
-                        en: 'Expands the map to the full screen.'
+                        en: 'Expand the map to the full screen.'
                     }
                 }
             ]
@@ -174,7 +174,7 @@
                     title: { ro: 'Switch ON / OFF', en: 'ON / OFF switch' },
                     desc: {
                         ro: 'Pornește sau oprește afișarea stratului pe hartă.',
-                        en: 'Turns the layer on or off on the map.'
+                        en: 'Turn the layer on or off on the map.'
                     }
                 },
                 {
@@ -182,7 +182,7 @@
                     title: { ro: 'Slider de opacitate', en: 'Opacity slider' },
                     desc: {
                         ro: 'Reglează transparența stratului, de la 0% la 100%, ca să vezi și ce e dedesubt.',
-                        en: 'Adjusts the layer transparency from 0% to 100%, so you can see what lies beneath.'
+                        en: 'Adjust the layer transparency from 0% to 100% so you can see what lies beneath.'
                     }
                 }
             ],
@@ -230,7 +230,7 @@
                 desc: { ro: 'Stratul de bază.', en: 'The base layer.' }
             },
             {
-                name: { ro: 'Localități OSM', en: 'OSM Localities' },
+                name: { ro: 'Localități OSM', en: 'OSM Places' },
                 desc: { ro: 'Denumirile localităților.', en: 'The names of the localities.' }
             },
             {
@@ -245,7 +245,7 @@
                 }
             },
             {
-                name: { ro: 'Hărți istorice', en: 'Historical maps' },
+                name: { ro: 'Hărți istorice', en: 'Historical Maps' },
                 desc: {
                     ro: 'Conține hărți istorice cu acoperire completă a României + harta Iosefină gratuită care conține foi — când e apăsat butonul „Caută aici” se furnizează foaia aferentă localității văzute pe hartă și se poate alinia corect folosind săgețile.',
                     en: 'Contains historical maps with full coverage of Romania + the free Josephine map made of sheets — pressing the “Search here” button delivers the sheet matching the locality shown on the map, and it can be aligned correctly using the arrows.'
@@ -296,7 +296,7 @@
                 }
             },
             {
-                name: { ro: 'Imagini satelitare anii ’60', en: '1960s satellite imagery' },
+                name: { ro: 'Imagini satelitare anii ’60', en: "Satellite imagery 60's" },
                 desc: {
                     ro: 'Conține imagini aeriene din anii ’60 cu acoperire parțială a României.',
                     en: 'Contains aerial imagery from the 1960s with partial coverage of Romania.'
@@ -310,17 +310,17 @@
                 }
             },
             {
-                name: { ro: 'Zone cu potențial arheologic', en: 'Archaeological potential zones' },
+                name: { ro: 'Zone cu potențial arheologic', en: 'Archaeological Potential Sites' }, // reproduces existing UI button spelling (Archeological)
                 desc: {
                     ro: 'Se folosește de siturile arheologice existente pentru a triangula și a descoperi zone din proximitatea siturilor cu potențial arheologic (fiecărei zone îi este atribuit un scor).',
                     en: 'Uses the existing archaeological sites to triangulate and discover zones with archaeological potential in their proximity (each zone gets a score).'
                 }
             },
             {
-                name: { ro: 'Raport arheologic', en: 'Archaeological report' },
+                name: { ro: 'Raport arheologic', en: 'Archaeological Report' }, // reproduces existing UI button spelling (Archeological)
                 desc: {
                     ro: 'Returnează până la 3 zone cu potențial arheologic, făcând o medie ponderată între rezultatele straturilor APM 2.0, Zone cu potențial arheologic, LIDAR Scanner și Imperiul Roman. Rezultatul final poate fi descărcat ca PDF cu explicații detaliate.',
-                    en: 'Returns up to 3 zones with archaeological potential by computing a weighted average of the results from the APM 2.0, Archaeological potential zones, LIDAR Scanner and Roman Empire layers. The final result can be downloaded as a PDF with detailed explanations.'
+                    en: 'Returns up to 3 zones with archaeological potential by computing a weighted average of the results from the APM 2.0, Archaeological Potential Sites, LIDAR Scanner and Roman Empire layers. The final result can be downloaded as a PDF with detailed explanations.'
                 }
             }
         ]
@@ -330,7 +330,7 @@
         title: { ro: 'Straturi pentru performanță optimă', en: 'Layers for optimal performance' },
         body: {
             ro: 'Straturi precum <b>LIDAR</b> sau <b>Imagini satelitare anii ’60</b> sunt servite de pe web ca servicii <b>WMS</b> și sunt niște straturi foarte dense și detaliate care, deservite simultan, pot bloca temporar aplicația.',
-            en: 'Layers such as <b>LIDAR</b> or <b>1960s satellite imagery</b> are served from the web as <b>WMS</b> services and are very dense, highly detailed layers which, when served simultaneously, can temporarily freeze the app.'
+            en: 'Layers such as <b>LIDAR</b> or <b>Satellite imagery 60\'s</b> are served from the web as <b>WMS</b> services and are very dense, highly detailed layers which, when served simultaneously, can temporarily freeze the app.'
         },
         tip: {
             ro: 'Recomandăm ca aceste straturi să fie activate <b>pe rând</b>, pentru cea mai bună experiență posibilă.',
