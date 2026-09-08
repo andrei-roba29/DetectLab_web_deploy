@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v76-anonymous-event-sync';
+const CACHE_NAME = 'detectlab-v77-tutorial-smooth-slides';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -153,6 +153,12 @@ const PRECACHE_URLS = [
   // the layers panel, the free & premium layer catalogue and perf tips.
   'js/tutorial.js?v=20260907-tutorial-events',
   'css/tutorial.css?v=20260908-tutorial',
+  // Tutorial slides now cross-fade and slide in the direction of travel
+  // instead of cutting: staggered callouts, length-matched arrow drawing,
+  // swipe / drag navigation, and the layers slide waits for the panel to
+  // finish opening before its arrows are measured.
+  'js/tutorial.js?v=20260908-smooth-slides',
+  'css/tutorial.css?v=20260908-smooth-slides',
   // Nearby detectorists: the popup card (.map-place-popup) used to be
   // position:absolute, which pulled it out of the Leaflet popup's flow and left
   // an empty little popup box next to the info card — two windows, one of them
