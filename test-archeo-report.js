@@ -381,6 +381,54 @@ section('Mandatory exclusions (evaluateSeed)');
     check('LIDAR-annotated point gets the 100% LIDAR component', waived.parts.lidarComp === 1);
 }
 
+/* ═══════════════ 4b. option: "avoid LIDAR Scanner results" ═══════════════ */
+section('Option: avoid LIDAR Scanner results');
+{
+    const olive = mkApmGridAt(3);
+    const lidarLL = R.localMetersToLatLng(CENTER.x, CENTER.y, 46.8);
+    const lidarPts = [{ lat: lidarLL.lat, lng: lidarLL.lng, category: 'fortifica\u021Bie', name: '', id: '1' }];
+    const nearLL = R.localMetersToLatLng(CENTER.x + 200, CENTER.y, 46.8);
+    const nearPts = [{ lat: nearLL.lat, lng: nearLL.lng, category: 'tumul', name: '', id: '2' }];
+
+    check('the option is OFF by default',
+        CFG.LIDAR.AVOID_ANNOTATED_DEFAULT === false && R.avoidLidarAnnotated() === false);
+
+    const optOff = R.evaluateSeed({ x: CENTER.x, y: CENTER.y, origin: 'lidar' },
+        baseCtx({ apmGrid: olive, lidarPoints: lidarPts }));
+    check('option OFF: an annotated point is still returned automatically',
+        optOff.ok === true && optOff.annotated === true, JSON.stringify(optOff.reason));
+
+    const optOn = R.evaluateSeed({ x: CENTER.x, y: CENTER.y, origin: 'lidar' },
+        baseCtx({ apmGrid: olive, lidarPoints: lidarPts, avoidLidarAnnotated: true }));
+    check('option ON: the 100% LIDAR Scanner result is rejected', optOn.ok === false);
+    check('option ON: it is rejected with its own reason key',
+        optOn.reason === 'lidar_annotation_avoided', JSON.stringify(optOn));
+
+    const gridOnLidar = R.evaluateSeed({ x: CENTER.x, y: CENTER.y, origin: 'grid' },
+        baseCtx({ lidarPoints: lidarPts, avoidLidarAnnotated: true }));
+    check('option ON: a grid seed sitting on an annotated point is rejected too',
+        gridOnLidar.ok === false && gridOnLidar.reason === 'lidar_annotation_avoided');
+
+    const nearOn = R.evaluateSeed({ x: CENTER.x, y: CENTER.y, origin: 'grid' },
+        baseCtx({ lidarPoints: nearPts, avoidLidarAnnotated: true }));
+    const nearOff = R.evaluateSeed({ x: CENTER.x, y: CENTER.y, origin: 'grid' },
+        baseCtx({ lidarPoints: nearPts }));
+    check('option ON: a candidate 200 m from a LIDAR object is kept',
+        nearOn.ok === true && nearOn.annotated === false);
+    check('option ON: LIDAR proximity still contributes its component',
+        Math.abs(nearOn.parts.lidarComp - (1 - 200 / CFG.LIDAR.PROXIMITY_M)) < 1e-6, nearOn.parts.lidarComp);
+    check('option ON: an ordinary candidate keeps exactly the same score',
+        Math.abs(nearOn.score - nearOff.score) < 1e-12, nearOn.score + ' vs ' + nearOff.score);
+
+    const otherOlive = R.evaluateSeed({ x: CENTER.x, y: CENTER.y, origin: 'grid' },
+        baseCtx({ apmGrid: olive, lidarPoints: nearPts, avoidLidarAnnotated: true }));
+    check('option ON does not relax the APM rule for the other candidates',
+        otherOlive.ok === false && otherOlive.reason === 'apm_below_average', JSON.stringify(otherOlive));
+
+    R.setAvoidLidarAnnotated(false);   // leave the state clean for the next sections
+    check('the option can be switched back off', R.avoidLidarAnnotated() === false);
+}
+
 /* ═══════════════ 5. weighted score ═══════════════ */
 section('Weighted score');
 {
@@ -805,6 +853,65 @@ section('End-to-end analysis (runReport)');
         return true;
     })());
     check('nearest site has a CIMEC link', model.results[0].nearestSites.every(s => s.url && /ran\.cimec\.ro/.test(s.url)));
+    /* ═══════════ 10b. the option, live: re-score without re-downloading ═══════════ */
+    section('Option: avoid LIDAR Scanner results (live re-score)');
+    {
+        const before = model.results.map(r => r.score);
+        check('the end-to-end run did return the annotated LIDAR point',
+            model.results.some(r => r.annotated), model.results.map(r => r.annotated).join(','));
+
+        const box = domNodes['archReportAvoidLidar'];
+        check('the "avoid LIDAR Scanner results" checkbox is wired', !!(box._handlers.change || []).length);
+
+        R.setAvoidLidarAnnotated(true);
+        const rescored = await R.rescoreFromContext();
+        check('re-scoring returns a fresh model', !!rescored);
+        check('no result is a 100% LIDAR Scanner result any more',
+            rescored.results.every(r => !r.annotated),
+            rescored.results.map(r => r.annotated + '@' + r.score).join(','));
+        check('the model records the option', rescored.options.avoidLidarAnnotated === true);
+        check('the rejected LIDAR candidates are counted under their own reason',
+            (rescored.meta.rejected.lidar_annotation_avoided || 0) >= 1, JSON.stringify(rescored.meta.rejected));
+        check('the candidate pool shrank by the LIDAR-only candidates',
+            rescored.meta.candidates < model.meta.candidates,
+            model.meta.candidates + ' \u2192 ' + rescored.meta.candidates);
+        check('nothing was re-fetched: same seeds, same sites, same area, same duration',
+            rescored.meta.seeds === model.meta.seeds && rescored.meta.sitesCount === model.meta.sitesCount &&
+            Math.abs(rescored.meta.areaKm2 - model.meta.areaKm2) < 1e-9 && rescored.meta.ms === model.meta.ms,
+            JSON.stringify({ seeds: rescored.meta.seeds, sites: rescored.meta.sitesCount, ms: rescored.meta.ms }));
+        check('the remaining results are the best the algorithm has (ranked by score)',
+            rescored.results.every((r, i) => i === 0 || rescored.results[i - 1].score >= r.score),
+            rescored.results.map(r => r.score).join(','));
+        check('at most 3 results are returned', rescored.results.length <= 3, rescored.results.length);
+        check('every result still clears the site radii (exclusions unchanged)',
+            rescored.results.every(r => Math.min.apply(null, r.nearestSites.map(s2 => s2.distanceM)) >= 700));
+        check('the figures captured for the old results are invalidated',
+            sandbox._archeoReportState().figures === null);
+
+        R.setAvoidLidarAnnotated(false);
+        const back = await R.rescoreFromContext();
+        check('unticking brings the LIDAR result back', back.results.some(r => r.annotated),
+            back.results.map(r => r.annotated).join(','));
+        check('unticking restores exactly the previous scores',
+            JSON.stringify(back.results.map(r => r.score)) === JSON.stringify(before),
+            back.results.map(r => r.score).join(','));
+        check('the option is recorded as off again', back.options.avoidLidarAnnotated === false);
+
+        // …and through the DOM, exactly like a click in the panel: the change
+        // handler must re-score by itself, with no new "Generate report".
+        const settle = () => new Promise(r => setTimeout(r, 300));
+        box.checked = true; box.fire('change');
+        await settle();
+        const viaDom = sandbox._archeoReportState().model;
+        check('ticking the checkbox in the panel re-scores on its own',
+            viaDom.options.avoidLidarAnnotated === true && viaDom.results.every(r => !r.annotated),
+            JSON.stringify(viaDom.results.map(r => r.annotated)));
+        box.checked = false; box.fire('change');
+        await settle();
+        check('unticking it in the panel brings the LIDAR result back',
+            sandbox._archeoReportState().model.results.some(r => r.annotated));
+    }
+
     // ── what actually landed on the map ──
     const rendered = CREATED_GROUPS[CREATED_GROUPS.length - 1];
     check('a leaflet layerGroup was added to the map', !!(rendered && rendered._added));
@@ -1047,11 +1154,11 @@ section('End-to-end analysis (runReport)');
         const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
         // Sat-base native-zoom fix: only js/archeo-report.js changed, so it gets its
         // own ?v= tag; the PDF builder, translations and styles keep their page tags.
-        const Vpdf = '?v=20260831-arch-report-v4';   // archeo-report-pdf.js (unchanged this fix)
-        const Vfix = '?v=20260902-arch-report-v4';   // archeo-report.js — this fix's tag
+        const Vpdf = '?v=20260831-arch-report-v4';   // archeo-report-pdf.js (current page tag)
+        const Vfix = '?v=20260908-arch-report-v5';   // archeo-report.js — this fix's tag
         const V0 = '?v=20260827-arch-report';        // pdf-writer.js is unchanged this release
-        const Vtr = '?v=20260831-battles-v2';        // translations.js (current page tag)
-        const Vcss = '?v=20260901-battles-v5';       // styles.css (current page tag)
+        const Vtr = '?v=20260908-arch-report-v5';    // translations.js (new option strings)
+        const Vcss = '?v=20260908-arch-report-v5';   // styles.css (.arch-report-opt)
         check('js/archeo-report.js is loaded by index.html (this fix)', html.indexOf('src="js/archeo-report.js' + Vfix + '"') !== -1);
         check('js/archeo-report-pdf.js is loaded by index.html', html.indexOf('src="js/archeo-report-pdf.js' + Vpdf + '"') !== -1);
         check('js/translations.js is loaded by index.html', html.indexOf('src="js/translations.js' + Vtr + '"') !== -1);
@@ -1065,8 +1172,11 @@ section('End-to-end analysis (runReport)');
         ['archReportRow', 'archReportToggle', 'archReportRunBtn', 'archReportPdfBtn',
          'archReportPdfLang', 'archReportPdfLangRo', 'archReportPdfLangEn',
          'archReportResultsToggleWrap', 'archReportResultsToggle', 'archReportStatus', 'archReportSummary',
-         'archReportDistance', 'archReportDistanceValue', 'archReportLoading']
+         'archReportDistance', 'archReportDistanceValue', 'archReportLoading',
+         'archReportAvoidLidarWrap', 'archReportAvoidLidar']
             .forEach(function (id) { check('index.html has #' + id, html.indexOf('id="' + id + '"') !== -1); });
+        check('the avoid-LIDAR checkbox sits before the Run button',
+            html.indexOf('id="archReportAvoidLidar"') < html.indexOf('id="archReportRunBtn"'));
         check('the PDF language selector sits next to the PDF button',
             html.indexOf('id="archReportPdfBtn"') < html.indexOf('id="archReportPdfLang"') &&
             html.indexOf('id="archReportPdfLangRo"') < html.indexOf('id="archReportPdfLangEn"'));
@@ -1087,7 +1197,7 @@ section('End-to-end analysis (runReport)');
         check('every .arch-report-* class emitted by the JS is styled (' + classes.size + ')',
             unstyled.length === 0, unstyled.join(', '));
         check('CACHE_NAME was bumped for this release',
-            /const CACHE_NAME = 'detectlab-v63-satbase-native18'/.test(sw),
+            /const CACHE_NAME = 'detectlab-v78-arch-report-avoid-lidar'/.test(sw),
             (sw.match(/const CACHE_NAME = '[^']+'/) || [])[0]);
     }
 
@@ -1118,7 +1228,8 @@ section('End-to-end analysis (runReport)');
         ['5', '45', '4', 'unknown', 'unknown_waived'].forEach(function (v) { used.add('arch_report_apm_explain_' + v); });
         ['high', 'medium', 'low'].forEach(function (v) { used.add('arch_report_class_' + v); });
         ['apm', 'lidar', 'potential'].forEach(function (v) { used.add('arch_report_fig_' + v + '_title'); used.add('arch_report_fig_' + v + '_caption'); });
-        ['uat_not_red', 'uat_too_close', 'site_radius', 'site_polygon', 'apm_below_average'].forEach(function (v) { used.add('arch_report_rej_' + v); });
+        ['uat_not_red', 'uat_too_close', 'site_radius', 'site_polygon', 'apm_below_average',
+         'lidar_annotation_avoided'].forEach(function (v) { used.add('arch_report_rej_' + v); });
         ['inside', 'near', 'none'].forEach(function (v) { used.add('arch_report_pot_' + v + '_long'); });
         ['hit', 'near', 'none'].forEach(function (v) { used.add('arch_report_lidar_' + v + '_long'); });
         ['near', 'none'].forEach(function (v) { used.add('arch_report_roads_' + v + '_long'); });

@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v77-tutorial-smooth-slides';
+const CACHE_NAME = 'detectlab-v78-arch-report-avoid-lidar';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -167,7 +167,14 @@ const PRECACHE_URLS = [
   // Subtle layer coverage highlights + standalone map/layout/auth hooks.
   // Keep the installed/offline PWA on the same CSS and JS as index.html.
   'css/styles.css?v=20260907-layer-visibility-pwa',
-  'js/map-app.js?v=20260907-layer-visibility-pwa'
+  'js/map-app.js?v=20260907-layer-visibility-pwa',
+  // Archaeological Report v5: new panel option "evită rezultatele LIDAR
+  // Scanner" / "avoid LIDAR Scanner results" — drops the candidates that are
+  // 100% LIDAR Scanner (annotated anomalies) and re-scores the last analysis
+  // instantly, without re-downloading tiles.
+  'js/archeo-report.js?v=20260908-arch-report-v5',
+  'js/translations.js?v=20260908-arch-report-v5',
+  'css/styles.css?v=20260908-arch-report-v5'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

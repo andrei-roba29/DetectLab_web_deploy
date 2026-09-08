@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260907-layer-visibility-pwa">
+    <link rel="stylesheet" href="css/styles.css?v=20260908-arch-report-v5">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260902-babel-safe-area">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <style>
@@ -2702,6 +2702,11 @@
                         </div>
                         <div class="arch-report-control"><span>Search radius / Rază</span><strong id="archReportDistanceValue">3 km</strong></div>
                         <input type="range" class="transp-slider" id="archReportDistance" min="1" max="10" value="3" step="1" aria-label="Search radius from 1 to 10 kilometres">
+                        <label class="arch-report-show arch-report-opt" id="archReportAvoidLidarWrap">
+                            <input type="checkbox" id="archReportAvoidLidar">
+                            <span class="t" data-key="arch_report_avoid_lidar">Avoid LIDAR Scanner results</span>
+                        </label>
+                        <div style="font-size:0.66rem;color:rgba(245,240,235,0.38);margin-top:4px;line-height:1.4" class="t" data-key="arch_report_avoid_lidar_hint">Skips the results returned only because they are annotated on LIDAR Scanner; the rest keep the normal score.</div>
                         <button id="archReportRunBtn" type="button" class="arch-report-button" disabled>
                             <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
                                 <circle cx="6.5" cy="6.5" r="4.4" fill="none" stroke="#66c8ff" stroke-width="1.2"/>
@@ -3128,7 +3133,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260902-battles-compact"></script>
+    <script src="js/translations.js?v=20260908-arch-report-v5"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -3167,7 +3172,7 @@
          PDF layout → the analysis layer itself (this order matters). -->
     <script src="js/pdf-writer.js?v=20260827-arch-report"></script>
     <script src="js/archeo-report-pdf.js?v=20260831-arch-report-v4"></script>
-    <script src="js/archeo-report.js?v=20260902-arch-report-v4"></script>
+    <script src="js/archeo-report.js?v=20260908-arch-report-v5"></script>
     <script src="js/tutorial.js?v=20260908-smooth-slides"></script>
 
     <!-- AUTH MODAL -->

@@ -5118,6 +5118,9 @@
         @keyframes archReportSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
         .arch-report-show { display:flex; align-items:center; gap:7px; margin-top:9px; font-size:.7rem; color:rgba(245,240,235,.7); cursor:pointer; }
         .arch-report-show input { accent-color:#66c8ff; }
+        /* "avoid LIDAR Scanner results" — an analysis option (before the Run button),
+           not a display toggle: slightly tighter, so it reads as an input. */
+        .arch-report-opt { margin-top:10px; }
         .arch-report-lang { display:flex; align-items:center; gap:6px; margin-top:9px; font-size:.7rem; color:rgba(245,240,235,.7); }
         .arch-report-lang-btn {
             background:rgba(41,182,246,.10); border:1px solid rgba(102,200,255,.4);

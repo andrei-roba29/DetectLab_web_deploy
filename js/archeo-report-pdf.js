@@ -532,6 +532,9 @@
             total: model.thresholds.siteRadiusM + model.thresholds.siteBufferM
         }), { spaceAfter: 5 });
         pt.para(tr('arch_report_excl_apm'), { spaceAfter: 8 });
+        if (model.options && model.options.avoidLidarAnnotated) {
+            pt.para(tr('arch_report_avoid_lidar_method'), { spaceAfter: 8 });
+        }
 
         pt.h2(tr('arch_report_score_title'));
         pt.para(tr('arch_report_score_formula', {

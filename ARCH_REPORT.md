@@ -17,6 +17,7 @@ Three sources feed a single weighted score:
 | Path | Role |
 | --- | --- |
 | `js/archeo-report.js` | The layer: seed generation, filters, scoring, map rendering, PDF orchestration |
+| `index.html` | The premium row: radius slider, “avoid LIDAR Scanner results”, run / PDF / language / show-results controls |
 | `js/archeo-report-pdf.js` | Page layout — paints every page on a canvas, hands JPEGs to the writer |
 | `js/pdf-writer.js` | Dependency-free PDF 1.4 writer (`window.DetectLabPdf`) |
 | `js/archeo-potential.js` | Unchanged logic, exposes `computeArcheoPotential()` headlessly |
@@ -35,12 +36,17 @@ document *metadata* (`/Title`, `/Author`) with `winAnsiSafe()`.
 ## Workflow
 
 1. Switch the layer on → map clicks pick the analysis centre (orange pin).
-2. **Run** (disabled until a point exists) → status steps: sites → potential →
+2. Optionally tick **“avoid LIDAR Scanner results” / „evită rezultatele LIDAR
+   Scanner”** (under the radius slider) so the shortlist skips the results that
+   are 100 % LIDAR Scanner — see
+   [the option](#the-avoid-lidar-scanner-results-option). Ticking it *after* a
+   run re-scores that run instantly, with nothing re-downloaded.
+3. **Run** (disabled until a point exists) → status steps: sites → potential →
    LIDAR → UAT → APM → scoring.
-3. **3 orange hexagons** (radius 180 m) with permanent `Rezultat n/3 · %` labels
+4. **3 orange hexagons** (radius 180 m) with permanent `Rezultat n/3 · %` labels
    appear and **stay until the layer is switched off** (or "show results" is
    unticked). The polygon *and* its label are clickable → score popup.
-4. Pick the **PDF language** with the RO / EN selector next to the download
+5. Pick the **PDF language** with the RO / EN selector next to the download
    button (defaults to the site language, remembered per session), then
    **Download PDF** → captures the 3 figures, builds the report and downloads
    it. The *whole* document — pages, tables, figure titles and result labels —
@@ -72,6 +78,35 @@ triangulation bubble inside it**.
 4. **Exception** — a point **annotated in LIDAR Scanner** (≤ 60 m from a scanner
    result) bypasses filter 3 and is returned automatically; its APM component
    becomes `APM_UNKNOWN` (0.30) and it receives `LIDAR_ANNOTATION_BONUS`.
+
+## The "avoid LIDAR Scanner results" option
+
+A checkbox in the layer's panel — **„evită rezultatele LIDAR Scanner”** (RO) /
+**“avoid LIDAR Scanner results”** (EN) — sitting under the radius slider, just
+before the Run button.
+
+| | Behaviour |
+| --- | --- |
+| **Off** (default) | A point annotated on the LIDAR Scanner (≤ `LIDAR.HIT_M`, 60 m) is returned automatically, whatever its APM 2.0 colour, and receives `LIDAR_ANNOTATION_BONUS` |
+| **On** | Such a candidate is rejected (`reason: 'lidar_annotation_avoided'`): it exists **100 % because of the scanner**, so it never reaches the shortlist and the APM waiver no longer saves it |
+
+What the option deliberately does **not** change:
+
+* the **other candidates keep the normal weighted score**, LIDAR proximity
+  included — a point 300 m from a scanner object still gets its `1 − d/600`
+  component, because that is an algorithm result, not a scanner result;
+* the mandatory exclusions (UAT, site radii, APM below average) stay exactly as
+  they are and are *not* relaxed for anyone;
+* the PDF still explains everything — the *Method* page prints the option and
+  the rejection table counts the skipped candidates
+  (`arch_report_rej_lidar_annotation_avoided`).
+
+Changing the checkbox **re-scores the last analysis instantly**: the seeds, the
+APM/UAT grids, the sites, the bubbles and the LIDAR points are already in
+`_state.ctx`, so only the scoring pass (`scoreAndSelect`) runs again — no tile,
+no CSV, no triangulation request. The cached figures are dropped, so the next
+PDF is rebuilt from the new results. Before the first run the checkbox simply
+sets the option for the next one.
 
 ## Scoring
 
@@ -158,6 +193,8 @@ _archeoReportDebug.parseCenturyRange('sec. II-III p.Chr.')
 _archeoReportDebug.periodKey('sec. II-III p.Chr.')   // → 'roman'
 _archeoReportSetPdfLang('ro')      // or 'en' — PDF language override
 _archeoReportPdfLang()             // → the effective PDF language
+_archeoReportSetAvoidLidar(true)   // drop the 100% LIDAR results + re-score now
+_archeoReportState().avoidLidar    // → is the option on?
 window._lidarScannerApi.getPoints()
 ```
 
@@ -166,10 +203,13 @@ window._lidarScannerApi.getPoints()
 sandbox with a working canvas/Image stub: APM colour classification, every
 exclusion rule, the weighted score, selection, the century/name period
 matcher, the APM figure polygonization, the PDF byte structure (xref offsets,
-DCTDecode streams), the PDF language selection, the Leaflet layers that end
-up on the map, and the RO/EN translation completeness.
+DCTDecode streams), the PDF language selection, the “avoid LIDAR Scanner
+results” option (annotated candidates rejected, the score of an ordinary
+candidate untouched, and the live re-score that gives the previous results back
+when the option is unticked), the Leaflet layers that end up on the map, and
+the RO/EN translation completeness.
 
-283 checks. **Not covered by the harness** (needs a browser): real tile
+324 checks. **Not covered by the harness** (needs a browser): real tile
 fetching — the R2 APM bucket and the Esri satellite basemap must answer
 `Access-Control-Allow-Origin` for `getImageData()` to work.
 

@@ -31,6 +31,12 @@
  *      yellow (4). Khaki/olive (3), magenta (2) and red (1) are rejected —
  *      UNLESS the point is annotated on the LIDAR Scanner, which waives the
  *      APM condition (an annotated anomaly is returned automatically).
+ *   D. (OPTIONAL) "evită rezultatele LIDAR Scanner" / "avoid LIDAR Scanner
+ *      results" — a panel checkbox. When it is ticked, exclusion C no longer
+ *      saves an annotated point: a candidate that exists only because of the
+ *      scanner (100% LIDAR) is dropped. Every other candidate — including one
+ *      merely near a scanner object — keeps the normal weighted score, LIDAR
+ *      proximity included.
  *
  * WEIGHTED SCORE (CONFIG.SCORING — every weight is live-tunable)
  *   score = W_APM · APM  +  W_POTENTIAL · PotentialZone  +  W_LIDAR · LIDAR
@@ -103,7 +109,14 @@
         // LIDAR Scanner
         LIDAR: {
             HIT_M: 60,                // ≤ this = "adnotat pe LIDAR Scanner"
-            PROXIMITY_M: 600          // "în proximitatea unui rezultat LIDAR"
+            PROXIMITY_M: 600,         // "în proximitatea unui rezultat LIDAR"
+            // Panel option — "evită rezultatele LIDAR Scanner" /
+            // "avoid LIDAR Scanner results". When it is on, the candidates
+            // that exist 100% because of the scanner (the annotated anomalies,
+            // which are otherwise returned automatically and may bypass the
+            // APM filter) are dropped. Every other candidate keeps the normal
+            // weighted score, LIDAR proximity included.
+            AVOID_ANNOTATED_DEFAULT: false
         },
 
         // Roman roads (AWMC GeoJSON — same URL as the map layer). Bonus only:
@@ -1038,6 +1051,15 @@
         var lidar = nearestLidar(x, y, ctx);
         var annotated = !!(lidar && lidar.annotated) || seed.origin === 'lidar';
 
+        // ── exclusion D (optional): "evită rezultatele LIDAR Scanner" ──
+        // An annotated point is returned automatically by the scanner rule, so
+        // it is a 100% LIDAR Scanner result: with the option on it never
+        // reaches the shortlist, whatever its score. Candidates that are only
+        // *near* a scanner object are ordinary algorithm results and survive.
+        if (annotated && ctx.avoidLidarAnnotated) {
+            return { ok: false, reason: 'lidar_annotation_avoided' };
+        }
+
         // ── exclusion C: APM 2.0 must be at least neutral ──
         var apmCls = apmClassAt(ctx.apmGrid, x, y);
         var apmAllowed = CONFIG.APM.ALLOWED.indexOf(apmCls) !== -1;
@@ -1403,8 +1425,25 @@
         visible: true,
         version: 0,
         layerGroup: null,
+        // "evită rezultatele LIDAR Scanner" / "avoid LIDAR Scanner results".
+        // A pure analysis option: it changes which candidates may be returned.
+        avoidLidar: CONFIG.LIDAR.AVOID_ANNOTATED_DEFAULT,
         pdfLang: null           // PDF language override ('ro'|'en'); null = site language
     };
+
+    /* ── the "avoid LIDAR Scanner results" option ─────────────────────────
+     * Read straight from the state so both the full run and the instant
+     * re-scoring react to it; the value is copied onto the analysis context
+     * (ctx.avoidLidarAnnotated) which is what evaluateSeed() consults.
+     * ────────────────────────────────────────────────────────────────────── */
+    function avoidLidarAnnotated() { return !!_state.avoidLidar; }
+
+    function setAvoidLidarAnnotated(on) {
+        _state.avoidLidar = !!on;
+        var box = el('archReportAvoidLidar');
+        if (box) box.checked = _state.avoidLidar;
+        return _state.avoidLidar;
+    }
 
     // PDF language — the user picks RO or EN in the panel before downloading;
     // the choice defaults to the site language and is remembered for the
@@ -1469,6 +1508,9 @@
         }
         var pdfBtn = el('archReportPdfBtn');
         if (pdfBtn) pdfBtn.disabled = running;
+        // The analysis options are inputs to the run in flight.
+        var avoidBox = el('archReportAvoidLidar');
+        if (avoidBox) avoidBox.disabled = running;
         var ov = el('archReportLoading');
         if (ov) ov.classList.toggle('visible', !!running);
     }
@@ -1606,85 +1648,21 @@
                 ctx.apmGrid = grids[1];
 
                 // ── seeds → exclusions → weighted score ──
-                setStatus('arch_report_step_scoring');
-                var seeds = buildSeeds(ctx);
-                ctx.seeds = seeds;
-                var candidates = [];
-                var rejected = {};
-                for (var i = 0; i < seeds.length; i += 60) {
-                    var batch = seeds.slice(i, i + 60);
-                    batch.forEach(function (seed) {
-                        var res = evaluateSeed(seed, ctx);
-                        if (res.ok) candidates.push(res);
-                        else rejected[res.reason] = (rejected[res.reason] || 0) + 1;
-                    });
-                    await yieldToUI();
-                    if (myVersion !== _state.version) return null;
-                }
-                ctx.rejected = rejected;
-                ctx.candidates = candidates;
+                var scored = await scoreAndSelect(ctx, myVersion);
+                if (!scored) return null;       // superseded by a newer run
 
-                var picked = selectResults(candidates, CONFIG.MAX_RESULTS, CONFIG.RESULT_MIN_SEPARATION_M);
-                var results = picked.map(function (cand, idx) {
-                    return buildResultModel(cand, ctx, idx + 1, picked.length);
-                });
-
-                _state.results = results;
+                _state.results = scored.results;
                 _state.ctx = ctx;   // kept for the figure overlays (sites, LIDAR)
-                _state.model = {
-                    // lat/lng copies for the canvas overlays (the PDF figures)
-                    potentialBubbles: ctx.bubbles.map(function (b) {
-                        return { lat: b.lat, lng: b.lng, score: b.score };
-                    }),
-                    meta: {
-                        generatedAt: new Date(),
-                        lang: lang(),
-                        areaKm2: Math.round(ctx.areaKm2 * 100) / 100,
-                        radiusKm: ctx.radiusKm,
-                        radiusM: Math.round(ctx.radiusM),
-                        sideM: Math.round(ctx.square.sideM),
-                        center: { lat: center.lat, lng: center.lng },
-                        sitesCount: ctx.siteRecords.length,
-                        bubblesCount: ctx.bubbles.length,
-                        bubblesInArea: ctx.bubblesInArea.length,
-                        potentialStatus: ctx.potentialStatus,
-                        lidarCount: ctx.lidarPoints.length,
-                        lidarInArea: ctx.lidarInArea.length,
-                        romanRoadSegments: ctx.romanRoadSegs ? ctx.romanRoadSegs.length : 0,
-                        seeds: seeds.length,
-                        candidates: candidates.length,
-                        rejected: rejected,
-                        uatAvailable: !!ctx.uatGrid.available,
-                        apmAvailable: !!ctx.apmGrid.available,
-                        apmUnreadable: !!ctx.apmGrid.unreadable,
-                        ms: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
-                    },
-                    results: results,
-                    weights: {
-                        apm: CONFIG.SCORING.W_APM,
-                        potential: CONFIG.SCORING.W_POTENTIAL,
-                        lidar: CONFIG.SCORING.W_LIDAR,
-                        romanRoads: CONFIG.SCORING.W_ROMAN_ROADS
-                    },
-                    thresholds: {
-                        uatClearanceM: CONFIG.UAT.CLEARANCE_M,
-                        siteRadiusM: CONFIG.SITE.RADIUS_M,
-                        siteBufferM: CONFIG.SITE.BUFFER_M,
-                        lidarHitM: CONFIG.LIDAR.HIT_M,
-                        lidarProximityM: CONFIG.LIDAR.PROXIMITY_M,
-                        potentialProximityM: CONFIG.POTENTIAL.PROXIMITY_M,
-                        romanRoadProximityM: CONFIG.ROMAN_ROADS.PROXIMITY_M
-                    }
-                };
+                _state.model = buildModel(ctx, scored, t0);
 
                 renderResults(_state.model);
                 updateUi();
 
-                console.log('[ArcheoReport] ' + seeds.length + ' seeds, ' + candidates.length +
-                    ' passed filters, ' + results.length + ' results — ' + _state.model.meta.ms + ' ms',
-                    rejected);
+                console.log('[ArcheoReport] ' + ctx.seeds.length + ' seeds, ' + scored.candidates.length +
+                    ' passed filters, ' + scored.results.length + ' results — ' + _state.model.meta.ms + ' ms',
+                    scored.rejected);
 
-                if (!results.length) setStatus('arch_report_no_results', true);
+                if (!scored.results.length) setStatus('arch_report_no_results', true);
                 else setStatus('arch_report_done');
                 return _state.model;
             } catch (err) {
@@ -1696,6 +1674,136 @@
                 setRunning(false);
             }
         })();
+    }
+
+    /**
+     * Seeds → mandatory exclusions → weighted score → top-N selection.
+     *
+     * Split out of runReport() so the scoring pass can also be repeated on
+     * its own: when the user ticks "evită rezultatele LIDAR Scanner" after a
+     * run, every input (tiles, sites, bubbles, LIDAR points) is already in
+     * `_state.ctx`, so only this pass has to run again — nothing is
+     * re-downloaded and the new results appear instantly.
+     *
+     * @returns {Promise<{candidates:Array, rejected:Object, results:Array}|null>}
+     *          null when a newer run superseded this one.
+     */
+    async function scoreAndSelect(ctx, myVersion) {
+        setStatus('arch_report_step_scoring');
+        // The panel option is copied onto the context, which is what
+        // evaluateSeed() reads (this keeps evaluateSeed pure).
+        ctx.avoidLidarAnnotated = avoidLidarAnnotated();
+        var seeds = ctx.seeds || (ctx.seeds = buildSeeds(ctx));
+        var candidates = [];
+        var rejected = {};
+        for (var i = 0; i < seeds.length; i += 60) {
+            var batch = seeds.slice(i, i + 60);
+            batch.forEach(function (seed) {
+                var res = evaluateSeed(seed, ctx);
+                if (res.ok) candidates.push(res);
+                else rejected[res.reason] = (rejected[res.reason] || 0) + 1;
+            });
+            await yieldToUI();
+            if (myVersion !== _state.version) return null;
+        }
+        ctx.rejected = rejected;
+        ctx.candidates = candidates;
+        var picked = selectResults(candidates, CONFIG.MAX_RESULTS, CONFIG.RESULT_MIN_SEPARATION_M);
+        return {
+            candidates: candidates,
+            rejected: rejected,
+            results: picked.map(function (cand, idx) {
+                return buildResultModel(cand, ctx, idx + 1, picked.length);
+            })
+        };
+    }
+
+    /**
+     * The report model built from one analysis context + its scoring pass.
+     * @param {number} [t0] start timestamp; null keeps the previous duration
+     *        (used by the instant re-scoring, which measures nothing new).
+     */
+    function buildModel(ctx, scored, t0) {
+        var ms = null;
+        if (t0 != null) {
+            ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+        }
+        var prev = _state.model;
+        return {
+            // lat/lng copies for the canvas overlays (the PDF figures)
+            potentialBubbles: ctx.bubbles.map(function (b) {
+                return { lat: b.lat, lng: b.lng, score: b.score };
+            }),
+            // Analysis options in force for this model — the PDF says so.
+            options: { avoidLidarAnnotated: !!ctx.avoidLidarAnnotated },
+            meta: {
+                generatedAt: new Date(),
+                lang: lang(),
+                areaKm2: Math.round(ctx.areaKm2 * 100) / 100,
+                radiusKm: ctx.radiusKm,
+                radiusM: Math.round(ctx.radiusM),
+                sideM: Math.round(ctx.square.sideM),
+                center: { lat: ctx.center.lat, lng: ctx.center.lng },
+                sitesCount: ctx.siteRecords.length,
+                bubblesCount: ctx.bubbles.length,
+                bubblesInArea: ctx.bubblesInArea.length,
+                potentialStatus: ctx.potentialStatus,
+                lidarCount: ctx.lidarPoints.length,
+                lidarInArea: ctx.lidarInArea.length,
+                romanRoadSegments: ctx.romanRoadSegs ? ctx.romanRoadSegs.length : 0,
+                seeds: ctx.seeds ? ctx.seeds.length : 0,
+                candidates: scored.candidates.length,
+                rejected: scored.rejected,
+                uatAvailable: !!ctx.uatGrid.available,
+                apmAvailable: !!ctx.apmGrid.available,
+                apmUnreadable: !!ctx.apmGrid.unreadable,
+                ms: ms !== null ? ms : ((prev && prev.meta.ms) || 0)
+            },
+            results: scored.results,
+            weights: {
+                apm: CONFIG.SCORING.W_APM,
+                potential: CONFIG.SCORING.W_POTENTIAL,
+                lidar: CONFIG.SCORING.W_LIDAR,
+                romanRoads: CONFIG.SCORING.W_ROMAN_ROADS
+            },
+            thresholds: {
+                uatClearanceM: CONFIG.UAT.CLEARANCE_M,
+                siteRadiusM: CONFIG.SITE.RADIUS_M,
+                siteBufferM: CONFIG.SITE.BUFFER_M,
+                lidarHitM: CONFIG.LIDAR.HIT_M,
+                lidarProximityM: CONFIG.LIDAR.PROXIMITY_M,
+                potentialProximityM: CONFIG.POTENTIAL.PROXIMITY_M,
+                romanRoadProximityM: CONFIG.ROMAN_ROADS.PROXIMITY_M
+            }
+        };
+    }
+
+    /**
+     * Repeat only the scoring pass of the last analysis, keeping every input
+     * that was already fetched. Called when an analysis option changes
+     * ("evită rezultatele LIDAR Scanner"): the new shortlist is on the map
+     * without re-downloading a single tile.
+     */
+    function rescoreFromContext() {
+        var ctx = _state.ctx;
+        if (!ctx || _state.running) return Promise.resolve(null);
+        _state.version++;                       // supersede any older pass
+        var myVersion = _state.version;
+        _state.figures = null;                  // the cached figures show old results
+        return scoreAndSelect(ctx, myVersion).then(function (scored) {
+            if (!scored || myVersion !== _state.version) return null;
+            _state.results = scored.results;
+            _state.model = buildModel(ctx, scored, null);
+            renderResults(_state.model);
+            updateUi();
+            if (!scored.results.length) setStatus('arch_report_no_results', true);
+            else setStatus('arch_report_done');
+            return _state.model;
+        }).catch(function (err) {
+            console.error('[ArcheoReport] re-scoring failed:', err);
+            setStatus('arch_report_error', true);
+            return null;
+        });
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -1784,6 +1892,10 @@
         _state.layerGroup = null;
         _state.results = [];
         _state.model = null;
+        // The analysis context belongs to those results (it holds the APM/UAT
+        // grids and the figure overlays), so it goes away with them — and the
+        // instant re-scoring then has nothing stale to work on.
+        _state.ctx = null;
     }
 
     function renderResults(model) {
@@ -1856,7 +1968,10 @@
                 passed: model.meta.candidates,
                 bubbles: model.meta.bubblesInArea,
                 lidar: model.meta.lidarInArea
-            })) + '</div>');
+            })) + '</div>' +
+            (model.options && model.options.avoidLidarAnnotated
+                ? '<div style="margin-top:4px;opacity:.7">' + esc(tr('arch_report_avoid_lidar_note')) + '</div>'
+                : ''));
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -2477,6 +2592,19 @@
             show.dataset.archReportWired = '1';
             show.addEventListener('change', function () { toggleResults(this.checked); });
         }
+        // "evită rezultatele LIDAR Scanner" / "avoid LIDAR Scanner results".
+        // Changing it re-scores the last analysis on the spot (the inputs are
+        // already in memory); before the first run it just sets the option.
+        var avoid = el('archReportAvoidLidar');
+        if (avoid && !avoid.dataset.archReportWired) {
+            avoid.dataset.archReportWired = '1';
+            avoid.checked = avoidLidarAnnotated();
+            avoid.addEventListener('change', function () {
+                setAvoidLidarAnnotated(this.checked);
+                if (_state.ctx && !_state.running) rescoreFromContext();
+                else updateUi();
+            });
+        }
         var slider = el('archReportDistance');
         var valueLabel = el('archReportDistanceValue');
         if (slider && !slider.dataset.archReportWired) {
@@ -2580,8 +2708,16 @@
             results: _state.results,
             model: _state.model,
             figures: _state.figures,
+            avoidLidar: avoidLidarAnnotated(),
             pdfLang: pdfLanguage()
         };
+    };
+    // Console helper: _archeoReportSetAvoidLidar(true) → drop the 100% LIDAR
+    // Scanner results and re-score the last analysis instantly.
+    window._archeoReportSetAvoidLidar = function (on) {
+        setAvoidLidarAnnotated(on);
+        if (_state.ctx && !_state.running) return rescoreFromContext();
+        return Promise.resolve(null);
     };
     // Console helpers:  _archeoReportSetPoint(46.77, 23.59) then runArcheoReport()
     window._archeoReportSetPoint = function (lat, lng) {
@@ -2615,6 +2751,11 @@
         evaluateSeed: evaluateSeed,
         classifyScore: classifyScore,
         selectResults: selectResults,
+        avoidLidarAnnotated: avoidLidarAnnotated,
+        setAvoidLidarAnnotated: setAvoidLidarAnnotated,
+        scoreAndSelect: scoreAndSelect,
+        buildModel: buildModel,
+        rescoreFromContext: rescoreFromContext,
         periodKey: periodKey,
         parseCenturyRange: parseCenturyRange,
         periodKeyFromCenturies: periodKeyFromCenturies,
