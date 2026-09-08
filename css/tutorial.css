@@ -84,19 +84,99 @@
     animation: dlTutFade 0.22s ease-out;
 }
 
+/* Closing fades the whole overlay out instead of cutting to nothing. */
+.dl-tut.open.dl-tut-closing {
+    animation: dlTutFadeOut 0.2s ease-in forwards;
+    pointer-events: none;
+}
+
 @keyframes dlTutFade {
     from { opacity: 0; }
     to   { opacity: 1; }
 }
 
+@keyframes dlTutFadeOut {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+/* ── Slide-to-slide transition ───────────────────────────────────
+   The stage (rings, callouts, notes, cards) and the arrow layer fade out
+   and slide slightly in the direction of travel; the incoming slide is
+   built at opacity 0 (.dl-tut-entering, no transition) and then released
+   so it glides into place. js/tutorial.js drives the class swap. */
+.dl-tut-stage,
+.dl-tut-arrows {
+    transition:
+        opacity 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+    will-change: opacity, transform;
+}
+
+.dl-tut-leaving .dl-tut-stage,
+.dl-tut-leaving .dl-tut-arrows {
+    opacity: 0;
+    transform: translateX(var(--dl-tut-out, -26px));
+    transition-duration: 0.16s, 0.2s;
+}
+
+.dl-tut-entering .dl-tut-stage,
+.dl-tut-entering .dl-tut-arrows {
+    opacity: 0;
+    transform: translateX(var(--dl-tut-in, 26px));
+    transition: none;
+}
+
+.dl-tut-leaving .dl-tut-title,
+.dl-tut-entering .dl-tut-title {
+    opacity: 0;
+}
+
+/* Repaint in place (resize, scroll settle) — reuse the already-played
+   entrance instead of restarting it, which would flicker. */
+.dl-tut-quiet .dl-tut-callout,
+.dl-tut-quiet .dl-tut-note,
+.dl-tut-quiet .dl-tut-card,
+.dl-tut-quiet .dl-tut-layer,
+.dl-tut-quiet .dl-tut-ring,
+.dl-tut-quiet .dl-tut-arrow-head {
+    animation: none;
+    opacity: 1;
+}
+
+.dl-tut-quiet .dl-tut-callout,
+.dl-tut-quiet .dl-tut-ring,
+.dl-tut-quiet .dl-tut-layer {
+    transform: none;
+}
+
+.dl-tut-quiet .dl-tut-arrow-path {
+    animation: none;
+    stroke-dashoffset: 0 !important;
+}
+
 /* Blurred, transparent purple scrim. js punches holes over the
-   highlighted controls with clip-path so they stay readable. */
+   highlighted controls with clip-path so they stay readable.
+   The clip-path transition lets the holes morph smoothly whenever the
+   outgoing and incoming slides highlight the same number of controls
+   (otherwise the browser falls back to an instant swap). */
 .dl-tut-scrim {
     position: absolute;
     inset: 0;
     background: rgba(28, 10, 56, 0.52);
     -webkit-backdrop-filter: blur(9px) saturate(115%);
     backdrop-filter: blur(9px) saturate(115%);
+}
+
+/* Only morph the holes when the incoming slide highlights exactly as many
+   controls as the outgoing one (otherwise the two clip paths cannot be
+   interpolated anyway). js/tutorial.js sets .dl-tut-morph; keeping the
+   animation off in every other case avoids re-blurring the whole screen
+   for a change that would snap regardless. */
+.dl-tut-morph .dl-tut-scrim {
+    transition:
+        -webkit-clip-path 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        clip-path 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── Arrows layer ── */
@@ -128,7 +208,7 @@
     fill: var(--tut-purple-soft);
     filter: drop-shadow(0 0 4px rgba(160, 112, 232, 0.9));
     opacity: 0;
-    animation: dlTutHead 0.25s ease-out 0.45s forwards;
+    animation: dlTutHead 0.25s ease-out 0.45s both;
 }
 
 @keyframes dlTutHead {
@@ -145,7 +225,14 @@
         0 0 16px rgba(160, 112, 232, 0.75),
         inset 0 0 12px rgba(160, 112, 232, 0.25);
     pointer-events: none;
-    animation: dlTutPulse 2s ease-in-out infinite;
+    animation:
+        dlTutRingIn 0.34s cubic-bezier(0.22, 0.61, 0.36, 1) both,
+        dlTutPulse 2s ease-in-out 0.34s infinite;
+}
+
+@keyframes dlTutRingIn {
+    from { opacity: 0; transform: scale(0.88); }
+    to   { opacity: 1; transform: scale(1); }
 }
 
 @keyframes dlTutPulse {
@@ -166,7 +253,8 @@
     box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45), 0 0 18px rgba(160, 112, 232, 0.25);
     pointer-events: none;
     opacity: 0;
-    animation: dlTutPop 0.3s ease-out forwards;
+    /* animation-delay is set per callout by js/tutorial.js (staggered entrance) */
+    animation: dlTutPop 0.34s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
 @keyframes dlTutPop {
@@ -248,6 +336,9 @@
     border: 1px solid rgba(201, 166, 255, 0.45);
     box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45);
     pointer-events: none;
+    /* opacity only — a transform here would fight the translate(-50%,-50%)
+       centring used by the "no controls on this screen" message */
+    animation: dlTutFade 0.34s ease-out both;
 }
 
 .dl-tut-note-item {
@@ -416,7 +507,14 @@
     backdrop-filter: blur(20px) saturate(135%);
     border: 1px solid rgba(201, 166, 255, 0.45);
     box-shadow: 0 14px 50px rgba(0, 0, 0, 0.55), 0 0 30px rgba(160, 112, 232, 0.2);
-    animation: dlTutPop 0.28s ease-out;
+    /* Keeps the translateX(-50%) centring — a plain scale() here would make
+       the card jump sideways for the duration of the animation. */
+    animation: dlTutCardIn 0.36s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes dlTutCardIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(12px) scale(0.985); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
 
 .dl-tut-card-tabs {
@@ -480,6 +578,23 @@
 .dl-tut-layer {
     padding: 9px 0;
     border-bottom: 1px solid rgba(201, 166, 255, 0.14);
+    animation: dlTutRowIn 0.34s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Rows drift in one after another — also replays when the GRATIS / PREMIUM
+   tab is switched, so the list never jumps. */
+.dl-tut-layer:nth-child(1)  { animation-delay:  60ms; }
+.dl-tut-layer:nth-child(2)  { animation-delay: 100ms; }
+.dl-tut-layer:nth-child(3)  { animation-delay: 140ms; }
+.dl-tut-layer:nth-child(4)  { animation-delay: 180ms; }
+.dl-tut-layer:nth-child(5)  { animation-delay: 220ms; }
+.dl-tut-layer:nth-child(6)  { animation-delay: 260ms; }
+.dl-tut-layer:nth-child(7)  { animation-delay: 300ms; }
+.dl-tut-layer:nth-child(n+8) { animation-delay: 340ms; }
+
+@keyframes dlTutRowIn {
+    from { opacity: 0; transform: translateY(7px); }
+    to   { opacity: 1; transform: none; }
 }
 
 .dl-tut-layer:last-child {
@@ -609,12 +724,35 @@
     .dl-tut-ring,
     .dl-tut-callout,
     .dl-tut-card,
+    .dl-tut-note,
+    .dl-tut-layer,
     .dl-tut-arrow-path,
     .dl-tut-arrow-head,
-    .dl-tut.open {
+    .dl-tut.open,
+    .dl-tut.open.dl-tut-closing {
         animation: none !important;
     }
-    .dl-tut-arrow-path { stroke-dashoffset: 0; }
+    .dl-tut-stage,
+    .dl-tut-arrows,
+    .dl-tut-title,
+    .dl-tut-scrim {
+        transition: none !important;
+    }
+    .dl-tut-leaving .dl-tut-stage,
+    .dl-tut-leaving .dl-tut-arrows,
+    .dl-tut-entering .dl-tut-stage,
+    .dl-tut-entering .dl-tut-arrows {
+        opacity: 1;
+        transform: none;
+    }
+    /* opacity only — the title keeps its translateX(-50%) centring */
+    .dl-tut-leaving .dl-tut-title,
+    .dl-tut-entering .dl-tut-title {
+        opacity: 1;
+    }
+    .dl-tut-arrow-path { stroke-dashoffset: 0 !important; }
     .dl-tut-arrow-head { opacity: 1; }
-    .dl-tut-callout { opacity: 1; }
+    .dl-tut-callout,
+    .dl-tut-note,
+    .dl-tut-layer { opacity: 1; transform: none; }
 }

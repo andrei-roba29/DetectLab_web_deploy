@@ -354,13 +354,30 @@
         }
     };
 
+    // ── Slide transition timing ──────────────────────────────────
+    // The outgoing slide fades/slides out first, then the incoming one
+    // fades/slides in from the opposite side — no hard cut between slides.
+    var LEAVE_MS = 170;   // must stay in sync with .dl-tut-leaving (css/tutorial.css)
+    var PANEL_MAX_WAIT = 420;
+
+    function reduceMotion() {
+        try {
+            return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        } catch (e) { return false; }
+    }
+
     // ── State ────────────────────────────────────────────────────
     var state = {
         open: false,
         idx: 0,
         tab: 'free',
         openedPanel: false,
-        panelTabRestore: null
+        panelTabRestore: null,
+        // Transition bookkeeping:
+        seq: 0,            // invalidates pending timeouts when the user moves fast
+        quiet: false,      // repaint in place (no entrance animation) — resize etc.
+        panelOpening: false,
+        suppressTap: false // a swipe just navigated — ignore the tap that follows
     };
 
     var root = null, scrim = null, svg = null, stage = null,
@@ -463,9 +480,12 @@
             d.addEventListener('click', function (e) { e.stopPropagation(); go(i); });
         });
 
+        initSwipe();
+
         // Advance when tapping the empty (blurred) area.
         scrim.addEventListener('click', function (e) {
             e.stopPropagation();
+            if (state.suppressTap) return;   // the gesture already moved us
             go(state.idx + 1);
         });
 
@@ -480,7 +500,11 @@
         window.addEventListener('resize', onResize);
         window.addEventListener('orientationchange', onResize);
         window.addEventListener('scroll', onResize, { passive: true });
-        document.addEventListener('detectlab:langchange', function () { if (state.open) render(); });
+        document.addEventListener('detectlab:langchange', function () {
+            if (!state.open) return;
+            state.quiet = false;
+            render(0);
+        });
         document.addEventListener('keydown', function (e) {
             if (!state.open) return;
             if (e.key === 'Escape') { close(); }
@@ -489,11 +513,91 @@
         });
     }
 
+    /* ── Swipe / drag between slides ──────────────────────────────
+       Dragging the blurred area follows the finger and either snaps back or
+       continues into a normal slide transition, so moving between slides
+       never feels like a hard cut. */
+    var SWIPE_MIN = 56;
+
+    function initSwipe() {
+        var sx = 0, sy = 0, dx = 0, active = false, decided = false;
+
+        function paintDrag(px) {
+            var k = 0.42;                       // rubber-band factor
+            var op = String(Math.max(0.3, 1 - Math.abs(px) / 460));
+            [stage, svg].forEach(function (n) {
+                n.style.transition = 'none';
+                n.style.transform = 'translateX(' + (px * k) + 'px)';
+                n.style.opacity = op;
+            });
+        }
+
+        function releaseDrag() {
+            [stage, svg].forEach(function (n) {
+                n.style.transition = '';
+                n.style.transform = '';
+                n.style.opacity = '';
+            });
+        }
+
+        function reset() {
+            if (!active) return;
+            active = false;
+            dx = 0;
+            releaseDrag();
+        }
+
+        scrim.addEventListener('touchstart', function (e) {
+            if (!state.open || !e.touches || e.touches.length !== 1) return;
+            sx = e.touches[0].clientX;
+            sy = e.touches[0].clientY;
+            dx = 0;
+            active = true;
+            decided = false;
+        }, { passive: true });
+
+        scrim.addEventListener('touchmove', function (e) {
+            if (!active || !e.touches || e.touches.length !== 1) return;
+            var mx = e.touches[0].clientX - sx;
+            var my = e.touches[0].clientY - sy;
+            if (!decided) {
+                if (Math.abs(mx) < 12 && Math.abs(my) < 12) return;
+                if (Math.abs(my) > Math.abs(mx)) { active = false; return; }  // vertical scroll
+                decided = true;
+            }
+            dx = mx;
+            paintDrag(mx);
+        }, { passive: true });
+
+        scrim.addEventListener('touchend', function () {
+            if (!active) return;
+            var moved = dx;
+            active = false;
+            dx = 0;
+            if (decided && Math.abs(moved) > SWIPE_MIN) {
+                state.suppressTap = true;
+                var dir = moved < 0 ? 1 : -1;    // swipe left → next slide
+                releaseDrag();                   // hand the position back to CSS
+                go(state.idx + dir);
+                setTimeout(function () { state.suppressTap = false; }, 380);
+            } else {
+                reset();
+            }
+        }, { passive: true });
+
+        scrim.addEventListener('touchcancel', reset, { passive: true });
+    }
+
     var resizeTimer = null;
     function onResize() {
-        if (!state.open) return;
+        if (!state.open || root.classList.contains('dl-tut-closing')) return;
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(render, 120);
+        resizeTimer = setTimeout(function () {
+            // Quiet repaint: the slide is already on screen, re-running the
+            // entrance animation on every resize frame would only flicker.
+            state.quiet = true;
+            render(0);
+        }, 120);
     }
 
     // ── Layers panel handling (slide 3) ──────────────────────────
@@ -509,6 +613,7 @@
             if (typeof window.toggleTranspPanel === 'function') {
                 window.toggleTranspPanel();
                 state.openedPanel = true;
+                state.panelOpening = true;
             }
             // The guide always demonstrates on the free tab (APM Layer row).
             var freeTab = document.querySelector('.transp-panel-tabs .tab-btn.active');
@@ -520,12 +625,41 @@
         } else if (!open && state.openedPanel) {
             if (typeof window.toggleTranspPanel === 'function') window.toggleTranspPanel();
             state.openedPanel = false;
+            state.panelOpening = false;
             if (state.panelTabRestore && state.panelTabRestore !== 'free' &&
                 typeof window.switchLayerTab === 'function') {
                 window.switchLayerTab(state.panelTabRestore);
             }
             state.panelTabRestore = null;
         }
+    }
+
+    /* The layers panel slides in with its own 0.35s transition — measuring
+       the controls before it lands produces rings that sit in the wrong
+       place and then jump. Wait for the panel to settle (with a hard cap so
+       the guide can never get stuck on an invisible slide). */
+    function whenPanelSettled(cb) {
+        var p = document.getElementById('transpPanel');
+        var fired = false, timer = null;
+
+        function fire() {
+            if (fired) return;
+            fired = true;
+            state.panelOpening = false;
+            if (timer) clearTimeout(timer);
+            if (p) p.removeEventListener('transitionend', onEnd);
+            try { cb(); } catch (e) { /* keep the guide usable no matter what */ }
+        }
+
+        function onEnd(e) {
+            if (!p || e.target !== p) return;
+            var prop = e.propertyName || '';
+            if (prop && prop.indexOf('transform') === -1) return;
+            fire();
+        }
+
+        if (p) p.addEventListener('transitionend', onEnd);
+        timer = setTimeout(fire, PANEL_MAX_WAIT);
     }
 
     // ── Geometry helpers ─────────────────────────────────────────
@@ -546,7 +680,14 @@
        stay perfectly sharp while everything else is blurred. */
     function applyScrimHoles(rects) {
         if (!scrim) return;
-        if (!rects.length) { scrim.style.clipPath = ''; scrim.style.webkitClipPath = ''; return; }
+        if (!rects.length) { root.classList.remove('dl-tut-morph'); resetScrim(); return; }
+
+        // Two clip paths can only be interpolated when they list the same
+        // number of shapes — only then is the morph worth its repaint cost.
+        var prev = scrim.getAttribute('data-holes');
+        root.classList.toggle('dl-tut-morph', prev !== null && prev === String(rects.length));
+        scrim.setAttribute('data-holes', String(rects.length));
+
         var d = 'M0,0H' + vw() + 'V' + vh() + 'H0Z';
         rects.forEach(function (r) {
             d += roundRectPath(r.x, r.y, r.w, r.h, 10);
@@ -589,7 +730,7 @@
         return { x: cx + dx * s, y: cy + dy * s };
     }
 
-    function drawArrow(start, target) {
+    function drawArrow(start, target, delay) {
         var end = edgePoint(target, start.x, start.y);
         // stop a few px before the ring
         var vx = end.x - start.x, vy = end.y - start.y;
@@ -605,6 +746,21 @@
         path.setAttribute('class', 'dl-tut-arrow-path');
         path.setAttribute('d', 'M' + start.x + ',' + start.y + ' Q' + ctrl.x + ',' + ctrl.y + ' ' + end.x + ',' + end.y);
 
+        // Draw the line at a constant speed: the dash pattern must match the
+        // real length of the curve, otherwise short arrows stay invisible for
+        // most of the animation and then snap on in the last few frames.
+        var drawMs = 300;
+        try {
+            var len = path.getTotalLength();
+            if (len && isFinite(len) && len > 0) {
+                path.style.strokeDasharray = len + ' ' + len;
+                path.style.strokeDashoffset = len;
+                drawMs = Math.min(640, Math.max(240, len * 1.15));
+            }
+        } catch (e) { /* getTotalLength unsupported — CSS fallback applies */ }
+        path.style.animationDuration = drawMs + 'ms';
+        if (delay) path.style.animationDelay = delay + 'ms';
+
         // arrow head, oriented along the tangent at the end point
         var ang = Math.atan2(end.y - ctrl.y, end.x - ctrl.x);
         var s = 8;
@@ -614,6 +770,7 @@
         var head = svgEl('polygon', svg);
         head.setAttribute('class', 'dl-tut-arrow-head');
         head.setAttribute('points', p1.x + ',' + p1.y + ' ' + p2.x + ',' + p2.y + ' ' + p3.x + ',' + p3.y);
+        head.style.animationDelay = ((delay || 0) + drawMs * 0.62) + 'ms';
     }
 
     function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -643,22 +800,28 @@
     }
 
     // ── Rendering ────────────────────────────────────────────────
-    function clearStage() {
+    function resetScrim() {
+        if (!scrim) return;
+        root.classList.remove('dl-tut-morph');
+        scrim.removeAttribute('data-holes');
+        scrim.style.clipPath = '';
+        scrim.style.webkitClipPath = '';
+    }
+
+    /* `keepScrim` leaves the current holes in place: paint() then swaps them
+       in a single write, which lets the scrim morph smoothly from the old
+       highlight to the new one instead of blinking through a hole-less frame. */
+    function clearStage(keepScrim) {
         stopTutorialVideo();
         while (svg.firstChild) svg.removeChild(svg.firstChild);
         stage.innerHTML = '';
-        scrim.style.clipPath = '';
-        scrim.style.webkitClipPath = '';
+        if (!keepScrim) resetScrim();
         root.classList.remove('compact');
     }
 
-    function render() {
-        if (!root) return;
-        var step = STEPS[state.idx];
-        clearStage();
-
-        svg.setAttribute('viewBox', '0 0 ' + vw() + ' ' + vh());
-
+    /* Toolbar / title / dots — updated the moment the slide starts leaving so
+       the chrome never lags behind the click. */
+    function syncChrome(step) {
         titleEl.innerHTML = (state.idx + 1) + '/' + STEPS.length + ' · ' + tr(step.title);
         btnPrev.disabled = state.idx === 0;
         btnNext.disabled = state.idx === STEPS.length - 1;
@@ -668,24 +831,81 @@
             d.classList.toggle('active', i === state.idx);
             d.setAttribute('aria-label', String(i + 1));
         });
+    }
 
-        // The layers panel is only needed on its own slide.
+    /* dir: 1 → forward, -1 → back, 0 / undefined → no transition (first
+       paint, resize, language change, reduced motion). */
+    function render(dir) {
+        if (!root) return;
+        var step = STEPS[state.idx];
+
+        state.seq++;
+        var seq = state.seq;
+
+        // The layers panel is only needed on its own slide — start opening it
+        // right away so it animates in behind the outgoing slide.
         ensurePanel(!!step.openPanel);
 
-        // Panel opening is animated — give it a frame before measuring.
-        if (step.openPanel) {
-            setTimeout(function () { if (state.open && STEPS[state.idx] === step) paint(step); }, 240);
+        if (!dir || reduceMotion()) {
+            commit(step);
+            return;
         }
-        paint(step);
+
+        // Phase 1 — fade/slide the current slide out in the travel direction.
+        root.style.setProperty('--dl-tut-out', (dir > 0 ? -26 : 26) + 'px');
+        root.style.setProperty('--dl-tut-in', (dir > 0 ? 26 : -26) + 'px');
+        root.classList.add('dl-tut-leaving');
+
+        setTimeout(function () {
+            if (!state.open || seq !== state.seq) return;
+            commit(step);
+        }, LEAVE_MS);
+    }
+
+    /* Phase 2 — build the new slide off-screen (opacity 0), then hand it back
+       to the CSS transition so it glides into place. */
+    function commit(step) {
+        if (!root) return;
+        var seq = state.seq;
+        var quiet = !!state.quiet;
+
+        if (quiet) {
+            root.classList.remove('dl-tut-leaving', 'dl-tut-entering');
+        } else {
+            root.classList.remove('dl-tut-leaving');
+            root.classList.add('dl-tut-entering');
+        }
+        root.classList.toggle('dl-tut-quiet', quiet);
+
+        syncChrome(step);
+        svg.setAttribute('viewBox', '0 0 ' + vw() + ' ' + vh());
+
+        function reveal() {
+            if (!state.open || seq !== state.seq || STEPS[state.idx] !== step) return;
+            paint(step);
+            if (quiet) return;
+            // Flush the "entering" state, then let the transition run.
+            void stage.offsetWidth;
+            requestAnimationFrame(function () {
+                if (state.open && seq === state.seq) root.classList.remove('dl-tut-entering');
+            });
+        }
+
+        if (step.openPanel && state.panelOpening) whenPanelSettled(reveal);
+        else reveal();
     }
 
     function paint(step) {
-        clearStage();
+        clearStage(true);
         svg.setAttribute('viewBox', '0 0 ' + vw() + ' ' + vh());
 
-        if (step.type === 'targets') paintTargets(step);
-        else if (step.type === 'catalog') paintCatalog(step);
-        else if (step.type === 'performance') paintPerformance(step);
+        if (step.type === 'targets') {
+            paintTargets(step);          // replaces the scrim holes itself
+        } else {
+            resetScrim();
+            if (step.type === 'catalog') paintCatalog(step);
+            else if (step.type === 'performance') paintPerformance(step);
+        }
     }
 
     function barBottom() {
@@ -712,6 +932,7 @@
         });
 
         if (!found.length) {
+            resetScrim();
             var empty = el('div', 'dl-tut-note', stage);
             empty.style.cssText += 'left:50%;top:50%;transform:translate(-50%,-50%);width:min(320px,calc(100% - 32px));text-align:center;';
             empty.innerHTML = lang() === 'en'
@@ -760,11 +981,18 @@
             return { node: c, f: f, num: nums[i] || null };
         });
 
+        // Stagger the callouts so the slide unfolds instead of popping in one
+        // single block.
+        boxes.forEach(function (b, i) {
+            b.node.style.animationDelay = Math.round(Math.min(i * 45, 220)) + 'ms';
+        });
+
         if (numberBar) root.classList.add('compact');
 
         var note = null;
         if (step.notes && step.notes.length) {
             note = el('div', 'dl-tut-note', stage);
+            note.style.animationDelay = Math.round(Math.min(boxes.length * 45, 220) + 60) + 'ms';
             note.innerHTML = step.notes.map(function (n) {
                 return '<div class="dl-tut-note-item"><span class="dl-tut-note-ico">' + n.ico + '</span><span>' + tr(n.text) + '</span></div>';
             }).join('');
@@ -908,9 +1136,11 @@
         });
         applyScrimHoles(holes);
 
-        items.forEach(function (it) {
+        // Arrows start drawing only once their callout has landed.
+        items.forEach(function (it, i) {
             var box = { x: it.x, y: it.y, w: it.w, h: it.h };
-            drawArrow(anchorFor(placement, box, it.box.f.rect), it.box.f.rect);
+            drawArrow(anchorFor(placement, box, it.box.f.rect), it.box.f.rect,
+                140 + Math.round(Math.min(i * 45, 220)));
         });
     }
 
@@ -999,37 +1229,75 @@
     function go(i) {
         if (i < 0) return;
         if (i >= STEPS.length) { close(); return; }
+        var dir = i > state.idx ? 1 : (i < state.idx ? -1 : 0);
         state.idx = i;
-        render();
+        state.quiet = false;
+        if (dir === 0) { if (state.open) render(0); return; }
+        render(dir);
     }
 
     function open(startIndex) {
         build();
         state.open = true;
         state.idx = typeof startIndex === 'number' ? startIndex : 0;
+        state.quiet = false;
+        state.seq++;
+        root.classList.remove('dl-tut-closing', 'dl-tut-leaving', 'dl-tut-entering', 'dl-tut-quiet');
         root.classList.add('open');
 
         // On the website (non-PWA) the map can be scrolled half out of view —
         // bring it fully on screen so every arrow has a visible target.
+        var scrolled = false;
         var frame = document.querySelector('.map-frame');
         if (frame && !document.body.classList.contains('is-pwa')) {
             var r = frame.getBoundingClientRect();
             if (r.top < 0 || r.bottom > vh()) {
                 try { frame.scrollIntoView({ block: 'center' }); } catch (e) { frame.scrollIntoView(); }
+                scrolled = true;
             }
         }
 
-        render();
-        // A second pass after the scroll/paint settles keeps the arrows exact.
-        requestAnimationFrame(function () { if (state.open) render(); });
+        render(0);
+
+        // A second pass after the scroll settles keeps the arrows exact. It
+        // still runs before the first painted frame, so the entrance
+        // animation starts cleanly instead of being restarted mid-flight.
+        requestAnimationFrame(function () {
+            if (!state.open) return;
+            var step = STEPS[state.idx];
+            if (step && step.openPanel && state.panelOpening) return; // commit() paints once the panel lands
+            paint(step);
+        });
+
+        // Smooth scrolling keeps moving for a while — settle the arrows once
+        // it stops, without replaying the entrance animation.
+        if (scrolled) {
+            setTimeout(function () {
+                if (!state.open) return;
+                state.quiet = true;
+                paint(STEPS[state.idx]);
+                root.classList.add('dl-tut-quiet');
+            }, 340);
+        }
     }
 
     function close() {
-        if (!root) return;
-        ensurePanel(false);
+        if (!root || !state.open) return;
         state.open = false;
-        root.classList.remove('open');
-        clearStage();
+        state.seq++;
+        stopTutorialVideo();
+
+        var finish = function () {
+            ensurePanel(false);
+            root.classList.remove('open', 'dl-tut-closing', 'dl-tut-leaving',
+                                 'dl-tut-entering', 'dl-tut-quiet');
+            clearStage();
+        };
+
+        if (reduceMotion()) { finish(); return; }
+
+        root.classList.add('dl-tut-closing');
+        setTimeout(finish, 200);
     }
 
     window.openMapTutorial = function (i) { open(i); };
