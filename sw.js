@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v74-layer-visibility-pwa';
+const CACHE_NAME = 'detectlab-v75-coordinate-formats';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -52,6 +52,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20260815-last-location',
   'js/map-app.js?v=20260819-sat60-premium-layer',
   'js/map-app.js?v=20260902-satbase-native18',
+  'js/map-app.js?v=20260908-coordinate-formats',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',

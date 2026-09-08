@@ -486,26 +486,415 @@
             }
             window.uatHasBuildingNear = uatHasBuildingNear;
 
-            // Parse the same decimal latitude/longitude format shown and copied by
-            // DetectLab pins: "45.123456, 24.123456".  The comma separates the two
-            // values; latitude always comes first.  Keep syntax detection separate
-            // from range validation so a coordinate-looking typo gets a useful
-            // message instead of being sent through the place-name search.
-            function parseCoordinateQuery(value) {
-                var match = String(value || '').trim().match(
-                    /^([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))$/
-                );
-                if (!match) return null;
+            // Parse a coordinate string typed or pasted into the map search bar.
+            // Accepts (almost) any format a user can copy from a GPS, a pin or a
+            // map site:
+            //   • decimal degrees      45.123456, 24.654321 — separated by a comma,
+            //     semicolon, pipe, space or newline; signed; brackets/quotes allowed
+            //   • RO decimal comma     45,123456 24,654321  /  45,123456; 24,654321
+            //   • hemispheres          45.12N 24.65E · N 45°34′12″ · 45N, 24E —
+            //     the letter fixes the slot, so "24.65E, 45.12N" is repaired
+            //   • DMS                  45°34'12"N 24°40'15"E · 45:34:12N 24:40:15E ·
+            //     45 34 12 N 24 40 15 E · 45 degrees 34 minutes 12 seconds N
+            //   • DDM                  45°34.2'N 24°40.25'E · 45 34.2 N 24 40.25 E
+            //   • GPS/NMEA compact     4534.2222N 02440.2222E (ddmm.mmmm) · 453412 (ddmmss)
+            //   • labeled              lat 45.12, lon 24.65 — either order works
+            //   • trailing elevation   45.12, 24.65, 220 (the height is ignored)
+            //   • UTM (WGS84)          35T 245123 4996412 · UTM 18T 583960 4511341
+            //   • Plus Code (OLC)      8FVC2222+22; a short code is completed
+            //     relative to the current map center, exactly like Google Maps.
+            // Returns { lat, lon, valid } when the text looks like coordinates
+            // (valid: false lets the search bar explain the out-of-range piece),
+            // and null for everything else so place-name search still runs.
+            // <dl-coordinate-parser>
+            var COORD_ALPHABET = '23456789CFGHJMPQRVWX';
 
-                var lat = Number(match[1]);
-                var lon = Number(match[2]);
+            // Unify degree/minute/second spellings (prime symbols, ° variants and
+            // the words "degrees/deg", "minutes/min", "seconds/sec") as ° ' " so the
+            // token grammar below has exactly one spelling to understand. A bare
+            // "s" is deliberately NOT rewritten to a seconds mark: it is
+            // indistinguishable from the South-hemisphere letter.
+            function normalizeCoordinateText(input) {
+                return String(input == null ? '' : input)
+                    .replace(/[\u00A0\u2007\u202F]/g, ' ')
+                    .replace(/[\u2018\u2019\u201A\u201B\u2032`]/g, "'")
+                    .replace(/[\u201C\u201D\u2033]/g, '"')
+                    .replace(/[\u2010-\u2015\u2212]/g, '-')
+                    .replace(/[\u00B0\u00BA\u00AA\u2070\uFF07\uFF40]/g, '°')
+                    .replace(/\uFF0C/g, ',').replace(/\uFF1B/g, ';').replace(/\uFF1A/g, ':')
+                    .replace(/(\d)\s*(?:degrees?|deg)(?![a-z])/gi, '$1°')
+                    .replace(/(\d)\s*(?:minutes?|min)(?![a-z])/gi, "$1'")
+                    .replace(/(\d)\s*(?:seconds?|sec)(?![a-z])/gi, '$1"')
+                    .replace(/(\d)\s*d(?=\s*\d)/gi, '$1°')
+                    .replace(/(\d)\s*m(?=\s*\d)/gi, "$1'")
+                    .trim();
+            }
+
+            // "-4534.2222" / "45,123" -> numeric pieces. A string mixing both '.'
+            // and ',' (thousands grouping) is too ambiguous to trust.
+            function parseCoordinateNumber(raw) {
+                var neg = false;
+                var str = String(raw).trim().replace(/^\+\s*/, '');
+                var sm = str.match(/^-\s*/);
+                if (sm) { neg = true; str = str.slice(sm[0].length); }
+                if (str.indexOf('.') > -1 && str.indexOf(',') > -1) return null;
+                var parts = str.split(/[.,]/);
+                var value = Number(parts.join('.'));
+                if (!isFinite(value) || !/^\d+(?:[.,]\d+)?$/.test(str)) return null;
                 return {
-                    lat: lat,
-                    lon: lon,
-                    valid: isFinite(lat) && isFinite(lon) &&
-                        lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180
+                    value: neg ? -value : value,
+                    abs: value,
+                    intStr: parts[0],
+                    fracStr: parts[1] || ''
                 };
             }
+
+            // GPS "compact" forms: ddmm(.mmmm), dddmm(.mmmm), ddmmss, dddmmss.
+            // Only tried when the plain decimal reading is out of range.
+            function tryCompactCoordinateDegrees(p, slot) {
+                var intStr = p.intStr, frac = p.fracStr;
+                var maxDeg = slot === 'lat' ? 90 : 180;
+                var minLen = slot === 'lat' ? 3 : 4;
+                if (intStr.length < minLen || intStr.length > 7) return null;
+                // Minutes carry the fraction unless a whole seconds field exists too.
+                var attempts = [];
+                if (frac) {
+                    attempts.push(false);
+                    if (intStr.length >= minLen + 2) attempts.push(true);
+                } else {
+                    if (intStr.length >= minLen + 2) attempts.push(true);
+                    attempts.push(false);
+                }
+                for (var t = 0; t < attempts.length; t++) {
+                    var withSec = attempts[t];
+                    var degLen = intStr.length - (withSec ? 4 : 2);
+                    if (degLen < 1) continue;
+                    var deg = Number(intStr.slice(0, degLen));
+                    var mins = withSec
+                        ? Number(intStr.slice(degLen, degLen + 2))
+                        : Number(intStr.slice(degLen) + (frac ? '.' + frac : ''));
+                    var secs = withSec
+                        ? Number(intStr.slice(degLen + 2) + (frac ? '.' + frac : ''))
+                        : 0;
+                    if (!isFinite(deg) || !isFinite(mins) || !isFinite(secs)) continue;
+                    if (deg > maxDeg || mins >= 60 || secs >= 60) continue;
+                    return deg + mins / 60 + secs / 3600;
+                }
+                return null;
+            }
+
+            // One value = 1..3 numbers (degrees [+ minutes [+ seconds]]), with an
+            // optional sign and hemisphere letter. Returns { value, error }.
+            function coordinateGroupValue(items, hemi, slot) {
+                if (!items || items.length < 1 || items.length > 3) return null;
+                var parsed = [];
+                for (var i = 0; i < items.length; i++) {
+                    var p = parseCoordinateNumber(items[i].raw);
+                    if (!p) return null;
+                    parsed.push(p);
+                }
+                var sign = (hemi === 'S' || hemi === 'W') ? -1
+                    : (hemi === 'N' || hemi === 'E') ? 1
+                    : (parsed[0].value < 0 ? -1 : 1);
+                var mag = Math.abs(parsed[0].value);
+                var error = false;
+                if (parsed.length === 1) {
+                    var maxDeg = slot === 'lat' ? 90 : 180;
+                    if (mag > maxDeg) {
+                        var compact = tryCompactCoordinateDegrees(parsed[0], slot);
+                        if (compact == null) error = true;
+                        else mag = compact;
+                    }
+                } else {
+                    var mins = Math.abs(parsed[1].value);
+                    var secs = parsed.length === 3 ? Math.abs(parsed[2].value) : 0;
+                    if (mins >= 60 || secs >= 60) error = true;
+                    mag = mag + mins / 60 + secs / 3600;
+                }
+                return { value: sign * mag, error: error };
+            }
+
+            // Plus Codes (Open Location Code): decode + nearest-reference recovery
+            // for short codes. Ported from the reference algorithm
+            // (github.com/google/open-location-code, Apache-2.0).
+            function olcEncode(lat, lng) {
+                var latInt = Math.floor(lat * 25000000) + 90 * 25000000;
+                if (latInt < 0) latInt = 0;
+                if (latInt >= 4500000000) latInt = 4500000000 - 1;
+                var lngInt = Math.floor(lng * 8192000) + 180 * 8192000;
+                if (lngInt < 0) lngInt = (lngInt % 2949120000) + 2949120000;
+                if (lngInt >= 2949120000) lngInt = lngInt % 2949120000;
+                latInt = Math.floor(latInt / 3125);
+                lngInt = Math.floor(lngInt / 1024);
+                var chars = new Array(11);
+                chars[8] = '+';
+                chars[9] = COORD_ALPHABET.charAt(latInt % 20);
+                chars[10] = COORD_ALPHABET.charAt(lngInt % 20);
+                latInt = Math.floor(latInt / 20);
+                lngInt = Math.floor(lngInt / 20);
+                for (var i = 6; i >= 0; i -= 2) {
+                    chars[i] = COORD_ALPHABET.charAt(latInt % 20);
+                    chars[i + 1] = COORD_ALPHABET.charAt(lngInt % 20);
+                    latInt = Math.floor(latInt / 20);
+                    lngInt = Math.floor(lngInt / 20);
+                }
+                return chars.join('');
+            }
+
+            function olcDecodeDigits(code) {
+                // code: A–Z/2–9 digit pairs (no '+' or '0'), 8..15 characters.
+                var normalLat = -90 * 8000, normalLng = -180 * 8000;
+                var gridLat = 0, gridLng = 0;
+                var digits = Math.min(code.length, 10);
+                var pv = Math.pow(20, 4);
+                for (var i = 0; i < digits; i += 2) {
+                    normalLat += COORD_ALPHABET.indexOf(code.charAt(i)) * pv;
+                    normalLng += COORD_ALPHABET.indexOf(code.charAt(i + 1)) * pv;
+                    if (i < digits - 2) pv /= 20;
+                }
+                var latPrecision = pv / 8000, lngPrecision = pv / 8000;
+                if (code.length > 10) {
+                    var rowpv = Math.pow(5, 5), colpv = Math.pow(4, 5);
+                    digits = Math.min(code.length, 15);
+                    for (i = 10; i < digits; i++) {
+                        var digitVal = COORD_ALPHABET.indexOf(code.charAt(i));
+                        if (digitVal < 0) return null;
+                        gridLat += Math.floor(digitVal / 4) * rowpv;
+                        gridLng += (digitVal % 4) * colpv;
+                        if (i < digits - 1) { rowpv /= 5; colpv /= 4; }
+                    }
+                    latPrecision = rowpv / 25000000;
+                    lngPrecision = colpv / 8192000;
+                }
+                var lat = normalLat / 8000 + gridLat / 25000000;
+                var lng = normalLng / 8000 + gridLng / 8192000;
+                return {
+                    lat: lat + latPrecision / 2,
+                    lng: lng + lngPrecision / 2
+                };
+            }
+
+            function parsePlusCodeCoordinate(sIn) {
+                var s = String(sIn == null ? '' : sIn).trim().toUpperCase().replace(/\s+/g, '').replace(/[\u201C\u201D\u2018\u2019"']/g, '');
+                if (s.length < 4) return null;
+                if (!/^[0-9CFGHJMPQRVWX+]{4,}$/.test(s)) return null;
+                if (!/[CFGHJMPQRVWX]/.test(s)) return null; // pure digits are not a plus code
+                if (s.charAt(0) === '0') return null;
+                var plus = s.indexOf('+');
+                var shortCode = false;
+                if (plus > -1) {
+                    if (plus > 8 || plus % 2 === 1) return null;
+                    if (s.length - plus - 1 === 1) return null;
+                    shortCode = plus < 8;
+                }
+                var digits = s.replace(/[+0]/g, '');
+                if (digits.length < 4 || (!shortCode && (digits.length < 8 || (digits.length % 2 === 1 && digits.length <= 10)))) return null;
+                if (digits.length > 15) return null;
+                if (!shortCode) {
+                    var area = olcDecodeDigits(digits);
+                    if (!area) return null;
+                    return { lat: area.lat, lon: area.lng > 180 ? area.lng - 360 : area.lng, valid: true };
+                }
+                // Short code: needs a reference location — use the current map center.
+                if (typeof map === 'undefined' || !map || typeof map.getCenter !== 'function') return null;
+                var ref = map.getCenter();
+                if (!ref) return null;
+                var refLat = Math.max(-90, Math.min(90, ref.lat));
+                var refLng = ref.lng;
+                while (refLng > 180) refLng -= 360;
+                while (refLng < -180) refLng += 360;
+                var padding = 8 - s.indexOf('+');
+                var resolution = Math.pow(20, 2 - padding / 2);
+                var half = resolution / 2;
+                var full = olcEncode(refLat, refLng).substr(0, padding) + s;
+                var center = olcDecodeDigits(full.replace(/[+0]/g, ''));
+                if (!center) return null;
+                var lat = center.lat, lng = center.lng;
+                if (refLat + half < lat && lat - resolution >= -90) lat -= resolution;
+                else if (refLat - half > lat && lat + resolution <= 90) lat += resolution;
+                if (refLng + half < lng) lng -= resolution;
+                else if (refLng - half > lng) lng += resolution;
+                return { lat: lat, lon: lng > 180 ? lng - 360 : (lng < -180 ? lng + 360 : lng), valid: true };
+            }
+
+            // UTM (WGS84) inverse, Snyder's formulas: "35T 245123 4996412".
+            function parseUtmCoordinate(sIn) {
+                var s = normalizeCoordinateText(sIn);
+                var m = s.match(/^UTM\s*(?:zone)?\s*[:\-]?\s*(\d{1,2})\s*([C-HJ-NP-X])[\s,;]+(\d{5,7}(?:[.,]\d+)?)[\s,;]+(\d{5,8}(?:[.,]\d+)?)$/i)
+                    || s.match(/^(\d{1,2})\s*([C-HJ-NP-X])[\s,;\-]+(\d{5,7}(?:[.,]\d+)?)[\s,;]+(\d{5,8}(?:[.,]\d+)?)$/i);
+                if (!m) return null;
+                var zone = Number(m[1]), band = m[2].toUpperCase();
+                var e = parseCoordinateNumber(m[3]), n = parseCoordinateNumber(m[4]);
+                if (!e || !n) return null;
+                var easting = e.abs, northing = n.abs;
+                if (easting > 1000000 && easting <= 2000000) easting -= 1000000; // zone-prefixed eastings
+                var fail = zone < 1 || zone > 60 ||
+                    !(easting > 0 && easting <= 1000000) ||
+                    !(northing > 0 && northing <= 10000000);
+                if (fail) return { lat: 0, lon: 0, valid: false };
+                var x = easting - 500000;
+                var y = northing;
+                if ('CDEFGHJKLM'.indexOf(band) > -1) y -= 10000000; // southern bands
+                var A = 6378137.0, F = 1 / 298.257223563, K0 = 0.9996;
+                var E2 = F * (2 - F), EP2 = E2 / (1 - E2);
+                var E1 = (1 - Math.sqrt(1 - E2)) / (1 + Math.sqrt(1 - E2));
+                var M = y / K0;
+                var mu = M / (A * (1 - E2 / 4 - 3 * E2 * E2 / 64 - 5 * E2 * E2 * E2 / 256));
+                var phi1 = mu
+                    + (3 * E1 / 2 - 27 * E1 * E1 * E1 / 32) * Math.sin(2 * mu)
+                    + (21 * E1 * E1 / 16 - 55 * E1 * E1 * E1 * E1 / 32) * Math.sin(4 * mu)
+                    + (151 * E1 * E1 * E1 / 96) * Math.sin(6 * mu)
+                    + (1097 * E1 * E1 * E1 * E1 / 512) * Math.sin(8 * mu);
+                var sinP = Math.sin(phi1), cosP = Math.cos(phi1), tanP = Math.tan(phi1);
+                var C1 = EP2 * cosP * cosP, T1 = tanP * tanP;
+                var N1 = A / Math.sqrt(1 - E2 * sinP * sinP);
+                var R1 = A * (1 - E2) / Math.pow(1 - E2 * sinP * sinP, 1.5);
+                var D = x / (N1 * K0), D2 = D * D, D3 = D2 * D, D4 = D2 * D2, D5 = D3 * D2, D6 = D3 * D3;
+                var lat = phi1 - (N1 * tanP / R1) * (D2 / 2
+                    - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * EP2) * D4 / 24
+                    + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * EP2 - 3 * C1 * C1) * D6 / 720);
+                var lng = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180 +
+                    (D - (1 + 2 * T1 + C1) * D3 / 6
+                        + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * EP2 + 24 * T1 * T1) * D5 / 120) / cosP;
+                lat = lat * 180 / Math.PI;
+                lng = lng * 180 / Math.PI;
+                var ok = isFinite(lat) && isFinite(lng) &&
+                    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+                return { lat: lat, lon: lng, valid: ok };
+            }
+
+            // Latitude/longitude pair in any of the supported notations.
+            function parseLatLonCoordinate(sIn) {
+                var s = normalizeCoordinateText(sIn)
+                    .replace(/^[\s()\[\]{}<>"']+/g, '')
+                    .replace(/[\s()\[\]{}<>"',;.]+$/g, '');
+                // Labeled values ("lat:", "longitude=") fix the order of the pair.
+                var latAt = -1, lonAt = -1;
+                s = s.replace(/\b(latitude|longitude|long|lon|lgt|lat)(?![a-z])\s*[:=]?\s*([+-]?)\s*/gi,
+                    function (_m, word, sign, off) {
+                        var w = String(word).toLowerCase();
+                        var isLon = w !== 'lat' && w !== 'latitude';
+                        if (isLon) { if (lonAt < 0) lonAt = off; }
+                        else { if (latAt < 0) latAt = off; }
+                        return sign || ' ';
+                    });
+                // Hemisphere letters become marker tokens so they can anchor the split
+                // into the two values and decide which one is the latitude.
+                var hemis = [];
+                s = s.replace(/(^|[^a-z])([NSEW])(?![a-z])/gi, function (_m, pre, h) {
+                    hemis.push(h.toUpperCase());
+                    return pre + '\u0001' + h.toUpperCase();
+                });
+                if (/[a-z\u00c0-\u024f]/i.test(s.replace(/\u0001[NSEW]/g, ''))) return null;
+
+                var toks = [];
+                var re = /\u0001([NSEW])|([+-]?\s*\d+(?:[.,]\d+)?)([°'"]*)|([,;|])/gi;
+                var mm, last = 0, okGap = /^[\s:()\[\]{}<>~\/.-]*$/;
+                while ((mm = re.exec(s))) {
+                    if (!okGap.test(s.slice(last, mm.index))) return null;
+                    last = re.lastIndex;
+                    if (mm[1]) toks.push({ k: 'h', c: mm[1].toUpperCase() });
+                    else if (mm[4]) toks.push({ k: 'sep' });
+                    else toks.push({ k: 'n', raw: mm[2].replace(/\s+/g, '') });
+                }
+                if (!okGap.test(s.slice(last))) return null;
+
+                var numIdx = [], sepIdx = [], hemiIdx = [];
+                for (var i = 0; i < toks.length; i++) {
+                    if (toks[i].k === 'n') numIdx.push(i);
+                    else if (toks[i].k === 'sep') sepIdx.push(i);
+                    else hemiIdx.push(i);
+                }
+                if (hemiIdx.length > 2) return null;
+                // "45.12, 24.65, 220" — a trailing altitude (GPS/geo-URL paste) is
+                // dropped before the stream is split, even next to hemisphere letters.
+                if (numIdx.length === 3 && sepIdx.length === 2) {
+                    toks = toks.slice(0, sepIdx[1]);
+                    numIdx = []; sepIdx = []; hemiIdx = [];
+                    for (i = 0; i < toks.length; i++) {
+                        if (toks[i].k === 'n') numIdx.push(i);
+                        else if (toks[i].k === 'sep') sepIdx.push(i);
+                        else hemiIdx.push(i);
+                    }
+                }
+                var numsCount = numIdx.length;
+
+                // Split the token stream into the two values.
+                var splitAt = -1;
+                if (hemiIdx.length === 2) {
+                    var candidates = [hemiIdx[1], hemiIdx[0] + 1];
+                    if (sepIdx.length === 1) candidates.push(sepIdx[0]);
+                    for (var c = 0; c < candidates.length; c++) {
+                        var cand = candidates[c];
+                        if (cand <= 0 || cand >= toks.length) continue;
+                        var before = 0, after = 0;
+                        for (var j = 0; j < toks.length; j++) {
+                            if (toks[j].k !== 'n') continue;
+                            if (j < cand) before++; else after++;
+                        }
+                        if (before >= 1 && after >= 1) { splitAt = cand; break; }
+                    }
+                    if (splitAt < 0) return null;
+                } else if (numsCount === 1) {
+                    return null;
+                } else if (sepIdx.length === 1) {
+                    splitAt = sepIdx[0];
+                } else if (numsCount === 2 || numsCount === 4 || numsCount === 6) {
+                    splitAt = numIdx[Math.floor(numsCount / 2)];
+                } else {
+                    return null;
+                }
+
+                var groupA = { items: [], hemi: null, hemiAt: -1 };
+                var groupB = { items: [], hemi: null, hemiAt: -1 };
+                for (i = 0; i < toks.length; i++) {
+                    var tk = toks[i];
+                    if (tk.k === 'sep') continue;
+                    var g = i < splitAt ? groupA : groupB;
+                    if (tk.k === 'n') g.items.push(tk);
+                    else if (tk.k === 'h') {
+                        if (g.hemi) return null; // two hemisphere letters on one value
+                        g.hemi = tk.c;
+                    }
+                }
+
+                // Which group is the latitude: hemisphere letters decide, then labels,
+                // then the documented pin convention (lat first).
+                var latGroup = groupA, lonGroup = groupB;
+                var aIsLat = groupA.hemi === 'N' || groupA.hemi === 'S';
+                var aIsLon = groupA.hemi === 'E' || groupA.hemi === 'W';
+                var bIsLat = groupB.hemi === 'N' || groupB.hemi === 'S';
+                var bIsLon = groupB.hemi === 'E' || groupB.hemi === 'W';
+                if ((aIsLat && bIsLat) || (aIsLon && bIsLon)) return null;
+                if ((aIsLat && bIsLon) || (aIsLon && bIsLat)) {
+                    latGroup = aIsLat ? groupA : groupB;
+                    lonGroup = aIsLat ? groupB : groupA;
+                } else if (aIsLat || bIsLon) { latGroup = groupA; lonGroup = groupB; }
+                else if (aIsLon || bIsLat) { latGroup = groupB; lonGroup = groupA; }
+                else if (latAt > -1 && lonAt > -1 && lonAt < latAt) {
+                    latGroup = groupB; lonGroup = groupA;
+                }
+
+                var latPart = coordinateGroupValue(latGroup.items, latGroup.hemi, 'lat');
+                var lonPart = coordinateGroupValue(lonGroup.items, lonGroup.hemi, 'lon');
+                if (!latPart || !lonPart) return null;
+                var lat = latPart.value, lon = lonPart.value;
+                var valid = !latPart.error && !lonPart.error &&
+                    isFinite(lat) && isFinite(lon) &&
+                    lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+                return { lat: lat, lon: lon, valid: valid };
+            }
+
+            function parseCoordinateQuery(value) {
+                var raw = String(value == null ? '' : value);
+                if (!/\d/.test(raw)) return null;
+                var utm = parseUtmCoordinate(raw);
+                if (utm) return utm;
+                var plus = parsePlusCodeCoordinate(raw);
+                if (plus) return plus;
+                return parseLatLonCoordinate(raw);
+            }
+            // </dl-coordinate-parser>
 
             function coordinateSearchItem(value) {
                 var coordinates = parseCoordinateQuery(value);
@@ -521,9 +910,11 @@
                 };
             }
 
-            // Expose the parser for lightweight regression tests and other map UI
-            // integrations without coupling them to the place-name data source.
+            // Expose the parser (and the Plus Code encoder used to expand short codes
+            // around the map center) for lightweight regression tests and other map
+            // UI integrations, without coupling them to the place-name data source.
             window._parseMapCoordinateQuery = parseCoordinateQuery;
+            window._dlOlEncode = olcEncode;
 
             // Funcția principală de search
             function doSearch(q) {
@@ -539,7 +930,7 @@
                 // wait for OSM place data when the user pastes coordinates from a pin.
                 var coordinateItem = coordinateSearchItem(searchTerm);
                 if (coordinateItem && coordinateItem.valid === false) {
-                    ul.innerHTML = '<li class="map-search-msg">Invalid coordinates. Latitude must be −90 to 90 and longitude −180 to 180.</li>';
+                    ul.innerHTML = '<li class="map-search-msg">Invalid coordinates. Latitude must be −90 to 90, longitude −180 to 180, minutes/seconds below 60. Latitude comes first — or add N/S/E/W letters and the order fixes itself.</li>';
                     ul.classList.add('open');
                     selectedIndex = -1;
                     return;
