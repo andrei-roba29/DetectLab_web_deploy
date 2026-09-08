@@ -38,7 +38,11 @@ function createServer() {
         },
         // When true, upserts on `events` that carry is_anonymous fail like a
         // live table missing the new columns (PGRST204).
-        missingAnonymousColumns: false
+        missingAnonymousColumns: false,
+        // Simulates a partially migrated table: the privacy columns exist, but
+        // one of the older optional columns sent by the full client payload is
+        // still missing.
+        missingLegacyEventColumns: false
     };
 }
 
@@ -83,12 +87,18 @@ function createSupabaseClient(server) {
                 }
 
                 if (api._mode === 'insert' || api._mode === 'upsert') {
-                    if (table === 'events' && server.missingAnonymousColumns) {
+                    if (table === 'events') {
                         const list0 = Array.isArray(api._payload) ? api._payload : [api._payload];
-                        if (list0.some(r => 'is_anonymous' in r || 'event_code' in r)) {
+                        if (server.missingAnonymousColumns && list0.some(r => 'is_anonymous' in r || 'event_code' in r)) {
                             return Promise.resolve({
                                 data: null,
                                 error: { code: 'PGRST204', message: "Could not find the 'is_anonymous' column of 'events' in the schema cache" }
+                            });
+                        }
+                        if (server.missingLegacyEventColumns && list0.some(r => 'pin_id' in r || 'category' in r || 'creator_email' in r)) {
+                            return Promise.resolve({
+                                data: null,
+                                error: { code: 'PGRST204', message: "Could not find the 'pin_id' column of 'events' in the schema cache" }
                             });
                         }
                     }
@@ -428,12 +438,48 @@ async function testNoPublicLeakOnOldSchema() {
     console.log('  ✔ no public leak: anonymous events are never synced via the base payload');
 }
 
+async function testAnonymousFallbackKeepsCode() {
+    // A partially migrated live table may already have is_anonymous/event_code
+    // but still miss pin_id/category/creator_email. The full payload fails in
+    // that situation; the privacy-preserving retry must still persist the code.
+    const server = createServer();
+    server.missingLegacyEventColumns = true;
+
+    const creator = createDevice(server, CREATOR);
+    creator.storage['detectlab_events'] = JSON.stringify([{
+        id: 'local-anon-partial-schema',
+        creator_id: CREATOR.id,
+        creator_name: CREATOR.name,
+        title: 'Secret dig',
+        latitude: 45.1,
+        longitude: 24.2,
+        event_date: futureIso(5),
+        is_anonymous: true,
+        event_code: 'PARTIAL',
+        created_at: new Date().toISOString()
+    }]);
+
+    await creator.sandbox._fetchEvents();
+    await new Promise(r => setImmediate(r));
+    await new Promise(r => setImmediate(r));
+
+    assert.strictEqual(server.tables.events.length, 1,
+        'anonymous event must be persisted when only legacy optional columns are missing');
+    assert.strictEqual(server.tables.events[0].is_anonymous, true,
+        'privacy flag must survive the schema-drift retry');
+    assert.strictEqual(server.tables.events[0].event_code, 'PARTIAL',
+        'join code must survive the schema-drift retry');
+
+    console.log('  ✔ partial schema retry preserves anonymous privacy and join code');
+}
+
 (async function main() {
     console.log('Anonymous events regression tests');
     await testVisibility();
     await testJoinByCode();
     await testWrongCodeAndCreatorSelfJoin();
     await testNoPublicLeakOnOldSchema();
+    await testAnonymousFallbackKeepsCode();
     console.log('All anonymous event tests passed ✔');
 })().catch(err => {
     console.error('\n✘ TEST FAILED');

@@ -1,10 +1,10 @@
 /* ============================================================
-   DetectLab — Service Worker v1.4.5
+   DetectLab — Service Worker v1.4.6
    ============================================================ */
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v75-coordinate-formats';
+const CACHE_NAME = 'detectlab-v76-anonymous-event-sync';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -40,7 +40,7 @@ const PRECACHE_URLS = [
   'js/Autolinker.min.js',
   'js/supabase.js',
   'js/events.js?v=20260814-chat-realtime',
-  'js/events.js?v=20260815-last-location',
+  'js/events.js?v=20260908-anonymous-event-sync',
   'js/last-location.js?v=20260815-last-location',
   'js/auth.js',
   'js/auth.js?v=20260729',

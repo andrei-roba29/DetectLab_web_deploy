@@ -1157,8 +1157,8 @@
     }
 
     // Ensure an event exists on Supabase so foreign key constraints in event_inquiries don't fail.
-    // Returns { ok: true } on full sync, { ok: true, partial: true } when synced with only the base
-    // columns (live table is missing pin_id/category/creator_email), or { ok: false, reason, error }.
+    // Returns { ok: true } on full sync, { ok: true, partial: true } when synced with only the
+    // columns available on an older live table, or { ok: false, reason, error }.
     async function ensureEventOnServer(ev) {
         if (!window.supabaseClient || !ev || !ev.id) {
             console.warn('[Events] Supabase client not available - event saved locally only');
@@ -1185,17 +1185,12 @@
             var res = await window.supabaseClient.from('events').upsert([payload], { onConflict: 'id' });
             if (res && res.error) {
                 if (isMissingColumnError(res.error)) {
-                    // Schema drift: the live `events` table is missing newer columns.
-                    // Retry with the base columns that exist on the older table so the event row
-                    // actually lands in the DB and join requests can reference it.
-                    if (ev.is_anonymous) {
-                        // NEVER sync an anonymous event through the base payload:
-                        // without the is_anonymous column it would become a public
-                        // event visible on everyone's map.
-                        console.error('[Events] Server events table is missing the is_anonymous/event_code columns; anonymous event kept local-only. Apply migration 20260814020000_anonymous_events.sql.');
-                        return { ok: false, reason: 'schema-missing-anonymous', error: res.error };
-                    }
-                    console.warn('[Events] Server events table is missing newer columns; retrying with base columns. Apply migration 20260811010000_fix_events_schema_drift.sql for full sync. Detail:', res.error.message);
+                    // Schema drift: the live `events` table is missing one or more
+                    // newer columns. Retry with the smallest payload that preserves
+                    // the event's privacy semantics. In particular, an anonymous
+                    // event must NEVER be retried as a public/base event: doing so
+                    // would make it visible to everybody and would also discard the
+                    // code needed by the join flow.
                     var basePayload = {
                         id: ev.id,
                         creator_id: ev.creator_id,
@@ -1208,9 +1203,35 @@
                         max_attendees: ev.max_attendees || null,
                         created_at: ev.created_at || new Date().toISOString()
                     };
-                    var retry = await window.supabaseClient.from('events').upsert([basePayload], { onConflict: 'id' });
+                    var retryPayload = basePayload;
+                    if (ev.is_anonymous) {
+                        // `pin_id`, `category`, and `creator_email` were added
+                        // before anonymous events. A database can therefore have
+                        // the anonymous columns while still missing one of those
+                        // older optional columns. The previous implementation
+                        // treated any missing-column error as if the anonymous
+                        // migration were absent and kept the event only in
+                        // localStorage; another account then could not find its
+                        // code. Keep the privacy fields in this fallback.
+                        retryPayload = Object.assign({}, basePayload, {
+                            is_anonymous: true,
+                            event_code: ev.event_code || null
+                        });
+                    } else {
+                        console.warn('[Events] Server events table is missing newer columns; retrying with base columns. Apply migration 20260811010000_fix_events_schema_drift.sql for full sync. Detail:', res.error.message);
+                    }
+
+                    var retry = await window.supabaseClient.from('events').upsert([retryPayload], { onConflict: 'id' });
                     if (retry && retry.error) {
-                        console.error('[Events] Failed to save event to Supabase (base payload):', retry.error);
+                        if (ev.is_anonymous && isMissingColumnError(retry.error)) {
+                            // The safe retry itself failed because the privacy
+                            // columns are not installed. Do not fall back to the
+                            // public payload; applying the anonymous-events
+                            // migration is required for cross-account joins.
+                            console.error('[Events] Server events table is missing the is_anonymous/event_code columns; anonymous event kept local-only. Apply migration 20260814020000_anonymous_events.sql.');
+                            return { ok: false, reason: 'schema-missing-anonymous', error: retry.error };
+                        }
+                        console.error('[Events] Failed to save event to Supabase (schema-drift retry):', retry.error);
                         return { ok: false, reason: 'server-error', error: retry.error };
                     }
                     return { ok: true, partial: true };
