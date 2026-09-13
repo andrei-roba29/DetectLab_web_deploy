@@ -10,7 +10,7 @@
 --   · starts_at           → campaign opens 9 September 2026, 00:00
 --     (Bucharest time, UTC+3).
 --   · expires_at          → last moment the code can be redeemed: the whole
---     day of 13 September 2026 (Bucharest time). A redemption made on that
+--     day of 1 October 2026 (Bucharest time). A redemption made on that
 --     last day still grants the full 48 hours from that moment.
 --   · max_redemptions     → NULL = unlimited accounts within the window.
 --     Set a number here if the campaign is meant for a closed group.
@@ -36,9 +36,9 @@ insert into public.promo_codes
     (code, description, kind, duration_hours, starts_at, expires_at, max_redemptions, active)
 values
     ('TABARA48',
-     '48-hour Premium bonus campaign, redeemable 9-13 Sep 2026',
+     '48-hour Premium bonus campaign, redeemable 9 Sep-1 Oct 2026',
      'bonus', 48,
      '2026-09-09T00:00:00+03:00',
-     '2026-09-13T23:59:59+03:00',
+     '2026-10-01T23:59:59+03:00',
      null, true)
 on conflict (code) do nothing;
