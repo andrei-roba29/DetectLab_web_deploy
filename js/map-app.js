@@ -3268,6 +3268,29 @@
             // stores so _updateTransform can scale around the last drawn view.
             var _canvasCenter = null;
             var _canvasZoom = null;
+            // Project-space coordinate of bitmap pixel (0,0) of the last drawn
+            // frame, i.e. map.getPixelOrigin() + topLeft.  This — and not the
+            // unrounded project(_canvasCenter, zoom) L.Renderer uses — is the
+            // anchor the bitmap content was actually drawn against, so it is the
+            // only point the zoom-animation transform may scale around.
+            var _canvasAnchor = null;
+            // Debug/regression hook: the view the canvases were last drawn for,
+            // the anchor above and the transform currently on the elements.
+            var _canvasState = { center: null, zoom: null, anchor: null, transform: null };
+            window._patrimoniuCanvasState = _canvasState;
+
+            // Layer-point position WITHOUT Leaflet's per-point integer rounding.
+            // map.latLngToLayerPoint() rounds every point to the pixel grid
+            // because Leaflet positions markers and vector paths on integer
+            // pixels.  These canvases are CSS-scaled for the whole duration of a
+            // zoom animation, so a 0.5 px rounding baked into the bitmap is
+            // multiplied by the zoom scale (8x for a three-level jump) and shows
+            // up as the pins/radii sliding off their site.  Projecting unrounded
+            // keeps the bitmap exactly on the geographic position in every frame.
+            function _layerPointUnrounded(latlng, zoom) {
+                return map.project(latlng, zoom == null ? map.getZoom() : zoom)
+                    .subtract(map.getPixelOrigin());
+            }
 
             var FLAT_OPACITY = 0.35;   // default visible opacity; slider can adjust
             var STROKE_COLOR = '#C42B2B';
@@ -3313,26 +3336,36 @@
             // the map pane's pan transform and this child transform must not be
             // added together as if they were in the same coordinate space.
             //
-            // Keep this formula identical to L.Renderer._updateTransform.  Its
-            // _getNewPixelOrigin() term already includes the map-pane position,
-            // so adding a second hand-made container offset here would double
-            // the pan (and breaks pinch zoom as well as mouse zoom).
+            // Keep this formula the same *shape* as L.Renderer._updateTransform.
+            // Its _getNewPixelOrigin() term already includes the map-pane
+            // position, so adding a second hand-made container offset here would
+            // double the pan (and breaks pinch zoom as well as mouse zoom).
+            //
+            // One deliberate difference from L.Renderer: the last-drawn-view
+            // term is the exact bitmap anchor (pixelOrigin + topLeft, recorded by
+            // the redraw) instead of project(_canvasCenter, zoom).  Leaflet's own
+            // renderers use the unrounded centre while their content is drawn on
+            // the rounded pixel grid, which leaves a sub-pixel error that the
+            // zoom scale multiplies — the residual slide this canvas used to
+            // show.  Scaling the anchor that the content was drawn against has no
+            // such error: viewport = scale * anchor - newPixelOrigin + scale *
+            // (bitmap - anchor) is exactly project(latlng, targetZoom) - origin.
             function _updateCanvasTransform(center, zoom) {
-                if (_canvasCenter == null || _canvasZoom == null || !_displayCanvas) return;
+                if (_canvasAnchor == null || _canvasZoom == null || !_displayCanvas) return;
                 var scale = map.getZoomScale(zoom, _canvasZoom);
-                var viewHalf = map.getSize().multiplyBy(0.5);
-                var currentCenterPoint = map.project(_canvasCenter, zoom);
-                var topLeftOffset = viewHalf.multiplyBy(-scale).add(currentCenterPoint)
+                var topLeftOffset = L.point(_canvasAnchor).multiplyBy(scale)
                     .subtract(map._getNewPixelOrigin(center, zoom));
                 if (L.DomUtil.setTransform) {
                     L.DomUtil.setTransform(_displayCanvas, topLeftOffset, scale);
                     L.DomUtil.setTransform(_sitesCanvas, topLeftOffset, scale);
+                    _canvasState.transform = _displayCanvas.style.transform;
                 } else {
                     // Leaflet 1.9 always has setTransform; this fallback keeps
                     // older builds usable without inventing another coordinate
                     // conversion.  The settled redraw below restores position.
                     L.DomUtil.setPosition(_displayCanvas, topLeftOffset);
                     L.DomUtil.setPosition(_sitesCanvas, topLeftOffset);
+                    _canvasState.transform = _displayCanvas.style.transform;
                 }
             }
 
@@ -3401,7 +3434,7 @@
 
                     var ll = cluster.latlng || (cluster.members[0] && cluster.members[0].latlng);
                     if (!ll) continue;
-                    var point = map.latLngToLayerPoint(ll);
+                    var point = _layerPointUnrounded(ll);
                     var pixelRadius;
                     if (cluster.isCluster) {
                         // Keep cluster icons compact even when a long chain of
@@ -3473,6 +3506,15 @@
                 L.DomUtil.setPosition(_sitesCanvas, topLeft);
                 _canvasCenter = map.getCenter();
                 _canvasZoom = map.getZoom();
+                // Project-space origin of bitmap pixel (0,0) for this frame.
+                // _updateCanvasTransform() may only scale around this anchor:
+                // the pixels were drawn relative to getPixelOrigin() + topLeft,
+                // both of which include Leaflet's integer rounding.
+                _canvasAnchor = L.point(map.getPixelOrigin()).add(topLeft);
+                _canvasState.center = _canvasCenter;
+                _canvasState.zoom = _canvasZoom;
+                _canvasState.anchor = _canvasAnchor;
+                _canvasState.transform = _displayCanvas.style.transform;
 
                 if (_offscreenCanvas.width !== size.x) _offscreenCanvas.width = size.x;
                 if (_offscreenCanvas.height !== size.y) _offscreenCanvas.height = size.y;
@@ -3558,7 +3600,7 @@
                         // cannot cover the entire map at once.
                         radiusMeters = Math.min(5000, 600 + maxMemberDistance);
                     }
-                    var radiusPoint = map.latLngToLayerPoint(radiusLatLng);
+                    var radiusPoint = _layerPointUnrounded(radiusLatLng);
                     var radiusPx = _metersToPixels(radiusMeters, radiusLatLng);
                     if (radiusPx < 0.35) continue;
                     ctx.beginPath();
@@ -3575,16 +3617,21 @@
 
             function _metersToPixels(meters, latlng) {
                 // Project a point `meters` east of the site with the same
-                // latLngToLayerPoint the circle centre uses, so the radius
+                // unrounded projection the circle centre uses, so the radius
                 // cannot drift from the site when zoom (or CRS scale) changes.
+                // Projecting instead of using latLngToLayerPoint() matters here:
+                // that helper rounds both points to whole pixels, and a rounding
+                // baked into the bitmap is multiplied by the zoom scale for the
+                // whole duration of a zoom animation (1 px reads as 8 px on a
+                // three-level jump).
                 var latRad = latlng.lat * Math.PI / 180;
                 var cos = Math.cos(latRad);
                 var lngDelta = meters / (111320 * Math.max(Math.abs(cos), 0.2));
-                var p0 = map.latLngToLayerPoint(latlng);
-                var p1 = map.latLngToLayerPoint(L.latLng(latlng.lat, latlng.lng + lngDelta));
+                var zoom = map.getZoom();
+                var p0 = map.project(latlng, zoom);
+                var p1 = map.project(L.latLng(latlng.lat, latlng.lng + lngDelta), zoom);
                 var px = Math.abs(p1.x - p0.x);
                 if (px > 0) return px;
-                var zoom = map.getZoom();
                 var mPerPx = (156543.03392 * Math.max(Math.abs(cos), 0.2)) / Math.pow(2, zoom);
                 return meters / mPerPx;
             }
