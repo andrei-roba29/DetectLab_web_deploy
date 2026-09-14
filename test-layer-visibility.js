@@ -145,11 +145,18 @@ function setup({ local = new MapMock(OUTSIDE), exposed, legacy, pwa = false, vis
     const context = vm.createContext({
         window, document, map: local, L: { latLngBounds },
         setInterval: (callback, delay) => intervals.push({ callback, delay }),
-        setTimeout: (callback, delay) => timeouts.push({ callback, delay })
+        setTimeout: (callback, delay) => timeouts.push({ callback, delay }),
+        // No-op here: flushTimeouts() drains the queue anyway, and the
+        // production release callback is self-guarded (no-op when the panel
+        // is collapsed), so a "cancelled" timer firing late is harmless.
+        clearTimeout: () => {}
     });
     vm.runInContext(source.match(/var ROMANIA_BOUNDS = [^;]+;/)[0], context);
     vm.runInContext(source.match(/var APM_BOUNDS = [^;]+;/)[0], context);
     vm.runInContext(coverageConfig + visibilityCode, context);
+    // Accordion height helpers — the expand/collapse toggles below call
+    // setSubLayersMaxHeight, so the real definitions must exist in context.
+    vm.runInContext(section('function measureSubLayersHeight', '(function initMap()'), context);
     return {
         window, document, context, local, intervals, timeouts,
         row: id => document.getElementById(id),

@@ -4,7 +4,10 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v80-patrimoniu-zoom-anchor';
+// v81: premium historical-maps accordion releases its max-height after the
+// expand animation so the last card (Galiția & Lodomeria 1855) can no longer
+// be clipped in the standalone mobile PWA.
+const CACHE_NAME = 'detectlab-v81-premium-hist-pwa-fix';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -55,6 +58,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20260908-coordinate-formats',
   'js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster',
   'js/map-app.js?v=20260914-patrimoniu-zoom-anchor',
+  'js/map-app.js?v=20260914-premium-hist-pwa-fix',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',

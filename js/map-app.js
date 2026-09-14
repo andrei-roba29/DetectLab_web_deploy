@@ -34,6 +34,19 @@
         // expandare în loc să folosim valori fixe. fallbackPx rămâne
         // salvăgarda doar dacă conținutul nu poate fi măsurat (ex. tab-ul e
         // display:none → scrollHeight 0).
+        //
+        // Varianta PWA mobilă a re-tăiat totuși ultima casuță: un max-height
+        // FINIT, oricât de precis la momentul măsurării, rămâne un plafon
+        // rigid pe care conținutul îl poate depăși ulterior (încărcare fonturi,
+        // PWA suspendare/rezumat, zoom text/browser, rotație de ecran,
+        // fallback 1000px când panoul e nemăsurabil). Din această cauză,
+        // după ce se termină animația de expandare (0.3s + re-măsurarea de
+        // la 0.4s), constrângerea se ELIBEREAZĂ complet (max-height:none) —
+        // casuța nu se mai poate clipa niciodată, iar scroll-ul e preluat
+        // de .transp-panel (overflow-y:auto), care în PWA are înălțimea
+        // completă a ecranului. La collapse, dacă plafonul e deja eliberat,
+        // fixăm întâi înălțimea curentă (reflow) ca tranziția 0.3s să
+        // pornească de la o valoare animabilă, nu din 'none'.
         function measureSubLayersHeight(panel) {
             if (!panel) return 0;
             // Măsurăm fără tăiere: dezactivăm temporar max-height, forțăm
@@ -55,7 +68,19 @@
 
         function setSubLayersMaxHeight(panel, expanded, fallbackPx) {
             if (!panel) return;
+            // Oprit orice eliberare programată — starea următoare o reia.
+            if (panel._subLayersReleaseTimer) {
+                clearTimeout(panel._subLayersReleaseTimer);
+                panel._subLayersReleaseTimer = null;
+            }
             if (!expanded) {
+                // Dacă plafonul fusese eliberat (max-height:none), browserul
+                // nu poate anima 'none' → '0'. Fixăm înălțimea curentă și
+                // forțăm layoutul ca tranziția să aibă punct de plecare.
+                if (panel.style.maxHeight === 'none') {
+                    panel.style.maxHeight = panel.scrollHeight + 'px';
+                    void panel.offsetHeight;
+                }
                 panel.style.maxHeight = '0';
                 return;
             }
@@ -72,6 +97,21 @@
                     if (h2 > 0) panel.style.maxHeight = h2 + 'px';
                 }
             }, 400);
+            // ── Fix PWA mobil: eliberarea plafonului după animație ──
+            // Până la eliberare, tranziția 0 → h (și re-măsurarea) rulează
+            // normal; apoi max-height devine 'none' pentru totdeauna, deci
+            // nicio creștere ulterioară a conținutului nu mai poate tăia
+            // ultima casuță (ex. Galiția & Lodomeria 1855 în varianta
+            // standalone iOS/Android). Se eliberează doar dacă secțiunea
+            // e încă expandată — collapse-ul rapid (înainte de 800ms) a
+            // anulat deja timerul de mai sus și setează '0'.
+            panel._subLayersReleaseTimer = setTimeout(function () {
+                panel._subLayersReleaseTimer = null;
+                var cur = panel.style.maxHeight;
+                if (cur !== '0' && cur !== '0px' && cur !== 'none') {
+                    panel.style.maxHeight = 'none';
+                }
+            }, 800);
         }
 
         (function initMap() {
