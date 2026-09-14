@@ -31,6 +31,11 @@ router.get('/layers', async (req, res) => {
 
 /** Serves one layer's features as a GeoJSON FeatureCollection, cached. */
 router.get('/layers/:layerId/geojson', async (req, res) => {
+  // The nightly sync is the only writer.  Let repeat visits reuse the
+  // compressed GeoJSON in the browser for a short period as well as in the
+  // server-side cache; this avoids paying the full download on every reload.
+  res.set('Cache-Control', 'public, max-age=900, stale-while-revalidate=3600');
+
   const layerId = Number(req.params.layerId);
   if (!Number.isInteger(layerId)) {
     return res.status(400).json({ error: 'Invalid layer id' });
