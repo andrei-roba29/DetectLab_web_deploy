@@ -2870,9 +2870,15 @@
             window._localLayerData = { 0: null, 5: null, 6: null };
             window._detectlabApiFailed = false; // set true if any layer 0/5/6 call fails
 
+            var _localLayerDataPromise = null;
             function loadLocalLayerData() {
+                // Heritage is off by default, so do not make three large
+                // GeoJSON downloads compete with the first map tiles.  The
+                // promise is shared by the idle preload and by an immediate
+                // layer toggle, so a user action never starts duplicate loads.
+                if (_localLayerDataPromise) return _localLayerDataPromise;
                 var layerIds = [0, 5, 6];
-                return Promise.all(layerIds.map(function (id) {
+                _localLayerDataPromise = Promise.all(layerIds.map(function (id) {
                     return fetch(DETECTLAB_API_BASE + '/layers/' + id + '/geojson')
                         .then(function (r) {
                             if (!r.ok) {
@@ -2908,6 +2914,34 @@
             var _patrimoniuCanvasRenderer = L.canvas({ pane: 'pane_patrimoniu' });
             var patrimoniuLayer = L.layerGroup([]); // not added to map — off by default
             window._patrimoniuLayer = patrimoniuLayer;
+
+            // ── PHYSICAL-DISTANCE CLUSTERING ──
+            // Do not create one Leaflet layer/DOM node for every site.  The
+            // clustering helper keeps the source features as plain records and
+            // the map paints only the pins that are visible in the current view.
+            // This is especially important on phones, where the old one-path-
+            // per-site approach could block the main thread while the map loaded.
+            var _patrimoniuClusterer = window.DetectLabPatrimoniuClustering;
+            var PATRIMONIU_CLUSTER_CONFIG = _patrimoniuClusterer
+                ? _patrimoniuClusterer.CONFIG
+                : {
+                    minZoom: 6,
+                    disableClusteringAtZoom: 11,
+                    distanceKmByZoom: { 6: 5, 7: 4, 8: 3, 9: 2, 10: 1 },
+                    defaultDistanceKm: 5,
+                    indexCellSizeM: 2500
+                };
+            // Keep the tuning visible for diagnostics and future map controls.
+            window.PATRIMONIU_CLUSTER_CONFIG = PATRIMONIU_CLUSTER_CONFIG;
+            var PATRIMONIU_POLYGON_MIN_ZOOM = PATRIMONIU_CLUSTER_CONFIG.disableClusteringAtZoom || 11;
+            var _heritagePointRecords = [];
+            var _heritagePointIndex = _patrimoniuClusterer
+                ? new _patrimoniuClusterer.SpatialIndex(PATRIMONIU_CLUSTER_CONFIG.indexCellSizeM)
+                : null;
+            var _heritagePointHits = [];
+            var _heritagePolygonRecords = [];
+            var _heritagePolygonSignature = '';
+            var _heritageDataReady = false;
 
             // ── PLAN B: direct government WMS fallback ──
             // If the DetectLab API (Railway/Supabase) fails to return one or more of
@@ -2954,61 +2988,138 @@
                 _openHeritagePopup(ran, name, latlng);
             }
 
+            // Return the projected extent of a GeoJSON geometry.  Polygon
+            // paths are kept as metadata and only instantiated when their
+            // extent intersects a detailed (z11+) viewport.
+            function _heritageGeometryBounds(geometry) {
+                if (!geometry) return null;
+                var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                function visit(coords) {
+                    if (!Array.isArray(coords)) return;
+                    if (coords.length >= 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+                        var p = _patrimoniuClusterer
+                            ? _patrimoniuClusterer.project(coords[1], coords[0])
+                            : { x: coords[0], y: coords[1] };
+                        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+                        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+                        return;
+                    }
+                    for (var i = 0; i < coords.length; i++) visit(coords[i]);
+                }
+                visit(geometry.coordinates);
+                if (!isFinite(minX)) return null;
+                return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
+            }
+
+            function _heritagePointRecord(lid, feature, latlng, color, radius) {
+                var record = {
+                    layerId: lid,
+                    feature: feature,
+                    properties: feature.properties || {},
+                    latlng: latlng,
+                    color: color,
+                    radius: radius,
+                    id: feature.id
+                };
+                if (_heritagePointIndex) _heritagePointIndex.add(record);
+                return record;
+            }
+
+            function _updatePatrimoniuPolygons() {
+                if (!_heritageDataReady || !map.hasLayer(patrimoniuLayer)) return;
+                var zoom = map.getZoom();
+                if (zoom < PATRIMONIU_POLYGON_MIN_ZOOM) {
+                    if (_heritagePolygonSignature !== 'hidden') {
+                        patrimoniuLayer.clearLayers();
+                        _heritagePolygonSignature = 'hidden';
+                    }
+                    return;
+                }
+
+                var centre = map.getCenter();
+                var signature = zoom.toFixed(2) + '|' + centre.lat.toFixed(3) + ',' + centre.lng.toFixed(3);
+                if (signature === _heritagePolygonSignature) return;
+                _heritagePolygonSignature = signature;
+
+                var bounds = map.getBounds();
+                var sw = _patrimoniuClusterer
+                    ? _patrimoniuClusterer.project(bounds.getSouth(), bounds.getWest())
+                    : { x: bounds.getWest(), y: bounds.getSouth() };
+                var ne = _patrimoniuClusterer
+                    ? _patrimoniuClusterer.project(bounds.getNorth(), bounds.getEast())
+                    : { x: bounds.getEast(), y: bounds.getNorth() };
+                var padM = 1000;
+                var minX = Math.min(sw.x, ne.x) - padM;
+                var maxX = Math.max(sw.x, ne.x) + padM;
+                var minY = Math.min(sw.y, ne.y) - padM;
+                var maxY = Math.max(sw.y, ne.y) + padM;
+
+                patrimoniuLayer.clearLayers();
+                for (var i = 0; i < _heritagePolygonRecords.length; i++) {
+                    var record = _heritagePolygonRecords[i];
+                    var extent = record.extent;
+                    if (!extent || extent.maxX < minX || extent.minX > maxX ||
+                        extent.maxY < minY || extent.minY > maxY) continue;
+
+                    var feature = record.feature;
+                    var gj = L.geoJSON(feature, {
+                        renderer: _patrimoniuCanvasRenderer,
+                        style: { color: '#E60000', weight: 2, fillOpacity: 0, opacity: 0.85 }
+                    });
+                    gj.eachLayer(function (layer) {
+                        layer._dlHeritageHit = function (latlng) {
+                            showLocalPopup(6, feature.properties || {}, latlng);
+                        };
+                        patrimoniuLayer.addLayer(layer);
+                    });
+                }
+                console.log('[DetectLab] Detailed heritage polygons in view:', patrimoniuLayer.getLayers().length);
+            }
+
             function buildPatrimoniuVisuals() {
                 patrimoniuLayer.clearLayers();
+                _heritagePointRecords.length = 0;
+                if (_heritagePointIndex) _heritagePointIndex.clear();
+                _heritagePolygonRecords.length = 0;
+                _heritagePolygonSignature = '';
 
-                [0, 5].forEach(function (lid) {
+                [0, 5, 6].forEach(function (lid) {
                     var fc = window._localLayerData[lid];
-                    if (!fc) return;
+                    if (!fc || !Array.isArray(fc.features)) return;
                     fc.features.forEach(function (f) {
-                        if (!f.geometry || f.geometry.type !== 'Point') return;
-                        var latlng = L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]);
-
-                        // Layer 0 distinguishes exact vs approximate (by-locality only)
-                        // findspots via the COORD field: "DA" (yes) = exact location known.
-                        // Matches the original WMS legend: red = "Localizare exactă",
-                        // green = "Localizare după localitate".
-                        var color = lid === 5
-                            ? '#E6A817'
-                            : (f.properties && f.properties.COORD === 'DA' ? '#C42B2B' : '#2E9E4F');
-
-                        var marker = L.circleMarker(latlng, {
-                            renderer: _patrimoniuCanvasRenderer,
-                            radius: lid === 5 ? 4 : 5,
-                            color: color,
-                            weight: 1.5,
-                            fillColor: color,
-                            fillOpacity: 0.85,
-                            opacity: 0.85
-                        });
-                        // The renderer's canvas is click-transparent (see the
-                        // pointerEvents note on pane_patrimoniu), so this feature is
-                        // dispatched by the HERITAGE FEATURE HIT TEST instead of a DOM click.
-                        marker._dlHeritageHit = function (latlng) {
-                            showLocalPopup(lid, f.properties, latlng);
-                        };
-                        patrimoniuLayer.addLayer(marker);
+                        if (!f.geometry) return;
+                        var geometry = f.geometry;
+                        if (geometry.type === 'Point') {
+                            var c = geometry.coordinates;
+                            if (!c || !isFinite(c[0]) || !isFinite(c[1])) return;
+                            var ll = L.latLng(c[1], c[0]);
+                            var color = lid === 5
+                                ? '#E6A817'
+                                : (lid === 6 ? '#E60000' :
+                                    (f.properties && f.properties.COORD === 'DA' ? '#C42B2B' : '#2E9E4F'));
+                            _heritagePointRecords.push(_heritagePointRecord(lid, f, ll, color, lid === 5 ? 4 : 5));
+                            return;
+                        }
+                        if (lid === 6) {
+                            var extent = _heritageGeometryBounds(geometry);
+                            if (extent) _heritagePolygonRecords.push({ feature: f, extent: extent });
+                        }
                     });
                 });
 
-                var fc6 = window._localLayerData[6];
-                if (fc6) {
-                    fc6.features.forEach(function (f) {
-                        if (!f.geometry) return;
-                        var gj = L.geoJSON(f, {
-                            renderer: _patrimoniuCanvasRenderer,
-                            style: { color: '#E60000', weight: 2, fillOpacity: 0, opacity: 0.85 }
-                        });
-                        gj.eachLayer(function (l) {
-                            l._dlHeritageHit = function (latlng) {
-                                showLocalPopup(6, f.properties, latlng);
-                            };
-                            patrimoniuLayer.addLayer(l);
-                        });
-                    });
+                _heritageDataReady = true;
+                _updatePatrimoniuPolygons();
+                if (_circlesVisible) {
+                    // The user can toggle the layer before the API promise
+                    // resolves.  In that case the empty-data pass must not
+                    // mark the viewport as fetched forever.
+                    _fetchedBounds = null;
+                    loadSiteCircles();
                 }
+                if (typeof _scheduleRedraw === 'function') _scheduleRedraw();
 
-                console.log('[DetectLab] Built visuals:', patrimoniuLayer.getLayers().length, 'shapes');
+                console.log('[DetectLab] Prepared heritage records:', _heritagePointRecords.length,
+                    'pins +', _heritagePolygonRecords.length, 'lazy polygons');
 
                 var fc0 = window._localLayerData[0];
                 if (fc0) {
@@ -3021,12 +3132,29 @@
                 }
             }
 
-            loadLocalLayerData().then(function () {
-                buildPatrimoniuVisuals();
-                if (window._detectlabApiFailed) {
-                    activatePatrimoniuWmsFallback();
-                }
-            });
+            function _startLocalLayerDataLoad() {
+                return loadLocalLayerData().then(function () {
+                    // The idle preload and an early toggle can both attach a
+                    // continuation to the same promise; build the visual index
+                    // exactly once.
+                    if (!_heritageDataReady) buildPatrimoniuVisuals();
+                    if (window._detectlabApiFailed) activatePatrimoniuWmsFallback();
+                    return window._localLayerData;
+                });
+            }
+            window._loadLocalLayerData = _startLocalLayerDataLoad;
+
+            // Give the base map and controls a clear first frame.  If the
+            // layer is requested before idle time, togglePatrimoniuLayer calls
+            // _startLocalLayerDataLoad immediately instead.
+            var _heritageToggleAtLoad = document.getElementById('patrimoniuToggle');
+            if (_heritageToggleAtLoad && _heritageToggleAtLoad.checked) {
+                _startLocalLayerDataLoad();
+            } else if (typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(_startLocalLayerDataLoad, { timeout: 2000 });
+            } else {
+                setTimeout(_startLocalLayerDataLoad, 1200);
+            }
 
             // ── HERITAGE FEATURE HIT TEST ──
             // pane_patrimoniu is click-transparent (see the pointerEvents note where the
@@ -3052,9 +3180,37 @@
                 // matters because this app is installed as a PWA.
                 if (typeof map._draggableMoved === 'function' && map._draggableMoved(map)) return;
 
+                // Pins are painted on a click-through canvas, so hit-test the
+                // small list created during the last frame before checking the
+                // (lazy) polygon paths below.
+                var point = e.layerPoint || map.containerPointToLayerPoint(e.containerPoint);
+                for (var hi = _heritagePointHits.length - 1; hi >= 0; hi--) {
+                    var pointHit = _heritagePointHits[hi];
+                    var pdx = point.x - pointHit.point.x;
+                    var pdy = point.y - pointHit.point.y;
+                    if (pdx * pdx + pdy * pdy > pointHit.radius * pointHit.radius) continue;
+                    var hitCluster = pointHit.cluster;
+                    if (hitCluster.isCluster) {
+                        var clusterBounds = L.latLngBounds(hitCluster.members.map(function (member) {
+                            return member.latlng;
+                        }));
+                        if (clusterBounds.isValid()) {
+                            map.fitBounds(clusterBounds, {
+                                padding: [32, 32],
+                                maxZoom: Math.min(RADIUS_DETAIL_ZOOM, map.getMaxZoom())
+                            });
+                        } else {
+                            map.setZoom(Math.min(RADIUS_DETAIL_ZOOM, map.getZoom() + 1));
+                        }
+                    } else {
+                        var hitRecord = hitCluster.members[0];
+                        showLocalPopup(hitRecord.layerId, hitRecord.properties, hitRecord.latlng);
+                    }
+                    return;
+                }
+
                 // e.layerPoint is the same space _containsPoint works in: Path._project()
                 // stores its geometry via map.latLngToLayerPoint().
-                var point = e.layerPoint;
                 var hit = null;
                 patrimoniuLayer.eachLayer(function (layer) {
                     if (typeof layer._dlHeritageHit !== 'function') return;
@@ -3099,6 +3255,15 @@
             _displayCanvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:650;';
             _mapPane.appendChild(_displayCanvas);
 
+            // Site pins use a second canvas.  Keeping them separate from the
+            // radius canvas lets us paint the pins above the translucent radius
+            // footprint while still keeping both surfaces click-through.
+            var _sitesCanvas = document.createElement('canvas');
+            var _sitesCtx = _sitesCanvas.getContext('2d');
+            _sitesCanvas.className = 'leaflet-zoom-animated';
+            _sitesCanvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:655;display:none;';
+            _mapPane.appendChild(_sitesCanvas);
+
             // Zoom-animation state for the custom canvas — same fields L.Renderer
             // stores so _updateTransform can scale around the last drawn view.
             var _canvasCenter = null;
@@ -3108,10 +3273,30 @@
             var STROKE_COLOR = '#C42B2B';
             var FILL_COLOR = '#C42B2B';
             var _circleStore = {};
+            var _radiusShapeIndex = _patrimoniuClusterer
+                ? new _patrimoniuClusterer.SpatialIndex(5000)
+                : null;
             var _heritageImageStore = {};
             var _heritageImageSeen = {};
             var _heritageImagesVisible = false;
             var _circlesVisible = false;
+            var _radiusDetailMode = null;
+
+            function _storeRadiusShapes(key, shapes) {
+                shapes = Array.isArray(shapes) ? shapes : [];
+                _circleStore[key] = shapes;
+                if (!_radiusShapeIndex) return;
+                for (var i = 0; i < shapes.length; i++) {
+                    var shape = shapes[i];
+                    if (!shape || shape.type !== 'circle' || !shape.latlng) continue;
+                    _radiusShapeIndex.add({
+                        latlng: shape.latlng,
+                        shape: shape,
+                        radius: shape.radius || 600,
+                        key: key
+                    });
+                }
+            }
 
             // Expune global pentru debugging
             window._heritageImageStore = _heritageImageStore;
@@ -3133,18 +3318,130 @@
                     .subtract(map._getNewPixelOrigin(center, zoom));
                 if (L.DomUtil.setTransform) {
                     L.DomUtil.setTransform(_displayCanvas, topLeftOffset, scale);
+                    L.DomUtil.setTransform(_sitesCanvas, topLeftOffset, scale);
                 } else {
                     L.DomUtil.setPosition(_displayCanvas, topLeftOffset);
+                    L.DomUtil.setPosition(_sitesCanvas, topLeftOffset);
                 }
             }
 
-            function _redrawAll() {
+            function _redrawHeritageSites() {
+                if (!_sitesCanvas || !_sitesCtx || !_heritageDataReady ||
+                    !map.hasLayer(patrimoniuLayer)) {
+                    if (_sitesCtx && _sitesCanvas) {
+                        _sitesCtx.clearRect(0, 0, _sitesCanvas.width, _sitesCanvas.height);
+                    }
+                    _heritagePointHits = [];
+                    return;
+                }
+
+                var size = map.getSize();
+                if (_sitesCanvas.width !== size.x) _sitesCanvas.width = size.x;
+                if (_sitesCanvas.height !== size.y) _sitesCanvas.height = size.y;
+
+                var zoom = map.getZoom();
+                var clusterDistanceKm = _patrimoniuClusterer
+                    ? _patrimoniuClusterer.getDistanceKm(zoom, PATRIMONIU_CLUSTER_CONFIG)
+                    : (zoom >= 11 ? 0 : Math.max(1, 11 - Math.floor(zoom)));
+                var clusterDistanceM = clusterDistanceKm * 1000;
+                var padM = clusterDistanceM + 1000;
+                var bounds = map.getBounds();
+                var sw = _patrimoniuClusterer
+                    ? _patrimoniuClusterer.project(bounds.getSouth(), bounds.getWest())
+                    : { x: bounds.getWest(), y: bounds.getSouth() };
+                var ne = _patrimoniuClusterer
+                    ? _patrimoniuClusterer.project(bounds.getNorth(), bounds.getEast())
+                    : { x: bounds.getEast(), y: bounds.getNorth() };
+                var minX = Math.min(sw.x, ne.x) - padM;
+                var maxX = Math.max(sw.x, ne.x) + padM;
+                var minY = Math.min(sw.y, ne.y) - padM;
+                var maxY = Math.max(sw.y, ne.y) + padM;
+                var candidates = _heritagePointIndex
+                    ? _heritagePointIndex.queryBBox(minX, minY, maxX, maxY)
+                    : _heritagePointRecords.filter(function (record) {
+                        return record._clusterX >= minX && record._clusterX <= maxX &&
+                            record._clusterY >= minY && record._clusterY <= maxY;
+                    });
+
+                var clusters = _patrimoniuClusterer
+                    ? _patrimoniuClusterer.clusterRecords(candidates, zoom, _heritagePointIndex, PATRIMONIU_CLUSTER_CONFIG)
+                    : candidates.map(function (record) {
+                        return { isCluster: false, count: 1, members: [record], latlng: record.latlng };
+                    });
+
+                var topLeft = map.containerPointToLayerPoint([0, 0]);
+                var ctx = _sitesCtx;
+                ctx.clearRect(0, 0, size.x, size.y);
+                ctx.save();
+                ctx.translate(-topLeft.x, -topLeft.y);
+                ctx.lineWidth = 1.5;
+                _heritagePointHits = [];
+
+                for (var i = 0; i < clusters.length; i++) {
+                    var cluster = clusters[i];
+                    // A cluster is kept when at least one member intersects the
+                    // real viewport.  The candidate margin above is necessary
+                    // so a group on the edge does not disappear while panning.
+                    var intersects = cluster.maxX >= Math.min(sw.x, ne.x) &&
+                        cluster.minX <= Math.max(sw.x, ne.x) &&
+                        cluster.maxY >= Math.min(sw.y, ne.y) &&
+                        cluster.minY <= Math.max(sw.y, ne.y);
+                    if (!intersects) continue;
+
+                    var ll = cluster.latlng || (cluster.members[0] && cluster.members[0].latlng);
+                    if (!ll) continue;
+                    var point = map.latLngToLayerPoint(ll);
+                    var pixelRadius;
+                    if (cluster.isCluster) {
+                        // Keep cluster icons compact even when a long chain of
+                        // nearby sites has a large geographic extent.
+                        pixelRadius = Math.min(22, 11 + Math.log(cluster.count) * 2);
+                        ctx.beginPath();
+                        ctx.fillStyle = 'rgba(22, 13, 45, 0.96)';
+                        ctx.strokeStyle = '#C4A0F0';
+                        ctx.arc(point.x, point.y, pixelRadius, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.fillStyle = '#F5F0EB';
+                        ctx.font = '600 ' + (cluster.count > 99 ? '9px' : '10px') + ' Outfit, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(cluster.count > 9999 ? '9999+' : String(cluster.count), point.x, point.y);
+                    } else {
+                        var record = cluster.members[0];
+                        pixelRadius = record.radius || 5;
+                        ctx.beginPath();
+                        ctx.fillStyle = record.color || '#C42B2B';
+                        ctx.strokeStyle = record.color || '#C42B2B';
+                        ctx.globalAlpha = 0.9;
+                        ctx.arc(point.x, point.y, pixelRadius, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+
+                    _heritagePointHits.push({
+                        latlng: ll,
+                        point: point,
+                        radius: Math.max(pixelRadius + 4, 9),
+                        cluster: cluster
+                    });
+                }
+                ctx.restore();
+            }
+
+            function _redrawAll() {''
                 // During CSS zoom animation the map's zoom/pixelOrigin already
                 // sit at the *target* level while tiles are still mid-scale.
                 // Redrawing now would jump every circle to its final pixel
                 // position and make them look like they are sliding. Let
                 // zoomanim scale the last frame instead.
                 if (map._animatingZoom) return;
+
+                // Re-cluster only for the settled viewport.  During a zoom
+                // animation both custom canvases are transformed together with
+                // the rest of the map by _updateCanvasTransform().
+                _redrawHeritageSites();
 
                 var size = map.getSize();
 
@@ -3178,23 +3475,79 @@
                 ctx.strokeStyle = STROKE_COLOR;
                 ctx.lineWidth = 1.5;
 
-                var keys = Object.keys(_circleStore);
-                for (var ki = 0; ki < keys.length; ki++) {
-                    var shapes = _circleStore[keys[ki]];
-                    if (!shapes) continue;
-                    for (var si = 0; si < shapes.length; si++) {
-                        var s = shapes[si];
-                        if (s.type === 'circle') {
-                            var px = map.latLngToLayerPoint(s.latlng);
-                            var radiusPx = _metersToPixels(s.radius, s.latlng);
-                            ctx.beginPath();
-                            ctx.arc(px.x, px.y, radiusPx, 0, Math.PI * 2);
-                            ctx.fill();
-                            ctx.stroke();
-                        }
-                    }
-                }
+                var radiusZoom = map.getZoom();
+                var radiusDistanceKm = (radiusZoom < MIN_ZOOM) ? 0 :
+                    (_patrimoniuClusterer
+                        ? _patrimoniuClusterer.getDistanceKm(radiusZoom, PATRIMONIU_CLUSTER_CONFIG)
+                        : (radiusZoom >= 11 ? 0 : Math.max(1, 11 - Math.floor(radiusZoom))));
+                var radiusDistanceM = radiusDistanceKm * 1000;
+                var radiusPadM = (radiusDistanceM > 0 ? radiusDistanceM : 700) + 700;
+                var radiusBounds = map.getBounds();
+                var radiusSw = _patrimoniuClusterer
+                    ? _patrimoniuClusterer.project(radiusBounds.getSouth(), radiusBounds.getWest())
+                    : { x: radiusBounds.getWest(), y: radiusBounds.getSouth() };
+                var radiusNe = _patrimoniuClusterer
+                    ? _patrimoniuClusterer.project(radiusBounds.getNorth(), radiusBounds.getEast())
+                    : { x: radiusBounds.getEast(), y: radiusBounds.getNorth() };
+                var radiusMinX = Math.min(radiusSw.x, radiusNe.x) - radiusPadM;
+                var radiusMaxX = Math.max(radiusSw.x, radiusNe.x) + radiusPadM;
+                var radiusMinY = Math.min(radiusSw.y, radiusNe.y) - radiusPadM;
+                var radiusMaxY = Math.max(radiusSw.y, radiusNe.y) + radiusPadM;
+                var radiusRecords = _radiusShapeIndex
+                    ? _radiusShapeIndex.queryBBox(radiusMinX, radiusMinY, radiusMaxX, radiusMaxY)
+                    : [];
+                var radiusItems = radiusDistanceM > 0 && _patrimoniuClusterer
+                    ? _patrimoniuClusterer.clusterRecords(
+                        radiusRecords, radiusZoom, _radiusShapeIndex, PATRIMONIU_CLUSTER_CONFIG)
+                    : radiusRecords.map(function (record) {
+                        return {
+                            isCluster: false,
+                            count: 1,
+                            members: [record],
+                            latlng: record.latlng,
+                            minX: record._clusterX,
+                            minY: record._clusterY,
+                            maxX: record._clusterX,
+                            maxY: record._clusterY
+                        };
+                    });
 
+                // At country scale one protection footprint is painted for a
+                // group, while the raw 600 m shapes remain in _circleStore for
+                // proximity detection.  As the zoom increases the grouping
+                // distance shrinks, and z11+ uses every raw shape again.
+                for (var ri = 0; ri < radiusItems.length; ri++) {
+                    var radiusItem = radiusItems[ri];
+                    if (radiusItem.maxX < Math.min(radiusSw.x, radiusNe.x) ||
+                        radiusItem.minX > Math.max(radiusSw.x, radiusNe.x) ||
+                        radiusItem.maxY < Math.min(radiusSw.y, radiusNe.y) ||
+                        radiusItem.minY > Math.max(radiusSw.y, radiusNe.y)) continue;
+                    var radiusLatLng = radiusItem.latlng ||
+                        (radiusItem.members[0] && radiusItem.members[0].latlng);
+                    if (!radiusLatLng) continue;
+
+                    var radiusMeters = 600;
+                    if (radiusItem.isCluster) {
+                        var maxMemberDistance = 0;
+                        for (var mi = 0; mi < radiusItem.members.length; mi++) {
+                            var member = radiusItem.members[mi];
+                            var dx = member._clusterX - radiusItem.x;
+                            var dy = member._clusterY - radiusItem.y;
+                            maxMemberDistance = Math.max(maxMemberDistance, Math.sqrt(dx * dx + dy * dy));
+                        }
+                        // The larger footprint communicates the area occupied
+                        // by the grouped sites, but is capped so a long chain
+                        // cannot cover the entire map at once.
+                        radiusMeters = Math.min(5000, 600 + maxMemberDistance);
+                    }
+                    var radiusPoint = map.latLngToLayerPoint(radiusLatLng);
+                    var radiusPx = _metersToPixels(radiusMeters, radiusLatLng);
+                    if (radiusPx < 0.35) continue;
+                    ctx.beginPath();
+                    ctx.arc(radiusPoint.x, radiusPoint.y, radiusPx, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                }
                 ctx.restore();
                 _displayCtx.clearRect(0, 0, _displayCanvas.width, _displayCanvas.height);
                 _displayCtx.globalAlpha = FLAT_OPACITY;
@@ -3223,7 +3576,7 @@
             map.on('zoomanim', function (e) {
                 if (e && e.center != null && e.zoom != null) _updateCanvasTransform(e.center, e.zoom);
             });
-            map.on('move zoom viewreset', _redrawAll);
+            map.on('move zoom viewreset resize', _scheduleRedraw);
 
             function unproject3857(x, y) {
                 return L.CRS.EPSG3857.unproject(L.point(x, y));
@@ -3338,23 +3691,12 @@
             // Adaugă imaginea PNG centrată pe coordonatele unui punct
 
             function _addHeritageImage(latlng, key) {
-                if (_heritageImageStore[key]) return;
-
-                var customIcon = L.divIcon({
-                    html: '<img src="https://raw.githubusercontent.com/andrei-roba29/image/main/IMG_7710.PNG" style="width:100%;height:100%;object-fit:contain;">',
-                    className: 'heritage-circle-icon',
-                    iconSize: [40, 40],
-                    iconAnchor: [20, 20]
-                });
-
-                var marker = L.marker(latlng, {
-                    icon: customIcon,
-                    interactive: false,
-                    pane: 'pane_heritage_images'
-                });
-
-                if (_heritageImagesVisible && map) marker.addTo(map);
-                _heritageImageStore[key] = marker;
+                // Kept as a compatibility hook for the radius loader, but do
+                // not create one 40 px image marker per site.  The single
+                // canvas above now paints both individual pins and clusters;
+                // thousands of image DOM nodes were the biggest avoidable
+                // source of jank on mobile.
+                return null;
             }
 
             // Build a GFI URL for a specific pixel (px, py) within a virtual WxH canvas over bounds
@@ -3372,7 +3714,11 @@
                 jsonpFetch(url, cb);
             }
 
-            var MIN_ZOOM = 12;
+            // Radiuses are not painted below z6: at country scale a 600 m
+            // circle is sub-pixel and only adds work.  From z6 to z10 the
+            // same physical thresholds as the pins are used; z11+ is exact.
+            var MIN_ZOOM = PATRIMONIU_CLUSTER_CONFIG.minZoom || 6;
+            var RADIUS_DETAIL_ZOOM = PATRIMONIU_CLUSTER_CONFIG.disableClusteringAtZoom || 11;
 
             var _redrawTimer = null;
             function _scheduleRedraw() {
@@ -3393,7 +3739,10 @@
             function clearAllSiteCircles() {
                 _oidStore = {};
                 _circleStore = {};
+                if (_radiusShapeIndex) _radiusShapeIndex.clear();
                 _fetchedBounds = null;
+                _radiusDetailMode = null;
+                window._circleStore = _circleStore;
                 _offscreenCtx.clearRect(0, 0, _offscreenCanvas.width, _offscreenCanvas.height);
                 _displayCtx.clearRect(0, 0, _displayCanvas.width, _displayCanvas.height);
                 _hideLoader();
@@ -3419,27 +3768,61 @@
                 );
             }
 
-            function _geoJsonToShapes(geometry) {
+            function _geoJsonToShapes(geometry, detailed) {
                 if (!geometry) return null;
                 if (geometry.type === 'Point') {
                     var c = geometry.coordinates;
+                    if (!c || !isFinite(c[0]) || !isFinite(c[1])) return null;
                     return [{ type: 'circle', latlng: L.latLng(c[1], c[0]), radius: 600 }];
-                } else if (geometry.type === 'Polygon') {
-                    var shapes = [];
+                }
+
+                // At z6–z10 the boundary itself is not discernible.  One
+                // representative 600 m footprint is enough for the grouped
+                // preview and avoids interpolating every polygon edge.  Once
+                // z11 is reached we restore the detailed perimeter circles.
+                if (!detailed) {
+                    var representative = _representativePoint(geometry);
+                    return representative
+                        ? [{ type: 'circle', latlng: representative, radius: 600 }]
+                        : null;
+                }
+
+                var shapes = [];
+                if (geometry.type === 'Polygon') {
                     geometry.coordinates.forEach(function (ring) {
                         _coordsToCircles(ring).forEach(function (s) { shapes.push(s); });
                     });
-                    return shapes.length ? shapes : null;
+                } else if (geometry.type === 'MultiPolygon') {
+                    geometry.coordinates.forEach(function (polygon) {
+                        polygon.forEach(function (ring) {
+                            _coordsToCircles(ring).forEach(function (s) { shapes.push(s); });
+                        });
+                    });
                 }
-                return null;
+                return shapes.length ? shapes : null;
             }
 
             function _representativePoint(geometry) {
                 if (!geometry) return null;
-                if (geometry.type === 'Point') return L.latLng(geometry.coordinates[1], geometry.coordinates[0]);
-                if (geometry.type === 'Polygon' && geometry.coordinates[0] && geometry.coordinates[0][0]) {
-                    var c = geometry.coordinates[0][0];
-                    return L.latLng(c[1], c[0]);
+                if (geometry.type === 'Point' && geometry.coordinates) {
+                    return L.latLng(geometry.coordinates[1], geometry.coordinates[0]);
+                }
+                var ring = null;
+                if (geometry.type === 'Polygon' && geometry.coordinates && geometry.coordinates[0]) {
+                    ring = geometry.coordinates[0];
+                } else if (geometry.type === 'MultiPolygon' && geometry.coordinates &&
+                    geometry.coordinates[0] && geometry.coordinates[0][0]) {
+                    ring = geometry.coordinates[0][0];
+                } else if (geometry.type === 'LineString' && geometry.coordinates) {
+                    ring = geometry.coordinates;
+                }
+                if (ring && ring.length) {
+                    var lat = 0, lng = 0, count = 0;
+                    for (var i = 0; i < ring.length; i++) {
+                        if (!ring[i] || !isFinite(ring[i][0]) || !isFinite(ring[i][1])) continue;
+                        lng += ring[i][0]; lat += ring[i][1]; count++;
+                    }
+                    if (count) return L.latLng(lat / count, lng / count);
                 }
                 return null;
             }
@@ -3451,10 +3834,26 @@
             // by an in-memory filter instead of a network request.
             function loadSiteCircles() {
                 if (!_circlesVisible) return;
-                if (map.getZoom() < MIN_ZOOM) {
+                var zoom = map.getZoom();
+                if (zoom < MIN_ZOOM) {
                     _displayCtx.clearRect(0, 0, _displayCanvas.width, _displayCanvas.height);
                     return;
                 }
+
+                // Rebuild the small radius representation when crossing z11.
+                // Low zooms use one representative point per feature; detailed
+                // polygon perimeter circles are generated only when they can be
+                // seen.  This prevents a zoom-in from inheriting a country-wide
+                // collection of thousands of edge samples.
+                var detailed = zoom >= RADIUS_DETAIL_ZOOM;
+                if (_radiusDetailMode !== null && _radiusDetailMode !== detailed) {
+                    _oidStore = {};
+                    _circleStore = {};
+                    if (_radiusShapeIndex) _radiusShapeIndex.clear();
+                    window._circleStore = _circleStore;
+                    _fetchedBounds = null;
+                }
+                _radiusDetailMode = detailed;
 
                 var viewBounds = map.getBounds();
                 if (!_needsFetch(viewBounds)) {
@@ -3472,7 +3871,7 @@
 
                 [0, 5, 6].forEach(function (lid) {
                     var fc = window._localLayerData[lid];
-                    if (!fc) return;
+                    if (!fc || !Array.isArray(fc.features)) return;
 
                     fc.features.forEach(function (f) {
                         if (!f.geometry) return;
@@ -3484,18 +3883,10 @@
                         var key = lid + ':' + oid;
                         if (_oidStore[key]) return;
 
-                        var shapes = _geoJsonToShapes(f.geometry);
+                        var shapes = _geoJsonToShapes(f.geometry, detailed);
                         if (!shapes) return;
                         _oidStore[key] = true;
-                        _circleStore['r:' + key] = shapes;
-
-                        if ((lid === 0 || lid === 5) && f.geometry.type === 'Point') {
-                            var imgKey = 'img:' + lid + ':' + oid;
-                            if (!_heritageImageSeen[imgKey]) {
-                                _heritageImageSeen[imgKey] = true;
-                                _addHeritageImage(L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]), imgKey);
-                            }
-                        }
+                        _storeRadiusShapes('r:' + key, shapes);
                     });
                 });
 
@@ -3504,8 +3895,9 @@
 
             var _fetchDebounce = null;
             map.on('moveend zoomend', function () {
+                _updatePatrimoniuPolygons();
                 clearTimeout(_fetchDebounce);
-                _fetchDebounce = setTimeout(loadSiteCircles, 400);
+                _fetchDebounce = setTimeout(loadSiteCircles, 250);
             });
             // Don't call loadSiteCircles() on init — circles are off by default
 
@@ -3971,7 +4363,7 @@
                             } else {
                                 cs = [{ type: 'circle', latlng: latlng, radius: 600 }];
                             }
-                            _circleStore[clickKey] = cs;
+                            _storeRadiusShapes(clickKey, cs);
                             _scheduleRedraw();
                         }
                     }
@@ -4014,6 +4406,7 @@
                 var layer = window._patrimoniuLayer;
                 var m = window._dlMap;
                 if (!layer || !m) return;
+                if (on && !_heritageDataReady) _startLocalLayerDataLoad();
                 if (on) { layer.addTo(m); } else { m.removeLayer(layer); }
                 // Keep the WMS fallback (if active) in sync with the same toggle
                 if (window._patrimoniuWmsFallback) {
@@ -4023,6 +4416,7 @@
 
                 // Arată sau ascunde imaginile PNG (doar pentru layer 0 și 5)
                 _heritageImagesVisible = on;
+                window._heritageImagesVisible = on;
                 if (on) {
                     Object.keys(_heritageImageStore).forEach(function (k) {
                         if (!map.hasLayer(_heritageImageStore[k]))
@@ -4035,7 +4429,10 @@
                     });
                 }
 
+                _sitesCanvas.style.display = on ? '' : 'none';
+                _heritagePolygonSignature = '';
                 if (on) {
+                    _updatePatrimoniuPolygons();
                     var slider = document.getElementById('patrimoniuOpacitySlider');
                     if (slider && parseInt(slider.value, 10) === 0) {
                         slider.value = 25; FLAT_OPACITY = 0.25;
