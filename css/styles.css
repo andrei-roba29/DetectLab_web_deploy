@@ -6684,6 +6684,224 @@
             }
         }
 
+        /* ── PWA INSTALL HELP CARD (Android) ──
+           Shown when the current Android browser cannot produce an app that
+           Google Play Protect accepts (Samsung Internet & OEM browsers mint a
+           WebAPK that is flagged as unsafe). It explains the situation and
+           routes the user to Chrome, whose install flow is not affected. */
+        .pwa-help-card {
+            display: none;
+            text-align: left;
+            max-width: 560px;
+            margin: 28px auto 0;
+            padding: 22px 24px;
+            border-radius: 14px;
+            background: rgba(13, 28, 60, 0.92);
+            border: 1px solid rgba(200, 169, 110, 0.32);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(12px);
+            font-family: 'Outfit', sans-serif;
+            color: rgba(245, 240, 235, 0.9);
+            animation: pwaFadeIn 0.35s ease-out;
+        }
+
+        .pwa-help-card.visible {
+            display: block;
+        }
+
+        .pwa-help-title {
+            margin: 0 0 10px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.12rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            color: #f5d98a;
+        }
+
+        .pwa-help-body {
+            margin: 0 0 14px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: rgba(245, 240, 235, 0.82);
+        }
+
+        .pwa-help-steps {
+            margin: 0 0 14px;
+            padding-left: 20px;
+            font-size: 0.95rem;
+            line-height: 1.65;
+            color: rgba(245, 240, 235, 0.82);
+        }
+
+        .pwa-help-steps li {
+            margin-bottom: 6px;
+        }
+
+        .pwa-help-tip {
+            margin: 0 0 16px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(200, 169, 110, 0.12);
+            border-left: 3px solid rgba(200, 169, 110, 0.55);
+            font-size: 0.9rem;
+            line-height: 1.55;
+            color: rgba(245, 217, 138, 0.92);
+        }
+
+        .pwa-help-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .pwa-help-btn {
+            padding: 12px 22px;
+            border-radius: 10px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            border: 1px solid transparent;
+        }
+
+        .pwa-help-btn.primary {
+            background: rgba(107, 63, 160, 0.35);
+            color: var(--sky);
+            border-color: rgba(184, 216, 240, 0.45);
+        }
+
+        .pwa-help-btn.primary:hover {
+            background: rgba(107, 63, 160, 0.6);
+            transform: translateY(-2px);
+        }
+
+        .pwa-help-btn.secondary {
+            background: transparent;
+            color: rgba(245, 240, 235, 0.75);
+            border-color: rgba(184, 216, 240, 0.22);
+        }
+
+        .pwa-help-btn.secondary:hover {
+            background: rgba(184, 216, 240, 0.08);
+            color: rgba(245, 240, 235, 0.95);
+        }
+
+        /* ── STICKY INSTALL BANNER ──
+           Only used on the Chrome landing page (?pwa=install) opened by the
+           "Open in Chrome" flow, so the install button stays visible. */
+        .pwa-install-banner {
+            display: none;
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            z-index: 3000;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            background: rgba(6, 14, 30, 0.97);
+            border: 1px solid rgba(200, 169, 110, 0.4);
+            box-shadow: 0 14px 44px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(18px);
+            font-family: 'Outfit', sans-serif;
+            animation: pwaFadeIn 0.35s ease-out;
+        }
+
+        .pwa-install-banner.visible {
+            display: flex;
+        }
+
+        .pwa-banner-text {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 0;
+        }
+
+        .pwa-banner-title {
+            font-size: 0.98rem;
+            font-weight: 700;
+            color: #f5d98a;
+        }
+
+        .pwa-banner-desc {
+            font-size: 0.84rem;
+            line-height: 1.45;
+            color: rgba(245, 240, 235, 0.75);
+        }
+
+        .pwa-banner-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .pwa-banner-btn {
+            padding: 12px 18px;
+            border-radius: 10px;
+            border: 1px solid rgba(184, 216, 240, 0.45);
+            background: rgba(107, 63, 160, 0.4);
+            color: var(--sky);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+        }
+
+        .pwa-banner-btn:hover:not(:disabled) {
+            background: rgba(107, 63, 160, 0.65);
+        }
+
+        .pwa-banner-btn:disabled {
+            opacity: 0.55;
+            cursor: progress;
+        }
+
+        .pwa-banner-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid rgba(184, 216, 240, 0.2);
+            background: transparent;
+            color: rgba(245, 240, 235, 0.6);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .pwa-banner-close:hover {
+            background: rgba(184, 216, 240, 0.1);
+            color: #fff;
+        }
+
+        @media (max-width: 560px) {
+            .pwa-install-banner {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            .pwa-banner-actions {
+                justify-content: space-between;
+            }
+
+            .pwa-banner-btn {
+                flex: 1;
+            }
+
+            .pwa-help-card {
+                padding: 18px;
+            }
+        }
+
 
 /* Nearby detectorists */
 .btn-nearby-detectors {

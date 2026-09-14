@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260907-layer-visibility-pwa">
+    <link rel="stylesheet" href="css/styles.css?v=20260914-android-install">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260902-babel-safe-area">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <style>
@@ -2924,19 +2924,119 @@
                 </button>
             </div>
 
+            <!-- Browser-aware installation help (Android). Rendered by the install
+                 flow below: Samsung Internet and OEM browsers mint their own
+                 WebAPK, which Google Play Protect reports as "built for an older
+                 version of Android" and blocks ("Unsafe app blocked"), so those
+                 users are routed to Chrome, whose install flow is not affected. -->
+            <div id="pwa-install-help" class="pwa-help-card" role="region" aria-live="polite"></div>
+
             <!-- Toast notification for PWA status messages -->
             <div id="pwa-install-toast" class="pwa-toast"></div>
         </div>
     </section>
 
+    <!-- STICKY INSTALL BANNER — shown only when Chrome opens this page from the
+         "Open in Chrome" flow (?pwa=install), so the install button is unmissable. -->
+    <div id="pwa-install-banner" class="pwa-install-banner" role="region" aria-live="polite">
+        <div class="pwa-banner-text">
+            <strong class="pwa-banner-title"></strong>
+            <span class="pwa-banner-desc"></span>
+        </div>
+        <div class="pwa-banner-actions">
+            <button type="button" class="pwa-banner-btn" id="pwaBannerInstall" onclick="installAndroidPWA()"></button>
+            <button type="button" class="pwa-banner-close" id="pwaBannerClose" onclick="hideInstallBanner()" aria-label="Close">✕</button>
+        </div>
+    </div>
+
     <script>
+        /* ════════════════════════════════════════════════════════════════════
+           PWA INSTALL FLOW — Android + iOS
+           --------------------------------------------------------------------
+           Android browsers that mint their own WebAPK (Samsung Internet and
+           several OEM browsers) build a wrapper APK that Google Play Protect
+           reports as "built for an older version of Android" and then blocks
+           with "Unsafe app blocked". Chrome's minting service produces a
+           signed, up-to-date WebAPK, so Android users on those browsers are
+           routed to Chrome instead of being told to install from the current
+           browser. The iOS flow (Share → Add to Home Screen) is unchanged.
+           ════════════════════════════════════════════════════════════════════ */
         let deferredPrompt = null;
+        let installHelpReason = null;      // null = help card hidden
+        let installBannerTimer = null;
+        let installBannerWaitOver = false;
+
+        // Translation lookup that survives the script order on this page:
+        // js/translations.js is loaded at the end of the document, after this
+        // inline block, so both `translations` and `currentLang` may not exist
+        // yet when a function here runs early.
+        function pwaT(key, fallback) {
+            try {
+                var lang = 'ro';
+                if (typeof window._currentLang === 'function') lang = window._currentLang();
+                else if (typeof currentLang !== 'undefined') lang = currentLang;
+                var dict = (typeof translations !== 'undefined') ? translations[lang] : null;
+                if (dict && dict[key] !== undefined) return dict[key];
+            } catch (e) { /* keep the fallback text */ }
+            return fallback;
+        }
+
+        function isAndroidUA() {
+            return /Android/i.test(navigator.userAgent || '');
+        }
+
+        function isIOSUA() {
+            var ua = navigator.userAgent || '';
+            return /iPad|iPhone|iPod/.test(ua)
+                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        }
+
+        function detectAndroidBrowser() {
+            var ua = navigator.userAgent || '';
+            if (/SamsungBrowser/i.test(ua)) return 'samsung';
+            if (/EdgA\//i.test(ua)) return 'edge';
+            if (/OPR\/|Opera (Mini|Mobile|Tablet)/i.test(ua)) return 'opera';
+            if (/MiuiBrowser|HeyTapBrowser|OppoBrowser|HuaweiBrowser|UCBrowser|Quark|VivoBrowser|Baidu|SogouMobileBrowser|Yandex|DuckDuckGo/i.test(ua)) return 'oem';
+            if (/Firefox|FxiOS/i.test(ua)) return 'firefox';
+            if (/Chrome\/|Chromium/i.test(ua)) return 'chrome';
+            return 'unknown';
+        }
+
+        // Browsers whose own "Add to Home screen" produces the WebAPK that
+        // Google Play Protect blocks. Chrome's install flow is unaffected.
+        function browserNeedsChrome(browser) {
+            return browser === 'samsung' || browser === 'oem'
+                || browser === 'firefox' || browser === 'unknown';
+        }
+
+        function browserLabel(browser) {
+            if (browser === 'samsung') return pwaT('pwa_browser_samsung', 'Samsung Internet');
+            if (browser === 'firefox') return pwaT('pwa_browser_firefox', 'Firefox');
+            if (browser === 'oem') return pwaT('pwa_browser_oem', 'this browser');
+            return pwaT('pwa_browser_generic', 'this browser');
+        }
+
+        function isStandalonePWA() {
+            try {
+                if (window.matchMedia('(display-mode: standalone)').matches) return true;
+                if (window.matchMedia('(display-mode: fullscreen)').matches) return true;
+            } catch (e) { /* older WebViews */ }
+            return window.navigator.standalone === true;
+        }
 
         window.addEventListener('beforeinstallprompt', (e) => {
             // Prevent Chrome 67 and earlier from automatically showing the prompt
             e.preventDefault();
             // Stash the event so it can be triggered later.
             deferredPrompt = e;
+            updateInstallBanner();
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredPrompt = null;
+            hideInstallBanner();
+            hideInstallHelp();
+            showPWAToast(pwaT('pwa_toast_installed', '<strong>DetectLab installed.</strong> You will find it on your home screen.'));
         });
 
         function showPWAToast(message) {
@@ -2952,25 +3052,224 @@
             }, 6000);
         }
 
-        function installAndroidPWA() {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                deferredPrompt.userChoice.then((choiceResult) => {
-                    if (choiceResult.outcome === 'accepted') {
-                        console.log('User accepted the install prompt');
-                    } else {
-                        console.log('User dismissed the install prompt');
-                    }
-                    deferredPrompt = null;
-                });
+        /* ── Hand the current page over to Chrome ──
+           Chrome is the only Android browser whose PWA install mints a WebAPK
+           that Google Play Protect accepts. The intent:// URL opens Chrome
+           directly; S.browser_fallback_url covers devices without Chrome. */
+        function buildChromeIntentUrl() {
+            var path = window.location.pathname || '/';
+            var target = window.location.origin + path + '?pwa=install';
+            var scheme = (window.location.protocol || 'https:').replace(':', '');
+            return 'intent://' + window.location.host + path + '?pwa=install'
+                + '#Intent;scheme=' + scheme
+                + ';package=com.android.chrome'
+                + ';S.browser_fallback_url=' + encodeURIComponent(target)
+                + ';end';
+        }
+
+        function openInChrome() {
+            if (!isAndroidUA()) { showInstallHelp('desktop'); return; }
+            window.location.href = buildChromeIntentUrl();
+        }
+
+        function copyInstallLink() {
+            var link = window.location.origin + (window.location.pathname || '/');
+            var done = function () {
+                showPWAToast(pwaT('pwa_toast_link_copied', '<strong>Link copied.</strong> Paste it in Chrome to install the app.'));
+            };
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(link).then(done, function () { showPWAToast(link); });
+                    return;
+                }
+            } catch (e) { /* clipboard unavailable */ }
+            showPWAToast(link);
+        }
+
+        /* ── Install help card (rendered into #pwa-install-help) ──
+           Reasons:
+             'other-browser'     → Samsung Internet / OEM / Firefox: use Chrome
+             'no-prompt'/'prompt-dismissed' → manual browser-menu steps
+             'desktop'           → desktop install icon / menu instructions */
+        function renderInstallHelp(reason) {
+            var card = document.getElementById('pwa-install-help');
+            if (!card) return null;
+
+            var browser = detectAndroidBrowser();
+            var title = '';
+            var body = '';
+            var steps = [];
+            var tip = '';
+            var actions = '';
+
+            if (reason === 'other-browser') {
+                title = pwaT('pwa_help_title_chrome', 'Install from Chrome (recommended)');
+                body = pwaT('pwa_help_body_chrome', 'You are using {browser}. That browser builds an Android app which Google Play Protect incorrectly reports as unsafe and blocks. Chrome builds a signed, up-to-date app instead — the install takes a few seconds.')
+                    .replace('{browser}', browserLabel(browser));
+                steps = [
+                    pwaT('pwa_help_step_chrome_1', 'Tap <strong>Open in Chrome</strong> below.'),
+                    pwaT('pwa_help_step_chrome_2', 'In Chrome, tap <strong>Install</strong> in the banner at the bottom (or menu ⋮ → <strong>Install app</strong>).'),
+                    pwaT('pwa_help_step_chrome_3', 'DetectLab appears on your home screen and opens full screen.')
+                ];
+                tip = pwaT('pwa_help_tip_protect', '<strong>Seeing “Unsafe app blocked”?</strong> That warning comes from the Android wrapper built by the browser, not from DetectLab. Tap <strong>More details</strong> → <strong>Install anyway</strong>, or install from Chrome instead.');
+                actions = '<button type="button" class="pwa-help-btn primary" onclick="openInChrome()">' + pwaT('pwa_help_open_chrome', 'Open in Chrome') + '</button>'
+                    + '<button type="button" class="pwa-help-btn secondary" onclick="copyInstallLink()">' + pwaT('pwa_help_copy_link', 'Copy link') + '</button>';
+            } else if (reason === 'desktop') {
+                title = pwaT('pwa_help_title_desktop', 'Install on your computer');
+                body = pwaT('pwa_help_body_desktop', 'DetectLab also works as an app on desktop.');
+                steps = [
+                    pwaT('pwa_help_step_desktop_1', 'In Chrome or Edge, click the install icon at the right end of the address bar.'),
+                    pwaT('pwa_help_step_desktop_2', 'Or open the menu ⋮ → <strong>Install DetectLab</strong>.')
+                ];
             } else {
-                // Fallback message for Android when prompt is not available
-                const isRo = (typeof currentLang !== 'undefined' ? currentLang : 'ro') === 'ro';
-                const msg = isRo
-                    ? '<strong>Instalare:</strong> Deschide meniul browserului tău (cele 3 puncte verticale din dreapta sus) și apasă pe <strong>"Adaugă pe ecranul principal"</strong> sau <strong>"Instalează aplicația"</strong>.'
-                    : '<strong>Installation:</strong> Open your browser menu (the 3 vertical dots in the top right) and tap <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong>.';
-                showPWAToast(msg);
+                title = pwaT('pwa_help_title_manual', 'Manual installation');
+                body = pwaT('pwa_help_body_manual', 'The browser has not offered the automatic install prompt yet. Use the browser menu:');
+                steps = [
+                    pwaT('pwa_help_step_manual_1', 'Open the browser menu (⋮ or ≡).'),
+                    pwaT('pwa_help_step_manual_2', 'Tap <strong>Install app</strong> / <strong>Add to Home screen</strong>.'),
+                    pwaT('pwa_help_step_manual_3', 'If the option is missing, install from Chrome instead — button below.')
+                ];
+                tip = pwaT('pwa_help_tip_protect', '<strong>Seeing “Unsafe app blocked”?</strong> That warning comes from the Android wrapper built by the browser, not from DetectLab. Tap <strong>More details</strong> → <strong>Install anyway</strong>, or install from Chrome instead.');
+                if (isAndroidUA()) {
+                    actions = '<button type="button" class="pwa-help-btn primary" onclick="installAndroidPWA()">' + pwaT('pwa_help_retry', 'Try again') + '</button>'
+                        + '<button type="button" class="pwa-help-btn secondary" onclick="openInChrome()">' + pwaT('pwa_help_open_chrome', 'Open in Chrome') + '</button>';
+                }
             }
+
+            card.innerHTML = ''
+                + '<h3 class="pwa-help-title">' + title + '</h3>'
+                + (body ? '<p class="pwa-help-body">' + body + '</p>' : '')
+                + (steps.length
+                    ? '<ol class="pwa-help-steps">' + steps.map(function (step) { return '<li>' + step + '</li>'; }).join('') + '</ol>'
+                    : '')
+                + (tip ? '<p class="pwa-help-tip">' + tip + '</p>' : '')
+                + '<div class="pwa-help-actions">' + actions
+                + '<button type="button" class="pwa-help-btn secondary" onclick="hideInstallHelp()">' + pwaT('pwa_help_close', 'Close') + '</button>'
+                + '</div>';
+            return card;
+        }
+
+        function showInstallHelp(reason) {
+            var resolved = reason || 'no-prompt';
+            var card = renderInstallHelp(resolved);
+            if (!card) return;
+            installHelpReason = resolved;
+            card.classList.add('visible');
+            try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* no smooth scroll */ }
+        }
+
+        function hideInstallHelp() {
+            installHelpReason = null;
+            var card = document.getElementById('pwa-install-help');
+            if (card) {
+                card.classList.remove('visible');
+                card.innerHTML = '';
+            }
+        }
+
+        /* ── Sticky install banner ──
+           Only used on the Chrome landing page (?pwa=install) opened by the
+           "Open in Chrome" flow, so the install button cannot be missed. */
+        function renderInstallBanner() {
+            var banner = document.getElementById('pwa-install-banner');
+            if (!banner) return null;
+
+            var titleEl = banner.querySelector('.pwa-banner-title');
+            var descEl = banner.querySelector('.pwa-banner-desc');
+            var btn = document.getElementById('pwaBannerInstall');
+
+            if (titleEl) titleEl.textContent = pwaT('pwa_banner_title', 'Almost there!');
+            if (descEl) descEl.textContent = pwaT('pwa_banner_desc', 'Tap the button below to add DetectLab to your home screen.');
+
+            if (btn) {
+                if (deferredPrompt) {
+                    btn.textContent = pwaT('pwa_banner_btn', 'Install DetectLab');
+                    btn.disabled = false;
+                } else if (installBannerWaitOver) {
+                    btn.textContent = pwaT('pwa_banner_btn_help', 'How to install');
+                    btn.disabled = false;
+                } else {
+                    btn.textContent = pwaT('pwa_banner_wait', 'Preparing the installer…');
+                    btn.disabled = true;
+                }
+            }
+            return banner;
+        }
+
+        function showInstallBanner() {
+            if (isStandalonePWA()) return;
+            var banner = renderInstallBanner();
+            if (!banner) return;
+
+            banner.classList.add('visible');
+            installBannerWaitOver = false;
+
+            // beforeinstallprompt can arrive a moment after load.
+            var waited = 0;
+            clearInterval(installBannerTimer);
+            installBannerTimer = setInterval(function () {
+                waited += 500;
+                if (!deferredPrompt && waited >= 6000) installBannerWaitOver = true;
+                renderInstallBanner();
+                if (deferredPrompt || waited >= 6000) clearInterval(installBannerTimer);
+            }, 500);
+        }
+
+        function updateInstallBanner() {
+            var banner = document.getElementById('pwa-install-banner');
+            if (banner && banner.classList.contains('visible')) renderInstallBanner();
+        }
+
+        function hideInstallBanner() {
+            clearInterval(installBannerTimer);
+            var banner = document.getElementById('pwa-install-banner');
+            if (banner) banner.classList.remove('visible');
+        }
+
+        function installAndroidPWA() {
+            if (isStandalonePWA()) {
+                showPWAToast(pwaT('pwa_toast_already', '<strong>Already installed.</strong> The DetectLab app is on this device.'));
+                return;
+            }
+            if (isIOSUA()) {
+                // The Android button was tapped on an iPhone/iPad — show the iOS steps.
+                showIOSInstructions();
+                return;
+            }
+            if (!isAndroidUA()) {
+                showInstallHelp('desktop');
+                return;
+            }
+
+            // Samsung Internet / OEM browsers mint a WebAPK that Google Play
+            // Protect blocks. Send those users to Chrome instead.
+            if (browserNeedsChrome(detectAndroidBrowser())) {
+                showInstallHelp('other-browser');
+                return;
+            }
+
+            if (deferredPrompt) {
+                const promptEvent = deferredPrompt;
+                deferredPrompt = null;
+                promptEvent.prompt();
+                if (promptEvent.userChoice && promptEvent.userChoice.then) {
+                    promptEvent.userChoice.then((choiceResult) => {
+                        if (choiceResult && choiceResult.outcome === 'accepted') {
+                            console.log('User accepted the install prompt');
+                            hideInstallBanner();
+                            hideInstallHelp();
+                        } else {
+                            console.log('User dismissed the install prompt');
+                            showInstallHelp('prompt-dismissed');
+                        }
+                    }).catch(() => {
+                        showInstallHelp('no-prompt');
+                    });
+                }
+                return;
+            }
+
+            showInstallHelp('no-prompt');
         }
 
         function showIOSInstructions() {
@@ -2995,6 +3294,43 @@
 
             showPWAToast(msg);
         }
+
+        /* ── Chrome landing page (?pwa=install) ──
+           The "Open in Chrome" button sends users here with that marker: show
+           the sticky banner, then drop the marker so a refresh stays clean. */
+        document.addEventListener('DOMContentLoaded', function () {
+            var params = null;
+            try { params = new URLSearchParams(window.location.search); } catch (e) { params = null; }
+            if (!params || params.get('pwa') !== 'install') return;
+
+            if (!isStandalonePWA()) {
+                showInstallBanner();
+                var section = document.getElementById('get-mobile');
+                if (section) {
+                    setTimeout(function () {
+                        try { section.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* no smooth scroll */ }
+                    }, 400);
+                }
+            }
+
+            try {
+                params.delete('pwa');
+                var clean = window.location.pathname
+                    + (params.toString() ? '?' + params.toString() : '')
+                    + window.location.hash;
+                window.history.replaceState(null, '', clean);
+            } catch (e) { /* history API unavailable */ }
+        });
+
+        // Re-render the help card / banner in the language the user switches to.
+        document.addEventListener('detectlab:langchange', function () {
+            if (installHelpReason) {
+                var card = renderInstallHelp(installHelpReason);
+                if (card) card.classList.add('visible');
+            }
+            var banner = document.getElementById('pwa-install-banner');
+            if (banner && banner.classList.contains('visible')) renderInstallBanner();
+        });
     </script>
 
     <!-- HOW IT WORKS -->
@@ -3128,7 +3464,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260902-battles-compact"></script>
+    <script src="js/translations.js?v=20260914-android-install"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
