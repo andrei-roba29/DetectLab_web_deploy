@@ -17,7 +17,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, 'js/patrimoniu-clustering.j
 const C = sandbox.DetectLabPatrimoniuClustering;
 assert.ok(C, 'the clustering helper is exported');
 
-const expectedDistances = { 5: 5, 6: 5, 7: 4, 8: 3, 9: 2, 10: 1, 11: 0, 12: 0 };
+const expectedDistances = { 5: 5, 6: 5, 7: 4, 8: 3, 9: 2, 10: 1, 11: 0, 12: 0, 14: 0 };
 for (const [zoom, distance] of Object.entries(expectedDistances)) {
     assert.strictEqual(C.getDistanceKm(Number(zoom)), distance, `z${zoom} distance`);
 }

@@ -3235,11 +3235,11 @@
             // Cached by OBJECTID — pan/zoom never re-draws duplicates.
 
             // ── FLAT-OPACITY CANVAS OVERLAY ──
-            // Canvas lives inside .leaflet-map-pane at z-index 450 (above tiles ~200-400,
-            // below markerPane 600 and popupPane 700).
-            // The pane CSS-translates during pan, so we use latLngToLayerPoint() for coords
-            // (layer-relative = pane-relative) and keep canvas top/left at 0,0 — the pane
-            // itself carries the offset, so coords land correctly on the canvas.
+            // The display and site canvases are direct children of
+            // .leaflet-map-pane.  Their pixels are layer-point coordinates and
+            // their element position is the same layer-point top-left used by
+            // L.Canvas.  The map pane supplies the pan transform; the child
+            // transform below supplies only Leaflet's zoom-animation delta.
             var _offscreenCanvas = document.createElement('canvas');
             var _offscreenCtx = _offscreenCanvas.getContext('2d');
             var _displayCanvas = document.createElement('canvas');
@@ -3305,10 +3305,18 @@
             window._circlesVisible = _circlesVisible;
             window._circleStore = _circleStore;
 
-            // Mirror L.Renderer._updateTransform so the viewport-sized canvas
-            // CSS-scales around the same origin as tiles / SVG / L.canvas
-            // during zoom animation. Called from `zoomanim`; _redrawAll then
-            // paints at the new zoom once the animation ends.
+            // The two canvases are direct children of Leaflet's map pane.  They
+            // therefore use the same two-step coordinate contract as L.Canvas:
+            // layer points are drawn in the canvas after compensating for its
+            // layer-point top-left, and Leaflet's renderer transform is applied
+            // to the element only while a zoom is animating.  In particular,
+            // the map pane's pan transform and this child transform must not be
+            // added together as if they were in the same coordinate space.
+            //
+            // Keep this formula identical to L.Renderer._updateTransform.  Its
+            // _getNewPixelOrigin() term already includes the map-pane position,
+            // so adding a second hand-made container offset here would double
+            // the pan (and breaks pinch zoom as well as mouse zoom).
             function _updateCanvasTransform(center, zoom) {
                 if (_canvasCenter == null || _canvasZoom == null || !_displayCanvas) return;
                 var scale = map.getZoomScale(zoom, _canvasZoom);
@@ -3320,6 +3328,9 @@
                     L.DomUtil.setTransform(_displayCanvas, topLeftOffset, scale);
                     L.DomUtil.setTransform(_sitesCanvas, topLeftOffset, scale);
                 } else {
+                    // Leaflet 1.9 always has setTransform; this fallback keeps
+                    // older builds usable without inventing another coordinate
+                    // conversion.  The settled redraw below restores position.
                     L.DomUtil.setPosition(_displayCanvas, topLeftOffset);
                     L.DomUtil.setPosition(_sitesCanvas, topLeftOffset);
                 }
@@ -3452,7 +3463,14 @@
                 // 3. Translate the 2D context by -topLeft so that latLngToLayerPoint()
                 //    coords draw at the correct canvas pixel.
                 var topLeft = map.containerPointToLayerPoint([0, 0]);
+                // Both custom surfaces are drawn in the same layer-point space.
+                // Reset BOTH elements after every settled move/zoom: setTransform()
+                // from zoomanim must never remain on _sitesCanvas when its pixels
+                // are redrawn at the new zoom.  Previously only _displayCanvas was
+                // reset, which applied the zoom transform twice to pins/clusters
+                // and left them offset after pan/zoom.
                 L.DomUtil.setPosition(_displayCanvas, topLeft);
+                L.DomUtil.setPosition(_sitesCanvas, topLeft);
                 _canvasCenter = map.getCenter();
                 _canvasZoom = map.getZoom();
 
