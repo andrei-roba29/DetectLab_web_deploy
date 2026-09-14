@@ -18,7 +18,7 @@ const opacityIds = rangeTags.filter(function (tag) {
 }).map(function (tag) {
     return (tag.match(/id="([^"]+)"/) || [])[1];
 });
-assert.strictEqual(opacityIds.length, 33, 'all 33 shipped layer opacity ranges should be discoverable');
+assert.strictEqual(opacityIds.length, 35, 'all 35 shipped layer opacity ranges should be discoverable');
 assert(!opacityIds.includes('lidarScannerDistance'), 'scanner distance is not an opacity range');
 assert(indexHtml.includes('id="battlesPeriodSlider"'), 'battles period slider should be part of the panel');
 assert(indexHtml.includes('id="battlesPeriodValue"'), 'battles century bubble should exist in the panel');

@@ -9796,6 +9796,29 @@
                     bounds: [[44.55, 20.85], [46.35, 22.45]],
                     label: 'Banat 1769-1772',
                     layerVar: '_banatMapLayer'
+                },
+
+                transylvania1859: {
+                    // Harta Transilvaniei 1859 (Tiled Map Service, ArcGIS Online —
+                    // Siebenburgen_1859). fullExtent-ul serviciului convertit în WGS84.
+                    // Tile-urile native există doar la zoom 7-14 (minLOD 7, maxLOD 14),
+                    // deci dreptunghiul roșu de acoperire se arată în afara intervalului.
+                    bounds: [[45.2059, 22.2319], [47.7300, 26.7037]],
+                    label: 'Harta Transilvaniei 1859',
+                    layerVar: '_transylvania1859MapLayer',
+                    coverageMinZoom: 7,
+                    coverageMaxZoom: 14
+                },
+
+                galicia1855: {
+                    // Hartă administrativă a Galiției și Lodomeriei – 1855 (Tiled Map
+                    // Service, ArcGIS Online — Kummerer_1855). fullExtent WGS84.
+                    // Tile-urile native există doar la zoom 6-14 (minLOD 6, maxLOD 14).
+                    bounds: [[46.8116, 18.3937], [50.8713, 26.6844]],
+                    label: 'Hartă administrativă a Galiției și Lodomeriei – 1855',
+                    layerVar: '_galicia1855MapLayer',
+                    coverageMinZoom: 6,
+                    coverageMaxZoom: 14
                 }
             };
 
@@ -9824,13 +9847,18 @@
                     var layerVar = premiumMapCoverageBounds[mapKey].layerVar;
                     var sourceLayer = window[layerVar];
                     // The coverage rectangle is only shown while the sublayer is
-                    // turned on AND we are below the zoom at which its real tiles
-                    // begin. Most premium maps have minZoom 8 (default); the
-                    // CORONA 60's layer fetches pass mosaics from z8 and frames
-                    // from z12 (like the original atlas), so its rectangle hides
-                    // at 8 (coverageMinZoom: 8).
+                    // turned on AND the current zoom is outside the range at which
+                    // the layer's real tiles exist. Most premium maps have minZoom 8
+                    // (default); the CORONA 60's layer fetches pass mosaics from z8
+                    // and frames from z12 (like the original atlas), so its rectangle
+                    // hides at 8 (coverageMinZoom: 8). Layers backed by ArcGIS tiled
+                    // services also declare coverageMaxZoom (their maxLOD): above it
+                    // the rectangle reappears to mark the available-range limit.
                     var tilesBeginZoom = premiumMapCoverageBounds[mapKey].coverageMinZoom || 8;
-                    var shouldShow = currentZoom < tilesBeginZoom && !!sourceLayer && map.hasLayer(sourceLayer);
+                    var tilesEndZoom = premiumMapCoverageBounds[mapKey].coverageMaxZoom;
+                    var outsideRange = currentZoom < tilesBeginZoom ||
+                        (tilesEndZoom !== undefined && currentZoom > tilesEndZoom);
+                    var shouldShow = outsideRange && !!sourceLayer && map.hasLayer(sourceLayer);
                     if (shouldShow) {
                         if (!map.hasLayer(polygon)) {
                             polygon.addTo(map);
@@ -10068,7 +10096,9 @@
                     { key: 'ww1', toggle: 'ww1MapToggle', row: 'ww1Row' },
                     { key: 'ww2', toggle: 'ww2MapToggle', row: 'ww2Row' },
                     { key: 'moldova1771', toggle: 'moldova1771MapToggle', row: 'moldova1771Row' },
-                    { key: 'banat', toggle: 'banatMapToggle', row: 'banatRow' }
+                    { key: 'banat', toggle: 'banatMapToggle', row: 'banatRow' },
+                    { key: 'transylvania1859', toggle: 'transylvania1859MapToggle', row: 'transylvania1859Row' },
+                    { key: 'galicia1855', toggle: 'galicia1855MapToggle', row: 'galicia1855Row' }
                 ];
                 premiumKeys.forEach(function(item) {
                     var b = premiumMapCoverageBounds[item.key] ? premiumMapCoverageBounds[item.key].bounds : [[43.5,19.5],[48.5,30.5]];
@@ -10634,6 +10664,108 @@
                 };
             })();
 
+            // ── HARTA TRANSILVANIEI 1859 (Tiled Map Service, ArcGIS Online) ──
+            // Strat premium nou. Sursă: serviciu de tile-uri găzduit pe ArcGIS
+            // Online (org. t2AVhHhEnEvHcPF6), public (share level Everyone).
+            // LOD-urile native ale serviciului sunt 7-14 (minLOD 7, maxLOD 14),
+            // deci sub z7 și peste z14 dreptunghiul roșu de acoperire preia
+            // locul tile-urilor (vezi coverageMinZoom / coverageMaxZoom în
+            // premiumMapCoverageBounds).
+            (function () {
+                map.createPane('pane_transylvania1859');
+                map.getPane('pane_transylvania1859').style.zIndex = 652;
+                map.getPane('pane_transylvania1859').style.pointerEvents = 'none';
+
+                // Reglabil live din consolă, fără redeploy: window.TRANSYLVANIA1859_TILE_MAX_NATIVE_Z.
+                window.TRANSYLVANIA1859_TILE_MAX_NATIVE_Z = (window.TRANSYLVANIA1859_TILE_MAX_NATIVE_Z !== undefined) ? window.TRANSYLVANIA1859_TILE_MAX_NATIVE_Z : 14;
+
+                // fullExtent-ul serviciului (Web Mercator -> WGS84): Transilvania.
+                var TRANSYLVANIA1859_BOUNDS = L.latLngBounds([[45.2059, 22.2319], [47.7300, 26.7037]]);
+
+                window._transylvania1859MapLayer = L.tileLayer(
+                    'https://tiles.arcgis.com/tiles/t2AVhHhEnEvHcPF6/arcgis/rest/services/Siebenburgen_1859/MapServer/tile/{z}/{y}/{x}',
+                    {
+                        minZoom: 7,
+                        maxZoom: 20,
+                        maxNativeZoom: window.TRANSYLVANIA1859_TILE_MAX_NATIVE_Z,
+                        tileSize: 256,
+                        opacity: 0.80,
+                        bounds: TRANSYLVANIA1859_BOUNDS,
+                        pane: 'pane_transylvania1859',
+                        attribution: '© Administrativ Karte des Grossfürstenthums Siebenbürgen (1859; 1:144 000)'
+                    }
+                );
+
+                window.toggleTransylvania1859Map = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._transylvania1859MapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._transylvania1859MapLayer) && map.removeLayer(window._transylvania1859MapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setTransylvania1859MapOpacity = function (val) {
+                    document.getElementById('transylvania1859MapPct').textContent = val + '%';
+                    window._transylvania1859MapLayer.setOpacity(val / 100);
+                };
+            })();
+
+            // ── HARTĂ ADMINISTRATIVĂ A GALIȚIEI ȘI LODOMERIEI – 1855 (Tiled Map Service, ArcGIS Online) ──
+            // Strat premium nou. Sursă: serviciu de tile-uri găzduit pe ArcGIS
+            // Online (org. t2AVhHhEnEvHcPF6), public (share level Everyone).
+            // LOD-urile native ale serviciului sunt 6-14 (minLOD 6, maxLOD 14);
+            // în afara intervalului, dreptunghiul roșu de acoperire e afișat.
+            (function () {
+                map.createPane('pane_galicia1855');
+                map.getPane('pane_galicia1855').style.zIndex = 653;
+                map.getPane('pane_galicia1855').style.pointerEvents = 'none';
+
+                // Reglabil live din consolă, fără redeploy: window.GALICIA1855_TILE_MAX_NATIVE_Z.
+                window.GALICIA1855_TILE_MAX_NATIVE_Z = (window.GALICIA1855_TILE_MAX_NATIVE_Z !== undefined) ? window.GALICIA1855_TILE_MAX_NATIVE_Z : 14;
+
+                // fullExtent-ul serviciului (Web Mercator -> WGS84): Galiția și Lodomeria.
+                var GALICIA1855_BOUNDS = L.latLngBounds([[46.8116, 18.3937], [50.8713, 26.6844]]);
+
+                window._galicia1855MapLayer = L.tileLayer(
+                    'https://tiles.arcgis.com/tiles/t2AVhHhEnEvHcPF6/arcgis/rest/services/Kummerer_1855/MapServer/tile/{z}/{y}/{x}',
+                    {
+                        minZoom: 6,
+                        maxZoom: 20,
+                        maxNativeZoom: window.GALICIA1855_TILE_MAX_NATIVE_Z,
+                        tileSize: 256,
+                        opacity: 0.80,
+                        bounds: GALICIA1855_BOUNDS,
+                        pane: 'pane_galicia1855',
+                        attribution: '© Administrativ-Karte von Galizien und Lodomerien - Carl von Kummersberg 1855'
+                    }
+                );
+
+                window.toggleGalicia1855Map = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._galicia1855MapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._galicia1855MapLayer) && map.removeLayer(window._galicia1855MapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setGalicia1855MapOpacity = function (val) {
+                    document.getElementById('galicia1855MapPct').textContent = val + '%';
+                    window._galicia1855MapLayer.setOpacity(val / 100);
+                };
+            })();
+
             // ── SATELIT 60s (CORONA — replicating corona.cast.uark.edu/atlas) ──
             // The original Corona Atlas (https://corona.cast.uark.edu/atlas)
             // serves the declassified 1960s CORONA imagery as GeoWebCache
@@ -10959,7 +11091,9 @@
                 { id: 'polishTactical1933MapToggle', fnName: 'togglePolishTactical1933Map' },
                 { id: 'ww1MapToggle', fnName: 'toggleWw1Map' },
                 { id: 'ww2MapToggle', fnName: 'toggleWw2Map' },
-                { id: 'banatMapToggle', fnName: 'toggleBanatMap' }
+                { id: 'banatMapToggle', fnName: 'toggleBanatMap' },
+                { id: 'transylvania1859MapToggle', fnName: 'toggleTransylvania1859Map' },
+                { id: 'galicia1855MapToggle', fnName: 'toggleGalicia1855Map' }
             ];
 
             window.toggleHistPremiumLayer = function (on) {

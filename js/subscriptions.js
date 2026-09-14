@@ -689,7 +689,9 @@
         'toggleLidarScannerLayer',
         'setLidarActive',
         'toggleHistPremiumMap',      // safe no-op if absent
-        'toggleSatellite60sMap'     // standalone premium layer (CORONA 60's)
+        'toggleSatellite60sMap',     // standalone premium layer (CORONA 60's)
+        'toggleTransylvania1859Map', // Harta Transilvaniei 1859 (ArcGIS tiles)
+        'toggleGalicia1855Map'       // Galiția și Lodomeria 1855 (ArcGIS tiles)
     ];
 
     function wrapPremiumToggles() {
