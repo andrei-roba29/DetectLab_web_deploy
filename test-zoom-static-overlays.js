@@ -45,13 +45,18 @@ assert.match(
 );
 assert.match(
     mapApp,
-    /latLngToLayerPoint\(L\.latLng\(latlng\.lat,\s*latlng\.lng\s*\+\s*lngDelta\)\)/,
-    'heritage radius in pixels must be derived from latLngToLayerPoint so it cannot drift from the site'
+    /map\.project\(L\.latLng\(latlng\.lat,\s*latlng\.lng\s*\+\s*lngDelta\),\s*zoom\)/,
+    'heritage radius in pixels must be projected unrounded so no whole-pixel rounding is baked into a bitmap the zoom animation scales'
 );
 assert.match(
     mapApp,
     /_getNewPixelOrigin\(center,\s*zoom\)/,
     'heritage zoomanim transform must use Leaflet\'s _getNewPixelOrigin (same math as L.Renderer)'
+);
+assert.match(
+    mapApp,
+    /_canvasAnchor = L\.point\(map\.getPixelOrigin\(\)\)\.add\(topLeft\)/,
+    'heritage canvases must scale around the exact bitmap anchor (rounded pixel origin) instead of the unrounded projection'
 );
 assert.match(
     css,
