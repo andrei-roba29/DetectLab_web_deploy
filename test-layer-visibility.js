@@ -192,7 +192,8 @@ test('PWA: _dlMap takes precedence over a stale local map and window.map', () =>
     const local = new MapMock(BANAT);
     const legacy = new MapMock(ALL);
     const h = setup({ exposed: active, local, legacy, pwa: true });
-    assert.deepEqual(premiumRows(h), ['bucovinaRow', 'ww2Row']);
+    // Galicia 1855 coverage (up to 50.87N) also spans the Bucovina viewport.
+    assert.deepEqual(premiumRows(h), ['bucovinaRow', 'galicia1855Row', 'ww2Row']);
     assert.equal(active.reads, 1);
     assert.equal(local.reads + legacy.reads, 0);
     assert.equal(highlighted(h, 'histPremiumExpandIcon', ARROW_CLASS), true);
@@ -327,7 +328,7 @@ test('all real historical, LIDAR and Roman rows resolve in the shared PWA panel'
             }
             return false;
         }));
-    assert.equal(leafRows.length, 53, '4 historical + 11 LIDAR + 28 Roman + 10 premium rows');
+    assert.equal(leafRows.length, 55, '4 historical + 11 LIDAR + 28 Roman + 12 premium rows');
     // These optional Roman definitions have no row in this deployment.
     assert.equal(h.row('roman_shade_herod'), null);
     assert.equal(h.row('roman_shade_hasmonean'), null);
