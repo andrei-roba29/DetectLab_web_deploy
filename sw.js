@@ -4,7 +4,7 @@
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v79-patrimoniu-cluster';
+const CACHE_NAME = 'detectlab-v80-patrimoniu-zoom-anchor';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -54,7 +54,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20260902-satbase-native18',
   'js/map-app.js?v=20260908-coordinate-formats',
   'js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster',
-  'js/map-app.js?v=20260914-patrimoniu-cluster',
+  'js/map-app.js?v=20260914-patrimoniu-zoom-anchor',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',
