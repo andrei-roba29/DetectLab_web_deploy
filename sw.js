@@ -1,10 +1,10 @@
 /* ============================================================
-   DetectLab — Service Worker v1.4.6
+   DetectLab — Service Worker v1.4.7
    ============================================================ */
 
 // Bump this when a client-side feature or data-sync fix ships so installed
 // PWAs replace stale scripts instead of continuing to run an older client.
-const CACHE_NAME = 'detectlab-v77-tutorial-smooth-slides';
+const CACHE_NAME = 'detectlab-v78-android-install-chrome';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -167,7 +167,12 @@ const PRECACHE_URLS = [
   // Subtle layer coverage highlights + standalone map/layout/auth hooks.
   // Keep the installed/offline PWA on the same CSS and JS as index.html.
   'css/styles.css?v=20260907-layer-visibility-pwa',
-  'js/map-app.js?v=20260907-layer-visibility-pwa'
+  'js/map-app.js?v=20260907-layer-visibility-pwa',
+  // Android install flow: Samsung Internet & OEM browsers mint a WebAPK that
+  // Google Play Protect blocks, so the install section now routes those users
+  // to Chrome and explains the "Unsafe app blocked" dialog.
+  'css/styles.css?v=20260914-android-install',
+  'js/translations.js?v=20260914-android-install'
 ];
 
 // ── Domains that must NEVER be intercepted by the SW ──

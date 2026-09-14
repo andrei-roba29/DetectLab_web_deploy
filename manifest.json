@@ -1,6 +1,8 @@
 {
   "name": "DetectLab",
   "short_name": "DetectLab",
+  "id": "/",
+  "scope": "/",
   "description": "An Archaeological Prediction Model that automatically identifies high-potential zones for ancient settlements using topographic, geological, and hydrographic data.",
   "start_url": ".",
   "display": "standalone",
@@ -27,7 +29,6 @@
       "purpose": "maskable"
     }
   ],
-  "screenshots": [],
   "shortcuts": [
     {
       "name": "Explore Map",
