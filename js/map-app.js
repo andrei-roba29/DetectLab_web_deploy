@@ -22,7 +22,58 @@
         window.addEventListener('load', function() {
             switchLayerTab('free');
         });
-        
+
+        // ── Înălțimea reală a containerelor de sublayeruri (accordion) ──
+        // Containerle (histSubLayers, lidarSubLayers, romanSubLayers,
+        // histPremiumSubLayers) se animau cu un max-height HARDCODED
+        // (900/1100/1200/1000px) + overflow:hidden. Când conținutul depășea
+        // plafonul (zoom de browser, fonturi mai mari, harti noi adăugate),
+        // ultimele rânduri erau tăiate — ex. "Hartă administrativă a Galiției
+        // și Lodomeriei – 1855" (ultima din Harti istorice PREMIUM) nu mai
+        // era vizibilă în totalitate. Măsurăm înălțimea naturală la fiecare
+        // expandare în loc să folosim valori fixe. fallbackPx rămâne
+        // salvăgarda doar dacă conținutul nu poate fi măsurat (ex. tab-ul e
+        // display:none → scrollHeight 0).
+        function measureSubLayersHeight(panel) {
+            if (!panel) return 0;
+            // Măsurăm fără tăiere: dezactivăm temporar max-height, forțăm
+            // layoutul și citim scrollHeight. Toate schimburile sunt
+            // sincronice (fără paint intermediar) → niciun flicker, iar
+            // tranziția CSS pornește de la valoarea randată anterior (0)
+            // către valoarea finală măsurată.
+            var prev = panel.style.maxHeight;
+            var h = 0;
+            try {
+                panel.style.maxHeight = 'none';
+                h = panel.scrollHeight;
+            } catch (e) {
+                h = 0;
+            }
+            panel.style.maxHeight = prev || '0';
+            return h;
+        }
+
+        function setSubLayersMaxHeight(panel, expanded, fallbackPx) {
+            if (!panel) return;
+            if (!expanded) {
+                panel.style.maxHeight = '0';
+                return;
+            }
+            var h = measureSubLayersHeight(panel);
+            if (!(h > 0)) h = fallbackPx || 1000;
+            panel.style.maxHeight = h + 'px';
+            // Re-măsurăm după tranziție (0.3s), pe cazuri în care
+            // conținutul se mută târziu (încărcare fonturi, PWA resume).
+            // Se actualizează doar dacă secțiunea e încă expandată.
+            setTimeout(function () {
+                var current = parseInt(panel.style.maxHeight, 10) || 0;
+                if (current > 0) {
+                    var h2 = measureSubLayersHeight(panel);
+                    if (h2 > 0) panel.style.maxHeight = h2 + 'px';
+                }
+            }, 400);
+        }
+
         (function initMap() {
             var ROMANIA_BOUNDS = L.latLngBounds([[43.5, 19.5], [48.5, 30.5]]);
 
@@ -5023,13 +5074,13 @@
                 if (!container) return;
                 window._romanSubExpanded = !window._romanSubExpanded;
                 if (window._romanSubExpanded) {
-                    container.style.maxHeight = '1200px';
+                    setSubLayersMaxHeight(container, true, 1200);
                     container.style.opacity = '1';
                     container.style.marginTop = '10px';
                     if (icon) icon.style.transform = 'rotate(0deg)';
                     if (btn) btn.style.color = '#E8772A';
                 } else {
-                    container.style.maxHeight = '0';
+                    setSubLayersMaxHeight(container, false);
                     container.style.opacity = '0';
                     container.style.marginTop = '0';
                     if (icon) icon.style.transform = 'rotate(-90deg)';
@@ -5296,12 +5347,12 @@
                 var panel = document.getElementById('lidarSubLayers');
                 var icon = document.getElementById('lidarExpandIcon');
                 if (_lidarSubExpandedState) {
-                    panel.style.maxHeight = '1100px';
+                    setSubLayersMaxHeight(panel, true, 1100);
                     panel.style.opacity = '1';
                     panel.style.marginTop = '10px';
                     icon.style.transform = 'rotate(0deg)';
                 } else {
-                    panel.style.maxHeight = '0';
+                    setSubLayersMaxHeight(panel, false);
                     panel.style.opacity = '0';
                     panel.style.marginTop = '0';
                     icon.style.transform = 'rotate(-90deg)';
@@ -7203,10 +7254,10 @@
                     var panel = document.getElementById('histSubLayers');
                     var icon  = document.getElementById('histExpandIcon');
                     if (_expanded) {
-                        panel.style.maxHeight = '900px'; panel.style.opacity = '1'; panel.style.marginTop = '10px';
+                        setSubLayersMaxHeight(panel, true, 900); panel.style.opacity = '1'; panel.style.marginTop = '10px';
                         icon.style.transform = 'rotate(0deg)';
                     } else {
-                        panel.style.maxHeight = '0'; panel.style.opacity = '0'; panel.style.marginTop = '0';
+                        setSubLayersMaxHeight(panel, false); panel.style.opacity = '0'; panel.style.marginTop = '0';
                         icon.style.transform = 'rotate(-90deg)';
                     }
                     setTimeout(function() {
@@ -11522,12 +11573,14 @@
                 var panel = document.getElementById('histPremiumSubLayers');
                 var icon = document.getElementById('histPremiumExpandIcon');
                 if (_histPremiumSubExpanded) {
-                    panel.style.maxHeight = '1000px';
+                    // Înălțimea măsurată din conținut (nu 1000px fix):
+                    // plafonul fix tăia ultima hartă (Galiția și Lodomeria 1855).
+                    setSubLayersMaxHeight(panel, true, 1000);
                     panel.style.opacity = '1';
                     panel.style.marginTop = '10px';
                     icon.style.transform = 'rotate(0deg)';
                 } else {
-                    panel.style.maxHeight = '0';
+                    setSubLayersMaxHeight(panel, false);
                     panel.style.opacity = '0';
                     panel.style.marginTop = '0';
                     icon.style.transform = 'rotate(-90deg)';
