@@ -74,12 +74,19 @@ console.log('[4] Page + service-worker wiring (PWA clients pick up the fix)');
     const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
     const mapTag = 'js/map-app.js?v=20260902-satbase-native18';
     const reportTag = 'js/archeo-report.js?v=20260902-arch-report-v4';
-    check('index.html loads the new map-app.js build', html.indexOf('src="' + mapTag + '"') !== -1);
+    // map-app.js keeps getting re-versioned by every later release (the
+    // detectorist map pins bumped it to ?v=20260915-map-social), so require the
+    // cache-buster pattern instead of one frozen tag — the satbase fix itself is
+    // asserted by the checks above.
+    check('index.html loads the new map-app.js build', /src="js\/map-app\.js\?v=\d{8}-/.test(html));
     check('index.html loads the new archeo-report.js build', html.indexOf('src="' + reportTag + '"') !== -1);
     check('the SW pre-caches both new builds',
-        sw.indexOf("'" + mapTag + "'") !== -1 && sw.indexOf("'" + reportTag + "'") !== -1);
+        sw.indexOf("'js/map-app.js?v=20260902-satbase-native18'") !== -1 && sw.indexOf("'" + reportTag + "'") !== -1);
+    // The cache name only ever moves forward: every release that touches a
+    // cached asset bumps the number, so installed PWAs drop the old shell.
+    const cacheName = (sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-([a-z0-9-]+)'/) || []);
     check('the SW CACHE_NAME was bumped so installed PWAs refresh',
-        /const CACHE_NAME = 'detectlab-v63-satbase-native18'/.test(sw),
+        cacheName.length === 3 && Number(cacheName[1]) >= 63 && !!cacheName[2],
         (sw.match(/const CACHE_NAME = '[^']+'/) || [])[0]);
 }
 

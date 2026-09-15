@@ -6029,6 +6029,21 @@
                 }
             })();
             function nearbyInitials(name) { return (name || '?').trim().split(/\s+/).slice(0,2).map(function(x){return x[0];}).join('').toUpperCase(); }
+            // Social action slot carried by every detectorist popup (live orange
+            // pins AND black/white offline bubbles). It is intentionally EMPTY:
+            // js/friends.js fills it from the map's 'popupopen' event with the
+            // action that matches the relationship with that account — send a
+            // friend request, accept theirs, cancel ours or open the chat when
+            // you are already friends. Keeping only the identity in the markup
+            // means the buttons are always painted from the live friend state,
+            // never from a popup captured minutes ago.
+            function detectorSocialSlotHtml(userId, name, kind) {
+                if (!userId) return '';
+                var uid = String(userId).replace(/[<>&"']/g, '');
+                var safe = String(name || '').replace(/[<>&"']/g, '');
+                return '<div class="detector-social-actions" data-user-id="' + uid +
+                    '" data-user-name="' + safe + '" data-detector-kind="' + String(kind || '') + '"></div>';
+            }
             function nearbyDistance(a,b,c,d) { var R=6371, x=(c-a)*Math.PI/180, y=(d-b)*Math.PI/180; var q=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2; return 2*R*Math.asin(Math.sqrt(q)); }
             function nearbyUser() { return window._authUser && window._authUser(); }
             window.openNearbyDetectors = function() {
@@ -6067,6 +6082,23 @@
                 }
             };
             window.closeNearbyDetectors = function() { var m=document.getElementById('nearbyModal'); if(m)m.classList.remove('show'); };
+            // ── SOCIAL ACTIONS ON DETECTORIST PINS ──
+            // Every live (orange) and offline (black/white) popup ships an empty
+            // .detector-social-actions slot; friends.js paints it the moment the
+            // popup opens, so a tap on a detectorist offers "Adaugă prietenie",
+            // "Acceptă cererea", "Cerere trimisă / Anulează" or, for somebody who
+            // is already a friend, "Trimite mesaj". Nothing renders when nobody
+            // is signed in (or when the pin is another device of my own account).
+            map.on('popupopen', function (e) {
+                try {
+                    var popupEl = e && e.popup && typeof e.popup.getElement === 'function' ? e.popup.getElement() : null;
+                    if (!popupEl) return;
+                    var F = window.DetectLabFriends;
+                    if (F && typeof F.decorateDetectorPopup === 'function') F.decorateDetectorPopup(popupEl);
+                } catch (err) {
+                    console.warn('[Nearby] social actions on popup failed:', err && err.message ? err.message : err);
+                }
+            });
             // Restore the map view the user had before opening the nearby-detectorists
             // panel (falls back to the initial full-canvas view) and close the panel.
             window.resetNearbyView = function() {
@@ -6160,6 +6192,7 @@
                                 '<div style="font-size:0.72rem; opacity:0.75; margin:2px 0 4px;">⚪ Offline — ultima locație cunoscută / last known location</div>' +
                                 (where ? '<div style="font-size:0.76rem;">📍 ' + where + '</div>' : '') +
                                 (seenAt ? '<div style="font-size:0.7rem; opacity:0.6;">🕘 ' + seenAt + '</div>' : '') +
+                                detectorSocialSlotHtml(row.user_id, name, 'offline') +
                                 '</div>')
                             .addTo(nearbyLayer);
                         added++;
@@ -6282,13 +6315,16 @@
                         if (legacySchema && row.user_id === user.id) return;
                         if (nearbyDistance(_detLat,_detLng,+row.latitude,+row.longitude) <= 10) {
                             found++;
-                            var icon=L.divIcon({className:'',html:'<div class="detector-nearby-marker" title="'+String(row.full_name||'Detectorist').replace(/[<>&"]/g,'')+'">'+nearbyInitials(row.full_name)+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
+                            var liveName=String(row.full_name||'Detectorist').replace(/[<>&"]/g,'');
+                            var liveEmail=String(row.email||'').replace(/[<>&]/g,'');
+                            var icon=L.divIcon({className:'',html:'<div class="detector-nearby-marker" title="'+liveName+'">'+nearbyInitials(row.full_name)+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
                             // zIndexOffset 1100 keeps these pins ABOVE our own live-location
                             // marker (zIndexOffset 1000), so a detectorist standing at ~our
                             // own position is still the one that receives the tap/click.
-                            // Clicking a pin opens a small window with full name + email.
+                            // Clicking a pin opens a small window with full name + email
+                            // plus the social action slot (friend request / message).
                             L.marker([+row.latitude,+row.longitude],{icon:icon,interactive:true,zIndexOffset:1100})
-                                .bindPopup('<div class="map-place-popup"><strong>'+String(row.full_name||'Detectorist').replace(/[<>&]/g,'')+'</strong><br>'+String(row.email||'').replace(/[<>&]/g,'')+'</div>')
+                                .bindPopup('<div class="map-place-popup"><strong>'+liveName+'</strong><br>'+liveEmail+detectorSocialSlotHtml(row.user_id, liveName, 'live')+'</div>')
                                 .addTo(nearbyLayer);
                         }
                     });

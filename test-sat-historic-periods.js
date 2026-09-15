@@ -128,11 +128,19 @@ console.log('[5] Translations + PWA wiring');
         // (social bumped it to ?v=20260915-social), so require the cache-buster
         // pattern instead of one frozen string.
         /js\/translations\.js\?v=\d{8}-/.test(indexHtml) &&
-        indexHtml.includes('css/styles.css?v=20260915-sat-historic'));
+        // styles.css is re-versioned as well (the detectorist map pins bumped
+        // it to ?v=20260915-map-social), so match the pattern, not a frozen tag.
+        /css\/styles\.css\?v=\d{8}-/.test(indexHtml));
     check('SW pre-caches the sat-historic builds',
         swJs.includes("'js/map-app.js?v=20260915-sat-historic'") &&
         swJs.includes("'js/vertical-opacity-control.js?v=20260915-sat-historic'") &&
         swJs.includes("'css/styles.css?v=20260915-sat-historic'"));
+    // The page can only request ONE stylesheet URL: make sure whichever
+    // cache-buster index.html ships today is the one the service worker
+    // pre-caches (the sat-historic entry above stays in the list historically).
+    const liveCss = (indexHtml.match(/css\/styles\.css\?v=[^"']+/) || [])[0];
+    check('the stylesheet index.html actually requests is pre-cached (no offline gap)',
+        !!liveCss && swJs.includes("'" + liveCss + "'"), liveCss || '<none>');
     // The cache name is re-bumped by every release; assert it is at least the
     // sat-historic one (v85) rather than pinning a version that is already stale.
     check('SW CACHE_NAME was bumped', /const CACHE_NAME = 'detectlab-v(8[5-9]|9\d)-/.test(swJs));
