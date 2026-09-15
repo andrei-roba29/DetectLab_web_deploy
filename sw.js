@@ -10,7 +10,10 @@
 // v82: fix PWA Patrimoniu zoom glitch — stop redrawing custom canvases
 // during pinch/zoom animation, round transform to match tile container,
 // and guard visualViewport resize while zooming.
-const CACHE_NAME = 'detectlab-v83-offline-maps';
+// v84: offline-maps panel — zoom-level wording ("Nivel zoom" / "Zoom level"),
+// closing a polygon on its first corner, the over-sized-polygon error that was
+// being overwritten, and panel/bottom-bar/status-bar geometry in the PWA.
+const CACHE_NAME = 'detectlab-v84-offline-maps-panel';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -176,6 +179,13 @@ const PRECACHE_URLS = [
   // Offline maps: polygon editor, IndexedDB metadata and tile-cache UI.
   'js/offline-maps.js?v=20260915-offline-maps',
   'css/offline-maps.css?v=20260915-offline-maps',
+  // Offline-maps panel polish: named zoom pickers, tap-to-close the polygon,
+  // sticky size error, and panel geometry inside the map canvas / above the
+  // PWA bottom bar / under the phone status bar. The tutorial slide for
+  // #btnOfflineMaps describes the same flow, so it ships in the same version.
+  'js/offline-maps.js?v=20260915-offline-panel',
+  'css/offline-maps.css?v=20260915-offline-panel',
+  'js/tutorial.js?v=20260915-offline-panel',
   // Nearby detectorists: the popup card (.map-place-popup) used to be
   // position:absolute, which pulled it out of the Leaflet popup's flow and left
   // an empty little popup box next to the info card — two windows, one of them
