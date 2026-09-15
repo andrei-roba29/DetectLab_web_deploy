@@ -752,6 +752,11 @@
                         <span class="t" data-key="nav_events">Events</span>
                     </button>
 
+                    <!-- Social: friends, friend requests and private/group chat -->
+                    <button onclick="openFriends()">
+                        <span class="t" data-key="nav_friends">Friends</span>
+                    </button>
+
                     <button onclick="authLogout()">
                         <span class="t" data-key="nav_logout">Log Out</span>
                     </button>
@@ -843,6 +848,10 @@
                 <button class="pwa-drop-item" onclick="openEvents()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                     <span class="t" data-key="nav_events">Events</span>
+                </button>
+                <button class="pwa-drop-item" onclick="openFriends()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                    <span class="t" data-key="nav_friends">Friends</span>
                 </button>
                 <div class="pwa-drop-divider"></div>
                 <button class="pwa-drop-item" onclick="authLogout()" style="color:#ff8a8a">
@@ -3557,7 +3566,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260915-sat-historic"></script>
+    <script src="js/translations.js?v=20260915-social"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -3577,7 +3586,14 @@
     <!-- Remembers each user's last BROAD location (nearest city/town + county).
          Must load before events.js / map-app.js, which both consume it. -->
     <script src="js/last-location.js?v=20260815-last-location"></script>
-    <script src="js/events.js?v=20260908-anonymous-event-sync"></script>
+    <script src="js/events.js?v=20260915-social"></script>
+    <!-- Social layer: "Prieteni / Friends" panel (search by e-mail · name · id +
+         county filter), friend requests, private and group chat with an admin,
+         event creation from a chat and the "Adaugă prieteni / Add friends" box
+         of the create-event form. Loads after last-location.js (county) and
+         events.js (openCreateEventModal), and must be parsed before auth.js so
+         window.openFriends exists when the menus are wired. -->
+    <script src="js/friends.js?v=20260915-social"></script>
     <!-- CORONA (Satellite imagery 60's) WMS-C tile layer — replicates the exact
          tile fetching / request sending of the original Corona Atlas
          (corona.cast.uark.edu/atlas): per-tile WMS 1.1.1 GetMap requests to

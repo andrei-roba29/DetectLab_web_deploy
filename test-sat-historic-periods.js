@@ -121,13 +121,18 @@ console.log('[5] Translations + PWA wiring');
     check('index.html loads the sat-historic builds',
         indexHtml.includes('js/map-app.js?v=20260915-sat-historic') &&
         indexHtml.includes('js/vertical-opacity-control.js?v=20260915-sat-historic') &&
-        indexHtml.includes('js/translations.js?v=20260915-sat-historic') &&
+        // translations.js keeps getting re-versioned by every later release
+        // (social bumped it to ?v=20260915-social), so require the cache-buster
+        // pattern instead of one frozen string.
+        /js\/translations\.js\?v=\d{8}-/.test(indexHtml) &&
         indexHtml.includes('css/styles.css?v=20260915-sat-historic'));
     check('SW pre-caches the sat-historic builds',
         swJs.includes("'js/map-app.js?v=20260915-sat-historic'") &&
         swJs.includes("'js/vertical-opacity-control.js?v=20260915-sat-historic'") &&
         swJs.includes("'css/styles.css?v=20260915-sat-historic'"));
-    check('SW CACHE_NAME was bumped', /const CACHE_NAME = 'detectlab-v85-sat-historic'/.test(swJs));
+    // The cache name is re-bumped by every release; assert it is at least the
+    // sat-historic one (v85) rather than pinning a version that is already stale.
+    check('SW CACHE_NAME was bumped', /const CACHE_NAME = 'detectlab-v(8[5-9]|9\d)-/.test(swJs));
 }
 
 // ─────────────────────────────────────────────────────────────────────────
