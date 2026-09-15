@@ -6569,9 +6569,38 @@
 
         /* Heritage 600 m radius canvas lives as a direct child of the map
            pane. Pin its zoom-animation origin to 0 0 (same as Leaflet's
-           own renderers) so the circles stay on their sites while zooming. */
+           own renderers) so the circles stay on their sites while zooming.
+           will-change + backface-visibility force a GPU layer in the PWA
+           standalone WebView (position:fixed + backdrop-filter otherwise
+           causes the canvas to be repainted each frame and appear glitchy
+           during zoom). The previous contain:layout style paint broke the
+           shared transform origin with tile layers in some PWA WebViews,
+           producing the reported slide during pinch/button zoom. */
         #detectlab-map .leaflet-map-pane > canvas.leaflet-zoom-animated {
             transform-origin: 0 0 !important;
+            -webkit-transform-origin: 0 0 !important;
+            will-change: transform !important;
+            backface-visibility: hidden !important;
+            -webkit-backface-visibility: hidden !important;
+            /* Keep the canvas on its own compositor layer without using
+               contain:layout which isolates it from the mapPane's transform. */
+            transform: translate3d(0,0,0);
+        }
+        /* Leaflet adds leaflet-zoom-anim to the map pane during zoom.  The
+           transition is defined in leaflet.css, but in PWA standalone the
+           map pane is position:fixed and has a backdrop-filter sibling,
+           which can prevent the transition from being applied unless the
+           animated children are explicitly promoted. */
+        .leaflet-zoom-anim #detectlab-map .leaflet-map-pane > canvas.leaflet-zoom-animated {
+            will-change: transform !important;
+        }
+        /* PWA standalone: ensure the custom canvases get the same transition
+           as Leaflet's own zoom-animated layers even when the map pane is
+           fixed.  Without this, iOS standalone sometimes drops the transition
+           and the canvas jumps instead of scaling with tiles. */
+        body.is-pwa .leaflet-zoom-anim #detectlab-map .leaflet-map-pane > canvas.leaflet-zoom-animated {
+            transition: transform 0.25s cubic-bezier(0,0,0.25,1) !important;
+            -webkit-transition: -webkit-transform 0.25s cubic-bezier(0,0,0.25,1) !important;
         }
 
         /* Stil pentru imaginile heritage - rotunde și cu contur negru */
