@@ -1664,21 +1664,84 @@
         popupDiv.appendChild(div);
     };
 
-    function openCreateEventModal(lat, lng, pinId, pinTitle) {
+    // opts (optional, used by the social layer — js/friends.js):
+    //   preselectedFriendIds [] – friends already ticked in "Adaugă prieteni"
+    //   showCoordinates      – no pin behind this form (it was opened from a
+    //                            chat), so latitude/longitude become editable
+    //   sourceConversationId – the thread the event was started from
+    //   onCreated(event)     – called after the event was saved on the server
+    /* The database enforces the event quotas with trigger_guard_event_limits /
+       trigger_guard_event_attendance_limits. Recognise those refusals so the
+       form can show the real reason instead of "saved locally". */
+    var EVENT_QUOTA_CODES = ['EVENT_CREATION_LIMIT', 'EVENT_DEADLINE_TOO_FAR', 'EVENT_ATTENDANCE_LIMIT'];
+
+    function eventQuotaCode(err) {
+        var raw = String((err && (err.message || err.details)) || err || '');
+        for (var i = 0; i < EVENT_QUOTA_CODES.length; i++) {
+            if (raw.indexOf(EVENT_QUOTA_CODES[i]) !== -1) return EVENT_QUOTA_CODES[i];
+        }
+        return null;
+    }
+
+    function eventQuotaMessage(code, arg, isRo) {
+        if (code === 'EVENT_DEADLINE_TOO_FAR') {
+            return isRo
+                ? 'Un eveniment poate fi programat cel mult ' + arg + ' zile în viitor.'
+                : 'An event can be scheduled at most ' + arg + ' days in the future.';
+        }
+        if (code === 'EVENT_ATTENDANCE_LIMIT') {
+            return isRo
+                ? 'Ai atins numărul maxim de evenimente la care participi (' + arg + ').'
+                : 'You reached the maximum number of events you can attend (' + arg + ').';
+        }
+        return isRo
+            ? 'Ai deja numărul maxim de evenimente active (' + arg + '). Șterge unul înainte să creezi altul.'
+            : 'You already have the maximum number of active events (' + arg + '). Delete one before creating another.';
+    }
+
+    function openCreateEventModal(lat, lng, pinId, pinTitle, opts) {
         var existing = document.getElementById('createEventModal');
         if (existing) existing.remove();
 
         var isRo = (window._currentLang && window._currentLang() === 'ro');
+        var options = opts || {};
+        var social = window.DetectLabFriends || null;
+        var socialLimits = social ? social.getLimits() : null;
+        var maxDeadlineDays = (socialLimits && Number(socialLimits.max_event_deadline_days)) || 365;
+        var selectedFriends = {};
+        (options.preselectedFriendIds || []).forEach(function (id) { if (id) selectedFriends[id] = true; });
         var pinLabel = pinTitle ? escapeHtml(pinTitle) : (pinId ? ('Pin ' + pinId) : 'Location Pin');
+
+        // Location row: a pin when the form was opened from the map, editable
+        // coordinates when it was opened from a chat (no pin exists there).
+        var locationBlock;
+        if (options.showCoordinates) {
+            locationBlock =
+                '<div style="background: rgba(107,63,160,0.2); border: 1px solid rgba(196,160,240,0.4); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.78rem; color: #E8D0FF;">' +
+                '📍 <strong>' + (isRo ? 'Locația evenimentului' : 'Event location') + '</strong> ' +
+                '<span style="opacity:0.8;">' + (isRo ? '(centrul hărții — poți ajusta)' : '(map centre — adjust if needed)') + '</span>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">' +
+                '<input type="number" step="0.00001" id="ceLat" value="' + Number(lat).toFixed(5) + '" style="width:100%;padding:7px;background:rgba(255,255,255,0.08);border:1px solid rgba(196,160,240,0.35);border-radius:6px;color:#F5F0EB;font-size:0.8rem;box-sizing:border-box;">' +
+                '<input type="number" step="0.00001" id="ceLng" value="' + Number(lng).toFixed(5) + '" style="width:100%;padding:7px;background:rgba(255,255,255,0.08);border:1px solid rgba(196,160,240,0.35);border-radius:6px;color:#F5F0EB;font-size:0.8rem;box-sizing:border-box;">' +
+                '</div></div>';
+        } else {
+            locationBlock =
+                '<div style="background: rgba(107,63,160,0.2); border: 1px solid rgba(196,160,240,0.4); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.78rem; color: #E8D0FF;">' +
+                '📍 <strong>' + (isRo ? 'Pin asociat:' : 'Associated Pin:') + '</strong> ' + pinLabel + ' (' + Number(lat).toFixed(5) + ', ' + Number(lng).toFixed(5) + ')' +
+                '</div>';
+        }
+
+        // "Adaugă prieteni / Add friends" — the list of every friend, ticked
+        // ones receive a participation request they can accept or decline.
+        var friendsBlock =
+            '<div id="ceFriendsBox" style="margin-bottom:12px;background:rgba(13,43,94,0.28);border:1px solid rgba(184,216,240,0.22);border-radius:6px;padding:10px;"></div>';
 
         var modal = document.createElement('div');
         modal.id = 'createEventModal';
         modal.style.cssText = 'position: fixed; inset: 0; z-index: 4000; background: rgba(4,10,22,0.85); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 16px;';
-        modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.25); border-radius: 12px; width: 100%; max-width: 440px; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">' +
+        modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.25); border-radius: 12px; width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">' +
             '<h3 style="margin-top:0; font-size:1.1rem; color:var(--sky); font-family:\'Cinzel\',serif;">' + (isRo ? 'Creează un eveniment din acest Pin' : 'Create Event from this Pin') + '</h3>' +
-            '<div style="background: rgba(107,63,160,0.2); border: 1px solid rgba(196,160,240,0.4); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.78rem; color: #E8D0FF;">' +
-            '📍 <strong>' + (isRo ? 'Pin asociat:' : 'Associated Pin:') + '</strong> ' + pinLabel + ' (' + Number(lat).toFixed(5) + ', ' + Number(lng).toFixed(5) + ')' +
-            '</div>' +
+            locationBlock +
             '<div style="margin-bottom:10px;"><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Titlu eveniment *' : 'Event Title *') + '</label><input type="text" id="ceTitle" placeholder="' + (isRo ? 'Ex: Căutare comori în pădure' : 'Ex: Forest metal detecting') + '" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;" autocomplete="off"></div>' +
             '<div style="margin-bottom:10px;"><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Descriere' : 'Description') + '</label><textarea id="ceDesc" placeholder="' + (isRo ? 'Detalii despre întâlnire...' : 'Meeting details...') + '" style="width:100%; height:55px; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem; resize:none;"></textarea></div>' +
             '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">' +
@@ -1698,11 +1761,74 @@
                 : 'Does not appear on the map. Participants join instantly with an event code, no join request needed.') + '</span></span>' +
             '</label>' +
             '</div>' +
+            friendsBlock +
+            '<div id="ceQuotaNote" style="font-size:0.7rem; opacity:0.62; margin-bottom:10px; line-height:1.5;"></div>' +
             '<div id="ceError" style="font-size:0.76rem; color:#ff8a8a; margin-bottom:10px;"></div>' +
             '<div style="display:flex; gap:10px;"><button type="button" id="ceSubmitBtn" style="flex:1; background:#6B3FA0; border:none; border-radius:6px; color:#fff; font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Salvează Evenimentul' : 'Save Event') + '</button><button type="button" id="ceCancelBtn" style="background:rgba(255,255,255,0.1); border:none; border-radius:6px; color:#F5F0EB; padding:10px; cursor:pointer;">' + (isRo ? 'Anulează' : 'Cancel') + '</button></div>' +
             '</div>';
 
         document.body.appendChild(modal);
+
+        // ── Social wiring: friends picker + live quota note ──
+        var maxInvitesPerEvent = (socialLimits && Number(socialLimits.max_event_invites_per_event)) || 50;
+        (function initCreateEventSocial() {
+            if (!social) return;
+            try {
+                var box = modal.querySelector('#ceFriendsBox');
+                if (box) {
+                    social.renderFriendPicker(box, {
+                        selected: selectedFriends,
+                        onChange: function () {}
+                    });
+                    // The first paint uses the per-account mirror; refresh from
+                    // the server so friends added on another device (or a
+                    // request accepted a minute ago) are listed here too. The
+                    // ticked ids live in `selectedFriends`, which survives the
+                    // re-render.
+                    Promise.resolve(social.loadFriends()).then(function () {
+                        if (!document.getElementById('createEventModal')) return;
+                        social.renderFriendPicker(box, {
+                            selected: selectedFriends,
+                            onChange: function () {}
+                        });
+                    }).catch(function () {});
+                }
+            } catch (e) {
+                console.warn('[Events] friend picker could not be rendered', e);
+            }
+            var note = modal.querySelector('#ceQuotaNote');
+            if (!note) return;
+            note.textContent = isRo ? 'Se verifică limitele…' : 'Checking limits…';
+            Promise.resolve(social.getEventQuota(true)).then(function (quota) {
+                var L = social.getLimits();
+                var deadlineDays = (quota && quota.deadlineDays) || maxDeadlineDays;
+                // The database owns the deadline cap; keep the submit handler in
+                // sync with whatever get_my_event_quota() reported.
+                maxDeadlineDays = deadlineDays;
+                if (!quota) {
+                    note.textContent = isRo
+                        ? 'Limite: max ' + deadlineDays + ' zile în viitor pentru dată.'
+                        : 'Limits: the date can be at most ' + deadlineDays + ' days ahead.';
+                    return;
+                }
+                note.textContent = isRo
+                    ? 'Limitele contului tău: ' + quota.created + '/' + quota.createdMax + ' evenimente create active • ' +
+                      quota.attending + '/' + quota.attendingMax + ' participări active • data maximă: +' + deadlineDays + ' zile.'
+                    : 'Your account limits: ' + quota.created + '/' + quota.createdMax + ' active events created • ' +
+                      quota.attending + '/' + quota.attendingMax + ' active attendances • latest date: +' + deadlineDays + ' days.';
+                if (quota.created >= quota.createdMax) {
+                    var err = modal.querySelector('#ceError');
+                    if (err) {
+                        err.textContent = isRo
+                            ? 'Ai atins numărul maxim de evenimente active (' + quota.createdMax + '). Șterge unul ca să poți crea altul.'
+                            : 'You reached the maximum number of active events (' + quota.createdMax + '). Delete one to create another.';
+                    }
+                }
+                if (L && L.max_event_invites_per_event) {
+                    maxInvitesPerEvent = Number(L.max_event_invites_per_event);
+                }
+            }).catch(function () { note.textContent = ''; });
+        })();
 
         modal.querySelector('#ceCancelBtn').addEventListener('click', function () { modal.remove(); });
         modal.addEventListener('click', function (e) { if (e.target === modal) modal.remove(); });
@@ -1718,6 +1844,34 @@
             var isAnonymous = !!(anonEl && anonEl.checked);
             var errEl = document.getElementById('ceError');
 
+            // Coordinates come from the editable fields when the form was
+            // opened from a chat (no pin behind it).
+            var eventLat = Number(lat);
+            var eventLng = Number(lng);
+            if (options.showCoordinates) {
+                var latEl = document.getElementById('ceLat');
+                var lngEl = document.getElementById('ceLng');
+                if (latEl && latEl.value !== '') eventLat = Number(latEl.value);
+                if (lngEl && lngEl.value !== '') eventLng = Number(lngEl.value);
+                if (!isFinite(eventLat) || !isFinite(eventLng) || eventLat < -90 || eventLat > 90 || eventLng < -180 || eventLng > 180) {
+                    errEl.textContent = isRo ? 'Coordonatele nu sunt valide.' : 'The coordinates are not valid.';
+                    return;
+                }
+            }
+
+            // Friends ticked in the "Adaugă prieteni / Add friends" box.
+            var invitedFriendIds = [];
+            try {
+                var friendsBox = document.getElementById('ceFriendsBox');
+                if (social && friendsBox) invitedFriendIds = social.readFriendPicker(friendsBox) || [];
+            } catch (e) {}
+            if (invitedFriendIds.length > maxInvitesPerEvent) {
+                errEl.textContent = isRo
+                    ? 'Poți invita maximum ' + maxInvitesPerEvent + ' prieteni la un eveniment.'
+                    : 'You can invite at most ' + maxInvitesPerEvent + ' friends to an event.';
+                return;
+            }
+
             if (!title || !dateVal) {
                 errEl.textContent = isRo ? 'Completați titlul și data.' : 'Please fill in title and date.';
                 return;
@@ -1730,13 +1884,17 @@
             }
 
             var now = new Date();
-            var oneYearFromNow = new Date();
-            oneYearFromNow.setFullYear(now.getFullYear() + 1);
+            // Deadline cap: at most `max_event_deadline_days` (365 by default,
+            // read from public.app_limits) in the future. The same rule is
+            // enforced by trigger_guard_event_limits in the database, so an
+            // old cached client cannot book a hunt five years ahead.
+            var deadlineLimit = new Date(now.getTime());
+            deadlineLimit.setDate(deadlineLimit.getDate() + (maxDeadlineDays || 365));
 
-            if (eventDate > oneYearFromNow) {
+            if (eventDate > deadlineLimit) {
                 errEl.textContent = isRo
-                    ? 'Evenimentele nu pot fi create mai târziu de 1 an de la data curentă.'
-                    : 'Events cannot be created later than 1 year from now.';
+                    ? 'Evenimentele nu pot fi create mai târziu de ' + (maxDeadlineDays || 365) + ' zile de la data curentă.'
+                    : 'Events cannot be created later than ' + (maxDeadlineDays || 365) + ' days from now.';
                 return;
             }
 
@@ -1751,6 +1909,20 @@
                 return;
             }
             var submitBtn = document.getElementById('ceSubmitBtn');
+
+            // How many events may this account still create?
+            if (social) {
+                try {
+                    var quota = await social.getEventQuota(true);
+                    if (quota && quota.created >= quota.createdMax) {
+                        errEl.textContent = isRo
+                            ? 'Ai deja ' + quota.created + ' din ' + quota.createdMax + ' evenimente active. Șterge unul înainte să creezi altul.'
+                            : 'You already have ' + quota.created + ' of ' + quota.createdMax + ' active events. Delete one before creating another.';
+                        return;
+                    }
+                } catch (e) {}
+            }
+
             if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = isRo ? 'Se salvează…' : 'Saving…'; }
 
             var newEvent = {
@@ -1762,8 +1934,8 @@
                 title: title,
                 description: desc,
                 category: categoryVal,
-                latitude: Number(lat),
-                longitude: Number(lng),
+                latitude: eventLat,
+                longitude: eventLng,
                 event_date: eventDate.toISOString(),
                 max_attendees: maxStr ? parseInt(maxStr, 10) : null,
                 is_anonymous: isAnonymous,
@@ -1772,6 +1944,22 @@
             };
 
             var savedToServer = await ensureEventOnServer(newEvent);
+
+            // The server refused because of a quota: show why and do NOT keep a
+            // local ghost event nobody else will ever see.
+            var quotaCode = eventQuotaCode(savedToServer && savedToServer.error);
+            if (savedToServer && !savedToServer.ok && quotaCode) {
+                var rawMsg = String((savedToServer.error && savedToServer.error.message) || '');
+                var quotaArg = rawMsg.indexOf(':') !== -1 ? rawMsg.split(':')[1].trim() : '';
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = isRo ? 'Salvează Evenimentul' : 'Save Event';
+                }
+                errEl.textContent = eventQuotaMessage(quotaCode, quotaArg, isRo);
+                try { if (social) social.getEventQuota(true); } catch (e) {}
+                return;
+            }
+
             // Remember that the server accepted it. If the event later vanishes
             // from the server it was deleted there, and fetchEvents() must drop
             // it instead of re-uploading the stale local copy.
@@ -1792,13 +1980,39 @@
                 notifyUsersNearEvent(newEvent);
             }
 
+            // ── "Adaugă prieteni": every ticked friend receives a
+            // participation request (event_inquiries + a notification with
+            // kind = 'friend_event_invite') that they can accept or decline.
+            var inviteSummary = '';
+            if (savedToServer && savedToServer.ok && social && invitedFriendIds.length) {
+                try {
+                    var inviteRes = await social.inviteFriendsToEvent(newEvent.id, invitedFriendIds);
+                    if (inviteRes && inviteRes.ok) {
+                        var counts = social.summariseInviteResults(inviteRes.results);
+                        inviteSummary = social.inviteSummaryText(counts);
+                    } else if (inviteRes) {
+                        inviteSummary = inviteRes.message || '';
+                    }
+                } catch (e) {
+                    console.warn('[Events] inviting friends failed', e);
+                }
+                try { social.getEventQuota(true); } catch (e) {}
+            }
+
+            // A chat that started this event may want to post a link/summary.
+            if (typeof options.onCreated === 'function') {
+                try { options.onCreated(newEvent, invitedFriendIds); } catch (e) { console.warn('[Events] onCreated hook failed', e); }
+            }
+
             if (savedToServer && savedToServer.ok) {
                 if (isAnonymous && newEvent.event_code) {
                     alert(isRo
-                        ? 'Eveniment anonim creat cu succes!\n\n🔑 Codul evenimentului: ' + newEvent.event_code + '\n\nTrimite acest cod persoanelor pe care vrei să le inviți. Ele îl pot introduce în bara „Participă la un eveniment anonim” din secțiunea Evenimente.'
-                        : 'Anonymous event created successfully!\n\n🔑 Event code: ' + newEvent.event_code + '\n\nShare this code with the people you want to invite. They can enter it in the "Join an anonymous event" bar in the Events section.');
+                        ? 'Eveniment anonim creat cu succes!\n\n🔑 Codul evenimentului: ' + newEvent.event_code + '\n\nTrimite acest cod persoanelor pe care vrei să le inviți. Ele îl pot introduce în bara „Participă la un eveniment anonim” din secțiunea Evenimente.' + (inviteSummary ? '\n\n👥 ' + inviteSummary : '')
+                        : 'Anonymous event created successfully!\n\n🔑 Event code: ' + newEvent.event_code + '\n\nShare this code with the people you want to invite. They can enter it in the "Join an anonymous event" bar in the Events section.' + (inviteSummary ? '\n\n👥 ' + inviteSummary : ''));
                 } else {
-                    alert(isRo ? 'Eveniment creat cu succes!' : 'Event created successfully!');
+                    alert(isRo
+                        ? 'Eveniment creat cu succes!' + (inviteSummary ? '\n\n👥 ' + inviteSummary : '')
+                        : 'Event created successfully!' + (inviteSummary ? '\n\n👥 ' + inviteSummary : ''));
                 }
                 if (savedToServer.partial) {
                     console.warn('[Events] Event synced without pin_id/category/creator_email (older server schema).');
@@ -2678,7 +2892,8 @@
             }
         } catch (e) {}
 
-        if (!attendee) {
+        var isNewAttendee = !attendee;
+        if (isNewAttendee) {
             attendee = {
                 id: genUuid(),
                 event_id: eventId,
@@ -2686,8 +2901,22 @@
                 user_name: inq.user_name,
                 joined_at: new Date().toISOString()
             };
+
+            // Attendance quota (public.app_limits.max_events_attending_active),
+            // checked before anything is written so the server-side trigger
+            // never has to refuse a half-applied acceptance.
+            if (window.DetectLabFriends) {
+                try {
+                    var quota = await window.DetectLabFriends.getEventQuota(true);
+                    if (quota && quota.attending >= quota.attendingMax) {
+                        alert(eventQuotaMessage('EVENT_ATTENDANCE_LIMIT', quota.attendingMax, isRo));
+                        return;
+                    }
+                } catch (e) {}
+            }
         }
 
+        var attendeeInsertError = null;
         try {
             if (window.supabaseClient) {
                 var updRes = await window.supabaseClient.from('event_inquiries').update({ status: 'accepted' }).eq('id', inquiryId);
@@ -2706,11 +2935,30 @@
                 } catch (_) {}
                 if (!hasExistingRemoteAttendee) {
                     var attInsRes = await window.supabaseClient.from('event_attendees').insert([attendee]);
-                    if (attInsRes && attInsRes.error) console.error('Supabase insert attendee failed:', attInsRes.error);
+                    if (attInsRes && attInsRes.error) {
+                        console.error('Supabase insert attendee failed:', attInsRes.error);
+                        attendeeInsertError = attInsRes.error;
+                    }
                 }
             }
         } catch (err) {
             console.error('Supabase accept inquiry error:', err);
+            attendeeInsertError = err;
+        }
+
+        // Safety net: the DB trigger refused the attendance (quota reached from
+        // another device in the meantime). Roll the inquiry back to pending and
+        // tell the user instead of pretending they are attending.
+        var acceptQuotaCode = eventQuotaCode(attendeeInsertError);
+        if (acceptQuotaCode) {
+            try {
+                if (window.supabaseClient) {
+                    await window.supabaseClient.from('event_inquiries').update({ status: 'pending' }).eq('id', inquiryId);
+                }
+            } catch (e) {}
+            var rawAcceptMsg = String((attendeeInsertError && attendeeInsertError.message) || '');
+            alert(eventQuotaMessage(acceptQuotaCode, rawAcceptMsg.indexOf(':') !== -1 ? rawAcceptMsg.split(':')[1].trim() : '', isRo));
+            return;
         }
 
         // Update local storage
@@ -2979,6 +3227,11 @@
              /created near you|creat în apropiere|creat in apropiere/i.test(notif.message || ''))) {
             kind = 'nearby_event';
         }
+        // "X te-a invitat la evenimentul Y" — a friend invite created from the
+        // "Adaugă prieteni / Add friends" box or from a chat. The invitee
+        // decides; nothing is written before they accept. Detected before the
+        // inquiry lookup so an already-handled invite still shows its outcome.
+        if (notif.kind === 'friend_event_invite') kind = 'friend_event_invite';
         try {
             if (notif.inquiry_id) {
                 if (window.supabaseClient) {
@@ -2992,7 +3245,7 @@
                         else if (inqRes.data.status === 'declined') kind = 'declined';
                     }
                 }
-                if (kind === 'inquiry') {
+                if (kind === 'inquiry' || kind === 'friend_event_invite') {
                     var localInq = getLocalInquiries().find(function (i) { return i.id === notif.inquiry_id; });
                     if (localInq && localInq.user_id === (user && user.id)) {
                         if (localInq.status === 'accepted') kind = 'accepted';
@@ -3034,6 +3287,57 @@
             });
             if (closeBtn) closeBtn.addEventListener('click', dismissAccepted);
             modal.addEventListener('click', function (e) { if (e.target === modal) dismissAccepted(); });
+            return;
+        }
+
+        if (kind === 'friend_event_invite') {
+            // A friend ticked this user in the "Adaugă prieteni / Add friends"
+            // box (or started the event from their chat): they now have a real
+            // participation request to accept or decline.
+            var invitedEvent = notif.event_id ? getEventById(notif.event_id) : null;
+            if (!invitedEvent && notif.event_id) {
+                try { await fetchEvents(); } catch (e) {}
+                invitedEvent = getEventById(notif.event_id);
+            }
+            var inviterName = escapeHtml(notif.sender_name || (isRo ? 'un prieten' : 'a friend'));
+            var invitedTitle = escapeHtml((invitedEvent && invitedEvent.title) || (isRo ? 'evenimentul său' : 'their event'));
+            var invitedWhen = invitedEvent ? escapeHtml(formatDate(invitedEvent.event_date)) : '';
+
+            modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(196,160,240,0.5); border-radius: 12px; width: 100%; max-width: 420px; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.7); animation: pwaDropUp 0.3s ease;">' +
+                '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><span style="font-size:1.4rem;">👥</span><h3 style="margin:0; font-size:1.05rem; color:#c4a0f0; font-family:\'Cinzel\',serif;">' + (isRo ? 'Invitație de la un prieten' : 'Invitation from a friend') + '</h3></div>' +
+                '<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(184,216,240,0.2); border-radius:6px; padding:10px; font-size:0.84rem; margin-bottom:14px; line-height:1.5;">' +
+                    '<strong>' + inviterName + '</strong> ' + (isRo ? 'te-a invitat la evenimentul' : 'invited you to the event') + ' <strong>„' + invitedTitle + '”</strong>' +
+                    (invitedWhen ? '<br><span style="opacity:0.75;">🕒 ' + invitedWhen + '</span>' : '') +
+                    '<br><span style="opacity:0.7;font-size:0.78rem;">' + (isRo ? 'Dacă accepți, intri în chat-ul evenimentului.' : 'If you accept, you join the event chat.') + '</span>' +
+                '</div>' +
+                '<div style="display:flex; gap:10px;">' +
+                    '<button type="button" id="notifInviteAcceptBtn" style="flex:1; background:#2E9E4F; border:none; border-radius:6px; color:#fff; font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Acceptă' : 'Accept') + '</button>' +
+                    '<button type="button" id="notifInviteDeclineBtn" style="flex:1; background:#C42B2B; border:none; border-radius:6px; color:#fff; font-weight:600; padding:10px; cursor:pointer;">' + (isRo ? 'Refuză' : 'Decline') + '</button>' +
+                '</div></div>';
+
+            document.body.appendChild(modal);
+
+            var dismissInvite = async function () { await markNotifRead(notif.id); modal.remove(); };
+            var inviteAcceptBtn = modal.querySelector('#notifInviteAcceptBtn');
+            var inviteDeclineBtn = modal.querySelector('#notifInviteDeclineBtn');
+            if (inviteAcceptBtn) inviteAcceptBtn.addEventListener('click', async function () {
+                inviteAcceptBtn.disabled = true;
+                if (notif.inquiry_id) {
+                    await window._acceptInquiry(notif.inquiry_id, notif.event_id);
+                }
+                await markNotifRead(notif.id);
+                modal.remove();
+                try { if (window.DetectLabFriends) window.DetectLabFriends.getEventQuota(true); } catch (e) {}
+            });
+            if (inviteDeclineBtn) inviteDeclineBtn.addEventListener('click', async function () {
+                inviteDeclineBtn.disabled = true;
+                if (notif.inquiry_id) {
+                    await window._declineInquiry(notif.inquiry_id);
+                }
+                await markNotifRead(notif.id);
+                modal.remove();
+            });
+            modal.addEventListener('click', function (e) { if (e.target === modal) dismissInvite(); });
             return;
         }
 

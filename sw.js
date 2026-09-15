@@ -16,7 +16,11 @@
 // v85: Satellite layer "Istoric" period slider — 2016 / 2018 orthophotos
 // (geo-spatial.org WMS) alongside the present-day imagery, with both vertical
 // mirrors (opacity + period) shown together on the map.
-const CACHE_NAME = 'detectlab-v85-sat-historic';
+// v86: Social layer — "Prieteni / Friends" (search by e-mail · name · id +
+// county filter), friend requests, private and group chat with an admin,
+// events created straight from a chat and the "Adaugă prieteni / Add friends"
+// box of the create-event form, all bounded by the quotas in public.app_limits.
+const CACHE_NAME = 'detectlab-v86-social';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -210,7 +214,13 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20260915-sat-historic',
   'js/vertical-opacity-control.js?v=20260915-sat-historic',
   'js/translations.js?v=20260915-sat-historic',
-  'css/styles.css?v=20260915-sat-historic'
+  'css/styles.css?v=20260915-sat-historic',
+  // Social layer ("Prieteni / Friends"): friends, friend requests, private and
+  // group chat with an admin, events started from a chat, and the
+  // "Adaugă prieteni / Add friends" box of the create-event form.
+  'js/friends.js?v=20260915-social',
+  'js/events.js?v=20260915-social',
+  'js/translations.js?v=20260915-social'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──
