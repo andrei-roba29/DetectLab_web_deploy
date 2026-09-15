@@ -1309,7 +1309,16 @@
                     if (btnEl) {
                         L.DomEvent.on(btnEl, 'click', function (e) {
                             L.DomEvent.stopPropagation(e);  // prevent map click firing underneath
-                            watchId !== null ? stopTracking() : startTracking();
+                            if (watchId !== null) { stopTracking(); return; }
+                            startTracking();
+                            // ── Manual live-location activation → Da/Nu prompt ──
+                            // Ask whether the user also wants to be visible to other
+                            // detectorists. NOT shown when live location is auto-started
+                            // by the Detect switch — that path asks its own prompt inside
+                            // toggleDetection(), so the question is never doubled up.
+                            if (typeof window._promptVisibleToOthers === 'function') {
+                                window._promptVisibleToOthers();
+                            }
                         });
                     }
                 }, 200);
@@ -1368,11 +1377,13 @@
                             _detLat = lat;
                             _detLng = lng;
                             // Publish presence so other detectorists can see this user ONLY if
-                            // BOTH detecting mode AND live location are active.  If either is off,
-                            // setting visible to false hides them from "See other detectorists".
+                            // BOTH detecting mode AND live location are active AND the user
+                            // answered "Da" to the visibility prompt (_visibleToOthers).
+                            // If any of the three is off, setting visible to false hides
+                            // them from "See other detectorists".
                             if (typeof publishDetectorPresence === 'function') {
                                 var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
-                                publishDetectorPresence(lat, lng, _det.active && _liveActive);
+                                publishDetectorPresence(lat, lng, _det.active && _liveActive && _visibleToOthers);
                             }
                             if (_det.active) _detCheck(lat, lng);
                         },
@@ -6047,10 +6058,11 @@
                     // aspect after the search zooms the map to the found pins.
                     _nearbyPrevView = { center: map.getCenter(), zoom: map.getZoom() };
                     // Broadcast our current position right away so others can see us ONLY if
-                    // BOTH detecting mode AND live location are active.
+                    // BOTH detecting mode AND live location are active AND the user chose
+                    // "Da" at the visibility prompt.
                     if(_detLat !== null && typeof publishDetectorPresence === 'function') {
                         var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
-                        publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive);
+                        publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive && _visibleToOthers);
                     }
                 }
             };
@@ -6223,9 +6235,10 @@
                 try {
                     // Make sure OUR position is freshly published first, so the other
                     // phone can see us even if its search runs a moment earlier — but only
-                    // if BOTH detecting mode AND live location are active.
+                    // if BOTH detecting mode AND live location are active AND the user
+                    // answered "Da" to the visibility prompt.
                     var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
-                    await publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive);
+                    await publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive && _visibleToOthers);
 
                     // Try to read with device_id (new schema). If the migration hasn't been
                     // applied yet, fall back to the legacy columns-only query.
@@ -6470,6 +6483,54 @@
                 }
             };
 
+            // ── VIZIBILITATE PENTRU ALȚI UTILIZATORI (prompt Da/Nu) ──
+            // When the user MANUALLY turns ON the Detect switch or the live-location
+            // button, a Da/Nu dialog asks whether they also want to be visible to
+            // other users on the "See other detectorists" map.  The answer is the
+            // extra gate (_visibleToOthers) applied to every presence publish, on
+            // top of the existing "detection AND live location both ON" rule.
+            //
+            // The choice is persisted in localStorage so programmatic re-activations
+            // (resume from background, 10-hour-window restore, auto-enable from the
+            // nearby search) reuse it instead of re-asking.  Default until the user
+            // makes an explicit choice: "Nu" (invisible) — presence rows are written
+            // with visible=false, so nobody is broadcast without an explicit "Da".
+            var _visibleToOthers = (function () {
+                try { return localStorage.getItem('detect_visible_to_others') === 'true'; }
+                catch (e) { return false; }
+            })();
+            var _visibilityPromptCb = null;
+
+            // Show the Da/Nu dialog.  Optional cb is invoked with the answer
+            // (true = "Da", visible · false = "Nu", invisible).  If the dialog is
+            // already on screen it is not stacked — the newest callback wins.
+            window._promptVisibleToOthers = function (cb) {
+                var m = document.getElementById('visibilityModal');
+                if (!m) { if (cb) { try { cb(_visibleToOthers); } catch (e) {} } return; }
+                if (m.classList.contains('show')) { _visibilityPromptCb = cb || _visibilityPromptCb; return; }
+                _visibilityPromptCb = cb || null;
+                m.classList.add('show');
+            };
+
+            // Da/Nu answer from the dialog's buttons (inline onclick in index.html).
+            window.answerVisibleToOthers = function (yes) {
+                _visibleToOthers = !!yes;
+                try { localStorage.setItem('detect_visible_to_others', _visibleToOthers ? 'true' : 'false'); } catch (e) {}
+                var m = document.getElementById('visibilityModal');
+                if (m) m.classList.remove('show');
+                // Apply immediately: publish presence with the new flag, or hide the
+                // user right away when they chose "Nu".  (If no GPS fix exists yet,
+                // the gated publish happens on the next position tick instead.)
+                if (_detLat !== null && typeof publishDetectorPresence === 'function') {
+                    var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
+                    publishDetectorPresence(_detLat, _detLng, _visibleToOthers && _det.active && _liveActive);
+                }
+                if (_visibilityPromptCb) {
+                    var cb = _visibilityPromptCb; _visibilityPromptCb = null;
+                    try { cb(_visibleToOthers); } catch (e) {}
+                }
+            };
+
             // ── PROXIMITY DETECTION ──
             // When enabled: heritage sites + radiuses are turned on automatically.
             // Proximity check reads directly from _circleStore (same data the canvas draws).
@@ -6549,9 +6610,10 @@
             function _detOnPosition(pos) {
                 _detLat = pos.coords.latitude;
                 _detLng = pos.coords.longitude;
-                // Only visible to others if BOTH detection mode AND live location are active.
+                // Only visible to others if BOTH detection mode AND live location are
+                // active AND the user answered "Da" to the visibility prompt.
                 var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
-                publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive);
+                publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive && _visibleToOthers);
                 _detCheck(_detLat, _detLng);
             }
 
@@ -6567,7 +6629,13 @@
                 _detRecheck();
             };
 
-            window.toggleDetection = function (on) {
+            // userInitiated = true when a real user action flipped the switch
+            // (map switch or PWA bottom-bar switch).  Programmatic callers (state
+            // restore on resume, auto-enable from the nearby-detectorists search)
+            // omit it so the "visible to other users?" Da/Nu prompt only ever
+            // appears for genuine user actions — the stored answer is reused for
+            // the silent re-activations.
+            window.toggleDetection = function (on, userInitiated) {
                 _det.active = on;
                 document.getElementById('detectWrap').classList.toggle('active', on);
 
@@ -6655,12 +6723,13 @@
 
                     // If live location is already active, we already have coordinates —
                     // fire an immediate check instead of waiting for the next GPS tick.
-                    // Also publish presence right away so other detectorists can see us
-                    // immediately (both detection AND live location are now on).
+                    // Also publish presence right away — but visible ONLY if the user
+                    // answered "Da" to the visibility prompt (_visibleToOthers).  A
+                    // user who never answered (or answered "Nu") stays hidden.
                     if (_detLat !== null) {
                         _detCheck(_detLat, _detLng);
                         if (typeof publishDetectorPresence === 'function') {
-                            publishDetectorPresence(_detLat, _detLng, true);
+                            publishDetectorPresence(_detLat, _detLng, _visibleToOthers);
                         }
                     }
 
@@ -6680,6 +6749,14 @@
                     } else {
                         // Live location already active → its watcher handles presence + site checks
                         _det.watchId = null;
+                    }
+
+                    // ── Da/Nu visibility prompt ──
+                    // Asked only on a genuine user action (the switch under their
+                    // finger), never on programmatic restore/auto-enable.  The answer
+                    // is persisted and gates every presence publish from now on.
+                    if (userInitiated && typeof window._promptVisibleToOthers === 'function') {
+                        window._promptVisibleToOthers();
                     }
 
                 } else {
