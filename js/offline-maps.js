@@ -18,12 +18,17 @@
     var FALLBACK_KEY = 'detectlab_offline_maps_v1';
     var OFFLINE_TILE_CACHE = 'detectlab-offline-tiles-v1';
     var TILE_QUERY_KEY = '__dl_offline_map';
+    /* Tapping inside this radius (in screen pixels) of the first corner closes
+       the ring, so a finger only has to get close to the starting pin — which
+       matters at high zoom levels where a few metres are dozens of pixels. */
+    var CLOSE_HIT_RADIUS_PX = 18;
 
     var text = {
         offlineTitle: { ro: 'Hărți offline', en: 'Offline maps' },
         offlineButton: { ro: 'Hărți offline', en: 'Offline maps' },
         drawPrompt: { ro: 'Desenează un poligon', en: 'Draw a polygon' },
         drawHint: { ro: 'Atinge harta pentru colțuri, apoi apasă dublu sau „Finalizează”.', en: 'Tap the map for corners, then double-click or press “Finish”.' },
+        closeHint: { ro: 'Atinge primul punct (marcat cu verde) pentru a închide poligonul.', en: 'Tap the first point (green marker) to close the polygon.' },
         finish: { ro: 'Finalizează poligonul', en: 'Finish polygon' },
         edit: { ro: 'Modifică poligonul', en: 'Edit polygon' },
         editing: { ro: 'Trage punctele pentru a modifica poligonul', en: 'Drag the points to modify the polygon' },
@@ -39,7 +44,8 @@
         premium: { ro: 'Premium', en: 'Premium' },
         free: { ro: 'Free', en: 'Free' },
         detail: { ro: 'Nivel de detaliu', en: 'Detail level' },
-        zoomFrom: { ro: 'de la zoom', en: 'from zoom' },
+        zoomLabel: { ro: 'Nivel zoom', en: 'Zoom level' },
+        zoomFrom: { ro: 'de la', en: 'from' },
         zoomTo: { ro: 'până la', en: 'to' },
         estimated: { ro: 'tile estimate', en: 'tile estimate' },
         download: { ro: 'Descarcă harta', en: 'Download map' },
@@ -264,7 +270,11 @@
         libraryOpen: false,
         downloading: false,
         cancelDownload: false,
-        downloadUrls: []
+        downloadUrls: [],
+        /* Sticky message shown in the panel head. It survives updatePanel()
+           re-renders, otherwise an error such as "polygon too large" would be
+           overwritten by the next (informational) status line. */
+        status: null
     };
 
     function sourceById(id) {
@@ -536,11 +546,14 @@
                 '<div class="offline-layer-options"></div>' +
             '</div>' +
             '<div class="offline-download-options" hidden>' +
-                '<label><span class="offline-detail-label"></span>' +
-                    '<select id="offlineZoomMin" aria-label="Minimum zoom"></select>' +
+                '<div class="offline-zoom-row">' +
+                    '<span class="offline-zoom-name"></span>' +
+                    '<span class="offline-zoom-word offline-zoom-from"></span>' +
+                    '<select id="offlineZoomMin"></select>' +
                     '<span class="offline-zoom-separator">–</span>' +
-                    '<select id="offlineZoomMax" aria-label="Maximum zoom"></select>' +
-                '</label>' +
+                    '<span class="offline-zoom-word offline-zoom-to"></span>' +
+                    '<select id="offlineZoomMax"></select>' +
+                '</div>' +
                 '<span id="offlineTileEstimate" class="offline-tile-estimate"></span>' +
             '</div>' +
             '<p class="offline-storage-warning"></p>' +
@@ -627,10 +640,20 @@
         var panel = ensurePanel();
         panel.classList.toggle('is-open', state.mode);
         panel.querySelector('.offline-panel-title strong').textContent = t('offlineTitle');
-        panel.querySelector('.offline-panel-message').textContent = state.mode ?
-            (state.drawState === 'drawing' ? t('drawPrompt') : (state.drawState === 'finished' ? t('offlineActive') : t('drawPrompt'))) : t('offlineModeOff');
-        panel.querySelector('.offline-panel-hint').textContent = state.drawState === 'drawing' ? t('drawHint') :
+        renderStatus();
+        var hint = state.drawState === 'drawing' ? t('drawHint') :
             (state.drawState === 'finished' ? t('editing') : t('drawHint'));
+        // Once the ring can be closed, say how: the first corner doubles as the
+        // closing handle.
+        if (state.drawState === 'drawing' && state.points.length >= 3) hint += ' ' + t('closeHint');
+        panel.querySelector('.offline-panel-hint').textContent = hint;
+        // The two dropdowns pick a zoom level; name them explicitly so the bare
+        // numbers are not mistaken for something else.
+        panel.querySelector('.offline-zoom-name').textContent = t('zoomLabel');
+        panel.querySelector('.offline-zoom-from').textContent = t('zoomFrom');
+        panel.querySelector('.offline-zoom-to').textContent = t('zoomTo');
+        panel.querySelector('#offlineZoomMin').setAttribute('aria-label', t('zoomLabel') + ' ' + t('zoomFrom'));
+        panel.querySelector('#offlineZoomMax').setAttribute('aria-label', t('zoomLabel') + ' ' + t('zoomTo'));
         var areaLine = panel.querySelector('.offline-area-line');
         var area = polygonAreaM2(state.points);
         areaLine.hidden = state.points.length < 3;
@@ -654,16 +677,39 @@
         panel.querySelector('.offline-download-btn').disabled = !state.downloading && (state.drawState !== 'finished' || area > MAX_AREA_M2 || !selectedSourceIds().length);
     }
 
-    function setStatus(message, isError) {
+    function defaultStatus() {
+        if (!state.mode) return { message: t('offlineModeOff'), isError: false };
+        if (state.drawState === 'finished') return { message: t('offlineActive'), isError: false };
+        return { message: t('drawPrompt'), isError: false };
+    }
+
+    function renderStatus() {
         var panel = ensurePanel();
         var node = panel.querySelector('.offline-panel-message');
-        node.textContent = message;
-        node.classList.toggle('is-error', !!isError);
+        var status = state.status || defaultStatus();
+        node.textContent = status.message;
+        node.classList.toggle('is-error', !!status.isError);
+    }
+
+    /* setStatus() keeps the message until it is explicitly cleared, so an error
+       ("polygon too large") is not wiped out by the next updatePanel() render.
+       The optional key lets a later interaction clear one specific message. */
+    function setStatus(message, isError, key) {
+        state.status = { message: message, isError: !!isError, key: key || '' };
+        renderStatus();
+    }
+
+    function clearStatus(key) {
+        if (key && (!state.status || state.status.key !== key)) return;
+        state.status = null;
+        renderStatus();
     }
 
     function clearPreview() {
         if (state.previewLine && state.map && state.map.hasLayer(state.previewLine)) state.map.removeLayer(state.previewLine);
         state.previewLine = null;
+        if (state.previewCloseLine && state.map && state.map.hasLayer(state.previewCloseLine)) state.map.removeLayer(state.previewCloseLine);
+        state.previewCloseLine = null;
         state.previewMarkers.forEach(function (marker) { if (state.map && state.map.hasLayer(marker)) state.map.removeLayer(marker); });
         state.previewMarkers = [];
     }
@@ -682,11 +728,30 @@
     function redrawPreview() {
         clearPreview();
         if (!state.map || state.points.length === 0) return;
+        var over = state.points.length >= 3 && polygonAreaM2(state.points) > MAX_AREA_M2;
+        var color = over ? '#c42b2b' : '#E8772A';
         state.previewLine = L.polyline(state.points, {
-            color: '#E8772A', weight: 3, dashArray: '7 5', opacity: 0.95, pane: 'offlineDrawPane'
+            color: color, weight: 3, dashArray: '7 5', opacity: 0.95, pane: 'offlineDrawPane', interactive: false
         }).addTo(state.map);
-        state.points.forEach(function (point) {
-            var marker = L.circleMarker(point, { radius: 5, color: '#fff', weight: 2, fillColor: '#E8772A', fillOpacity: 1, pane: 'offlineDrawPane', interactive: false }).addTo(state.map);
+        if (state.points.length >= 3) {
+            // A faint closing edge shows that the ring ends where it started,
+            // i.e. tapping that first (green) corner finishes the polygon.
+            state.previewCloseLine = L.polyline([state.points[state.points.length - 1], state.points[0]], {
+                color: color, weight: 2, dashArray: '2 8', opacity: 0.85, pane: 'offlineDrawPane', interactive: false
+            }).addTo(state.map);
+        }
+        state.points.forEach(function (point, index) {
+            var first = index === 0;
+            var marker = L.circleMarker(point, {
+                radius: first ? 8 : 5,
+                color: '#fff',
+                weight: 2,
+                fillColor: first ? '#4ad66d' : (over ? '#c42b2b' : '#E8772A'),
+                fillOpacity: 1,
+                className: first ? 'offline-first-vertex' : '',
+                pane: 'offlineDrawPane',
+                interactive: false
+            }).addTo(state.map);
             state.previewMarkers.push(marker);
         });
     }
@@ -710,6 +775,7 @@
                 var area = polygonAreaM2(state.points);
                 if (area <= MAX_AREA_M2) {
                     state.polygon.setStyle({ color: '#4fc3f7', fillColor: '#4fc3f7' });
+                    clearStatus('tooLarge');
                     updatePanel();
                 } else {
                     state.polygon.setStyle({ color: '#c42b2b', fillColor: '#c42b2b' });
@@ -736,8 +802,23 @@
         if (state.map.doubleClickZoom) state.map.doubleClickZoom.disable();
         state.map.on('click', onDrawClick);
         state.map.on('dblclick', onDrawDoubleClick);
+        clearStatus();
         updatePanel();
-        setStatus(t('drawPrompt'));
+    }
+
+    /* True when a tap lands close enough (in screen pixels) to the first corner
+       to be understood as "close the polygon here". */
+    function isNearFirstPoint(point) {
+        if (!state.map || state.points.length < 3) return false;
+        var first = state.points[0];
+        try {
+            var a = state.map.latLngToContainerPoint(first);
+            var b = state.map.latLngToContainerPoint(point);
+            return Math.abs(a.x - b.x) <= CLOSE_HIT_RADIUS_PX && Math.abs(a.y - b.y) <= CLOSE_HIT_RADIUS_PX;
+        } catch (e) {
+            // Fallback for maps without projection helpers: a few dozen metres.
+            return !!(point.distanceTo && point.distanceTo(first) < 30);
+        }
     }
 
     function onDrawClick(event) {
@@ -745,8 +826,13 @@
         var next = event.latlng;
         var last = state.points[state.points.length - 1];
         if (last && next.distanceTo && next.distanceTo(last) < 5) return;
+        if (isNearFirstPoint(next)) { finishDrawing(); return; }
         state.points.push(next);
         redrawPreview(); updatePanel();
+        // Report the size limit while drawing, not only when finishing, so an
+        // over-sized shape is obvious right away.
+        if (polygonAreaM2(state.points) > MAX_AREA_M2) setStatus(t('tooLarge'), true, 'tooLarge');
+        else clearStatus('tooLarge');
     }
 
     function onDrawDoubleClick(event) {
@@ -757,9 +843,11 @@
 
     function finishDrawing() {
         if (!state.map || state.drawState !== 'drawing') return;
-        if (state.points.length < 3) { setStatus(t('onlyThree'), true); return; }
+        if (state.points.length < 3) { setStatus(t('onlyThree'), true, 'onlyThree'); return; }
         var area = polygonAreaM2(state.points);
-        if (area > MAX_AREA_M2) { setStatus(t('tooLarge'), true); updatePanel(); return; }
+        // updatePanel() renders the sticky status, so the error survives the
+        // re-render that used to overwrite it with the "active map" line.
+        if (area > MAX_AREA_M2) { setStatus(t('tooLarge'), true, 'tooLarge'); updatePanel(); return; }
         state.map.off('click', onDrawClick); state.map.off('dblclick', onDrawDoubleClick);
         if (state.map.doubleClickZoom) state.map.doubleClickZoom.enable();
         state.map.getContainer().classList.remove('offline-drawing');
@@ -768,6 +856,7 @@
             color: '#4fc3f7', weight: 2.5, fillColor: '#4fc3f7', fillOpacity: 0.16, pane: 'offlineDrawPane'
         }).addTo(state.map);
         state.drawState = 'finished'; state.editing = false;
+        clearStatus();
         updatePanel();
     }
 
@@ -778,6 +867,7 @@
         state.map.getContainer().classList.remove('offline-drawing');
         clearPreview(); removePolygon();
         state.points = []; state.selected = {}; state.drawState = 'idle'; state.editing = false;
+        clearStatus();
         updatePanel();
     }
 
@@ -801,7 +891,8 @@
             if (state.drawState === 'drawing') {
                 clearPreview(); state.points = []; state.drawState = 'idle'; state.selected = {};
             }
-            setStatus(t('offlineModeOff'));
+            // Drops any pending error; the panel falls back to "offline mode off".
+            clearStatus();
         }
         updatePanel();
     }
@@ -1031,7 +1122,7 @@
         if (state.downloading) return;
         if (!state.polygon || state.drawState !== 'finished') return;
         var area = polygonAreaM2(state.points);
-        if (area > MAX_AREA_M2) { setStatus(t('tooLarge'), true); return; }
+        if (area > MAX_AREA_M2) { setStatus(t('tooLarge'), true, 'tooLarge'); return; }
         var ids = selectedSourceIds();
         if (!ids.length) { setStatus(t('noSelection'), true); updatePanel(); return; }
         var zoom = getZoomValues();
@@ -1045,6 +1136,12 @@
         }
         state.downloading = true; state.cancelDownload = false; state.downloadUrls = [];
         updatePanel(); updateDownloadProgress(0, jobs.length, 0);
+        // The download button is sticky and sits right above the progress bar;
+        // bring the bar into view so a long layer list cannot hide it.
+        try {
+            var progressNode = state.panel && state.panel.querySelector('.offline-progress');
+            if (progressNode && typeof progressNode.scrollIntoView === 'function') progressNode.scrollIntoView({ block: 'nearest' });
+        } catch (e) {}
         var done = 0, failed = 0, cursor = 0, workerCount = Math.min(4, jobs.length);
         function worker() {
             if (state.cancelDownload || cursor >= jobs.length) return Promise.resolve();
