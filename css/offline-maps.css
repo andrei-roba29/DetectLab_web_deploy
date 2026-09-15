@@ -158,7 +158,7 @@
     background: linear-gradient(135deg, #8fe3ff, #4fc3f7); font: 800 .76rem 'Outfit',sans-serif; cursor: pointer;
     box-shadow: 0 -9px 16px -6px rgba(6,14,30,.92);
 }
-.offline-download-btn:hover { filter: brightness(1.08); box-shadow: 0 0 15px rgba(79,195,247,.25); }
+.offline-download-btn:hover { filter: brightness(1.08); box-shadow: 0 -9px 16px -6px rgba(6,14,30,.92), 0 0 15px rgba(79,195,247,.25); }
 .offline-download-btn:disabled { opacity: .38; cursor: not-allowed; filter: grayscale(.35); }
 .offline-progress { margin-top: 9px; /* clears the sticky download button when scrolled into view */ scroll-margin-bottom: 52px; }
 .offline-progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: rgba(184,216,240,.12); }
