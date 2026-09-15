@@ -2685,6 +2685,105 @@
             }).addTo(map);
             window._satLayer = satelliteLayer;
 
+            // ── SATELIT / ISTORIC — ortofotoplanuri 2016 & 2018 (geo-spatial.org) ──
+            // Stratul „Satelit” are trei perioade, comutate din sliderul „Istoric”:
+            //   2016   → geospatial:of_2017_2020  (GeoServer „geospatial”)
+            //   2018   → clc:of_2018_2020         (GeoServer „clc”)
+            //   Prezent → tile-urile Esri World Imagery de mai sus (stratul actual)
+            // O singură perioadă e pe hartă la un moment dat — restul sunt scoase din
+            // map, ca să nu descarce tile-uri nefolosite. Native straturile sunt în
+            // Stereo70 (EPSG:3844); Leaflet cere tile-urile în Web-Mercator (EPSG:3857)
+            // și GeoServer le reproiectează server-side (suportă toate codurile EPSG).
+            map.createPane('pane_sat_hist');
+            map.getPane('pane_sat_hist').style.zIndex = 400; // aceeași nivelă ca satelitul
+
+            var SAT_HIST_PERIODS = {
+                '2016': L.tileLayer.wms('https://services.geo-spatial.org/geoserver/geospatial/wms', {
+                    layers: 'geospatial:of_2017_2020',
+                    format: 'image/jpeg',
+                    transparent: false,
+                    version: '1.1.0',
+                    pane: 'pane_sat_hist',
+                    minZoom: 1,
+                    maxZoom: 20,
+                    attribution: 'Ortofotoplan 2016 &copy; geo-spatial.org'
+                }),
+                '2018': L.tileLayer.wms('https://services.geo-spatial.org/geoserver/clc/wms', {
+                    layers: 'clc:of_2018_2020',
+                    format: 'image/jpeg',
+                    transparent: false,
+                    version: '1.1.0',
+                    pane: 'pane_sat_hist',
+                    minZoom: 1,
+                    maxZoom: 20,
+                    attribution: 'Ortofotoplan 2018 &copy; geo-spatial.org'
+                })
+            };
+            window._sat2016Layer = SAT_HIST_PERIODS['2016'];
+            window._sat2018Layer = SAT_HIST_PERIODS['2018'];
+            window._satHistPeriods = SAT_HIST_PERIODS;
+
+            // Index slider → perioadă. Poziția 2 = „Prezent” (stratul actual Esri).
+            var SAT_PERIOD_ORDER = ['2016', '2018', 'prezent'];
+            window._satPeriod = 'prezent';
+
+            window.setSatPeriod = function (val) {
+                var idx = Math.max(0, Math.min(2, Math.round(Number(val))));
+                if (!isFinite(idx)) idx = 2;
+                var period = SAT_PERIOD_ORDER[idx];
+                window._satPeriod = period;
+
+                // Vizibilitate: exact un singur strat de bază pe hartă.
+                var esriOn = period === 'prezent';
+                if (esriOn && !map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
+                if (!esriOn && map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
+                SAT_PERIOD_ORDER.slice(0, 2).forEach(function (p) {
+                    var layer = SAT_HIST_PERIODS[p];
+                    if (p === period) {
+                        if (!map.hasLayer(layer)) layer.addTo(map);
+                    } else if (map.hasLayer(layer)) {
+                        map.removeLayer(layer);
+                    }
+                });
+
+                // Opacitatea curentă din panou se aplică și straturilor istorice.
+                var opSlider = document.getElementById('satOpacitySlider');
+                if (opSlider) {
+                    var op = Number(opSlider.value) / 100;
+                    SAT_HIST_PERIODS['2016'].setOpacity(op);
+                    SAT_HIST_PERIODS['2018'].setOpacity(op);
+                }
+
+                // Sincronizare UI: sliderul din panou + eticheta perioadei + tick-uri.
+                var slider = document.getElementById('satPeriodSlider');
+                if (slider && Number(slider.value) !== idx) slider.value = idx;
+                var ticks = document.querySelectorAll('#satPeriodTicks span');
+                var label = document.getElementById('satPeriodLabel');
+                if (label) {
+                    // „Prezent” vine tradus automat prin sistemul .t[data-key]
+                    // (al treilea tick); anii rămân la fel în ambele limbi.
+                    label.textContent = (period === 'prezent')
+                        ? ((ticks[2] && ticks[2].textContent.trim()) || 'Prezent')
+                        : period;
+                }
+                for (var i = 0; i < ticks.length; i++) {
+                    ticks[i].classList.toggle('active', i === idx);
+                }
+            };
+
+            // Starea inițială: „Prezent” activ (Esri pe hartă, fără tile-uri WMS
+            // descărcate) + tick-ul și eticheta sincronizate.
+            window.setSatPeriod(2);
+
+            // La schimbarea limbii, eticheta „Prezent” trebuie re-tradusă dacă
+            // perioada activă e chiar stratul actual.
+            document.addEventListener('detectlab:langchange', function () {
+                if (window._satPeriod !== 'prezent') return;
+                var label = document.getElementById('satPeriodLabel');
+                var ticks = document.querySelectorAll('#satPeriodTicks span');
+                if (label && ticks[2]) label.textContent = ticks[2].textContent.trim() || 'Prezent';
+            });
+
             // ── OSM PLACES (ArcGIS FeatureServer Layer 6 — REST query, nu tile) ──
             // FeatureServer/tile nu este activat pe acest serviciu (HTTP 400).
             // Folosim query REST direct: fetch features pe bbox vizibil, randăm ca L.circleMarker.
@@ -6329,6 +6428,12 @@
             window.setSatOpacity = function (val) {
                 var opacity = val / 100;
                 if (window._satLayer) window._satLayer.setOpacity(opacity);
+                // Opacitatea se aplică și ortofotoplanurilor istorice (2016 / 2018),
+                // indiferent care perioadă e activă din sliderul „Istoric”.
+                if (window._satHistPeriods) {
+                    window._satHistPeriods['2016'].setOpacity(opacity);
+                    window._satHistPeriods['2018'].setOpacity(opacity);
+                }
                 document.getElementById('satPct').textContent = val + '%';
             };
 

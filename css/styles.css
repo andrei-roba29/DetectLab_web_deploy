@@ -4980,6 +4980,66 @@
             transition-delay: 0s;
         }
 
+        /* ── SATELLITE „ISTORIC” PAIR ──
+           Selecting the Satellite layer (either its opacity slider or the
+           „Istoric” period slider) shows BOTH vertical mirrors at the same
+           time: the opacity one keeps its usual anchor, the period one sits
+           immediately to its left. Only three discrete stops (2016 / 2018 /
+           Prezent), so the value chip stays permanently visible. */
+        .vertical-period-control {
+            right: calc(38px + 68px + 14px + env(safe-area-inset-right, 0px));
+        }
+
+        .vertical-opacity-control[data-kind="satperiod"] .vertical-opacity-value {
+            font-size: 0.64rem;
+            letter-spacing: 0.03em;
+        }
+
+        /* Three stop dots on the vertical period track (top / middle / bottom). */
+        .vertical-period-control .vertical-opacity-slider-wrap::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 5px;
+            height: 169px;
+            transform: translate(-50%, -50%);
+            background-image: radial-gradient(circle, rgba(245,240,235,0.9) 1.4px, transparent 2px);
+            background-size: 5px 84px;
+            background-position: 50% 0;
+            background-repeat: repeat-y;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Panel „Istoric” slider: same look as every .transp-slider, plus three
+           stop markers aligned with the 2016 / 2018 / Prezent tick labels. */
+        input.transp-slider.sat-period-slider {
+            background:
+                radial-gradient(circle at 8px 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
+                radial-gradient(circle at 50% 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
+                radial-gradient(circle at calc(100% - 8px) 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
+                linear-gradient(90deg, rgba(160,112,232,0.55), rgba(184,216,240,0.14));
+        }
+
+        .sat-period-ticks {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            color: rgba(184,216,240,0.55);
+            font: 500 0.6rem/1 'Outfit', sans-serif;
+            letter-spacing: 0.02em;
+        }
+
+        .sat-period-ticks span {
+            transition: color 0.15s ease;
+        }
+
+        .sat-period-ticks span.active {
+            color: var(--sky, #B8D8F0);
+            font-weight: 700;
+        }
+
         /* Cursor/focus/selection feedback makes both top-level cards and the
            nested historical/LIDAR entries visibly clickable. */
         #transpPanel .opacity-layer-selectable {

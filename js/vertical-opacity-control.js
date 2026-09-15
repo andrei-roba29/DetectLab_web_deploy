@@ -43,8 +43,32 @@
         moldova1771MapOpacitySlider: 'Moldova 1771',
         banatMapOpacitySlider: 'Banat 1769–1772',
         satellite60sMapOpacitySlider: "Satellite imagery 60's",
-        battlesPeriodSlider: 'Battles / Bătălii'
+        battlesPeriodSlider: 'Battles / Bătălii',
+        satPeriodSlider: 'Satellite'
     };
+
+    /* The Satellite layer owns TWO ranges: its opacity and the „Istoric”
+       period selector (2016 / 2018 / Prezent). Selecting either one shows
+       both vertical mirrors on the map at the same time — each permanently
+       bound to its own panel slider. */
+    var SATELLITE_PAIR_IDS = ['satOpacitySlider', 'satPeriodSlider'];
+    var SAT_PERIOD_LABELS_FALLBACK = ['2016', '2018', 'Prezent'];
+
+    function isSatellitePairId(id) {
+        return SATELLITE_PAIR_IDS.indexOf(id) !== -1;
+    }
+
+    function satPeriodLabel(value) {
+        var idx = Math.max(0, Math.min(2, Math.round(Number(value))));
+        if (!isFinite(idx)) idx = 2;
+        /* „Prezent” follows the translated third tick of the panel slider. */
+        if (idx === 2) {
+            var tick = document.querySelector('#satPeriodTicks span:last-child');
+            var tickText = tick ? tick.textContent.replace(/\s+/g, ' ').trim() : '';
+            if (tickText) return tickText;
+        }
+        return SAT_PERIOD_LABELS_FALLBACK[idx];
+    }
 
     var control;
     var verticalSlider;
@@ -52,6 +76,11 @@
     var layerLabel;
     var captionEl;
     var closeButton;
+    var periodControl;
+    var periodSlider;
+    var periodOutput;
+    var periodCaptionEl;
+    var periodLayerLabel;
     var activeSource = null;
     var activeOwner = null;
     var activeFormatter = percentageText;
@@ -97,6 +126,9 @@
             }
             return function (value) { return String(value); };
         }
+        if (source.id === 'satPeriodSlider') {
+            return satPeriodLabel;
+        }
         return percentageText;
     }
 
@@ -107,11 +139,16 @@
             }
             return 'PERIOD';
         }
+        if (source.id === 'satPeriodSlider') {
+            return (window._currentLang && window._currentLang() === 'en') ? 'HISTORIC' : 'ISTORIC';
+        }
         return 'OPACITY';
     }
 
     function sourceKind(source) {
-        return source.id === 'battlesPeriodSlider' ? 'period' : 'opacity';
+        if (source.id === 'battlesPeriodSlider') return 'period';
+        if (source.id === 'satPeriodSlider') return 'satperiod';
+        return 'opacity';
     }
 
     function positionPeriodTip() {
@@ -188,7 +225,10 @@
         /* Some existing layer toggles restore a range by assigning .value
            directly (without an input event). This light poll keeps the mirror
            correct for those programmatic updates as well. */
-        syncTimer = window.setInterval(syncFromSource, 250);
+        syncTimer = window.setInterval(function () {
+            syncFromSource();
+            if (pairActive) syncPeriodFromSource();
+        }, 250);
     }
 
     function closeLayerPanel() {
@@ -201,10 +241,88 @@
         }
     }
 
+    var pairActive = false;
+
+    function updatePeriodOutput() {
+        if (!periodSlider || !periodOutput) return;
+        periodOutput.textContent = satPeriodLabel(periodSlider.value);
+        periodSlider.setAttribute('aria-valuetext', periodOutput.textContent);
+    }
+
+    function syncPeriodFromSource() {
+        var periodSource = document.getElementById('satPeriodSlider');
+        if (!periodSource || !periodSlider) return;
+        if (String(periodSlider.value) !== String(periodSource.value)) {
+            periodSlider.value = periodSource.value;
+        }
+        updatePeriodOutput();
+    }
+
+    function hideSatellitePair() {
+        pairActive = false;
+        if (periodControl) {
+            periodControl.classList.remove('visible', 'pair-shown');
+            periodControl.setAttribute('aria-hidden', 'true');
+        }
+        if (control) control.classList.remove('pair-shown');
+    }
+
+    /* Satellite pair: the main control mirrors the Satellite opacity range and
+       the second control mirrors the „Istoric” period range. Both stay visible
+       together, whichever of the two the user touched. */
+    function showSatellitePair(closePanel) {
+        var opacitySource = document.getElementById('satOpacitySlider');
+        var periodSource = document.getElementById('satPeriodSlider');
+        if (!opacitySource || !periodSource || !periodControl || !periodSlider) return false;
+
+        resetPeriodTip();
+        if (activeOwner) activeOwner.classList.remove('opacity-layer-selected');
+
+        pairActive = true;
+        activeSource = opacitySource;
+        activeOwner = opacitySource.parentElement;
+        if (activeOwner) activeOwner.classList.add('opacity-layer-selected');
+
+        var name = getLayerName(opacitySource, activeOwner);
+        layerLabel.textContent = name;
+        layerLabel.title = name;
+        if (captionEl) captionEl.textContent = 'OPACITY';
+        control.setAttribute('data-kind', 'opacity');
+
+        verticalSlider.min = opacitySource.min || '0';
+        verticalSlider.max = opacitySource.max || '100';
+        verticalSlider.step = opacitySource.step || '1';
+        verticalSlider.value = opacitySource.value;
+        verticalSlider.setAttribute('aria-label', name + ' opacity');
+        control.setAttribute('aria-label', name + ' opacity');
+        activeFormatter = percentageText;
+
+        syncFromSource();
+        control.classList.add('visible', 'pair-shown');
+        control.setAttribute('aria-hidden', 'false');
+
+        if (periodLayerLabel) {
+            periodLayerLabel.textContent = name;
+            periodLayerLabel.title = name;
+        }
+        if (periodCaptionEl) periodCaptionEl.textContent = sourceCaption(periodSource);
+        syncPeriodFromSource();
+        periodControl.classList.add('visible', 'pair-shown');
+        periodControl.setAttribute('aria-hidden', 'false');
+
+        startProgrammaticSync();
+        if (closePanel) closeLayerPanel();
+        return true;
+    }
+
     function selectSource(source, closePanel) {
         if (!source || !source.parentElement) return;
 
+        /* The Satellite layer shows both of its vertical mirrors at once. */
+        if (isSatellitePairId(source.id) && showSatellitePair(closePanel)) return;
+
         resetPeriodTip();
+        hideSatellitePair();
         if (activeOwner) activeOwner.classList.remove('opacity-layer-selected');
 
         activeSource = source;
@@ -236,6 +354,7 @@
 
     function hideControl() {
         resetPeriodTip();
+        hideSatellitePair();
         control.classList.remove('visible');
         control.setAttribute('aria-hidden', 'true');
         if (activeOwner) activeOwner.classList.remove('opacity-layer-selected');
@@ -303,6 +422,35 @@
         syncFromSource();
     }
 
+    /* Registration for a range that shares its row with an already registered
+       range (the Satellite „Istoric” slider sits in the Satellite card next to
+       the opacity slider). It must not add a second row-level click handler —
+       only the source-level listeners that reveal and drive the mirror. */
+    function registerPairedSource(source) {
+        var owner = source.parentElement;
+        if (!owner) return;
+
+        owner.classList.add('opacity-layer-selectable');
+        if (!owner.getAttribute('tabindex')) {
+            owner.setAttribute('tabindex', '0');
+            owner.setAttribute('role', 'group');
+            owner.setAttribute('aria-label', 'Select ' + getLayerName(source, owner) + ' ' + sourceKind(source) + ' control');
+        }
+
+        source.addEventListener('pointerdown', function () {
+            selectSource(source, false);
+        });
+        source.addEventListener('focus', function () {
+            selectSource(source, false);
+        });
+        source.addEventListener('input', function () {
+            if (pairActive) syncPeriodFromSource();
+        });
+        source.addEventListener('change', function () {
+            if (pairActive) syncPeriodFromSource();
+        });
+    }
+
     function init() {
         control = document.getElementById('verticalOpacityControl');
         verticalSlider = document.getElementById('verticalOpacitySlider');
@@ -310,6 +458,11 @@
         layerLabel = document.getElementById('verticalOpacityLayer');
         captionEl = document.getElementById('verticalOpacityCaption');
         closeButton = document.getElementById('verticalOpacityClose');
+        periodControl = document.getElementById('verticalSatPeriodControl');
+        periodSlider = document.getElementById('verticalSatPeriodSlider');
+        periodOutput = document.getElementById('verticalSatPeriodValue');
+        periodCaptionEl = document.getElementById('verticalSatPeriodCaption');
+        periodLayerLabel = document.getElementById('verticalSatPeriodLayer');
         if (!control || !verticalSlider || !valueOutput || !layerLabel || !closeButton) return;
 
         /* Opacity in the id intentionally excludes the LIDAR Scanner distance
@@ -322,6 +475,11 @@
         );
         for (var i = 0; i < sources.length; i++) registerSource(sources[i]);
 
+        /* The Satellite „Istoric” range shares its row with the opacity range,
+           so it gets the paired registration (no duplicate row handlers). */
+        var satPeriodSource = document.getElementById('satPeriodSlider');
+        if (satPeriodSource) registerPairedSource(satPeriodSource);
+
         verticalSlider.addEventListener('input', function () {
             emitSourceEvent('input');
             if (periodTipPinned || valueOutput.classList.contains('visible')) showPeriodTip();
@@ -329,6 +487,25 @@
         verticalSlider.addEventListener('change', function () {
             emitSourceEvent('change');
         });
+
+        /* The paired Satellite period mirror drives the panel's „Istoric”
+           range, which owns the actual layer switching (setSatPeriod). */
+        if (periodSlider && periodControl) {
+            periodSlider.addEventListener('input', function () {
+                var periodSource = document.getElementById('satPeriodSlider');
+                if (!periodSource) return;
+                periodSource.value = periodSlider.value;
+                periodSource.dispatchEvent(new Event('input', { bubbles: true }));
+                updatePeriodOutput();
+            });
+            periodSlider.addEventListener('change', function () {
+                var periodSource = document.getElementById('satPeriodSlider');
+                if (!periodSource) return;
+                periodSource.value = periodSlider.value;
+                periodSource.dispatchEvent(new Event('change', { bubbles: true }));
+                updatePeriodOutput();
+            });
+        }
 
         // Just like the panel's horizontal Battles range, its map-side mirror
         // reveals the century only while hovered, dragged or keyboard-focused.
@@ -375,6 +552,17 @@
             layerLabel.title = name;
             if (captionEl) captionEl.textContent = sourceCaption(activeSource);
             syncFromSource();
+            if (pairActive) {
+                if (periodLayerLabel) {
+                    periodLayerLabel.textContent = name;
+                    periodLayerLabel.title = name;
+                }
+                var periodSource = document.getElementById('satPeriodSlider');
+                if (periodCaptionEl && periodSource) {
+                    periodCaptionEl.textContent = sourceCaption(periodSource);
+                }
+                updatePeriodOutput();
+            }
         });
 
         /* Small public surface for integration tests and for any map module
