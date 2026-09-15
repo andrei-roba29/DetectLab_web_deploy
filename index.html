@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="css/styles.css?v=20260914-android-install">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260902-babel-safe-area">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
+    <link rel="stylesheet" href="css/offline-maps.css?v=20260915-offline-maps">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -1214,7 +1215,9 @@
                     <div class="transp-panel-tabs">
                         <button class="tab-btn active" data-tab="free" onclick="switchLayerTab('free')">Gratis / Free</button>
                         <button class="tab-btn" data-tab="premium" onclick="switchLayerTab('premium')">Premium / Premium</button>
+                        <button class="tab-btn offline-layer-tab" id="offlineLayerTab" data-tab="offline" onclick="switchLayerTab('offline')" style="display:none">OFFLINE / Offline</button>
                     </div>
+                    <div id="offlineLayerRows" class="offline-layer-rows" aria-live="polite"></div>
 
                     <!-- Free members can browse the complete Premium catalogue. The
                          controls remain locked until checkout has activated their plan. -->
@@ -3549,6 +3552,7 @@
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/map-app.js?v=20260914-premium-hist-pwa-fix"></script>
+    <script src="js/offline-maps.js?v=20260915-offline-maps"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20260901-battles-v4"></script>
     <script src="js/archeo-potential.js?v=20260827-arch-report"></script>

@@ -97,6 +97,14 @@
                     }
                 },
                 {
+                    sel: '#btnOfflineMaps',
+                    title: { ro: 'Hărți offline', en: 'Offline maps' },
+                    desc: {
+                        ro: 'Activează butonul, desenează un poligon de maximum 10 km², alege straturile disponibile și descarcă-le pentru teren fără internet. Poligonul poate fi modificat prin tragerea punctelor.',
+                        en: 'Activate the button, draw a polygon of up to 10 km², choose the available layers and download them for use without internet. Edit the polygon by dragging its points.'
+                    }
+                },
+                {
                     sel: '#detectlab-map .detectlab-compass',
                     title: { ro: 'Busolă & blocare rotire', en: 'Compass & rotation lock' },
                     desc: {
@@ -140,8 +148,8 @@
                     sel: ['#pwaSavedLocationsBtn', '#savedLocationsBtn'],
                     title: { ro: 'Locații salvate', en: 'Saved locations' },
                     desc: {
-                        ro: 'Deschide lista coordonatelor salvate; atinge una și harta sare direct la ea.',
-                        en: 'Open the list of saved coordinates; tap one and the map jumps straight to it.'
+                        ro: 'Deschide lista coordonatelor salvate; atinge una și harta sare direct la ea. Aici găsești și categoria „Hărți offline”, de unde activezi sau ștergi hărțile salvate local.',
+                        en: 'Open the list of saved coordinates; tap one and the map jumps straight to it. This button also contains “Offline maps”, where you activate or delete maps saved locally.'
                     }
                 },
                 {
@@ -272,6 +280,13 @@
                 desc: {
                     ro: 'Light Detection and Ranging — strat laser ce pătrunde prin vegetație și este una dintre cele mai puternice unelte pentru arheologie (conține mai multe straturi de diferite rezoluții și pentru diferite zone).',
                     en: 'Light Detection and Ranging — a laser layer that penetrates vegetation and is one of the most powerful tools in archaeology (it contains several layers of different resolutions and for different areas).'
+                }
+            },
+            {
+                name: { ro: 'Hărți offline', en: 'Offline maps' },
+                desc: {
+                    ro: 'Desenează o zonă de maximum 10 km², alege straturile disponibile și descarcă tile-urile pe dispozitiv. Harta expiră automat după 10 zile; în butonul cu card SD apare categoria Hărți offline.',
+                    en: 'Draw an area of up to 10 km², choose the available layers and download their tiles to the device. The map expires automatically after 10 days; the SD-card button contains the Offline maps category.'
                 }
             }
         ],
