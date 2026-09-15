@@ -13,7 +13,10 @@
 // v84: offline-maps panel — zoom-level wording ("Nivel zoom" / "Zoom level"),
 // closing a polygon on its first corner, the over-sized-polygon error that was
 // being overwritten, and panel/bottom-bar/status-bar geometry in the PWA.
-const CACHE_NAME = 'detectlab-v84-offline-maps-panel';
+// v85: Satellite layer "Istoric" period slider — 2016 / 2018 orthophotos
+// (geo-spatial.org WMS) alongside the present-day imagery, with both vertical
+// mirrors (opacity + period) shown together on the map.
+const CACHE_NAME = 'detectlab-v85-sat-historic';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -199,7 +202,15 @@ const PRECACHE_URLS = [
   // Google Play Protect blocks, so the install section now routes those users
   // to Chrome and explains the "Unsafe app blocked" dialog.
   'css/styles.css?v=20260914-android-install',
-  'js/translations.js?v=20260914-android-install'
+  'js/translations.js?v=20260914-android-install',
+  // Satellite "Istoric": the Satellite layer gains a period slider — 2016 and
+  // 2018 national orthophotos (geo-spatial.org WMS) alongside the present-day
+  // imagery; the vertical opacity mirror is joined on the map by a vertical
+  // period mirror, both visible at the same time.
+  'js/map-app.js?v=20260915-sat-historic',
+  'js/vertical-opacity-control.js?v=20260915-sat-historic',
+  'js/translations.js?v=20260915-sat-historic',
+  'css/styles.css?v=20260915-sat-historic'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──
