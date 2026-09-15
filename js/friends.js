@@ -494,6 +494,7 @@
             };
         });
         writeCache({ friends: state.friends });
+        refreshDetectorPopups();
         return state.friends;
     }
 
@@ -516,6 +517,7 @@
             }
         }
         state.counters.pending_requests = state.incomingRequests.length;
+        refreshDetectorPopups();
         return { incoming: state.incomingRequests, outgoing: state.outgoingRequests };
     }
 
@@ -619,6 +621,40 @@
         return res.data;
     }
 
+    /* ── Relationship to another account ───────────────────────────────── */
+
+    // ONE place that answers "what can I do with this account?" so the Friends
+    // panel, the search results and the detectorist map pins never disagree.
+    //   anonymous        – nobody is signed in
+    //   self             – that pin is another device of my own account
+    //   friend           – already friends            → send a message
+    //   request_sent     – my request is pending      → cancel it
+    //   request_received – their request is pending   → accept it
+    //   none             – stranger                   → send a friend request
+    function relationFor(userId) {
+        var user = currentUser();
+        if (!user || !user.id) return { state: 'anonymous' };
+        if (!userId) return { state: 'unknown' };
+        if (String(userId) === String(user.id)) return { state: 'self' };
+
+        var friend = state.friends.filter(function (f) { return String(f.user_id) === String(userId); })[0];
+        if (friend) return { state: 'friend', friend: friend };
+
+        var outgoing = state.outgoingRequests.filter(function (r) { return String(r.other_id) === String(userId); })[0];
+        if (outgoing) return { state: 'request_sent', requestId: outgoing.id };
+
+        var incoming = state.incomingRequests.filter(function (r) { return String(r.other_id) === String(userId); })[0];
+        if (incoming) return { state: 'request_received', requestId: incoming.id };
+
+        return { state: 'none' };
+    }
+
+    function requestIdFor(userId, direction) {
+        var list = direction === 'outgoing' ? state.outgoingRequests : state.incomingRequests;
+        var row = (list || []).filter(function (r) { return String(r.other_id) === String(userId); })[0];
+        return row ? row.id : null;
+    }
+
     /* ── Actions ───────────────────────────────────────────────────────── */
 
     async function sendFriendRequest(userId, message) {
@@ -652,6 +688,223 @@
         if (res.error) return { ok: false, message: friendlyError(res.error) };
         await Promise.all([loadFriends(), loadConversations(), loadCounters()]);
         return { ok: true };
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       MAP POPUP ACTIONS — live (orange) and offline (black/white) pins
+    ══════════════════════════════════════════════════════════════════════ */
+
+    // Both detectorist pins on the map carry an EMPTY .detector-social-actions
+    // slot (js/map-app.js → detectorSocialSlotHtml()). The slot is filled here,
+    // every time the popup opens, with the single action that matches the
+    // relationship: "Adaugă prietenie" for a stranger, "Acceptă" when they
+    // already asked us, "Cerere trimisă / Anulează" while ours is pending and
+    // "Trimite mesaj" for an existing friend. Nothing is rendered when nobody
+    // is signed in or when the pin is another device of our own account.
+
+    var MAP_STATE_TTL_MS = 15000;
+    var mapStateLoadedAt = 0;
+    var mapStatePromise = null;
+
+    function detectorActionsHtml(userId, opts) {
+        opts = opts || {};
+        var rel = opts.relation || relationFor(userId);
+        var uid = escapeHtml(userId);
+        var uname = escapeHtml(opts.name || '');
+
+        function btn(action, cls, label) {
+            return '<button type="button" class="detector-social-btn' + (cls ? ' ' + cls : '') + '"' +
+                ' data-social-action="' + action + '"' +
+                ' data-user-id="' + uid + '"' +
+                ' data-user-name="' + uname + '">' + escapeHtml(label) + '</button>';
+        }
+
+        if (rel.state === 'friend') {
+            return btn('message', 'chat', '💬 ' + t('Trimite mesaj', 'Send message'));
+        }
+        if (rel.state === 'request_sent') {
+            return '<span class="detector-social-note">⏳ ' +
+                escapeHtml(t('Cerere de prietenie trimisă', 'Friend request sent')) + '</span>' +
+                btn('cancel', 'ghost', t('Anulează', 'Cancel'));
+        }
+        if (rel.state === 'request_received') {
+            return btn('accept', 'ok', '✓ ' + t('Acceptă cererea', 'Accept request'));
+        }
+        if (rel.state === 'none') {
+            return btn('add', '', '＋ ' + t('Adaugă prietenie', 'Add friend'));
+        }
+        if (rel.state === 'self') {
+            return '<span class="detector-social-note">👤 ' +
+                escapeHtml(t('Un alt dispozitiv al contului tău', 'Another device of your account')) + '</span>';
+        }
+        return '';
+    }
+
+    function renderDetectorActions(slot) {
+        if (!slot || typeof slot.setAttribute !== 'function') return false;
+        // Never repaint a slot whose action is still in flight.
+        if (slot.getAttribute('data-social-busy') === '1') return false;
+
+        var userId = slot.getAttribute('data-user-id');
+        var name = slot.getAttribute('data-user-name') || '';
+        var rel = relationFor(userId);
+        slot.setAttribute('data-social-state', rel.state);
+
+        if (rel.state === 'anonymous' || rel.state === 'unknown' || !userId) {
+            slot.innerHTML = '';
+            return false;
+        }
+
+        slot.innerHTML =
+            '<div class="detector-social-row">' + detectorActionsHtml(userId, { relation: rel, name: name }) + '</div>' +
+            '<div class="detector-social-msg" data-social-msg></div>';
+        return true;
+    }
+
+    function detectorSlots(root) {
+        var scope = (root && typeof root.querySelectorAll === 'function') ? root : null;
+        if (!scope && typeof document !== 'undefined' && document.querySelectorAll) scope = document;
+        if (!scope) return [];
+        try { return Array.prototype.slice.call(scope.querySelectorAll('.detector-social-actions')); }
+        catch (e) { return []; }
+    }
+
+    function slotStillInDocument(slot) {
+        try {
+            if (!slot || !document.body || typeof document.body.contains !== 'function') return true;
+            return document.body.contains(slot);
+        } catch (e) { return true; }
+    }
+
+    // Repaint every open detectorist popup (after a request was sent, accepted
+    // or cancelled, the button of that person changes immediately).
+    function refreshDetectorPopups() {
+        detectorSlots(document).forEach(function (slot) { renderDetectorActions(slot); });
+    }
+
+    // Friend list + requests are enough to answer "what can I do with them?";
+    // cached in memory for MAP_STATE_TTL_MS so opening several pins in a row
+    // does not hit the network every time.
+    function ensureDetectorSocialState(force) {
+        var user = currentUser();
+        if (!user || !user.id) return Promise.resolve(false);
+        if (!force && mapStateLoadedAt && Date.now() - mapStateLoadedAt < MAP_STATE_TTL_MS) {
+            return Promise.resolve(true);
+        }
+        if (mapStatePromise) return mapStatePromise;
+        mapStatePromise = Promise.all([loadFriends(), loadRequests()]).then(function () {
+            mapStateLoadedAt = Date.now();
+            mapStatePromise = null;
+            return true;
+        }, function () {
+            mapStatePromise = null;
+            return false;
+        });
+        return mapStatePromise;
+    }
+
+    // Called by js/map-app.js on the map's 'popupopen' event with the popup
+    // element. Paints the slot from the mirrored state right away (instant, no
+    // flash of a wrong button) and repaints once the fresh lists arrive.
+    function decorateDetectorPopup(root) {
+        var slots = detectorSlots(root);
+        if (!slots.length) return 0;
+        slots.forEach(function (slot) { renderDetectorActions(slot); });
+        ensureDetectorSocialState().then(function () {
+            slots.forEach(function (slot) {
+                if (!slotStillInDocument(slot)) return;
+                renderDetectorActions(slot);
+            });
+        });
+        return slots.length;
+    }
+
+    function setDetectorMessage(slot, text, kind) {
+        if (!slot || typeof slot.querySelector !== 'function') return;
+        var msg = slot.querySelector('[data-social-msg]');
+        if (!msg) return;
+        msg.className = 'detector-social-msg' + (kind ? ' ' + kind : '');
+        msg.textContent = text || '';
+        if (msg._socialTimer) { clearTimeout(msg._socialTimer); msg._socialTimer = null; }
+        if (text) {
+            msg._socialTimer = setTimeout(function () {
+                msg.textContent = '';
+                msg.className = 'detector-social-msg';
+                msg._socialTimer = null;
+            }, 6000);
+        }
+    }
+
+    function closeDetectorPopup() {
+        try {
+            var m = window._dlMap || window.map;
+            if (m && typeof m.closePopup === 'function') m.closePopup();
+        } catch (e) {}
+    }
+
+    // One delegated listener for every open popup: Leaflet rebuilds the popup
+    // DOM on each open and the buttons live inside it, so per-button listeners
+    // would be lost (and would stack up). Capture phase, because Leaflet stops
+    // pointer events on its popups.
+    async function onDetectorSocialAction(e) {
+        var target = e && e.target;
+        var btn = target && target.closest ? target.closest('[data-social-action]') : null;
+        if (!btn) return;
+
+        if (e.preventDefault) e.preventDefault();
+        if (e.stopPropagation) e.stopPropagation();
+        try { if (window.L && L.DomEvent && L.DomEvent.stop) L.DomEvent.stop(e); } catch (_) {}
+
+        var action = btn.getAttribute('data-social-action');
+        var slot = btn.closest ? btn.closest('.detector-social-actions') : null;
+        var userId = btn.getAttribute('data-user-id') || (slot && slot.getAttribute('data-user-id')) || '';
+        if (!userId) return;
+
+        var user = currentUser();
+        if (!user || !user.id) {
+            if (typeof window.openAuth === 'function') window.openAuth('login');
+            return;
+        }
+
+        if (action === 'message') {
+            closeDetectorPopup();
+            await openChatWithUser(userId);
+            return;
+        }
+
+        if (btn.disabled) return;
+        btn.disabled = true;
+        if (slot && typeof slot.setAttribute === 'function') slot.setAttribute('data-social-busy', '1');
+
+        var res = { ok: false, message: '' };
+        var okText = '';
+        try {
+            if (action === 'add') {
+                res = await sendFriendRequest(userId, '');
+                okText = t('Cerere de prietenie trimisă.', 'Friend request sent.');
+            } else if (action === 'cancel') {
+                var requestId = requestIdFor(userId, 'outgoing');
+                res = requestId
+                    ? await cancelFriendRequest(requestId)
+                    : { ok: false, message: t('Cererea nu mai există.', 'That request no longer exists.') };
+                okText = t('Cerere anulată.', 'Request cancelled.');
+            } else if (action === 'accept') {
+                var incomingId = requestIdFor(userId, 'incoming');
+                res = incomingId
+                    ? await respondFriendRequest(incomingId, true)
+                    : { ok: false, message: t('Cererea nu mai există.', 'That request no longer exists.') };
+                okText = t('Sunteți prieteni acum.', 'You are friends now.');
+            }
+        } catch (err) {
+            res = { ok: false, message: friendlyError(err) };
+        }
+
+        if (slot && typeof slot.setAttribute === 'function') slot.setAttribute('data-social-busy', '0');
+        // Success: the lists were reloaded by the action itself, so the slot now
+        // shows the next state ("Cerere trimisă" / "Trimite mesaj").
+        refreshDetectorPopups();
+        if (btn.disabled) btn.disabled = false;
+        setDetectorMessage(slot, res.ok ? okText : (res.message || ''), res.ok ? 'ok' : 'error');
     }
 
     async function openDirectConversation(userId) {
@@ -2115,6 +2368,9 @@
     function onAuthChange() {
         var user = currentUser();
         stopChatLiveUpdates();
+        // A fresh session (login, logout, account switch) must re-read the
+        // friend lists before the map pins can rely on them again.
+        mapStateLoadedAt = 0;
         if (!user) {
             state.friends = [];
             state.incomingRequests = [];
@@ -2163,6 +2419,10 @@
                 if (state.chat) refreshChatMessages(state.chat.id);
             }
         });
+        // Buttons inside the detectorist map popups (friend request / accept /
+        // send message). One delegated capture-phase listener survives every
+        // Leaflet popup rebuild and every re-render of the map pins.
+        document.addEventListener('click', onDetectorSocialAction, true);
         // No MutationObserver here on purpose: both nav entries live in
         // index.html, so ensureBadges() only has to run on boot, on auth
         // changes and before a badge update. Observing the whole body would
@@ -2203,6 +2463,11 @@
         prepareAttachment: prepareAttachment,
         friendlyError: friendlyError,
         updateBadges: updateBadges,
+        // Map pins (live + offline detectorists): the popup slot is filled with
+        // the action that matches the relationship with that account.
+        decorateDetectorPopup: decorateDetectorPopup,
+        refreshDetectorPopups: refreshDetectorPopups,
+        detectorRelation: function (userId) { return relationFor(userId).state; },
         cleanupRemote: function (force) { return maybeCleanupRemote(force !== false); }
     };
 })();

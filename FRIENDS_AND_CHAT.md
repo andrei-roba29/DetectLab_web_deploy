@@ -6,7 +6,11 @@ bottom bar) and opens a panel with three tabs — friends, friend requests and
 chats. Friends can talk 1:1 or in group threads with an **admin**, and any chat
 can turn into an **event**: the create-event form also gained an
 **„Adaugă prieteni” / “Add friends”** box whose ticked friends receive a real
-participation request they can **accept or decline**.
+participation request they can **accept or decline**. The same social layer now
+hangs off the map: tapping a **live (orange) or offline (black/white) detectorist
+pin** offers **„Adaugă prietenie”**, **„Acceptă cererea”**, the pending
+*„Cerere trimisă / Anulează”* state or a **„Trimite mesaj”** button when you are
+already friends.
 
 Everything is bounded by quotas that live in a single database row
 (`public.app_limits`), because an unbounded chat feature is an unbounded
@@ -18,16 +22,19 @@ storage bill.
 
 | File | Purpose |
 |---|---|
-| `js/friends.js` | The whole social UI + client logic: panel, search, requests, private/group chat, media compression, per-account mirror, badges, and the `window.DetectLabFriends` API used by the events module. |
+| `js/friends.js` | The whole social UI + client logic: panel, search, requests, private/group chat, media compression, per-account mirror, badges, the social buttons inside the detectorist map pins (`relationFor()` / `detectorActionsHtml()` / `decorateDetectorPopup()`), and the `window.DetectLabFriends` API used by the events and map modules. |
 | `js/events.js` | „Adaugă prieteni” box in the create-event form, quota-aware deadline/creation checks, `friend_event_invite` notification modal, attendance-quota guard on accept. |
+| `js/map-app.js` | The nearby-detectorist pins: `detectorSocialSlotHtml()` puts an empty social slot (account id + name) into every live/offline popup and `map.on('popupopen')` hands the popup to `DetectLabFriends.decorateDetectorPopup()`. |
+| `css/styles.css` | `.detector-social-actions` / `.detector-social-btn` — the friend-request / accept / message buttons inside the popup card (next to `.detector-nearby-marker` / `.detector-offline-marker`). |
 | `index.html` | „Prieteni / Friends” menu entry (desktop `#userMenu` + PWA `#pwaUserDropdown`) and the `<script>` include (after `events.js`). |
 | `js/translations.js` | `nav_friends` → *Prieteni* / *Friends*. |
-| `sw.js` | `js/friends.js` pre-cached + cache bumped to `detectlab-v86-social` so installed PWAs pick it up. |
+| `sw.js` | `js/friends.js`, `js/map-app.js` and `css/styles.css` pre-cached + cache bumped (`detectlab-v88-map-social`) so installed PWAs pick the new popup buttons up. |
 | `supabase/migrations/20260915000000_social_limits_and_directory.sql` | `app_limits` (every quota), `normalise_county()`, `user_social_profiles` (searchable directory), `search_social_users()`, `list_social_counties()`. |
 | `supabase/migrations/20260915010000_social_friends.sql` | `friend_requests`, `friendships` + send / cancel / respond / remove functions, `list_my_friends()`, `list_my_friend_requests()`, `get_social_counters()`. |
 | `supabase/migrations/20260915020000_social_conversations.sql` | `conversations`, `conversation_members`, `conversation_messages` (RLS = members only, Realtime), direct/group functions, admin powers, `send_conversation_message()` with every limit, `cleanup_social_messages()` + pg_cron job. |
 | `supabase/migrations/20260915030000_event_quotas_and_friend_invites.sql` | DB triggers for event creation / attendance / deadline / event-chat size, `get_my_event_quota()`, `invite_friends_to_event()`, `cleanup_event_chat_messages()` + pg_cron job. |
 | `test-friends-social.js` | Node regression test (no jsdom): runs the real `js/friends.js` and `js/events.js` against an in-memory social server. `node test-friends-social.js`. |
+| `test-map-friend-actions.js` | Node regression test (no jsdom) for the map pins: runs the real `searchNearbyDetectors()` / `addOfflineDetectorBubbles()` and the real social module, asserting which button appears per relationship and that it really calls `send_friend_request` / `respond_friend_request`. `node test-map-friend-actions.js`. |
 
 ---
 
@@ -100,6 +107,40 @@ attendance quota, attendee row, event chat creation, outcome notification).
 Inviting is restricted to the **event creator**, to **existing friends**, and
 reports per person: `invited`, `already_pending`, `already_attending`,
 `not_friend`, `event_full`, `invite_limit`.
+
+### 6. Location live / offline a detectoriștilor pe hartă
+
+A tap on **any** detectorist pin in „Vezi alți detectoriști în zonă" — the orange
+live pin *and* the black/white offline bubble — opens the usual info card plus
+the one social action that matches the relationship with that account:
+
+| Relationship | What the popup shows |
+|---|---|
+| Stranger | **＋ Adaugă prietenie** → `send_friend_request()`; the card flips to *Cerere de prietenie trimisă* without closing the popup. |
+| They already asked you | **✓ Acceptă cererea** → `respond_friend_request(accept)` (a popup is a bad place to decline somebody, so „Refuză" stays in the Cereri tab). |
+| Your request is pending | *⏳ Cerere de prietenie trimisă* + **Anulează** → `cancel_friend_request()`. |
+| Already friends | **💬 Trimite mesaj** → `openChatWithUser()` (private thread), same path as the 💬 button in the friends list. |
+| Another device of your own account | A „Un alt dispozitiv al contului tău" note — no action. |
+| Nobody signed in | No button; tapping would open the sign-in dialog. |
+
+Notes:
+
+* The buttons are painted **from the live friend state**, not from the markup:
+  the popup only carries the account id (`data-user-id`) and the display name,
+  and `map.on('popupopen')` → `DetectLabFriends.decorateDetectorPopup(popup)`
+  re-renders the slot on every open (and again once the fresh lists arrive, so a
+  request accepted a second ago never shows a stale button). No button is
+  rendered for yourself, for a hidden account or when the DB migration is
+  missing — the map always keeps working.
+* One delegated, capture-phase `click` listener on `document`
+  (`[data-social-action]`) handles every button, so Leaflet rebuilding the popup
+  DOM cannot lose it or answer a tap twice; quota refusals arrive as the usual
+  codes (`ALREADY_FRIENDS`, `REQUEST_ALREADY_PENDING`,
+  `DAILY_REQUEST_LIMIT_REACHED:50`, `ADDRESSEE_FRIEND_LIMIT_REACHED:1000`, …)
+  and are printed inside the popup by `friendlyError()`.
+* Friend lists/requests are refreshed at most once every 15 s while tapping pins
+  (`ensureDetectorSocialState()`), on `detectlab:authchange` and whenever the
+  Panel reloads them.
 
 ---
 
@@ -232,7 +273,8 @@ and every existing feature keep working untouched.
 ## Tests
 
 ```bash
-node test-friends-social.js     # 15 checks
+node test-friends-social.js      # 15 checks
+node test-map-friend-actions.js  # 51 checks
 ```
 
 The test loads the **real** `js/friends.js` and `js/events.js` into a `vm`
@@ -257,6 +299,16 @@ the migration rules, and asserts:
 13. a `friend_event_invite` notification shows the event and accepting joins it;
 14. the nav entry, RO/EN labels, script order and PWA pre-cache are in place;
 15. the migrations define the tables, triggers and cleanup jobs.
+
+`test-map-friend-actions.js` covers the map pins end to end: it runs the real
+`searchNearbyDetectors()` + `addOfflineDetectorBubbles()` against Leaflet stubs
+and asserts both popups carry the slot for the right account (and that the
+`popupopen` hook calls into `js/friends.js`), renders the real
+`detectorActionsHtml()` for every relationship, and drives the real module in a
+tiny fake DOM so that tapping „＋ Adaugă prietenie" produces a genuine
+`send_friend_request` call, „Acceptă cererea" a `respond_friend_request`,
+„Anulează" a `cancel_friend_request` and „Trimite mesaj" the chat flow — while a
+signed-out visitor only gets sent to the sign-in dialog.
 
 The pre-existing event tests still pass unchanged
 (`test-anonymous-events.js`, `test-event-chat-load.js`,

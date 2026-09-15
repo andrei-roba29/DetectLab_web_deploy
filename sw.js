@@ -24,7 +24,7 @@
 // button now asks "Vrei să fii vizibil și pentru alți utilizatori?" (Da/Nu);
 // the answer gates every presence publish so users are only shown to other
 // detectorists after an explicit "Da".
-const CACHE_NAME = 'detectlab-v87-visibility-prompt';
+const CACHE_NAME = 'detectlab-v88-map-social';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -226,7 +226,14 @@ const PRECACHE_URLS = [
   // "Adaugă prieteni / Add friends" box of the create-event form.
   'js/friends.js?v=20260915-social',
   'js/events.js?v=20260915-social',
-  'js/translations.js?v=20260915-social'
+  'js/translations.js?v=20260915-social',
+  // Detectorist pins on the map ("Vezi alți detectoriști în zonă"): the live
+  // (orange) and offline (black/white) popups now carry the social action slot
+  // — friend request / accept / cancel / send message — painted by friends.js
+  // when the popup opens.
+  'js/friends.js?v=20260915-map-social',
+  'js/map-app.js?v=20260915-map-social',
+  'css/styles.css?v=20260915-map-social'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

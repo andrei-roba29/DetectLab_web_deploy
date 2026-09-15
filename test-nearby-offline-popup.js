@@ -68,6 +68,9 @@ function extractFn(src, marker) {
 
 const offlineFnSrc = extractFn(MAP_SRC, 'async function addOfflineDetectorBubbles(');
 const initialsFnSrc = extractFn(MAP_SRC, 'function nearbyInitials(');
+// The offline bubble also carries the (empty) social action slot that
+// js/friends.js paints on popupopen — the helper must be in the sandbox.
+const slotFnSrc = extractFn(MAP_SRC, 'function detectorSocialSlotHtml(');
 
 // Rows as js/last-location.js returns them (user_last_locations).
 const LAST_ROWS = [
@@ -125,7 +128,7 @@ sandbox.nearbyLayer = sandbox.L.layerGroup();
 
 vm.createContext(sandbox);
 vm.runInContext(
-    initialsFnSrc + '\n' + offlineFnSrc +
+    initialsFnSrc + '\n' + slotFnSrc + '\n' + offlineFnSrc +
     '\nglobalThis.__run = function (live, user) { return addOfflineDetectorBubbles(live, user); };',
     sandbox
 );
@@ -155,6 +158,15 @@ vm.runInContext(
     check('popup carries the last known locality', /Timișoara, Timiș/.test(html));
     check('popup carries the "last seen" timestamp', /🕘/.test(html));
     check('popup content is the .map-place-popup card', /class="map-place-popup"/.test(html));
+    // The social slot is intentionally empty in the markup (it is painted by
+    // js/friends.js on popupopen) but it must carry the identity of the pin.
+    check('popup carries an empty detector-social-actions slot for that account',
+        /class="detector-social-actions"/.test(html) &&
+        new RegExp('data-user-id="u-offline"').test(html) &&
+        /data-detector-kind="offline"/.test(html),
+        'slot=' + (html.match(/<div class="detector-social-actions"[^>]*>/) || ['<none>'])[0]);
+    check('the social slot ships WITHOUT pre-rendered buttons (friends.js owns the state)',
+        !/data-social-action=/.test(html));
 
     /* ── 2. Resolve the shipped CSS cascade for that card ──────────────────── */
 
@@ -217,8 +229,12 @@ vm.runInContext(
         check('that exact stylesheet URL is in the service worker PRECACHE_URLS',
             sw.includes("'" + link + "'"), link + ' not pre-cached in sw.js');
     }
+    // The cache name only ever moves forward: every release that touches a
+    // cached asset bumps the number, so installed PWAs drop the old shell.
+    const cacheName = (sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-([a-z0-9-]+)'/) || []);
     check('the service worker cache name was bumped so old caches are dropped',
-        /CACHE_NAME = 'detectlab-v72-nearby-popup'/.test(sw));
+        cacheName.length === 3 && Number(cacheName[1]) >= 72 && !!cacheName[2],
+        'cache name: ' + (cacheName[0] || '<not found>'));
 
     console.log('\n' + passed + ' checks passed.');
     if (process.exitCode) console.error('FAILED');
