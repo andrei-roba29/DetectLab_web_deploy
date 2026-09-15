@@ -456,12 +456,10 @@
         .pwa-account-overlay .account-back {
             display: none !important;
         }
-        /* Sticky so it stays reachable even when the account form is
-           scrolled inside the overlay. */
+        /* The back bar sits at the top of the account details and scrolls
+           away together with them — it is deliberately not pinned. If the
+           user scrolls down, they scroll back to the top to reach it. */
         .pwa-account-back {
-            position: sticky;
-            top: 0;
-            z-index: 10;
             display: flex;
             align-items: center;
             gap: 6px;
@@ -866,10 +864,6 @@
     <div class="pwa-account-overlay" id="pwaAccountOverlay">
         <div class="pwa-account-wrapper">
             <button class="pwa-account-back" onclick="pwaCloseAccount()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="19" y1="12" x2="5" y2="12" />
-                    <polyline points="12 19 5 12 12 5" />
-                </svg>
                 <span class="t" data-key="back_to_map">← Back to map</span>
             </button>
             <div id="pwaAccountContent">
@@ -4379,8 +4373,8 @@
 
                     if (overlay) {
                         overlay.classList.add('visible');
-                        // Always open scrolled to the top so the sticky back
-                        // button and the account header are visible at once.
+                        // Always open scrolled to the top so the back button
+                        // and the account header are visible at once.
                         overlay.scrollTop = 0;
                     }
                 };
