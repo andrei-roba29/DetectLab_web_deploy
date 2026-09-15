@@ -175,6 +175,11 @@
                 heritage_legend_green: 'Sites with approximate coordinates',
                 heritage_legend_yellow: 'Tumulus',
                 layer_opacity_label: 'Opacity',
+                offline_maps: 'Offline maps',
+                offline_maps_tab: 'Offline',
+                offline_draw_polygon: 'Draw a polygon',
+                offline_download_map: 'Download map',
+                offline_expiry_notice: 'This map will be deleted automatically after 10 days.',
                 layer_roman: 'Roman Empire',
                 // ── Battles / Bătălii premium layer ──
                 layer_battles: 'Battles',
@@ -655,6 +660,11 @@
                 heritage_legend_green: 'Situri cu coordonate aproximate',
                 heritage_legend_yellow: 'Tumul',
                 layer_opacity_label: 'Opacitate',
+                offline_maps: 'Hărți offline',
+                offline_maps_tab: 'Offline',
+                offline_draw_polygon: 'Desenează un poligon',
+                offline_download_map: 'Descarcă harta',
+                offline_expiry_notice: 'Această hartă se va șterge automat după 10 zile.',
                 layer_roman: 'Imperiul Roman',
                 // ── Strat premium „Bătălii" ──
                 layer_battles: 'Bătălii',

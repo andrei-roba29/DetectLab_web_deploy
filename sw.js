@@ -10,7 +10,10 @@
 // v82: fix PWA Patrimoniu zoom glitch — stop redrawing custom canvases
 // during pinch/zoom animation, round transform to match tile container,
 // and guard visualViewport resize while zooming.
-const CACHE_NAME = 'detectlab-v82-patrimoniu-pwa-zoom-fix';
+const CACHE_NAME = 'detectlab-v83-offline-maps';
+// Raster tiles explicitly downloaded by the user. This cache is separate from
+// the app shell so expiring one offline area never evicts the PWA itself.
+const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -170,6 +173,9 @@ const PRECACHE_URLS = [
   // finish opening before its arrows are measured.
   'js/tutorial.js?v=20260908-smooth-slides',
   'css/tutorial.css?v=20260908-smooth-slides',
+  // Offline maps: polygon editor, IndexedDB metadata and tile-cache UI.
+  'js/offline-maps.js?v=20260915-offline-maps',
+  'css/offline-maps.css?v=20260915-offline-maps',
   // Nearby detectorists: the popup card (.map-place-popup) used to be
   // position:absolute, which pulled it out of the Leaflet popup's flow and left
   // an empty little popup box next to the info card — two windows, one of them
@@ -186,10 +192,10 @@ const PRECACHE_URLS = [
   'js/translations.js?v=20260914-android-install'
 ];
 
-// ── Domains that must NEVER be intercepted by the SW ──
-//     Tile servers, APIs, and large data sources. Intercepting them adds
-//     latency (clone + cache-write on every tile) and can cause question-mark
-//     artifacts when the SW's network-first fetch races with the browser.
+// ── Domains that normally bypass the app-shell strategy ──
+//     Tile servers, APIs, and large data sources must not be cached by the
+//     network-first shell path. Explicitly downloaded raster tiles are the
+//     one exception and are looked up in OFFLINE_TILE_CACHE_NAME below.
 const PASSTHROUGH_HOSTS = [
   'supabase',           // auth / database
   'workers.dev',        // APM tiles + feedback worker
@@ -228,7 +234,7 @@ self.addEventListener('activate', function (event) {
     caches.keys().then(function (cacheNames) {
       return Promise.all(
         cacheNames.map(function (name) {
-          if (name !== CACHE_NAME) {
+          if (name !== CACHE_NAME && name !== OFFLINE_TILE_CACHE_NAME) {
             console.log('[SW] Removing old cache:', name);
             return caches.delete(name);
           }
@@ -240,6 +246,27 @@ self.addEventListener('activate', function (event) {
   );
 });
 
+// ── Offline tile cache ─────────────────────────────────────────
+// Normal cross-origin requests continue to bypass the service worker. Only
+// URLs that look like raster map tiles are checked against the user-managed
+// cache; this keeps the existing PWA fast while making downloaded areas work
+// without a connection.
+function isOfflineTileRequest(url) {
+  var path = url.pathname || '';
+  var query = (url.search || '').toLowerCase();
+  if (query.indexOf('request=getmap') !== -1) return true;
+  if (path.indexOf('/tile/') !== -1 || path.indexOf('/APM_TILES/') !== -1 || path.indexOf('/UAT/') !== -1) return true;
+  return /\/\d+\/\d+\/\d+\.(png|jpg|jpeg)(?:$|\?)/i.test(path + url.search);
+}
+
+function cacheOfflineTileFromMessage(url) {
+  return caches.open(OFFLINE_TILE_CACHE_NAME).then(function (cache) {
+    return fetch(new Request(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' })).then(function (response) {
+      return cache.put(url, response.clone()).then(function () { return true; });
+    });
+  });
+}
+
 // ── Fetch event: network-first with cache fallback ──
 self.addEventListener('fetch', function (event) {
   var request = event.request;
@@ -247,11 +274,10 @@ self.addEventListener('fetch', function (event) {
   // Only handle GET requests
   if (request.method !== 'GET') return;
 
-  // ── Only intercept same-origin requests ──
-  //     Cross-origin tile / API requests go straight to the network with
-  //     zero SW overhead. This is the single biggest performance win:
-  //     hundreds of tile requests per pan/zoom no longer pass through the
-  //     SW's clone-and-cache pipeline.
+  // ── Keep the app-shell strategy same-origin only ──
+  //     Cross-origin tile / API requests either use the dedicated offline
+  //     lookup below or go straight to the network; they never enter the
+  //     shell's network-first clone-and-cache pipeline.
   var requestURL;
   try {
     requestURL = new URL(request.url);
@@ -260,8 +286,19 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  // ── Pass through ALL cross-origin requests immediately ──
+  // ── Cross-origin tile lookup ──
+  // Cache.match is cheap for normal requests and only returns a response when
+  // the user previously downloaded this exact tile URL. If it is not cached,
+  // the original network request proceeds unchanged.
   if (requestURL.origin !== location.origin) {
+    if (!isOfflineTileRequest(requestURL)) return;
+    event.respondWith(
+      caches.open(OFFLINE_TILE_CACHE_NAME).then(function (cache) {
+        return cache.match(request).then(function (cached) {
+          return cached || fetch(request);
+        });
+      }).catch(function () { return fetch(request); })
+    );
     return;
   }
 
@@ -333,6 +370,16 @@ async function saveDetectionState() {
 // Message handler from the main app
 self.addEventListener('message', async (event) => {
     if (!event.data) return;
+
+    if (event.data.type === 'CACHE_OFFLINE_TILE' && event.data.url) {
+        try {
+            await cacheOfflineTileFromMessage(event.data.url);
+            if (event.ports && event.ports[0]) event.ports[0].postMessage({ ok: true });
+        } catch (error) {
+            if (event.ports && event.ports[0]) event.ports[0].postMessage({ ok: false, error: String(error && error.message || error) });
+        }
+        return;
+    }
 
     if (event.data.type === 'SET_DETECTION') {
         detectionEnabled = !!event.data.enabled;

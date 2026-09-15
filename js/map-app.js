@@ -2446,11 +2446,28 @@
                         }
                     };
 
+                    // Offline areas are stored locally, unlike pins and trails which
+                    // are synced to Supabase. Keep this category available even when
+                    // the user is disconnected or has no account.
+                    var offlineRow = document.createElement('label');
+                    offlineRow.id = 'savedOfflineMapsRow';
+                    offlineRow.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;color:#8fe3ff;';
+                    offlineRow.innerHTML = '<input type="checkbox" id="switchOfflineMaps">' +
+                        '<span>Hărți offline / Offline maps</span>';
+                    offlineRow.querySelector('input').onchange = function () {
+                        if (typeof window.toggleOfflineLibraryVisibility === 'function') {
+                            window.toggleOfflineLibraryVisibility(this.checked);
+                        } else if (savedSwitchesStatus) {
+                            setSavedStatus('Offline maps are preparing…');
+                        }
+                    };
+
                     savedSwitchesStatus = document.createElement('div');
                     savedSwitchesStatus.style.cssText = 'display:none;font-size:0.68rem;line-height:1.25;max-width:180px;';
 
                     savedSwitchesContainer.appendChild(pinsRow);
                     savedSwitchesContainer.appendChild(pathsRow);
+                    savedSwitchesContainer.appendChild(offlineRow);
                     savedSwitchesContainer.appendChild(savedSwitchesStatus);
 
                     var mapEl = document.getElementById('detectlab-map');
@@ -2609,11 +2626,17 @@
                         if (map.hasLayer(savedPathsLayer)) map.removeLayer(savedPathsLayer);
                         setControlState(false);
                         removeSavedSwitches();
+                        if (typeof window.closeOfflineMapsLibrary === 'function') window.closeOfflineMapsLibrary();
                         return;
                     }
 
+                    // The memory-card panel also hosts the local offline-map
+                    // library. It must open without a Supabase session.
                     if (!window.supabaseClient || !window.supabaseClient.auth) {
-                        console.error('Supabase is unavailable; saved locations cannot be loaded.');
+                        savedPanelActive = true;
+                        setControlState(true);
+                        showSavedSwitches();
+                        updateSavedSwitches();
                         return;
                     }
 
