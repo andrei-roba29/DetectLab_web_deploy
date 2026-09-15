@@ -4731,26 +4731,26 @@
                     url: 'https://raw.githubusercontent.com/andrei-roba29/geo_data/d81cd21/Cultural-Data/roads/roman_routes_under25mb.geojson'
                 },
                 // ── POINTS & LABELS ──
-                dare_11: { label: 'Major Settlements', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_17: { label: 'Major Forts', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_13: { label: 'Civitas Capitals', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_12: { label: 'Regular Settlements', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_18: { label: 'Forts/Castrum', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_53: { label: 'Fortlets/Towers', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_16: { label: 'Roads/Coastal Stations', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_61: { label: 'Sanctuaries/Temples', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_66: { label: 'Baths', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_32: { label: 'Tumuli', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_63: { label: 'Cemeteries', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_21: { label: 'Monasteries', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_24: { label: 'Churches', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_14: { label: 'Villas', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_57: { label: 'Mines/Quarries', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_49: { label: 'Passes', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_51: { label: 'Bridges', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_55: { label: 'Roads/Milestones', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_52: { label: 'Aqueducts', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_64: { label: 'Monuments', color: '#800020', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_11: { label: 'Major Settlements', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_17: { label: 'Major Forts', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_13: { label: 'Civitas Capitals', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_12: { label: 'Regular Settlements', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_18: { label: 'Forts/Castrum', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_53: { label: 'Fortlets/Towers', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_16: { label: 'Roads/Coastal Stations', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_61: { label: 'Sanctuaries/Temples', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_66: { label: 'Baths', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_32: { label: 'Tumuli', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_63: { label: 'Cemeteries', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_21: { label: 'Monasteries', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_24: { label: 'Churches', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_14: { label: 'Villas', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_57: { label: 'Mines/Quarries', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_49: { label: 'Passes', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_51: { label: 'Bridges', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_55: { label: 'Roads/Milestones', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_52: { label: 'Aqueducts', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_64: { label: 'Monuments', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
                 walls: {
                     label: 'Walls', color: '#888888', weight: 2.0, enabled: false,
                     type: 'geojson',
@@ -4901,36 +4901,49 @@
             var _dareLoading = false;
             var _dareFeaturesRaw = {}; // id -> feature
 
-            function getDareIcon(type) {
-                var svg = '';
-                switch(String(type)) {
-                    case '11': svg = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="none" stroke="#E8772A" stroke-width="1.5"/></svg>'; break;
-                    case '17': svg = '<svg viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" fill="#000000" stroke="#E8772A" stroke-width="1"/></svg>'; break;
-                    case '13': svg = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" fill="none" stroke="#E8772A" stroke-width="1"/></svg>'; break;
-                    case '12': svg = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="3" fill="none" stroke="#E8772A" stroke-width="1"/></svg>'; break;
-                    case '18': svg = '<svg viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6" fill="#000000" stroke="#E8772A" stroke-width="0.5"/></svg>'; break;
-                    case '53': svg = '<svg viewBox="0 0 10 10"><rect x="3" y="3" width="4" height="4" fill="#000000" stroke="#E8772A" stroke-width="0.5"/></svg>'; break;
-                    case '16': svg = '<svg viewBox="0 0 10 10"><polygon points="5,1 9,5 5,9 1,5" fill="#E8772A"/></svg>'; break;
-                    case '61': svg = '<svg viewBox="0 0 10 10"><polygon points="5,0 6.5,3.5 10,3.5 7,5.5 8,9 5,7 2,9 3,5.5 0,3.5 3.5,3.5" fill="#E8772A"/></svg>'; break;
-                    case '66': svg = '<svg viewBox="0 0 10 10"><polygon points="5,1 9,8 1,8" fill="#E8772A"/></svg>'; break;
-                    case '32': svg = '<svg viewBox="0 0 10 10"><circle cx="5" cy="3" r="1.5" fill="#E8772A"/><circle cx="3" cy="7" r="1.5" fill="#E8772A"/><circle cx="7" cy="7" r="1.5" fill="#E8772A"/></svg>'; break;
-                    case '63': svg = '<svg viewBox="0 0 10 10"><line x1="5" y1="1" x2="5" y2="9" stroke="#E8772A" stroke-width="1.5"/><line x1="3" y1="4" x2="7" y2="4" stroke="#E8772A" stroke-width="1.5"/></svg>'; break;
-                    case '21': svg = '<svg viewBox="0 0 10 10"><line x1="5" y1="1" x2="5" y2="9" stroke="#E8772A" stroke-width="2"/><line x1="2" y1="5" x2="8" y2="5" stroke="#E8772A" stroke-width="2"/><circle cx="5" cy="5" r="1" fill="#FFFFFF"/></svg>'; break;
-                    case '24': svg = '<svg viewBox="0 0 10 10"><line x1="5" y1="2" x2="5" y2="8" stroke="#E8772A" stroke-width="1"/><line x1="3" y1="4" x2="7" y2="4" stroke="#E8772A" stroke-width="1"/></svg>'; break;
-                    case '14': svg = '<svg viewBox="0 0 10 10"><path d="M 2,7 A 3,3 0 0,1 8,7 Z" fill="#E8772A"/></svg>'; break;
-                    case '57': svg = '<svg viewBox="0 0 10 10"><path d="M 2,8 L 8,2 M 6,2 Q 8,0 10,2 L 8,4 Z" stroke="#E8772A" stroke-width="1" fill="none"/></svg>'; break;
-                    case '49': svg = '<svg viewBox="0 0 10 10"><line x1="3" y1="2" x2="3" y2="8" stroke="#E8772A" stroke-width="1.5"/><line x1="7" y1="2" x2="7" y2="8" stroke="#E8772A" stroke-width="1.5"/></svg>'; break;
-                    case '51': svg = '<svg viewBox="0 0 10 10"><path d="M 1,9 L 1,5 A 4,4 0 0,1 9,5 L 9,9" fill="none" stroke="#E8772A" stroke-width="1.5"/></svg>'; break;
-                    case '55': svg = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="2" fill="#E8772A"/></svg>'; break;
-                    case '52': svg = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="2" fill="#E8772A"/></svg>'; break;
-                    case '64': svg = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="2" fill="#E8772A"/></svg>'; break;
-                    default: svg = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="2" fill="#E8772A"/></svg>';
+            // ── DARE markers — suggestive icon per type ─────────────────────
+            // Vechele sigle erau glife abstracte de 12×12px (în mare parte
+            // cercuri/puncte mici) — greu de văzut pe hartă, iar mai multe tipuri
+            // (Borne, Apeducte, Monumente) erau literalmente același punct.
+            // Acum fiecare tip are un simbol recunoscut (templu, castrum, pod,
+            // picior de mină, …), desenat pe un badge rotund de 26px, în aceeași
+            // culoare ca drumurile romane (#CC2222), pe fundal întunecat pentru a
+            // ieși în evidență pe orice bază de hartă.
+            var _DARE_COLOR = '#CC2222'; // = culoarea stratului Roads (drum roman)
+            function _dareGlyph(type) {
+                switch (String(type)) {
+                    case '11': return '<path d="M3 20v-5l3.5-2.5L10 15v5"/><path d="M14 20v-5l3.5-2.5L21 15v5"/><path d="M8.5 20v-6.5L12 10.5l3.5 3V20"/><line x1="2" y1="20" x2="22" y2="20"/>';
+                    case '17': return '<rect x="7" y="7" width="10" height="10"/><circle cx="7" cy="7" r="2.3" fill="#CC2222" stroke="none"/><circle cx="17" cy="7" r="2.3" fill="#CC2222" stroke="none"/><circle cx="7" cy="17" r="2.3" fill="#CC2222" stroke="none"/><circle cx="17" cy="17" r="2.3" fill="#CC2222" stroke="none"/>';
+                    case '13': return '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="1.5" fill="#CC2222" stroke="none"/>';
+                    case '12': return '<path d="M3 20v-6l3-2.5 3 2.5V20"/><path d="M11 20v-6l3-2.5 3 2.5V20"/><line x1="2" y1="20" x2="22" y2="20"/>';
+                    case '18': return '<rect x="8.5" y="8.5" width="7" height="7"/><circle cx="8.5" cy="8.5" r="1.9" fill="#CC2222" stroke="none"/><circle cx="15.5" cy="8.5" r="1.9" fill="#CC2222" stroke="none"/><circle cx="8.5" cy="15.5" r="1.9" fill="#CC2222" stroke="none"/><circle cx="15.5" cy="15.5" r="1.9" fill="#CC2222" stroke="none"/>';
+                    case '53': return '<path d="M8.5 20V8h1.4V6.5h1.4V8h1.4V6.5h1.4V8h1.4V20"/><rect x="11.2" y="14.5" width="1.6" height="5.5" fill="#CC2222" stroke="none"/><line x1="6" y1="20" x2="18" y2="20"/>';
+                    case '16': return '<line x1="3" y1="16.5" x2="21" y2="7.5" stroke-dasharray="2.6 2.2"/><rect x="9.6" y="9.6" width="4.8" height="4.8" transform="rotate(45 12 12)"/>';
+                    case '61': return '<path d="M12 3.5L20.5 9H3.5Z"/><line x1="4" y1="11.5" x2="20" y2="11.5"/><path d="M6.8 11.5v6M9.9 11.5v6M14.1 11.5v6M17.2 11.5v6"/><line x1="4" y1="19.5" x2="20" y2="19.5"/>';
+                    case '66': return '<path d="M4.5 12.5h15v2a4.5 4.5 0 0 1-4.5 4.5H9a4.5 4.5 0 0 1-4.5-4.5Z"/><path d="M7 15c1.3 1 2.7 1 4 0s2.7-1 4 0"/><path d="M10 9.5c.9-.7.9-1.4 0-2.2M14 9.5c.9-.7.9-1.4 0-2.2"/><path d="M7.5 19.5l-1 2M16.5 19.5l1 2"/>';
+                    case '32': return '<path d="M2.5 19.5a3.5 3.5 0 0 1 7 0"/><path d="M8.5 19.5a4.5 4.5 0 0 1 9 0"/><path d="M15.5 19.5a3.5 3.5 0 0 1 7 0"/><line x1="2" y1="19.5" x2="22" y2="19.5"/>';
+                    case '63': return '<path d="M6.5 19.5v-9a2.5 2.5 0 0 1 5 0v9"/><path d="M13 19.5v-7a2.5 2.5 0 0 1 5 0v7"/><line x1="3" y1="19.5" x2="21" y2="19.5"/>';
+                    case '21': return '<rect x="6.5" y="12" width="11" height="8"/><line x1="12" y1="3.5" x2="12" y2="12"/><line x1="9.6" y1="5.5" x2="14.4" y2="5.5"/>';
+                    case '24': return '<line x1="12" y1="4" x2="12" y2="20" stroke-width="2.4"/><line x1="7.5" y1="9.5" x2="16.5" y2="9.5" stroke-width="2.4"/>';
+                    case '14': return '<path d="M4.5 20v-8.5L12 5l7.5 6.5V20"/><line x1="4.5" y1="11.5" x2="19.5" y2="11.5"/><circle cx="12" cy="15.5" r="2"/>';
+                    case '57': return '<path d="M9.5 5c4-1.7 8.5-.6 11 2.4"/><line x1="15" y1="4.8" x2="5.5" y2="19.5"/>';
+                    case '49': return '<path d="M2 19.5L8.5 9l3.5 6.5L15.5 9l6.5 10.5Z"/>';
+                    case '51': return '<line x1="2.5" y1="9.5" x2="21.5" y2="9.5"/><path d="M4.5 17.5v-8a7.5 7.5 0 0 1 15 0v8"/><line x1="2.5" y1="17.5" x2="21.5" y2="17.5"/>';
+                    case '55': return '<path d="M12 4.5L15.5 17h-7Z"/><line x1="7.5" y1="19.5" x2="16.5" y2="19.5"/>';
+                    case '52': return '<line x1="3" y1="8" x2="21" y2="8"/><path d="M3.5 18.5V12.5a2.83 2.83 0 0 1 5.67 0v6M9.17 18.5V12.5a2.83 2.83 0 0 1 5.67 0v6M14.83 18.5V12.5a2.83 2.83 0 0 1 5.67 0v6"/><line x1="2.5" y1="18.5" x2="21.5" y2="18.5"/>';
+                    case '64': return '<line x1="7.5" y1="5" x2="16.5" y2="5"/><line x1="8.5" y1="7" x2="15.5" y2="7"/><path d="M9.5 7v10M12 7v10M14.5 7v10"/><line x1="8.5" y1="17" x2="15.5" y2="17"/><line x1="7" y1="19.5" x2="17" y2="19.5"/>';
+                    default: return '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="#CC2222" stroke="none"/>';
                 }
+            }
+            function getDareIcon(type) {
+                var C = _DARE_COLOR;
                 return L.divIcon({
-                    html: '<div style="width:12px;height:12px;">' + svg + '</div>',
+                    html: '<div style="width:26px;height:26px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid ' + C + ';box-shadow:0 1px 5px rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;">' +
+                        '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="' + C + '" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + _dareGlyph(type) + '</svg>' +
+                        '</div>',
                     className: 'dare-icon-marker',
-                    iconSize: [12, 12],
-                    iconAnchor: [6, 6]
+                    iconSize: [26, 26],
+                    iconAnchor: [13, 13]
                 });
             }
 
