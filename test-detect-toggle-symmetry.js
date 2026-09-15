@@ -49,7 +49,7 @@ function extractFn(marker) {
     }
     throw new Error('unbalanced braces for ' + marker);
 }
-const toggleSrc = extractFn('window.toggleDetection = function (on) {');
+const toggleSrc = extractFn('window.toggleDetection = function (on, userInitiated) {');
 
 // ── Minimal DOM ──────────────────────────────────────────────────────────────
 function makeEl(id, props) {
@@ -89,6 +89,7 @@ function buildHarness(opts) {
         liveOn: !!opts.liveOn,
         liveStarts: 0,
         liveStops: 0,
+        promptShown: 0,
         heritageCalls: []
     };
 
@@ -153,6 +154,7 @@ function buildHarness(opts) {
         _det: { active: false, watchId: null, wasInside: false, alertUp: false, restore: null },
         _detLat: 46.77,
         _detLng: 23.59,
+        _visibleToOthers: opts.visibleToOthers !== false,   // "Da"/"Nu" prompt answer
         _detCheck: () => {},
         _detOnPosition: () => {},
         _circlesVisible: !!opts.heritageOn,
@@ -168,6 +170,9 @@ function buildHarness(opts) {
     ctx.window._isLiveLocationActive = () => state.liveOn;
     ctx.window._startLiveLocation = () => { state.liveOn = true; state.liveStarts++; };
     ctx.window._stopLiveLocation = () => { state.liveOn = false; state.liveStops++; };
+    // Spy for the "visible to other users?" Da/Nu dialog (real implementation
+    // lives next to the nearby-detectorists code in map-app.js).
+    ctx.window._promptVisibleToOthers = () => { state.promptShown++; };
 
     vm.createContext(ctx);
     vm.runInContext(toggleSrc, ctx);
@@ -278,6 +283,44 @@ function buildHarness(opts) {
         h.ctx._det.active === false && h.els.detectSwitch.checked === false);
     check('F2. the aborted ON did not enable the heritage layer',
         h.checkbox.checked === false && h.state.heritageCalls.length === 0);
+}
+
+// ── Scenario G: the "visible to other users?" Da/Nu prompt ───────────────────
+// The prompt must appear ONLY on a genuine user action (second argument true)
+// that turns detection ON — never on programmatic restore/auto-enable, never
+// when turning OFF, never when geolocation rolls the switch back.
+{
+    const h = buildHarness({ heritageOn: false, liveOn: false });
+
+    h.ctx.window.toggleDetection(true);          // programmatic (restore / nearby flow)
+    check('G1. programmatic ON does not show the visibility prompt', h.state.promptShown === 0);
+
+    h.ctx.window.toggleDetection(false, true);   // user OFF
+    check('G2. user OFF does not show the visibility prompt', h.state.promptShown === 0);
+
+    h.ctx.window.toggleDetection(true, true);    // genuine user action
+    check('G3. user-initiated ON shows the visibility prompt exactly once', h.state.promptShown === 1);
+
+    const noGeo = buildHarness({ noGeo: true });
+    noGeo.ctx.window.toggleDetection(true, true);
+    check('G4. the prompt is skipped when geolocation rolls the switch back', noGeo.state.promptShown === 0);
+}
+
+// ── Scenario H: the Da/Nu answer gates the presence publish ──────────────────
+// Presence is published visible=true ONLY when the user answered "Da"
+// (_visibleToOthers).  "Nu" / never-answered users are written visible=false
+// even though detection + live location are both ON.
+{
+    const yes = buildHarness({ heritageOn: false, liveOn: true, visibleToOthers: true });
+    yes.ctx.window.toggleDetection(true, true);
+    check('H1. after "Da" the immediate presence publish is visible=true', yes.state.lastPresence === true);
+
+    const no = buildHarness({ heritageOn: false, liveOn: true, visibleToOthers: false });
+    no.ctx.window.toggleDetection(true, true);
+    check('H2. after "Nu" the immediate presence publish stays visible=false', no.state.lastPresence === false);
+
+    no.ctx.window.toggleDetection(false);
+    check('H3. OFF still hides the user regardless of the answer', no.state.lastPresence === false);
 }
 
 console.log('\n' + passed + ' checks passed.');

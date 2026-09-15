@@ -119,7 +119,10 @@ console.log('[5] Translations + PWA wiring');
         /layer_sat_period_label:\s*'Istoric'/.test(translations) &&
         /layer_sat_period_present:\s*'Prezent'/.test(translations));
     check('index.html loads the sat-historic builds',
-        indexHtml.includes('js/map-app.js?v=20260915-sat-historic') &&
+        // map-app.js keeps getting re-versioned by every later release
+        // (the visibility prompt bumped it to ?v=20260915-visibility-prompt),
+        // so require the cache-buster pattern instead of one frozen string.
+        /js\/map-app\.js\?v=\d{8}-/.test(indexHtml) &&
         indexHtml.includes('js/vertical-opacity-control.js?v=20260915-sat-historic') &&
         // translations.js keeps getting re-versioned by every later release
         // (social bumped it to ?v=20260915-social), so require the cache-buster

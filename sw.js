@@ -20,7 +20,11 @@
 // county filter), friend requests, private and group chat with an admin,
 // events created straight from a chat and the "Adaugă prieteni / Add friends"
 // box of the create-event form, all bounded by the quotas in public.app_limits.
-const CACHE_NAME = 'detectlab-v86-social';
+// v87: Visibility prompt — turning ON the Detect switch or the live-location
+// button now asks "Vrei să fii vizibil și pentru alți utilizatori?" (Da/Nu);
+// the answer gates every presence publish so users are only shown to other
+// detectorists after an explicit "Da".
+const CACHE_NAME = 'detectlab-v87-visibility-prompt';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -212,6 +216,8 @@ const PRECACHE_URLS = [
   // imagery; the vertical opacity mirror is joined on the map by a vertical
   // period mirror, both visible at the same time.
   'js/map-app.js?v=20260915-sat-historic',
+  // Da/Nu visibility prompt when enabling Detect / live location.
+  'js/map-app.js?v=20260915-visibility-prompt',
   'js/vertical-opacity-control.js?v=20260915-sat-historic',
   'js/translations.js?v=20260915-sat-historic',
   'css/styles.css?v=20260915-sat-historic',

@@ -88,7 +88,7 @@ check(
 // so its canvas must not block clicks in the first place. Restoring state on the
 // way out is not a substitute for that.
 const toggleDetectionBody = mapApp.slice(
-    mapApp.indexOf('window.toggleDetection = function (on) {'),
+    mapApp.indexOf('window.toggleDetection = function (on, userInitiated) {'),
     mapApp.indexOf('window.dismissSiteAlert')
 );
 assert(toggleDetectionBody.length > 0, 'could not locate toggleDetection in js/map-app.js');
