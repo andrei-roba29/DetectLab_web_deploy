@@ -129,9 +129,12 @@ Notes:
   the popup only carries the account id (`data-user-id`) and the display name,
   and `map.on('popupopen')` → `DetectLabFriends.decorateDetectorPopup(popup)`
   re-renders the slot on every open (and again once the fresh lists arrive, so a
-  request accepted a second ago never shows a stale button). No button is
-  rendered for yourself, for a hidden account or when the DB migration is
-  missing — the map always keeps working.
+  request accepted a second ago never shows a stale button). Nothing is rendered
+  for yourself, for a pin without an account id, when nobody is signed in or
+  when the social module is not loaded — the map always keeps working. An
+  account that opted out of search (`discoverable = false`) still shows the
+  button, but the database refuses with `USER_NOT_DISCOVERABLE` and the popup
+  prints the reason.
 * One delegated, capture-phase `click` listener on `document`
   (`[data-social-action]`) handles every button, so Leaflet rebuilding the popup
   DOM cannot lose it or answer a tap twice; quota refusals arrive as the usual
