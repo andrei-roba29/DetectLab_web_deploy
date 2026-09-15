@@ -4055,16 +4055,27 @@
                 }
 
                 function resizeMap() {
-                    // map-app.js exposes the Leaflet instance as _dlMap. Keep
-                    // window.map as a fallback for deployments using an older
-                    // map bundle.
                     var leafletMap = window._dlMap || window.map;
-                    if (leafletMap && typeof leafletMap.invalidateSize === 'function') {
-                        leafletMap.invalidateSize({ debounceMoveend: true });
-                    }
+                    if (!leafletMap || typeof leafletMap.invalidateSize !== 'function') return;
+                    // Do not invalidate size while a CSS zoom animation or a
+                    // pinch gesture is in flight.  _getNewPixelOrigin() uses
+                    // getSize() and _getMapPanePos(), so changing size mid-anim
+                    // makes the custom Patrimoniu canvas transform diverge from
+                    // the tile container transform, which shows up as pins/radii
+                    // sliding in PWA standalone where visualViewport resize fires
+                    // during pinch.
+                    if (leafletMap._animatingZoom) return;
+                    if (leafletMap.touchZoom && leafletMap.touchZoom._zooming) return;
+                    leafletMap.invalidateSize({ debounceMoveend: true });
                 }
 
                 function updatePwaMapLayout() {
+                    var leafletMap = window._dlMap || window.map;
+                    // Skip viewport sync while zoom is animating or pinching.
+                    if (leafletMap && (leafletMap._animatingZoom || (leafletMap.touchZoom && leafletMap.touchZoom._zooming))) {
+                        setTimeout(updatePwaMapLayout, 300);
+                        return;
+                    }
                     setVH();
                     var bottomBar = document.getElementById('pwaBottomBar');
                     if (bottomBar) {

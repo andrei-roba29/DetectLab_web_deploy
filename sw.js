@@ -7,7 +7,10 @@
 // v81: premium historical-maps accordion releases its max-height after the
 // expand animation so the last card (Galiția & Lodomeria 1855) can no longer
 // be clipped in the standalone mobile PWA.
-const CACHE_NAME = 'detectlab-v81-premium-hist-pwa-fix';
+// v82: fix PWA Patrimoniu zoom glitch — stop redrawing custom canvases
+// during pinch/zoom animation, round transform to match tile container,
+// and guard visualViewport resize while zooming.
+const CACHE_NAME = 'detectlab-v82-patrimoniu-pwa-zoom-fix';
 
 // ── Detection settings ──
 let detectionEnabled = false;
@@ -59,6 +62,8 @@ const PRECACHE_URLS = [
   'js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster',
   'js/map-app.js?v=20260914-patrimoniu-zoom-anchor',
   'js/map-app.js?v=20260914-premium-hist-pwa-fix',
+  'js/map-app.js?v=20260915-patrimoniu-pwa-zoom-fix',
+  'css/styles.css?v=20260915-patrimoniu-pwa-zoom-fix',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
   'js/archeo-potential.js',

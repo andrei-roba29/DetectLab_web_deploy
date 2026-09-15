@@ -1236,7 +1236,17 @@
                 rotate: true,
                 touchRotate: true,
                 keyRotate: true,
-                bearing: 0
+                bearing: 0,
+                // Force zoom animation even on Android (Leaflet disables it by default
+                // on Android).  The custom Patrimoniu canvases rely on the zoomanim
+                // transform to stay glued to tiles during zoom — without animation
+                // tiles jump while the canvas is scaled, or vice-versa, which shows
+                // up as the PWA-only slide/glitch.  Threshold 10 keeps animation
+                // even for large jumps.
+                zoomAnimation: true,
+                markerZoomAnimation: true,
+                fadeAnimation: true,
+                zoomAnimationThreshold: 10
             }).fitBounds(APM_BOUNDS);
 
             // Keep the map snapped to the valid APM canvas while letting the
@@ -3444,16 +3454,18 @@
             function _updateCanvasTransform(center, zoom) {
                 if (_canvasAnchor == null || _canvasZoom == null || !_displayCanvas) return;
                 var scale = map.getZoomScale(zoom, _canvasZoom);
+                // Mirror GridLayer's rounding: tile containers round their
+                // translate so that canvas and tiles share the exact same
+                // integer offset during the CSS transition.  Without rounding
+                // the canvas can sit on a fractional pixel while tiles are
+                // snapped to whole pixels, producing the PWA-only slide.
                 var topLeftOffset = L.point(_canvasAnchor).multiplyBy(scale)
-                    .subtract(map._getNewPixelOrigin(center, zoom));
+                    .subtract(map._getNewPixelOrigin(center, zoom))._round();
                 if (L.DomUtil.setTransform) {
                     L.DomUtil.setTransform(_displayCanvas, topLeftOffset, scale);
                     L.DomUtil.setTransform(_sitesCanvas, topLeftOffset, scale);
                     _canvasState.transform = _displayCanvas.style.transform;
                 } else {
-                    // Leaflet 1.9 always has setTransform; this fallback keeps
-                    // older builds usable without inventing another coordinate
-                    // conversion.  The settled redraw below restores position.
                     L.DomUtil.setPosition(_displayCanvas, topLeftOffset);
                     L.DomUtil.setPosition(_sitesCanvas, topLeftOffset);
                     _canvasState.transform = _displayCanvas.style.transform;
@@ -3565,13 +3577,13 @@
                 ctx.restore();
             }
 
-            function _redrawAll() {''
-                // During CSS zoom animation the map's zoom/pixelOrigin already
-                // sit at the *target* level while tiles are still mid-scale.
-                // Redrawing now would jump every circle to its final pixel
-                // position and make them look like they are sliding. Let
-                // zoomanim scale the last frame instead.
+            function _redrawAll() {
+                // During CSS zoom animation or pinch the map's pixelOrigin
+                // already sits at the target/intermediate zoom while tiles
+                // are mid-scale. Redrawing now would jump circles/pins to
+                // final pixels and make them slide — the PWA glitch.
                 if (map._animatingZoom) return;
+                if (map.touchZoom && map.touchZoom._zooming) return;
 
                 // Re-cluster only for the settled viewport.  During a zoom
                 // animation both custom canvases are transformed together with
@@ -3727,12 +3739,21 @@
                 return meters / mPerPx;
             }
 
-            // Redraw on every map move/zoom — mirrors L.Canvas renderer approach exactly.
-            // zoomanim keeps the last frame locked onto the map while it scales.
+            // Keep custom canvases locked to tiles during every kind of zoom.
+            // - zoomanim: button / double-tap / wheel animated zoom
+            // - zoom with pinch:true: touch pinch gesture (PWA standalone)
+            // _scheduleRedraw is deliberately NOT called during pinch or
+            // _animatingZoom; it runs only on settled view (moveend/zoomend).
             map.on('zoomanim', function (e) {
                 if (e && e.center != null && e.zoom != null) _updateCanvasTransform(e.center, e.zoom);
             });
-            map.on('move zoom viewreset resize', _scheduleRedraw);
+            map.on('zoom', function (e) {
+                if (e && e.pinch) {
+                    _updateCanvasTransform(map.getCenter(), map.getZoom());
+                }
+            });
+            map.on('move viewreset resize', _scheduleRedraw);
+            map.on('moveend zoomend', _scheduleRedraw);
 
             function unproject3857(x, y) {
                 return L.CRS.EPSG3857.unproject(L.point(x, y));
@@ -3878,9 +3899,22 @@
 
             var _redrawTimer = null;
             function _scheduleRedraw() {
+                // During any zoom animation (button zoom, double-tap, or
+                // pinch) the map's _pixelOrigin already sits at the target
+                // zoom while tiles are mid-scale.  Redrawing now would jump
+                // circles/pins to their final pixels and make them slide
+                // relative to tiles — exactly the PWA glitch.  Let
+                // _updateCanvasTransform() scale the last frame instead.
+                // This also prevents the expensive redraw from running on
+                // every pinch move in PWA standalone, where touchZoom drives
+                // zoom via continuous 'zoom' events with pinch:true.
+                if (map && (map._animatingZoom || (map.touchZoom && map.touchZoom._zooming))) return;
                 if (_redrawTimer) return;
                 _redrawTimer = requestAnimationFrame(function () {
                     _redrawTimer = null;
+                    // Re-check animating flag inside the frame: a zoom may
+                    // have started between scheduling and execution.
+                    if (map && (map._animatingZoom || (map.touchZoom && map.touchZoom._zooming))) return;
                     _redrawAll();
                 });
             }
