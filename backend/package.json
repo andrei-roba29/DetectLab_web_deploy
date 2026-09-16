@@ -12,7 +12,10 @@
     "import:siruta": "node scripts/importSiruta.js",
     "export:siruta-dict": "node scripts/exportSirutaDictionary.js",
     "ingest:once": "node scripts/runEvidenceWorkerOnce.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "newsletter:dry-run": "node scripts/sendFirstNewsletter.js --dry-run",
+    "newsletter:send": "node scripts/sendFirstNewsletter.js",
+    "newsletter:send:force": "node scripts/sendFirstNewsletter.js --force"
   },
   "dependencies": {
     "compression": "^1.7.5",
@@ -25,7 +28,8 @@
     "pg": "^8.12.0",
     "pg-copy-streams": "^6.0.6",
     "pino": "^9.3.2",
-    "pino-http": "^10.2.0"
+    "pino-http": "^10.2.0",
+    "nodemailer": "^6.9.13"
   },
   "devDependencies": {
     "pino-pretty": "^11.2.2"

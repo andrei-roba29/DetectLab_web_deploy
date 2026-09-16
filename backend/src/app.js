@@ -12,6 +12,7 @@ import clasateRouter from './routes/clasate.js';
 import paymentsRouter from './routes/payments.js';
 import promoRouter from './routes/promo.js';
 import evidenceRouter from './routes/evidence.js';
+import newsletterRouter from './routes/newsletter.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { startEvidenceWorker } from './services/evidence/ingestionWorker.js';
 
@@ -35,6 +36,7 @@ app.use('/api', clasateRouter);
 app.use('/api', paymentsRouter);
 app.use('/api', promoRouter);
 app.use('/api', evidenceRouter);
+app.use('/api', newsletterRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

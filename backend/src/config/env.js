@@ -65,4 +65,20 @@ export const env = {
     // request's Origin header (handy for local testing).
     siteUrl: process.env.STRIPE_SITE_URL || '',
   },
+
+  // ── Newsletter (SMTP / Resend) ────────────────────────────────────────
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: process.env.SMTP_PORT || '587',
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.SMTP_FROM || process.env.NEWSLETTER_FROM || '',
+  },
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  newsletter: {
+    fromEmail: process.env.NEWSLETTER_FROM || process.env.SMTP_FROM || 'DetectLab <noreply@detectlab.ro>',
+    siteUrl: process.env.NEWSLETTER_SITE_URL || process.env.STRIPE_SITE_URL || '',
+    adminKey: process.env.NEWSLETTER_ADMIN_KEY || '',
+  },
 };

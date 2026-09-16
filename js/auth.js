@@ -49,6 +49,50 @@
                 return false;
             }
 
+/* ── Newsletter: persist the registration checkbox to DB ────────
+   The checkbox value is stored in user_metadata at sign-up, but the
+   source of truth is public.profiles.newsletter_subscribed (migration 013).
+   We sync in both directions:
+     · DB trigger sync_newsletter_from_user_metadata handles brand-new
+       sign-ups server-side.
+     · This client helper covers: (a) deployments before the trigger exists,
+       (b) the brief window where the trigger hasn't fired yet, (c) users
+       who confirmed e-mail on a different device.
+   It never unsubscribes someone — only opt-in (true) is pushed.
+*/
+async function _syncNewsletterFromSession(session) {
+    try {
+        if (!session || !session.user) return;
+        var want = !!(session.user.user_metadata && session.user.user_metadata.newsletter_opt_in);
+        if (!want) return;
+        var token = session.access_token;
+        if (!token && window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.auth.getSession) {
+            try { var r2 = await window.supabaseClient.auth.getSession(); token = r2 && r2.data && r2.data.session ? r2.data.session.access_token : null; } catch(e) {}
+        }
+        var apiBase = (typeof window._dlApiBase !== 'undefined' && window._dlApiBase) ? window._dlApiBase : 'https://detectlab-backend-production.up.railway.app/api';
+        if (token) {
+            try {
+                var r = await fetch(apiBase + '/newsletter/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+                });
+                if (r.ok) { if (typeof window.loadNewsletterStatus === 'function') window.loadNewsletterStatus(); return; }
+            } catch (e) {}
+        }
+        if (window.supabaseClient && window.supabaseClient.from) {
+            try {
+                await window.supabaseClient.from('profiles').upsert({
+                    id: session.user.id,
+                    newsletter_subscribed: true,
+                    newsletter_subscribed_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+                if (typeof window.loadNewsletterStatus === 'function') window.loadNewsletterStatus();
+            } catch (e) { console.warn('[Newsletter] fallback upsert failed:', e && e.message); }
+        }
+    } catch (e) { console.warn('[Newsletter] sync failed:', e && e.message); }
+}
+
 /* Sync the in-memory user (and the header / map-gate UI) with a
    Supabase session object — or clear it when signed out. */
 function _syncFromSession(session) {
@@ -63,6 +107,10 @@ function _syncFromSession(session) {
         // Supabase `profiles` table — defined in js/subscriptions.js.
         if (typeof window.loadUserPremiumProfile === 'function') {
             window.loadUserPremiumProfile(session.user.id);
+        }
+        _syncNewsletterFromSession(session);
+        if (typeof window.loadNewsletterStatus === 'function') {
+            window.loadNewsletterStatus();
         }
     } else {
         _clear();
@@ -474,18 +522,49 @@ window.doRegister = async function () {
                 throw new Error('Supabase not ready');
             }
 
+            var newsletterWanted = !!(newsletterOptIn && newsletterOptIn.checked);
             const { data, error } = await window.supabaseClient.auth.signUp({
                 email: email,
                 password: pass,
                 options: {
                     data: {
                         full_name: name,
-                        newsletter_opt_in: !!(newsletterOptIn && newsletterOptIn.checked)
+                        newsletter_opt_in: newsletterWanted
                     }
                 }
             });
 
             if (error) throw error;
+
+            // If Supabase returned an immediate session (email confirmation disabled),
+            // persist the newsletter preference straight to the DB (profiles.newsletter_subscribed).
+            // Otherwise the DB trigger sync_newsletter_from_user_metadata will do it
+            // once the user confirms their e-mail. We still try a best-effort direct
+            // upsert as fallback for deployments where the trigger hasn't been applied yet.
+            if (newsletterWanted && data) {
+                var newSession = data.session || null;
+                var newUser = data.user || null;
+                if (newSession && newSession.access_token) {
+                    try {
+                        var apiBase2 = (typeof window._dlApiBase !== 'undefined' && window._dlApiBase) ? window._dlApiBase : 'https://detectlab-backend-production.up.railway.app/api';
+                        await fetch(apiBase2 + '/newsletter/subscribe', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + newSession.access_token }
+                        });
+                    } catch (e) { console.warn('[Newsletter] post-signup sync (session) failed:', e && e.message); }
+                } else if (newUser && newUser.id && window.supabaseClient && window.supabaseClient.from) {
+                    // No session yet (confirmation e-mail pending) — try direct upsert as fallback.
+                    // The trigger is the canonical path; this is only for dev/demo before migration.
+                    try {
+                        await window.supabaseClient.from('profiles').upsert({
+                            id: newUser.id,
+                            newsletter_subscribed: true,
+                            newsletter_subscribed_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        }, { onConflict: 'id' });
+                    } catch (e) {}
+                }
+            }
 
             // Clear inputs manually (div doesn't have .reset() method)
             allInputs.forEach(function(inp) {
@@ -493,10 +572,10 @@ window.doRegister = async function () {
                 else inp.value = '';
             });
 
-            _showMsg(
-                'Account created! Check your email for confirmation.',
-                'success'
-            );
+            var successMsg = newsletterWanted
+                ? 'Account created! Check your email for confirmation. You are subscribed to the newsletter — you can manage it in your account.'
+                : 'Account created! Check your email for confirmation.';
+            _showMsg(successMsg, 'success');
 
             setTimeout(closeAuth, 1200);
             console.log("Register successful");

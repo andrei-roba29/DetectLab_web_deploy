@@ -2936,6 +2936,29 @@
                         </button>
                     </div>
 
+                    <div class="account-section-label" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                        <span>Newsletter</span><span id="acctNewsletterStatus" class="account-newsletter-badge unsubscribed">NEABONAT</span>
+                    </div>
+                    <div id="acctNewsletterWrap" class="account-newsletter-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #e6e8eb;border-radius:10px;background:#f8f9fb;">
+                        <div style="flex:1;min-width:0;">
+                            <div id="acctNewsletterLabel" style="font-weight:700;font-size:13px;color:#1a1a1a;">Abonează-te la newsletter</div>
+                            <div id="acctNewsletterDesc" style="font-size:12px;color:#6b7280;line-height:1.4;margin-top:2px;">Bifează pentru a primi reduceri și informații utile pe e-mail.</div>
+                            <div id="acctNewsletterMsg" class="account-msg" style="margin-top:6px;min-height:14px;"></div>
+                        </div>
+                        <label class="newsletter-switch" style="position:relative;display:inline-block;width:44px;height:26px;flex-shrink:0;">
+                            <input type="checkbox" id="acctNewsletterToggle" style="opacity:0;width:0;height:0;">
+                            <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#cbd5e1;border-radius:999px;transition:.2s;"></span>
+                            <span class="newsletter-switch-knob" style="position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.2);transition:.2s;"></span>
+                        </label>
+                    </div>
+                    <style>
+                        #acctNewsletterToggle:checked + span { background:#6B3FA0 !important; }
+                        #acctNewsletterToggle:checked + span + .newsletter-switch-knob { transform: translateX(18px); }
+                        .account-newsletter-badge { font-size:10px; font-weight:800; letter-spacing:.06em; padding:3px 7px; border-radius:999px; border:1px solid #e6e8eb; }
+                        .account-newsletter-badge.subscribed { background:#e8f5e9; color:#1b7a2b; border-color:#b7e1bd; }
+                        .account-newsletter-badge.unsubscribed { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+                    </style>
+
                     <div class="account-section-label">Change Password</div>
                     <div class="account-pw-form">
                         <input type="password" id="acctPwCurrent" placeholder="Current password" autocomplete="current-password">
@@ -4003,6 +4026,7 @@
     </div>
 
     <script src="js/auth.js?v=20260812-vertical-opacity"></script>
+    <script src="js/newsletter.js?v=20260916-newsletter"></script>
 
 
     <div id="siteAlert">
