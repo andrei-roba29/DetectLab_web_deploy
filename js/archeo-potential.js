@@ -10,7 +10,7 @@
  * undiscovered sites, based purely on the spatial distribution of the already
  * known archaeological sites inside a working area.
  *
- * WORKFLOW (triggered by the "Candidate Areas / Zone candidati" button)
+ * WORKFLOW (triggered by the "Detect / Detectează" button)
  * ────────
  *   1. Take the current map center.
  *   2. Build a search circle of `SEARCH_RADIUS_M` (default 10 km) around it.
@@ -1559,7 +1559,7 @@
 
     var I18N = {
         en: {
-            run_btn: 'Candidate Areas',
+            run_btn: 'Detect',
             running_short: 'Analyzing',
             running: 'Analyzing the {r} km area…',
             running_pin: 'Analyzing the {r} km area around the purple pin…',
@@ -1585,11 +1585,11 @@
             summary_field: '{n} scored cells · {h} High · {m} Medium · {x} excluded (red)',
             summary_heat: '{n} scored cells in the heatmap · {x} excluded (red)',
             pin_hint: 'Pin mode off — the analysis starts from the map center.',
-            pin_armed: 'Tap the map to drop the purple pin, then press “Candidate Areas”.',
-            pin_set: 'Pin at {lat}, {lng} · radius {r} km — press “Candidate Areas”.'
+            pin_armed: 'Tap the map to drop the purple pin, then press “Detect”.',
+            pin_set: 'Pin at {lat}, {lng} · radius {r} km — press “Detect”.'
         },
         ro: {
-            run_btn: 'Zone candidati',
+            run_btn: 'Detectează',
             running_short: 'Se analizează',
             running: 'Se analizează raza de {r} km…',
             running_pin: 'Se analizează raza de {r} km din jurul pinului mov…',
@@ -1615,8 +1615,8 @@
             summary_field: '{n} celule cu scor · {h} Ridicat · {m} Mediu · {x} excluse (roșu)',
             summary_heat: '{n} celule în heatmap · {x} excluse (roșu)',
             pin_hint: 'Modul pin e oprit — analiza pornește din centrul hărții.',
-            pin_armed: 'Atinge harta ca să pui pinul mov, apoi apasă „Zone candidati”.',
-            pin_set: 'Pin la {lat}, {lng} · rază {r} km — apasă „Zone candidati”.'
+            pin_armed: 'Atinge harta ca să pui pinul mov, apoi apasă „Detectează”.',
+            pin_set: 'Pin la {lat}, {lng} · rază {r} km — apasă „Detectează”.'
         }
     };
 
@@ -1673,8 +1673,24 @@
             // (window.setLang) still re-translate the button label.
             btn.innerHTML = running
                 ? '<span class="archeo-spinner" aria-hidden="true"></span><span class="t" data-key="archeo_run_running">Analyzing…</span>'
-                : '<span class="t" data-key="archeo_run_btn">Candidate Areas</span>';
+                : '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0"><path d="M6.5 1.5 L10 6 L8 6 L10 11.5 L6.5 8.2 L3 11.5 L5 6 L3 6 Z" fill="#c4a0f0" /></svg><span class="t" data-key="archeo_run_btn">' + tr('run_btn') + '</span>';
         }
+    }
+
+    function updateRunButtonVisibility(show) {
+        if (show === undefined) show = !!_pinLatLng;
+        var btn = el('archeoPotRunBtn');
+        if (btn) {
+            if (btn.style) btn.style.display = show ? '' : 'none';
+            if (btn.classList && typeof btn.classList.toggle === 'function') {
+                btn.classList.toggle('is-hidden', !show);
+            }
+        }
+        try {
+            if (window.DetectLabVerticalOpacity && typeof window.DetectLabVerticalOpacity.refreshDock === 'function') {
+                window.DetectLabVerticalOpacity.refreshDock();
+            }
+        } catch (e) {}
     }
 
     function yieldToUI() {
@@ -1809,7 +1825,12 @@
         if (!map) return;
         if (_pinMarker && map.removeLayer) map.removeLayer(_pinMarker);
         _pinLatLng = { lat: latlng.lat, lng: latlng.lng };
-        if (typeof L === 'undefined' || !L.marker || !L.divIcon) { drawPinCircle(latlng, false); return; }
+        try { window._dlSearchAreaPin = { lat: latlng.lat, lng: latlng.lng }; } catch (e) {}
+        if (typeof L === 'undefined' || !L.marker || !L.divIcon) {
+            drawPinCircle(latlng, false);
+            updateRunButtonVisibility(true);
+            return;
+        }
         var icon = L.divIcon({
             className: 'archeo-pot-pin-wrapper',
             html: '<div class="archeo-pot-pin" title="' + tr('candidate') + '">' +
@@ -1827,6 +1848,7 @@
             );
         }
         drawPinCircle(latlng, false);
+        updateRunButtonVisibility(true);
     }
 
     function clearPin() {
@@ -1835,6 +1857,7 @@
         _pinMarker = null;
         _pinLatLng = null;
         clearPinCircle();
+        updateRunButtonVisibility(false);
     }
 
     function onMapClick(e) {
@@ -1863,6 +1886,7 @@
                 setStatus(_pinLatLng ? 'pin_set' : 'pin_armed', false, _pinLatLng ? {
                     lat: _pinLatLng.lat.toFixed(5), lng: _pinLatLng.lng.toFixed(5), r: radiusKm()
                 } : null);
+                updateRunButtonVisibility(!!_pinLatLng);
             } else {
                 if (typeof map.off === 'function') map.off('click', onMapClick);
                 clearPin();
@@ -1875,7 +1899,7 @@
     }
 
     // Trimite stratul către oglinda verticală (slider de rază în dreapta) și
-    // către dock-ul centrat jos (butonul „Zone candidati”). Absența modulului
+    // către dock-ul centrat jos (butonul „Detectează”). Absența modulului
     // (teste node, încărcare parțială) e ignorată.
     function notifyVerticalControl(sliderId) {
         try {
@@ -2073,7 +2097,7 @@
 
     /**
      * Main entry point — called every time the user presses
-     * "Candidate Areas / Zone candidati". Analizează raza din slider (1–10 km)
+     * "Detect / Detectează". Analizează raza din slider (1–10 km)
      * în jurul pinului mov, sau în jurul centrului hărții când modul pin e
      * oprit, și randează câmpul de scor în modul ales (bule / heatmap).
      */
@@ -2225,6 +2249,7 @@
         if (typeof document !== 'undefined' && document.addEventListener) {
             document.addEventListener('detectlab:langchange', onLangChange);
         }
+        updateRunButtonVisibility(!!_pinLatLng);
         setStatus(_pinLatLng ? 'pin_set' : (_pinMode ? 'pin_armed' : 'ready'), false,
             _pinLatLng ? { lat: _pinLatLng.lat.toFixed(5), lng: _pinLatLng.lng.toFixed(5), r: radiusKm() } : null);
     }

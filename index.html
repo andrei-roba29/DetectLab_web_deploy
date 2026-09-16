@@ -1188,7 +1188,7 @@
                 <!-- Dock centrat în partea de jos a ecranului principal: apare
                      când un strat de analiză e apăsat (LIDAR Scanner / Zone cu
                      potențial arheologic / Raport arheologic) și găzduiește
-                     butonul său de acțiune (Scan / Zone candidati / Generează
+                     butonul său de acțiune (Scan / Detectează / Generează
                      raport), mutat aici fizic de js/vertical-opacity-control.js
                      — același mecanism ca #verticalOpacityActions. Sliderul de
                      distanță/rază al stratului e oglindit vertical în dreapta,
@@ -2690,7 +2690,7 @@
                         <div class="lidar-scanner-copy">Choose a point on the map / Alege un punct pe harta</div>
                         <div class="lidar-scanner-control"><span>Search distance / Distanță</span><strong id="lidarScannerDistanceValue">10 km</strong></div>
                         <input type="range" class="transp-slider" id="lidarScannerDistance" min="10" max="50" value="10" step="1" aria-label="Search distance from 10 to 50 kilometres">
-                        <button id="lidarScannerRun" class="lidar-scanner-button" type="button">Scan / Scanează</button>
+                        <button id="lidarScannerRun" class="lidar-scanner-button" type="button" style="display:none">Scan / Scanează</button>
                         <div id="lidarScannerStatus" class="lidar-scanner-status">Choose a point on the map / Alege un punct pe harta</div>
                     </div>
 
@@ -2698,7 +2698,7 @@
                          Analiză statistică pe siturile cunoscute (triangulație Delaunay + grilă
                          densă de scor) în jurul unui PIN MOV ales pe hartă — sau al centrului
                          hărții, când modul pin e oprit — pe o rază de 1–10 km. Rulare manuală
-                         prin butonul "Zone candidati". Două moduri de afișare a rezultatului:
+                         prin butonul "Detectează" / "Detect". Două moduri de afișare a rezultatului:
                          bule cu scor (mici, dese, fără goluri) și heatmap (scor pe fiecare
                          celulă; UAT + razele de protecție apar cu roșu). -->
                     <div class="transp-layer-row archeo-potential-row" data-category="premium" id="archeoPotentialRow">
@@ -2754,13 +2754,13 @@
                         </div>
 
                         <button id="archeoPotRunBtn" type="button"
-                                style="width:100%;padding:8px 10px;background:linear-gradient(135deg,rgba(107,63,160,0.38),rgba(74,40,128,0.25));border:1px solid rgba(163,112,232,0.5);border-radius:6px;color:rgba(245,240,235,0.95);font-family:'Outfit',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:background 0.2s,border-color 0.2s,opacity 0.2s;"
+                                style="display:none;width:100%;padding:8px 10px;background:linear-gradient(135deg,rgba(107,63,160,0.38),rgba(74,40,128,0.25));border:1px solid rgba(163,112,232,0.5);border-radius:6px;color:rgba(245,240,235,0.95);font-family:'Outfit',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;align-items:center;justify-content:center;gap:7px;transition:background 0.2s,border-color 0.2s,opacity 0.2s;"
                                 onmouseover="this.style.background='linear-gradient(135deg,rgba(107,63,160,0.6),rgba(74,40,128,0.4))';this.style.borderColor='rgba(196,160,240,0.8)'"
                                 onmouseout="this.style.background='linear-gradient(135deg,rgba(107,63,160,0.38),rgba(74,40,128,0.25))';this.style.borderColor='rgba(163,112,232,0.5)'">
                             <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
                                 <path d="M6.5 1.5 L10 6 L8 6 L10 11.5 L6.5 8.2 L3 11.5 L5 6 L3 6 Z" fill="#c4a0f0" />
                             </svg>
-                            <span class="t" data-key="archeo_run_btn">Candidate Areas</span>
+                            <span class="t" data-key="archeo_run_btn">Detect</span>
                         </button>
                         <style>
                             #archeoPotRunBtn:disabled {
@@ -2845,7 +2845,7 @@
                         </div>
                         <div class="arch-report-control"><span>Search radius / Rază</span><strong id="archReportDistanceValue">3 km</strong></div>
                         <input type="range" class="transp-slider" id="archReportDistance" min="1" max="10" value="3" step="1" aria-label="Search radius from 1 to 10 kilometres">
-                        <button id="archReportRunBtn" type="button" class="arch-report-button" disabled>
+                        <button id="archReportRunBtn" type="button" class="arch-report-button" style="display:none" disabled>
                             <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
                                 <circle cx="6.5" cy="6.5" r="4.4" fill="none" stroke="#66c8ff" stroke-width="1.2"/>
                                 <circle cx="6.5" cy="6.5" r="1.4" fill="#66c8ff"/>

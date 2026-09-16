@@ -55,7 +55,7 @@
        Raport arheologic) au un slider de distanță/rază în panou. Când stratul
        e apăsat — clic pe rând sau comutatorul pornit — sliderul e oglindit
        vertical pe hartă exact ca opacitatea, iar butonul de acțiune al
-       stratului (Scan / Zone candidati / Generează raport) e mutat în dock-ul
+       stratului (Scan / Detectează / Generează raport) e mutat în dock-ul
        centrat în partea de jos a ecranului principal. Înregistrarea e pe id
        (nu după șablonul „Opacity”), ca unitatea, eticheta și acțiunile să
        poată fi specifice fiecărui strat. */
@@ -308,6 +308,7 @@
         var visible = !!def && controlVisible;
         var wanted = visible ? def.actions : [];
 
+        var hasVisibleAction = false;
         for (var i = 0; i < DISTANCE_SOURCES.length; i++) {
             var actions = DISTANCE_SOURCES[i].actions;
             for (var j = 0; j < actions.length; j++) {
@@ -323,6 +324,10 @@
                         try { dockInner.appendChild(btn); } catch (e) { /* DOM-only tests */ }
                     }
                     if (btn.classList) btn.classList.add('la-docked');
+                    var isHidden = false;
+                    if (btn.style && btn.style.display === 'none') isHidden = true;
+                    if (btn.classList && typeof btn.classList.contains === 'function' && btn.classList.contains('is-hidden')) isHidden = true;
+                    if (!isHidden) hasVisibleAction = true;
                 } else {
                     var home = dockActionHome[id];
                     if (home && home.parent && btn.parentElement !== home.parent) {
@@ -342,7 +347,9 @@
             }
         }
 
-        if (visible) {
+        var showDock = visible && hasVisibleAction;
+
+        if (showDock) {
             ensureDockRadius();
             updateDockRadius();
         } else if (dockRadius && dockRadius.parentElement) {
@@ -350,13 +357,13 @@
             dockRadius = null;
         }
 
-        if (dock.classList) dock.classList.toggle('visible', visible);
-        if (dock.setAttribute) dock.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        if (dock.classList) dock.classList.toggle('visible', showDock);
+        if (dock.setAttribute) dock.setAttribute('aria-hidden', showDock ? 'false' : 'true');
         // Ridică stack-ul de controale plutitoare centrate jos (ajutor APM20,
         // hint-uri de zoom) cât timp dock-ul e vizibil, ca să nu se suprapună.
         try {
             if (document.body && document.body.classList) {
-                document.body.classList.toggle('layer-dock-open', visible);
+                document.body.classList.toggle('layer-dock-open', showDock);
             }
         } catch (e) { /* DOM-only tests */ }
     }
@@ -654,6 +661,14 @@
         control.classList.add('visible');
         control.setAttribute('aria-hidden', 'false');
         startProgrammaticSync();
+
+        if (source && source.id === 'archeoPotDistance') {
+            try {
+                if (typeof window.setArcheoPotentialPinMode === 'function') {
+                    window.setArcheoPotentialPinMode(true);
+                }
+            } catch (e) {}
+        }
 
         if (closePanel) closeLayerPanel();
         syncLayerActions();
@@ -985,7 +1000,8 @@
             /* map-app.js arată iconițele APM 2.0 / Iosefină doar când stratul
                lor e selectat în oglinda verticală vizibilă. */
             isActiveFor: isVerticalActiveFor,
-            refreshActions: refreshLayerActionVisibility
+            refreshActions: refreshLayerActionVisibility,
+            refreshDock: syncDistanceDock
         };
     }
 

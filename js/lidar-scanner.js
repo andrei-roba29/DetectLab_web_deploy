@@ -363,8 +363,25 @@
         circle.bindPopup('<strong>'+esc(p.category)+'</strong>'+(p.name?'<br>'+esc(p.name):'')+'<br><small>'+p.lat.toFixed(5)+', '+p.lng.toFixed(5)+'</small>'); return circle;
     }
     function setStatus(s) { var e=document.getElementById('lidarScannerStatus'); if(e)e.textContent=s; }
+    function updateRunButtonVisibility(show) {
+        if (show === undefined) show = !!selected;
+        var btn = document.getElementById('lidarScannerRun');
+        if (btn) {
+            if (btn.style) btn.style.display = show ? '' : 'none';
+            if (btn.classList && typeof btn.classList.toggle === 'function') {
+                btn.classList.toggle('is-hidden', !show);
+            }
+        }
+        try {
+            if (window.DetectLabVerticalOpacity && typeof window.DetectLabVerticalOpacity.refreshDock === 'function') {
+                window.DetectLabVerticalOpacity.refreshDock();
+            }
+        } catch (e) {}
+    }
     function drawSelection(ll) {
         selected = ll;
+        try { window._dlSearchAreaPin = { lat: ll.lat, lng: ll.lng }; } catch (e) {}
+        updateRunButtonVisibility(true);
         if (selectedMarker) map.removeLayer(selectedMarker);
         if (selectionCircle) map.removeLayer(selectionCircle);
         var searchIcon = L.divIcon({
@@ -459,8 +476,10 @@
             selected = null;
             map.off('click', onMapClick);
             setStatus('Choose a point on the map / Alege un punct pe harta');
+            updateRunButtonVisibility(false);
         } else {
             map.on('click', onMapClick);
+            updateRunButtonVisibility(!!selected);
             // load() reports the useful status and warning itself. Consume the
             // rejection here so an invalid file does not become an uncaught
             // promise in the browser console.
@@ -587,6 +606,7 @@
             document.getElementById('lidarScannerDistanceValue')
         );
         document.getElementById('lidarScannerRun').addEventListener('click', run);
+        updateRunButtonVisibility(!!selected);
         setStatus('Choose a point on the map / Alege un punct pe harta');
     }
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
@@ -602,6 +622,7 @@
         getPoints: function () { return points; },
         ensureLoaded: function () { return load(); },
         isActive: function () { return active; },
-        getSelected: function () { return selected; }
+        getSelected: function () { return selected; },
+        updateRunButtonVisibility: updateRunButtonVisibility
     };
 })();
