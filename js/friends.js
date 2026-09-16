@@ -3,7 +3,9 @@
    ──────────────────────────────────────────────────────────────────────────
    • Friends panel (nav → Prieteni, under Events / Manage Account) with three
      tabs: friends, friend requests and chats.
-   • Search by e-mail, display name or account id + a county (județ) filter.
+   • Unified search: one query matched partially (diacritics folded) against
+     display name, e-mail, county, city or the account id prefix, plus a
+     county (județ) filter dropdown.
    • Accepting a request puts the user in the friends list with a 💬 chat
      button; chats are private (1:1) or group threads with a title, invited
      members and an admin (the creator).
@@ -697,7 +699,7 @@
     // Both detectorist pins on the map carry an EMPTY .detector-social-actions
     // slot (js/map-app.js → detectorSocialSlotHtml()). The slot is filled here,
     // every time the popup opens, with the single action that matches the
-    // relationship: "Adaugă prietenie" for a stranger, "Acceptă" when they
+    // relationship: "Adaugă prieten" for a stranger, "Acceptă" when they
     // already asked us, "Cerere trimisă / Anulează" while ours is pending and
     // "Trimite mesaj" for an existing friend. Nothing is rendered when nobody
     // is signed in or when the pin is another device of our own account.
@@ -731,7 +733,7 @@
             return btn('accept', 'ok', '✓ ' + t('Acceptă cererea', 'Accept request'));
         }
         if (rel.state === 'none') {
-            return btn('add', '', '＋ ' + t('Adaugă prietenie', 'Add friend'));
+            return btn('add', '', '＋ ' + t('Adaugă prieten', 'Add friend'));
         }
         if (rel.state === 'self') {
             return '<span class="detector-social-note">👤 ' +
@@ -803,6 +805,25 @@
         return mapStatePromise;
     }
 
+    // Leaflet measures the popup BEFORE 'popupopen' fires — i.e. while the
+    // social slot is still empty. Every paint below injects buttons / notes /
+    // messages AFTER that measurement, so the popup must re-run its layout or
+    // the new content overflows the frame ("mesajul iese din fereastră").
+    // update() is public Leaflet API; the containment check makes sure we only
+    // ever resize the popup that actually holds the given slot.
+    function updateOpenDetectorPopup(slot) {
+        try {
+            var m = window._dlMap || window.map;
+            var p = m && m._popup;
+            if (!p || typeof p.update !== 'function') return;
+            if (slot && typeof p.getElement === 'function') {
+                var el = p.getElement();
+                if (!el || typeof el.contains !== 'function' || !el.contains(slot)) return;
+            }
+            p.update();
+        } catch (e) {}
+    }
+
     // Called by js/map-app.js on the map's 'popupopen' event with the popup
     // element. Paints the slot from the mirrored state right away (instant, no
     // flash of a wrong button) and repaints once the fresh lists arrive.
@@ -814,6 +835,7 @@
             slots.forEach(function (slot) {
                 if (!slotStillInDocument(slot)) return;
                 renderDetectorActions(slot);
+                updateOpenDetectorPopup(slot);
             });
         });
         return slots.length;
@@ -905,6 +927,9 @@
         refreshDetectorPopups();
         if (btn.disabled) btn.disabled = false;
         setDetectorMessage(slot, res.ok ? okText : (res.message || ''), res.ok ? 'ok' : 'error');
+        // The confirmation / error line changes the content size — re-measure
+        // the popup so the message stays inside its frame.
+        updateOpenDetectorPopup(slot);
     }
 
     async function openDirectConversation(userId) {
@@ -1293,8 +1318,8 @@
         try {
             var menu = document.getElementById('userMenu');
             if (menu) menu.classList.add('hidden');
-            document.querySelectorAll('#pwaBottomBar .pwa-dropdown').forEach(function (dd) { dd.classList.remove('open'); });
-            document.querySelectorAll('#pwaBottomBar .pwa-bar-trigger').forEach(function (tr) { tr.classList.remove('active'); });
+            document.querySelectorAll('#pwa-br-stack .pwa-dropdown').forEach(function (dd) { dd.classList.remove('open'); });
+            document.querySelectorAll('#pwa-br-stack .pwa-bar-trigger').forEach(function (tr) { tr.classList.remove('active'); });
         } catch (e) {}
     }
 
@@ -1351,7 +1376,7 @@
                 '<div class="fr-section-label">' + escapeHtml(t('Caută detectoriști', 'Search detectorists')) + '</div>' +
                 '<div class="fr-search-row">' +
                     '<input type="text" class="fr-input" id="frSearchInput" autocomplete="off" placeholder="' +
-                        escapeHtml(t('Caută după e-mail, nume sau ID…', 'Search by e-mail, name or id…')) + '" value="' + escapeHtml(state.search.query) + '">' +
+                        escapeHtml(t('Caută după nume, e-mail, localitate sau ID…', 'Search by name, e-mail, place or id…')) + '" value="' + escapeHtml(state.search.query) + '">' +
                     '<select class="fr-select" id="frCountySelect">' +
                         '<option value="">' + escapeHtml(t('Toate județele', 'All counties')) + '</option>' +
                         countyOptionsHtml() +

@@ -294,17 +294,22 @@ test('visualViewport/window resize and auth changes refresh after layout; bursts
     assert.equal(highlighted(h, 'bucovinaRow'), false, 'logout refreshes too');
 });
 
-test('PWA bottom-bar click/change re-check after togglePwa actions without early function wrapping', () => {
+test('PWA account-stack click/change re-check after togglePwa actions without early function wrapping', () => {
     const h = setup({ pwa: true });
     assert.equal(h.window.togglePwaDetection, undefined, 'inline PWA functions are defined later');
     ['click', 'change'].forEach(type => {
         h.local.setBounds(OUTSIDE);
         h.check();
-        h.row('pwaBottomBar').dispatchEvent(new Event(type));
+        h.row('pwa-br-stack').dispatchEvent(new Event(type));
         h.local.setBounds(BUCOVINA); // inline control/layout handler
         h.flushFrames();
         assert.equal(highlighted(h, 'bucovinaRow'), true, type);
     });
+    assert.match(
+        source,
+        /getElementById\('compassCol'\)[\s\S]*?addEventListener\('click', scheduleLayerVisibilityCheck\)/,
+        'the compass-column Detect toggle also triggers a refresh'
+    );
 });
 
 test('pageshow/foreground refresh a resumed PWA', () => {
@@ -339,10 +344,14 @@ test('all real historical, LIDAR and Roman rows resolve in the shared PWA panel'
     // These optional Roman definitions have no row in this deployment.
     assert.equal(h.row('roman_shade_herod'), null);
     assert.equal(h.row('roman_shade_hasmonean'), null);
+    const pwaStack = h.row('pwa-br-stack');
+    assert(pwaStack, 'PWA account stack keeps its id');
     leafRows.forEach(row => {
         assert.equal(row.classList.contains(ROW_CLASS), true, row.id || 'anonymous LIDAR/Roman row');
         assert.equal(row.closest('.transp-panel'), h.row('transpPanel'));
-        assert.equal(row.closest('.pwa-bottom-bar'), null);
+        for (let el = row; el; el = el.parentElement) {
+            assert.notEqual(el, pwaStack, (row.id || 'anonymous row') + ' stays out of the PWA account stack');
+        }
     });
     assertGroupsUnoutlined(h);
 });

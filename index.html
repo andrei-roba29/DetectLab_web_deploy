@@ -19,10 +19,10 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260916-no-opacity-caption">
+    <link rel="stylesheet" href="css/styles.css?v=20260916-friend-card">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260902-babel-safe-area">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
-    <link rel="stylesheet" href="css/offline-maps.css?v=20260915-offline-panel">
+    <link rel="stylesheet" href="css/offline-maps.css?v=20260916-no-bottom-bar">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -57,7 +57,7 @@
              the map panes, so pinch zoom continues to work on the map itself. */
         body.is-pwa #detectlab-map .leaflet-control,
         body.is-pwa .map-search-wrap,
-        body.is-pwa .pwa-bottom-bar,
+        body.is-pwa #pwa-br-stack,
         body.is-pwa .transp-panel,
         body.is-pwa .transp-arrow-tab,
         body.is-pwa .map-controls,
@@ -127,7 +127,7 @@
         }
 
         /* Hide the bottom tab pill (Free Preview / Vreme) in PWA mode —
-           replaced by the new .pwa-bottom-bar. */
+           its actions moved to the floating PWA controls. */
         body.is-pwa .map-header {
             display: none !important;
         }
@@ -163,8 +163,10 @@
         }
 
         /* Hide map-controls in PWA mode — they sit below the map-frame in the
-           flow and would either overflow or cause a layout gap. The detection
-           toggle and fullscreen button are not needed in standalone mode. */
+           flow and would either overflow or cause a layout gap. Detection,
+           saved locations and nearby detectorists live on the floating map
+           controls instead; the fullscreen button is not needed in
+           standalone mode. */
         body.is-pwa .map-controls {
             display: none !important;
         }
@@ -203,7 +205,7 @@
             display: none !important;
         }
 
-        /* Hide the top nav bar in PWA — controls move to the bottom bar */
+        /* Hide the top nav bar in PWA — controls move to the floating map buttons */
         body.is-pwa nav {
             display: none !important;
         }
@@ -213,111 +215,75 @@
             top: calc(14px + env(safe-area-inset-top, 0px)) !important;
         }
 
-        /* ── PWA BOTTOM BAR ──
-           The PWA bottom bar must be flush with the bottom of the visible
-           viewport (bottom: 0) on all devices including iPhones, matching Android.
-           Do not add env(safe-area-inset-bottom) as padding or as a bottom offset. */
-        .pwa-bottom-bar {
+        /* ── PWA FLOATING CONTROLS (bottom-right stack) ──
+           The old full-width bottom bar is gone. What remains floats at the
+           bottom-right, above the "© Leafleet" tag (which occupies ~4–22px):
+           the live-location button on top (moved here by js/map-app.js) over
+           the account trigger — same place as before. Right edges align at
+           10px; the 8px gaps match the Leaflet stacks. z-index 2000 keeps the
+           stack tappable above the map and the side panels, like the bar. */
+        #pwa-br-stack {
             display: none;
             position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            right: max(10px, env(safe-area-inset-right, 0px));
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
             z-index: 2000;
-            padding: 5px 8px;
-            padding-right: max(8px, env(safe-area-inset-right, 0px));
-            padding-left: max(8px, env(safe-area-inset-left, 0px));
-            background: rgba(6, 14, 30, 0.94);
-            -webkit-backdrop-filter: blur(20px);
-            backdrop-filter: blur(20px);
-            border-top: 1px solid rgba(184, 216, 240, 0.12);
-            border-bottom: 1px solid rgba(184, 216, 240, 0.08);
-            align-items: center;
-            justify-content: space-between;
-            gap: 6px;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
         }
         body.is-pwa {
-            --pwa-bottom-controls-clearance: var(--pwa-bottom-bar-height, 44px);
+            /* Bottom-anchored overlays (toasts, zoom hints, panels) still lift
+               44px to stay clear of the home indicator. Vertically-centred
+               controls (transparency tab, vertical opacity mirror) return to
+               true centre now that no bar pushes them up. */
+            --pwa-bottom-controls-clearance: 44px;
+            --pwa-bottom-controls-half-clearance: 0px;
         }
         body.is-pwa #mapAuthGate {
             display: none !important;
         }
-        body.is-pwa .pwa-bottom-bar {
+        body.is-pwa #pwa-br-stack {
             display: flex;
         }
 
-        .pwa-bottom-bar .pwa-bar-item {
+        #pwa-br-stack .pwa-bar-item {
             position: relative;
             flex-shrink: 0;
         }
 
-        /* Detection toggle in bottom bar — compact */
-        .pwa-bar-detect {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            background: rgba(184, 216, 240, 0.06);
-            border: 1px solid rgba(184, 216, 240, 0.14);
-            border-radius: 8px;
-            padding: 4px 8px;
-        }
-        .pwa-bar-detect .detect-toggle-label {
-            font-size: 0.68rem;
-            color: rgba(184, 216, 240, 0.7);
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            white-space: nowrap;
-        }
-        .pwa-bar-detect .detect-switch {
-            width: 34px;
-            height: 18px;
-        }
-        .pwa-bar-detect .detect-track::after {
-            width: 12px;
-            height: 12px;
-        }
-        /* The base checked toggle translates the knob 20px (sized for the
-           44px desktop switch). The smaller PWA switch needs a shorter
-           travel so the knob stays inside the track. */
-        .pwa-bar-detect .detect-switch input:checked + .detect-track::after {
-            transform: translateX(15px);
-        }
-        .pwa-bar-detect.detect-active {
-            background: rgba(196, 43, 43, 0.12);
-            border-color: rgba(196, 43, 43, 0.45);
-        }
-        .pwa-bar-detect.detect-active .detect-toggle-label {
-            color: #ff6b6b;
-        }
-
-        /* Saved locations button in the PWA bottom bar */
-        .pwa-saved-locations-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 34px;
-            height: 30px;
+        /* Account trigger — a 38×38 map button like every other map icon
+           (right edge flush with the live-location button above it), with
+           the avatar circle centred inside. position:relative anchors the
+           event notification badge (js/events.js). */
+        #pwaUserTrigger.pwa-user-trigger {
+            position: relative;
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
             padding: 0;
-            border-radius: 8px;
-            background: rgba(184, 216, 240, 0.08);
-            border: 1px solid rgba(184, 216, 240, 0.2);
-            color: rgba(245, 240, 235, 0.85);
-            cursor: pointer;
-            transition: background 0.2s, border-color 0.2s, color 0.2s;
+            gap: 0;
+            justify-content: center;
+            background: rgba(10,25,48,0.88);
+            border: 1px solid rgba(184,216,240,0.18);
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+            -webkit-backdrop-filter: blur(6px);
+            backdrop-filter: blur(6px);
         }
-        .pwa-saved-locations-btn:hover {
-            background: rgba(196, 43, 43, 0.18);
-            border-color: rgba(196, 43, 43, 0.55);
-            color: #ff8a8a;
+        #pwaUserTrigger.pwa-user-trigger:hover,
+        #pwaUserTrigger.pwa-user-trigger.active {
+            background: rgba(107,63,160,0.82);
+            border-color: rgba(107,63,160,0.6);
         }
-        .pwa-saved-locations-btn.is-active {
-            background: #c42b2b;
-            border-color: #e25353;
-            color: #fff;
+        #pwaUserTrigger #pwaAvatar {
+            width: 24px;
+            height: 24px;
+            font-size: 0.62rem;
         }
 
-        /* Bottom bar trigger buttons (language / user) */
+        /* Floating-stack trigger buttons (logged-out "Log In" pill; base for
+           the logged-in account trigger, restyled above as a 38×38 button) */
         .pwa-bar-trigger {
             display: flex;
             align-items: center;
@@ -411,25 +377,41 @@
             margin: 2px 0;
         }
 
-        /* Language dropdown — centre-aligned under its trigger */
-        .pwa-dropdown.pwa-dropdown-lang {
-            right: auto;
-            left: 50%;
-            transform: translateX(-50%);
-            min-width: 100px;
-        }
-        @keyframes pwaDropUpCenter {
-            from { opacity: 0; transform: translateX(-50%) translateY(8px); }
-            to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-        }
-        .pwa-dropdown-lang.open {
-            animation: pwaDropUpCenter 0.2s ease;
-        }
-
         /* User dropdown — right-aligned */
         .pwa-dropdown.pwa-dropdown-user {
             right: 0;
-            min-width: 180px;
+            min-width: 196px;
+        }
+
+        /* Language submenu inside the account menu (replaces the old
+           standalone language dropdown). Tapping the "Language" row expands
+           the EN/RO options inline; the chevron rotates while open. */
+        .pwa-drop-sub {
+            display: none;
+        }
+        .pwa-drop-sub.open {
+            display: block;
+        }
+        .pwa-dropdown .pwa-drop-item.pwa-drop-subitem {
+            padding: 9px 16px 9px 40px;
+            font-size: 0.8rem;
+        }
+        #pwaLangRow .pwa-sub-chev {
+            margin-left: auto;
+            font-size: 0.75rem;
+            opacity: 0.55;
+            transition: transform 0.2s;
+            line-height: 1;
+        }
+        #pwaLangRow[aria-expanded="true"] .pwa-sub-chev {
+            transform: rotate(90deg);
+        }
+        /* Storage row mirrors the selected-option look while saved
+           pins/trails are shown on the map (toggled by js/map-app.js). */
+        #pwaStorageItem.is-active {
+            background: rgba(13, 43, 94, 0.6);
+            color: var(--sky);
+            font-weight: 600;
         }
 
         /* ── PWA ACCOUNT OVERLAY ── */
@@ -526,14 +508,12 @@
         body.is-pwa #josephineZoomHint {
             bottom: calc(18px + var(--pwa-bottom-controls-clearance, 44px)) !important;
         }
-        body.is-pwa .leaflet-container::after {
-            bottom: calc(4px + var(--pwa-bottom-controls-clearance, 44px)) !important;
-        }
+        /* No bottom bar any more: the "© Leafleet" tag keeps its base 4px
+           offset, and the Leaflet bottom corners (compass / attribution)
+           only clear the home indicator. The floating right stack positions
+           itself above the tag. */
         body.is-pwa .leaflet-bottom {
-            bottom: calc(
-                var(--pwa-bottom-controls-clearance, 44px) +
-                56px
-            ) !important;
+            bottom: env(safe-area-inset-bottom, 0px) !important;
         }
 
         /* ── PWA LAUNCH SCREEN OVERLAY — pure CSS/SVG sonar (no animated image = no glitches) ── */
@@ -774,60 +754,19 @@
         </div>
     </nav>
 
-    <!-- PWA BOTTOM BAR (only visible in PWA/standalone mode) -->
-    <div class="pwa-bottom-bar" id="pwaBottomBar">
-        <!-- 1. Detection Toggle -->
-        <div class="pwa-bar-item">
-            <div class="pwa-bar-detect" id="pwaDetectWrap">
-                <label class="detect-toggle-label" for="pwaDetectSwitch">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="5" y1="3" x2="9" y2="7" />
-                        <path d="M5 3 Q3 3 3 5 Q3 7 5 7 L9 7" />
-                        <line x1="9" y1="7" x2="17" y2="18" />
-                        <ellipse cx="18.5" cy="19.5" rx="3.5" ry="1.8" transform="rotate(-30 18.5 19.5)" />
-                    </svg>
-                    <span class="t" data-key="detect_label">Detect</span>
-                </label>
-                <label class="detect-switch">
-                    <input type="checkbox" id="pwaDetectSwitch" onchange="togglePwaDetection(this.checked)">
-                    <span class="detect-track"></span>
-                </label>
-            </div>
-        </div>
-
-        <!-- 2. Saved locations -->
-        <div class="pwa-bar-item">
-            <button class="pwa-saved-locations-btn" id="pwaSavedLocationsBtn" type="button" onclick="toggleSavedCoordinates()" title="Show saved locations" aria-label="Show saved locations" aria-pressed="false">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M5 3h11l3 3v15H5z" />
-                    <path d="M8 3v6h8V3M8 21v-7h8v7" />
-                    <circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" />
-                </svg>
-            </button>
-        </div>
-
-        <!-- 3. Language Selector (expands up) -->
-        <div class="pwa-bar-item" id="pwaLangItem">
-            <button class="pwa-bar-trigger" id="pwaLangTrigger" onclick="togglePwaLangDropdown()">
-                <span id="pwaLangFlag" style="display:none">🇷🇴</span>
-                <span id="pwaLangCode">RO</span>
-                <span class="pwa-arrow">▲</span>
-            </button>
-            <div class="pwa-dropdown pwa-dropdown-lang" id="pwaLangDropdown">
-                <button class="pwa-drop-item" id="pwaLangOptEn" onclick="pwaPickLang('en')">🇬🇧 English</button>
-                <button class="pwa-drop-item selected" id="pwaLangOptRo" onclick="pwaPickLang('ro')">🇷🇴 Română</button>
-            </div>
-        </div>
-
-        <!-- Nearby detectorists: between language and profile -->
-        <div class="pwa-bar-item pwa-nearby-item"><button class="pwa-bar-trigger pwa-nearby-trigger" onclick="openNearbyDetectors()" title="See other detectorists in the area" aria-label="See other detectorists in the area"><span class="nearby-icon">⊙</span></button></div>
-
-        <!-- 3. User Menu (expands up) -->
+    <!-- PWA FLOATING CONTROLS (only visible in PWA/standalone mode) —
+         bottom-right stack floating above the "© Leafleet" tag: the live-location
+         button (moved here by js/map-app.js, on top) over the account trigger
+         (same place as before). The old full-width bottom bar is gone:
+         • the Detect toggle lives under the compass (bottom-left),
+         • Language + Storage live inside the account menu below,
+         • Nearby detectorists moved to the left icon stack. -->
+    <div id="pwa-br-stack">
+        <!-- User Menu (expands up) -->
         <div class="pwa-bar-item" id="pwaUserItem">
             <!-- Logged-in trigger -->
-            <button class="pwa-bar-trigger" id="pwaUserTrigger" onclick="togglePwaUserDropdown()" style="display:none">
-                <div class="nav-avatar" id="pwaAvatar" style="width:22px;height:22px;font-size:0.6rem">?</div>
-                <span class="pwa-arrow">▲</span>
+            <button class="pwa-bar-trigger pwa-user-trigger" id="pwaUserTrigger" type="button" onclick="togglePwaUserDropdown()" style="display:none" aria-label="Account" aria-haspopup="true">
+                <div class="nav-avatar" id="pwaAvatar">?</div>
             </button>
             <!-- Logged-out trigger -->
             <button class="pwa-bar-trigger" id="pwaLoginTrigger" onclick="openAuth('login')">
@@ -850,6 +789,19 @@
                 <button class="pwa-drop-item" onclick="openFriends()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
                     <span class="t" data-key="nav_friends">Friends</span>
+                </button>
+                <button class="pwa-drop-item" id="pwaLangRow" onclick="togglePwaLangSubmenu()" aria-expanded="false" aria-controls="pwaLangSub">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><ellipse cx="12" cy="12" rx="4" ry="9" /><line x1="3" y1="12" x2="21" y2="12" /></svg>
+                    <span class="t" data-key="menu_language">Language</span>
+                    <span class="pwa-sub-chev" aria-hidden="true">▸</span>
+                </button>
+                <div class="pwa-drop-sub" id="pwaLangSub" role="group" aria-label="Language options">
+                    <button class="pwa-drop-item pwa-drop-subitem" id="pwaLangOptEn" onclick="pwaPickLang('en')">🇬🇧 English</button>
+                    <button class="pwa-drop-item pwa-drop-subitem selected" id="pwaLangOptRo" onclick="pwaPickLang('ro')">🇷🇴 Română</button>
+                </div>
+                <button class="pwa-drop-item" id="pwaStorageItem" onclick="pwaPickStorage()" aria-pressed="false">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z" /><path d="M8 3v6h8V3M8 21v-7h8v7" /><circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" /></svg>
+                    <span class="t" data-key="menu_storage">Storage</span>
                 </button>
                 <div class="pwa-drop-divider"></div>
                 <button class="pwa-drop-item" onclick="authLogout()" style="color:#ff8a8a">
@@ -981,42 +933,60 @@
                         </div>
                     </div>
 
-                    <!-- APM 2.0 Search Help — overlay flotant centrat pe hartă, ancorat în map-wrapper (la fel ca celelalte controale/hint-uri ale hărții) -->
+                    <!-- APM 2.0 Search Help — buton iconiță ancorat sub sliderul vertical de
+                         opacitate (vezi #verticalOpacityActions): apare doar când stratul
+                         APM 2.0 e selectat în oglinda verticală, fără text vizibil —
+                         eticheta devine bula de informații la hover / focus / tap. -->
                     <div id="apm20SearchHelpToast"></div>
                     <div id="apm20SearchHelpHint">
                         <span class="zh-icon">🔍</span>
                         <span class="t" id="apm20SearchHelpHintLabel" data-key="apm20_search_help_hint">Zoom in for advanced search</span>
                     </div>
-                    <button id="apm20SearchHelpBtn" style="display:none" onclick="window.runApm20SearchHelp()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="11" cy="11" r="7" />
-                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    <button type="button" id="apm20SearchHelpBtn" style="display:none" onclick="window.runApm20SearchHelp()" aria-label="Ajutor de căutare">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="10.5" cy="10.5" r="6.5" />
+                            <line x1="15.8" y1="15.8" x2="20.2" y2="20.2" />
+                            <path d="M18.6 2.6l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z" fill="currentColor" stroke="none" />
                         </svg>
-                        <span class="t" id="apm20SearchHelpLabel" data-key="apm20_search_help">Search Help</span>
+                        <span class="t vo-action-tip" id="apm20SearchHelpLabel" data-key="apm20_search_help">Search Help</span>
                     </button>
 
-                    <!-- Josephine Map + Buildings Search — detectează clădiri dispărute pe stratul premium -->
+                    <!-- Josephine Map + Buildings Search — detectează clădiri dispărute pe stratul premium.
+                         Cele trei butoane (căutare / setări / sugerează) sunt iconițe ancorate
+                         sub sliderul vertical de opacitate, vizibile doar când stratul
+                         Josephine Map + e selectat în oglinda verticală. -->
                     <div id="iosBldSearchHelpToast"></div>
                     <div id="iosBldSearchHelpHint">
                         <span style="font-size:1rem;flex-shrink:0">🗺</span>
                         <span class="t" id="iosBldSearchHelpHintLabel" data-key="ios_bld_search_help_hint">Zoom in mai mult</span>
                     </div>
-                    <button id="iosBldSearchHelpBtn" style="display:none" onclick="window.runIosBldSearchHelp()">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <button type="button" id="iosBldSearchHelpBtn" style="display:none" onclick="window.runIosBldSearchHelp()" aria-label="Clădiri dispărute">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                             <polyline points="9 22 9 12 15 12 15 22" />
                         </svg>
-                        <span class="t" id="iosBldSearchHelpLabel" data-key="ios_bld_search_help">Clădiri Dispărute</span>
+                        <span class="t vo-action-tip" id="iosBldSearchHelpLabel" data-key="ios_bld_search_help">Clădiri Dispărute</span>
                     </button>
 
                     <!-- Setări detecție "Clădiri Dispărute" — porta parametrii configurabili din
                          model-test-v3.1.html ("Ruleaza detectia pe viewport": prag confidență,
                          prag IoU, distanță minimă față de clădiri actuale, excludere clădiri
                          actuale, feedback 👍/👎 prin Worker URL) lângă butonul existent. -->
-                    <button id="iosBldSettingsBtn" style="display:none" title="Setări detecție" onclick="window.toggleIosBldSettings()">⚙</button>
+                    <button type="button" id="iosBldSettingsBtn" style="display:none" onclick="window.toggleIosBldSettings()" aria-label="Setări detecție">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                        </svg>
+                        <span class="t vo-action-tip" id="iosBldSettingsLabel" data-key="ios_bld_settings">Setări detecție</span>
+                    </button>
                     <!-- Buton "Sugerează un poligon" — permite userului să deseneze manual pe hartă
                          o clădire dispărută pe care detecția automată nu a găsit-o. -->
-                    <button id="iosBldSuggestBtn" style="display:none" title="Sugerează o clădire dispărută" onclick="window.toggleIosBldSuggestMode()">✏️</button>
+                    <button type="button" id="iosBldSuggestBtn" style="display:none" onclick="window.toggleIosBldSuggestMode()" aria-label="Sugerează o clădire dispărută">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+                        </svg>
+                        <span class="t vo-action-tip" id="iosBldSuggestLabel" data-key="ios_bld_suggest">Sugerează o clădire dispărută</span>
+                    </button>
                     <div id="iosBldSettingsPanel">
                         <h4>Setări detecție clădiri dispărute</h4>
                         <div class="ios-bld-field">
@@ -1184,6 +1154,15 @@
                     </div>
                     <output class="vertical-opacity-value" id="verticalOpacityValue"
                             for="verticalOpacitySlider">80%</output>
+                    <!-- Acțiuni rapide ale stratului selectat: butonul „Ajutor de
+                         căutare” (APM 2.0) și cele trei butoane Iosefină Premium
+                         (căutare clădiri dispărute / setări / sugerează) sunt mutate
+                         aici de js/vertical-opacity-control.js și apar ca iconițe
+                         pătrate cu colțuri rotunjite (ca restul iconițelor de pe
+                         hartă), dispuse vertical sub slider. Eticheta fiecărui
+                         buton devine bula de informații la hover / focus / tap. -->
+                    <div class="vertical-opacity-actions" id="verticalOpacityActions"
+                         aria-label="Layer quick actions"></div>
                 </div>
 
                 <!-- Satellite „Istoric” period control. Appears together with the
@@ -3587,11 +3566,11 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260915-social"></script>
+    <script src="js/translations.js?v=20260916-friend-card"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
-    <script src="js/map-rotate.js?v=20260813-compass-lock"></script>
+    <script src="js/map-rotate.js?v=20260916-no-bottom-bar"></script>
     <script src="js/L.Control.Layers.Tree.min.js"></script>
     <script src="js/L.Control.Locate.min.js"></script>
     <script src="js/leaflet-hash.js"></script>
@@ -3607,14 +3586,14 @@
     <!-- Remembers each user's last BROAD location (nearest city/town + county).
          Must load before events.js / map-app.js, which both consume it. -->
     <script src="js/last-location.js?v=20260815-last-location"></script>
-    <script src="js/events.js?v=20260915-social"></script>
+    <script src="js/events.js?v=20260916-no-bottom-bar"></script>
     <!-- Social layer: "Prieteni / Friends" panel (search by e-mail · name · id +
          county filter), friend requests, private and group chat with an admin,
          event creation from a chat and the "Adaugă prieteni / Add friends" box
          of the create-event form. Loads after last-location.js (county) and
          events.js (openCreateEventModal), and must be parsed before auth.js so
          window.openFriends exists when the menus are wired. -->
-    <script src="js/friends.js?v=20260915-map-social"></script>
+    <script src="js/friends.js?v=20260916-unified-search"></script>
     <!-- CORONA (Satellite imagery 60's) WMS-C tile layer — replicates the exact
          tile fetching / request sending of the original Corona Atlas
          (corona.cast.uark.edu/atlas): per-tile WMS 1.1.1 GetMap requests to
@@ -3624,10 +3603,10 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260916-sat-2016-only"></script>
+    <script src="js/map-app.js?v=20260916-friend-card"></script>
     <script src="js/offline-maps.js?v=20260915-offline-panel"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
-    <script src="js/vertical-opacity-control.js?v=20260916-no-opacity-caption"></script>
+    <script src="js/vertical-opacity-control.js?v=20260916-no-bottom-bar"></script>
     <script src="js/archeo-potential.js?v=20260827-arch-report"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
     <script src="js/lidar-scanner.js?v=20260827-arch-report"></script>
@@ -3637,7 +3616,7 @@
     <script src="js/pdf-writer.js?v=20260827-arch-report"></script>
     <script src="js/archeo-report-pdf.js?v=20260831-arch-report-v4"></script>
     <script src="js/archeo-report.js?v=20260902-arch-report-v4"></script>
-    <script src="js/tutorial.js?v=20260915-offline-panel"></script>
+    <script src="js/tutorial.js?v=20260916-tutorial-friends"></script>
 
     <!-- AUTH MODAL -->
     <style>
@@ -4094,13 +4073,13 @@
                 // Keep browser/page zoom disabled in standalone mode while
                 // still allowing Leaflet pinch zoom on the actual map surface.
                 // If a two-finger gesture starts over a static overlay (search,
-                // controls, expanded layer/transparency panels, bottom bar), the
-                // browser must not zoom the whole PWA UI.
+                // controls, expanded layer/transparency panels, floating stack),
+                // the browser must not zoom the whole PWA UI.
                 function isLeafletMapGestureTarget(target) {
                     var el = target && (target.nodeType === 1 ? target : target.parentElement);
                     if (!el || !el.closest) return false;
                     if (!el.closest('#detectlab-map')) return false;
-                    if (el.closest('.leaflet-control, .map-search-wrap, .pwa-bottom-bar, .transp-panel, .map-controls, button, input, select, textarea, label, a')) {
+                    if (el.closest('.leaflet-control, .map-search-wrap, #pwa-br-stack, .transp-panel, .map-controls, button, input, select, textarea, label, a')) {
                         return false;
                     }
                     return !!el.closest('.leaflet-pane, .leaflet-map-pane, .leaflet-container');
@@ -4155,13 +4134,8 @@
                         return;
                     }
                     setVH();
-                    var bottomBar = document.getElementById('pwaBottomBar');
-                    if (bottomBar) {
-                        var bottomBarHeight = Math.ceil(bottomBar.getBoundingClientRect().height);
-                        document.documentElement.style.setProperty('--pwa-bottom-bar-height', bottomBarHeight + 'px');
-                        document.body.style.setProperty('--pwa-bottom-controls-clearance', bottomBarHeight + 'px');
-                        document.body.style.setProperty('--pwa-bottom-controls-half-clearance', (bottomBarHeight / 2) + 'px');
-                    }
+                    // The bottom clearance is a fixed CSS variable now (the old
+                    // bottom bar is gone, so there is nothing left to measure).
                     // Wait for the CSS variables to reposition overlays before
                     // Leaflet recalculates its edge-to-edge viewport. This keeps
                     // circles and vector layers visible under either orientation.
@@ -4179,11 +4153,6 @@
                 });
                 if (window.visualViewport) {
                     window.visualViewport.addEventListener('resize', updatePwaMapLayout);
-                }
-
-                var pwaBottomBar = document.getElementById('pwaBottomBar');
-                if (pwaBottomBar && window.ResizeObserver) {
-                    new ResizeObserver(updatePwaMapLayout).observe(pwaBottomBar);
                 }
 
                 // PWA Launch screen coordinator & deterministic auth startup
@@ -4273,17 +4242,13 @@
                     if (originalClose) originalClose();
                 };
 
-                // ── PWA BOTTOM BAR: Language dropdown ──
-                window.togglePwaLangDropdown = function() {
-                    var dd = document.getElementById('pwaLangDropdown');
-                    var trigger = document.getElementById('pwaLangTrigger');
-                    var isOpen = dd.classList.contains('open');
-                    // Close user dropdown if open
-                    closePwaDropdowns();
-                    if (!isOpen) {
-                        dd.classList.add('open');
-                        trigger.classList.add('active');
-                    }
+                // ── PWA FLOATING STACK: Language submenu (inside the account menu) ──
+                window.togglePwaLangSubmenu = function() {
+                    var sub = document.getElementById('pwaLangSub');
+                    var row = document.getElementById('pwaLangRow');
+                    if (!sub) return;
+                    var isOpen = sub.classList.toggle('open');
+                    if (row) row.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
                 };
 
                 window.pwaPickLang = function(lang) {
@@ -4293,12 +4258,7 @@
                     if (typeof window.setLang === 'function') {
                         window.setLang(lang);
                     }
-                    // Sync the PWA bottom bar language display
-                    var codeEl = document.getElementById('pwaLangCode');
-                    var flagEl = document.getElementById('pwaLangFlag');
-                    if (codeEl) codeEl.textContent = lang.toUpperCase();
-                    if (flagEl) flagEl.style.display = 'none';
-                    // Update selected state
+                    // Update selected state (translations.js also syncs these on setLang)
                     var optEn = document.getElementById('pwaLangOptEn');
                     var optRo = document.getElementById('pwaLangOptRo');
                     if (optEn) optEn.classList.toggle('selected', lang === 'en');
@@ -4307,7 +4267,15 @@
                     closePwaDropdowns();
                 };
 
-                // ── PWA BOTTOM BAR: User dropdown ──
+                // ── PWA FLOATING STACK: Storage row (pins / trails / saved maps) ──
+                window.pwaPickStorage = function() {
+                    closePwaDropdowns();
+                    if (typeof window.toggleSavedCoordinates === 'function') {
+                        window.toggleSavedCoordinates();
+                    }
+                };
+
+                // ── PWA FLOATING STACK: User dropdown ──
                 window.togglePwaUserDropdown = function() {
                     var dd = document.getElementById('pwaUserDropdown');
                     var trigger = document.getElementById('pwaUserTrigger');
@@ -4320,23 +4288,34 @@
                 };
 
                 function closePwaDropdowns() {
-                    document.querySelectorAll('#pwaBottomBar .pwa-dropdown').forEach(function(el) {
+                    document.querySelectorAll('#pwa-br-stack .pwa-dropdown').forEach(function(el) {
                         el.classList.remove('open');
                     });
-                    document.querySelectorAll('#pwaBottomBar .pwa-bar-trigger').forEach(function(el) {
+                    document.querySelectorAll('#pwa-br-stack .pwa-bar-trigger').forEach(function(el) {
                         el.classList.remove('active');
                     });
+                    // Collapse the language submenu so the menu always reopens tidy.
+                    var sub = document.getElementById('pwaLangSub');
+                    if (sub) sub.classList.remove('open');
+                    var row = document.getElementById('pwaLangRow');
+                    if (row) row.setAttribute('aria-expanded', 'false');
                 }
 
                 // Close dropdowns when clicking outside
                 document.addEventListener('click', function(e) {
-                    if (!e.target.closest('#pwaBottomBar')) {
+                    if (!e.target.closest('#pwa-br-stack')) {
                         closePwaDropdowns();
                     }
                 });
 
-                // ── PWA BOTTOM BAR: Detection toggle sync ──
+                // ── PWA FLOATING STACK: Detection toggle (under the compass) ──
+                // Called with no argument from the compass detect button (toggles),
+                // or with an explicit boolean from anywhere else.
                 window.togglePwaDetection = function(checked) {
+                    var btn = document.getElementById('pwaDetectBtn');
+                    if (typeof checked !== 'boolean') {
+                        checked = !(btn && btn.classList.contains('detect-active'));
+                    }
                     // Sync with the main detection switch
                     var mainSwitch = document.getElementById('detectSwitch');
                     if (mainSwitch) {
@@ -4348,20 +4327,27 @@
                         }
                     }
                     // Update visual state
-                    var wrap = document.getElementById('pwaDetectWrap');
-                    if (wrap) {
-                        wrap.classList.toggle('detect-active', checked);
+                    if (btn) {
+                        btn.classList.toggle('detect-active', checked);
+                        btn.setAttribute('aria-pressed', checked ? 'true' : 'false');
+                    }
+                    // Flipping Detect can auto-enable layers: refresh the
+                    // coverage highlights (the compass column mounts async, so
+                    // the delegated container listener may not be attached yet).
+                    if (typeof window.checkLayerVisibility === 'function') {
+                        try { window.checkLayerVisibility(); } catch (e) {}
                     }
                 };
 
-                // Keep PWA detect switch in sync when main switch changes
+                // Keep PWA detect button in sync when main switch changes
                 var mainDetectSwitch = document.getElementById('detectSwitch');
                 if (mainDetectSwitch) {
                     mainDetectSwitch.addEventListener('change', function() {
-                        var pwaSwitch = document.getElementById('pwaDetectSwitch');
-                        if (pwaSwitch) pwaSwitch.checked = this.checked;
-                        var wrap = document.getElementById('pwaDetectWrap');
-                        if (wrap) wrap.classList.toggle('detect-active', this.checked);
+                        var btn = document.getElementById('pwaDetectBtn');
+                        if (btn) {
+                            btn.classList.toggle('detect-active', this.checked);
+                            btn.setAttribute('aria-pressed', this.checked ? 'true' : 'false');
+                        }
                     });
                 }
 
@@ -4436,8 +4422,8 @@
                     }
                 };
 
-                // ── PWA BOTTOM BAR: Sync user state ──
-                function updatePwaBottomBar() {
+                // ── PWA FLOATING STACK: Sync user state ──
+                function updatePwaUserStack() {
                     var user = window._authUser && window._authUser();
                     var userTrigger = document.getElementById('pwaUserTrigger');
                     var loginTrigger = document.getElementById('pwaLoginTrigger');
@@ -4453,7 +4439,7 @@
                         if (userTrigger) userTrigger.style.display = 'none';
                         if (loginTrigger) loginTrigger.style.display = 'flex';
                     }
-                    // Sync language display without defaulting to Romanian when getter/storage is unavailable
+                    // Sync language selection without defaulting to Romanian when getter/storage is unavailable
                     var currentLang = (typeof window._currentLang === 'function') ? window._currentLang() : null;
                     if (!currentLang) {
                         try {
@@ -4461,8 +4447,6 @@
                         } catch (e) {}
                     }
                     if (currentLang && (currentLang === 'en' || currentLang === 'ro')) {
-                        var codeEl = document.getElementById('pwaLangCode');
-                        if (codeEl) codeEl.textContent = currentLang.toUpperCase();
                         var enOpt = document.getElementById('pwaLangOptEn');
                         var roOpt = document.getElementById('pwaLangOptRo');
                         if (enOpt) enOpt.classList.toggle('selected', currentLang === 'en');
@@ -4470,9 +4454,9 @@
                     }
                 }
 
-                // Update bottom bar periodically (syncs with auth state)
-                setInterval(updatePwaBottomBar, 500);
-                setTimeout(updatePwaBottomBar, 200);
+                // Update user stack periodically (syncs with auth state)
+                setInterval(updatePwaUserStack, 500);
+                setTimeout(updatePwaUserStack, 200);
             }
         })();
     </script>
@@ -4538,6 +4522,10 @@
     if (typeof window.toggleRomanLayer !== 'function') {
         window.toggleRomanLayer = function(on) {
             console.warn('toggleRomanLayer called before map init', on);
+        };
+    }
+</script>
+init', on);
         };
     }
 </script>

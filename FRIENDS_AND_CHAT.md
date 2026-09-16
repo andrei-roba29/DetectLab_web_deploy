@@ -33,6 +33,7 @@ storage bill.
 | `supabase/migrations/20260915010000_social_friends.sql` | `friend_requests`, `friendships` + send / cancel / respond / remove functions, `list_my_friends()`, `list_my_friend_requests()`, `get_social_counters()`. |
 | `supabase/migrations/20260915020000_social_conversations.sql` | `conversations`, `conversation_members`, `conversation_messages` (RLS = members only, Realtime), direct/group functions, admin powers, `send_conversation_message()` with every limit, `cleanup_social_messages()` + pg_cron job. |
 | `supabase/migrations/20260915030000_event_quotas_and_friend_invites.sql` | DB triggers for event creation / attendance / deadline / event-chat size, `get_my_event_quota()`, `invite_friends_to_event()`, `cleanup_event_chat_messages()` + pg_cron job. |
+| `supabase/migrations/20260916010000_social_unified_search.sql` | `search_normalise()` (case + diacritic folding) + rewritten `search_social_users()`: unified partial match across name / e-mail / county / city / id, multi-word AND. |
 | `test-friends-social.js` | Node regression test (no jsdom): runs the real `js/friends.js` and `js/events.js` against an in-memory social server. `node test-friends-social.js`. |
 | `test-map-friend-actions.js` | Node regression test (no jsdom) for the map pins: runs the real `searchNearbyDetectors()` / `addOfflineDetectorBubbles()` and the real social module, asserting which button appears per relationship and that it really calls `send_friend_request` / `respond_friend_request`. `node test-map-friend-actions.js`. |
 
@@ -50,8 +51,12 @@ storage bill.
 
 ### 2. Tab „Prieteni”
 
-* **Search bar** — matches **e-mail**, **display name** or the **account id**
-  prefix (`search_social_users()`), plus a **county (județ) filter** dropdown
+* **Search bar** — **unified** partial matching (`search_social_users()`): one
+  query is folded (case + Romanian/Hungarian diacritics) and matched as a
+  substring against **display name**, **e-mail**, **county**, **city** or the
+  **account id** prefix — `"muresan"` finds *Mureșan*, `"cluj"` matches the
+  county column, and in a multi-word query (`"ana cluj"`) **every** word must
+  be found in at least one column. Plus a **county (județ) filter** dropdown
   built from `list_social_counties()` and the counties of existing friends.
   County matching is diacritic- and label-insensitive: *Județul Cluj*, *cluj*,
  *CLUJ COUNTY* and *Jud. Cluj* are the same county (`public.normalise_county`,
@@ -285,8 +290,9 @@ sandbox with a hand-rolled DOM and an in-memory social server that reproduces
 the migration rules, and asserts:
 
 1. limits are read from `public.app_limits`;
-2. search by e-mail / name / id and the county filter (incl. *Județul Cluj*
-   normalisation, and never returning the caller);
+2. unified search (partial, diacritic-insensitive, across name / e-mail /
+   county / city / id, multi-word AND) and the county filter (incl. *Județul
+   Cluj* normalisation, and never returning the caller);
 3. one request per pair, requests tab, accept → both sides become friends;
 4. the friends tab renders the search bar, the county filter and a 💬 button;
 5. message length, attachment size and the per-thread cap (oldest dropped

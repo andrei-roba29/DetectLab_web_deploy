@@ -98,6 +98,7 @@
     var periodOutput;
     var periodCaptionEl;
     var periodLayerLabel;
+    var actionsEl = null;
     var activeSource = null;
     var activeOwner = null;
     var activeFormatter = percentageText;
@@ -106,6 +107,143 @@
     var periodTipPinned = false;
     var PERIOD_THUMB_SIZE = 20;
     var PERIOD_TIP_HIDE_DELAY = 900;
+
+    /* Acțiuni rapide ancorate sub sliderul vertical: butonul „Ajutor de
+       căutare” (APM 2.0) și cele trei butoane Iosefină Premium (căutare
+       clădiri dispărute / setări / sugerează). Fiecare apare ca iconiță
+       minimalistă (același design ca restul iconițelor de pe hartă),
+       fără text, doar cât timp stratul său e selectat în oglinda
+       verticală — eticheta devine bulă de informații la hover / focus / tap.
+       Cheia e id-ul slider-ului de opacitate din panoul lateral. */
+    var LAYER_ACTION_MAP = {
+        apm20OpacitySlider: ['apm20SearchHelpBtn'],
+        josephineOpacitySlider: ['iosBldSearchHelpBtn', 'iosBldSettingsBtn', 'iosBldSuggestBtn']
+    };
+    var actionHome = {};
+    var tipTimers = {};
+    var TIP_TAP_MS = 2500;
+
+    function managedActionIds() {
+        var ids = [];
+        var keys = Object.keys(LAYER_ACTION_MAP);
+        for (var i = 0; i < keys.length; i++) {
+            var list = LAYER_ACTION_MAP[keys[i]];
+            for (var j = 0; j < list.length; j++) {
+                if (ids.indexOf(list[j]) === -1) ids.push(list[j]);
+            }
+        }
+        return ids;
+    }
+
+    function refreshLayerActionVisibility() {
+        if (typeof window === 'undefined') return;
+        try {
+            if (typeof window._refreshApm20SearchHelpBtnVisibility === 'function') {
+                window._refreshApm20SearchHelpBtnVisibility();
+            }
+        } catch (e) { /* map module not initialised yet */ }
+        try {
+            if (typeof window._refreshIosBldBtnVisibility === 'function') {
+                window._refreshIosBldBtnVisibility();
+            }
+        } catch (e) { /* map module not initialised yet */ }
+    }
+
+    function syncActionAriaLabels() {
+        var ids = managedActionIds();
+        for (var i = 0; i < ids.length; i++) {
+            var btn = document.getElementById(ids[i]);
+            if (!btn || !btn.querySelector) continue;
+            var tip = btn.querySelector('.vo-action-tip');
+            if (!tip) continue;
+            var txt = compactText(tip.textContent);
+            if (txt && typeof btn.setAttribute === 'function') {
+                btn.setAttribute('aria-label', txt);
+            }
+        }
+    }
+
+    /* Mută butoanele stratului activ în #verticalOpacityActions (sub slider) și
+       le readuce pe celelalte la locul lor din .map-wrapper. Ordinea din
+       LAYER_ACTION_MAP e păstrată la fiecare sincronizare. */
+    function syncLayerActions() {
+        if (!control) return;
+        if (!actionsEl) {
+            try { actionsEl = document.getElementById('verticalOpacityActions'); } catch (e) { actionsEl = null; }
+        }
+        var activeId = activeSource ? activeSource.id : null;
+        var wanted = (activeId && LAYER_ACTION_MAP[activeId]) ? LAYER_ACTION_MAP[activeId] : [];
+        var wantedSet = {};
+        for (var w = 0; w < wanted.length; w++) wantedSet[wanted[w]] = true;
+        var controlVisible = false;
+        try { controlVisible = control.classList.contains('visible'); } catch (e) { controlVisible = false; }
+
+        var ids = managedActionIds();
+        for (var i = 0; i < ids.length; i++) {
+            var btn = null;
+            try { btn = document.getElementById(ids[i]); } catch (e) { btn = null; }
+            if (!btn) continue;
+            if (!actionHome[ids[i]]) {
+                actionHome[ids[i]] = { parent: btn.parentElement, next: btn.nextSibling };
+            }
+            var shouldDock = !!wantedSet[ids[i]] && controlVisible && !!actionsEl;
+            if (shouldDock) {
+                if (btn.parentElement !== actionsEl) {
+                    try { actionsEl.appendChild(btn); } catch (e) { /* DOM-only tests */ }
+                }
+                if (btn.classList) btn.classList.add('vo-docked');
+            } else {
+                var home = actionHome[ids[i]];
+                if (home && home.parent && btn.parentElement !== home.parent) {
+                    try {
+                        if (home.next && home.next.parentElement === home.parent) {
+                            home.parent.insertBefore(btn, home.next);
+                        } else {
+                            home.parent.appendChild(btn);
+                        }
+                    } catch (e) { /* DOM-only tests */ }
+                }
+                if (btn.classList) btn.classList.remove('vo-docked', 'show-tip');
+            }
+        }
+        /* Păstrează ordinea declarată a iconițelor sub slider. */
+        if (actionsEl) {
+            for (var k = 0; k < wanted.length; k++) {
+                var docked = null;
+                try { docked = document.getElementById(wanted[k]); } catch (e) { docked = null; }
+                if (docked && docked.parentElement === actionsEl) {
+                    try { actionsEl.appendChild(docked); } catch (e) { /* DOM-only tests */ }
+                }
+            }
+        }
+        /* Panoul „Setări detecție” se ancorează în stânga sliderului cât timp
+           stratul Josephine Map + e selectat (vezi body.vo-josephine-docked);
+           când ancora dispare (alt strat / oglindă închisă), panoul se închide
+           ca să nu rămână orfan bottom-center. */
+        var josephineDocked = activeId === 'josephineOpacitySlider' && controlVisible;
+        try {
+            if (document.body && document.body.classList) {
+                document.body.classList.toggle('vo-josephine-docked', josephineDocked);
+            }
+        } catch (e) { /* DOM-only tests */ }
+        if (!josephineDocked) {
+            try {
+                var settingsPanel = document.getElementById('iosBldSettingsPanel');
+                if (settingsPanel && settingsPanel.classList) settingsPanel.classList.remove('open');
+            } catch (e) { /* DOM-only tests */ }
+        }
+        /* map-app.js arată/ascunde iconițele în funcție de strat + zoom + oglinda activă. */
+        refreshLayerActionVisibility();
+        syncActionAriaLabels();
+    }
+
+    function isVerticalActiveFor(sliderId) {
+        try {
+            return !!(activeSource && activeSource.id === sliderId && control && control.classList.contains('visible'));
+        } catch (e) {
+            return false;
+        }
+    }
 
     function compactText(value) {
         return String(value || '').replace(/\s+/g, ' ').trim();
@@ -339,6 +477,7 @@
 
         startProgrammaticSync();
         if (closePanel) closeLayerPanel();
+        syncLayerActions();
         return true;
     }
 
@@ -377,6 +516,7 @@
         startProgrammaticSync();
 
         if (closePanel) closeLayerPanel();
+        syncLayerActions();
     }
 
     function hideControl() {
@@ -391,6 +531,7 @@
             window.clearInterval(syncTimer);
             syncTimer = null;
         }
+        syncLayerActions();
     }
 
     function isInteractiveTarget(target) {
@@ -570,11 +711,37 @@
             }
         });
 
+        /* Acțiuni rapide sub slider: pe touch, primul tap pe iconiță arată bula
+           de informații (clasa .show-tip), iar tap-ul următor declanșează
+           acțiunea — comportamentul nativ al butonului nu e blocat. */
+        actionsEl = document.getElementById('verticalOpacityActions');
+        if (actionsEl && actionsEl.addEventListener) {
+            actionsEl.addEventListener('click', function (event) {
+                var btn = event.target && event.target.closest
+                    ? event.target.closest('button')
+                    : null;
+                if (!btn || !actionsEl.contains(btn)) return;
+                if (btn.classList) btn.classList.add('show-tip');
+                var id = btn.id || 'tip';
+                if (tipTimers[id]) window.clearTimeout(tipTimers[id]);
+                tipTimers[id] = window.setTimeout(function () {
+                    tipTimers[id] = null;
+                    if (btn.classList) btn.classList.remove('show-tip');
+                }, TIP_TAP_MS);
+            });
+        }
+
         /* Bilingual mirrors: the layer name, the caption that mirrors still carry
            (PERIOADĂ / ISTORIC) and the formatted value follow the live language.
            Plain opacity mirrors have no caption any more. */
         document.addEventListener('detectlab:langchange', function () {
-            if (!activeSource || !activeOwner) return;
+            if (!activeSource || !activeOwner) {
+                /* Chiar și fără strat activ, etichetele/aria butoanelor mutate
+                   trebuie să urmeze limba curentă. */
+                refreshLayerActionVisibility();
+                syncActionAriaLabels();
+                return;
+            }
             var name = getLayerName(activeSource, activeOwner);
             layerLabel.textContent = name;
             layerLabel.title = name;
@@ -591,6 +758,8 @@
                 }
                 updatePeriodOutput();
             }
+            refreshLayerActionVisibility();
+            syncActionAriaLabels();
         });
 
         /* Small public surface for integration tests and for any map module
@@ -603,7 +772,11 @@
             close: hideControl,
             getActiveSliderId: function () {
                 return activeSource ? activeSource.id : null;
-            }
+            },
+            /* map-app.js arată iconițele APM 2.0 / Iosefină doar când stratul
+               lor e selectat în oglinda verticală vizibilă. */
+            isActiveFor: isVerticalActiveFor,
+            refreshActions: refreshLayerActionVisibility
         };
     }
 

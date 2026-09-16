@@ -1299,10 +1299,25 @@
                     '</svg>' +
                     '</button>';
 
+                // PWA mode: the button floats bottom-right above the account
+                // trigger (first child of #pwa-br-stack, right above the
+                // "© Leafleet" tag). Desktop keeps it in the left stack.
+                // NOTE: documentElement (set by the <head> script) is used on
+                // purpose — initMap runs before the footer script adds .is-pwa
+                // to <body>.
+                var isPwaMode = !!(document.documentElement &&
+                    document.documentElement.classList.contains('is-pwa'));
+
                 // Wait for DOM to be ready then insert below zoom buttons
                 setTimeout(function () {
-                    var zoomCtrl = document.querySelector('#detectlab-map .leaflet-top.leaflet-left');
-                    if (zoomCtrl) zoomCtrl.appendChild(btn);
+                    if (isPwaMode) {
+                        var stack = document.getElementById('pwa-br-stack');
+                        var liveBtn = btn.querySelector('#btnLiveLocation');
+                        if (stack && liveBtn) stack.prepend(liveBtn);
+                    } else {
+                        var zoomCtrl = document.querySelector('#detectlab-map .leaflet-top.leaflet-left');
+                        if (zoomCtrl) zoomCtrl.appendChild(btn);
+                    }
                     // Attach listener directly on the button (not delegated) so Leaflet's
                     // internal stopPropagation on control containers can't swallow clicks.
                     var btnEl = document.getElementById('btnLiveLocation');
@@ -1440,6 +1455,60 @@
                 // public bridge to render the same pin and accuracy circle.
                 window._showLiveLocation = showLiveLocation;
 
+            })();
+
+            // ── PWA NEARBY-DETECTORISTS BUTTON (last in the left icon stack) ──
+            // Replaces the old bottom-bar ⊙ button with a magnifier icon in the
+            // standard 38×38 map-button theme. Desktop keeps its own labelled
+            // button in the .map-controls row, so this is PWA-only. It must land
+            // AFTER every other stack button: the coord/track pair is injected
+            // at +400ms and the offline button arrives asynchronously from
+            // js/offline-maps.js, so we wait for both before appending (with a
+            // bounded fallback that appends anyway).
+            (function () {
+                if (!document.documentElement ||
+                    !document.documentElement.classList.contains('is-pwa')) return;
+
+                function appendNearbyButton(topLeft) {
+                    if (document.getElementById('pwaNearbyBtn')) return;
+                    var wrap = document.createElement('div');
+                    wrap.className = 'leaflet-control leaflet-bar';
+                    wrap.style.cssText = 'margin-top:8px;border:none;box-shadow:none;background:none;';
+                    wrap.innerHTML =
+                        '<button id="pwaNearbyBtn" class="btn-nearby-pwa" type="button" title="See other detectorists in the area" aria-label="See other detectorists in the area">' +
+                        '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                        '<circle cx="11" cy="11" r="7" />' +
+                        '<line x1="21" y1="21" x2="16.65" y2="16.65" />' +
+                        '</svg>' +
+                        '</button>';
+                    topLeft.appendChild(wrap);
+                    var btnEl = document.getElementById('pwaNearbyBtn');
+                    if (btnEl) {
+                        L.DomEvent.on(btnEl, 'click', function (e) {
+                            L.DomEvent.stopPropagation(e);
+                            if (typeof window.openNearbyDetectors === 'function') {
+                                window.openNearbyDetectors();
+                            }
+                        });
+                    }
+                }
+
+                var tries = 0;
+                function tryAppend() {
+                    tries++;
+                    var topLeft = document.querySelector('#detectlab-map .leaflet-top.leaflet-left');
+                    if (topLeft && document.getElementById('btnOfflineMaps') &&
+                        document.getElementById('btnTrack')) {
+                        appendNearbyButton(topLeft);
+                        return;
+                    }
+                    if (tries < 40) {
+                        setTimeout(tryAppend, 150);
+                        return;
+                    }
+                    if (topLeft) appendNearbyButton(topLeft);
+                }
+                setTimeout(tryAppend, 600);
             })();
 
             // ── CUSTOM MEASURE BUTTON ──
@@ -2164,7 +2233,10 @@
                 var savedSwitchesStatus = null;
 
                 function setControlState(active) {
-                    ['savedLocationsBtn', 'pwaSavedLocationsBtn'].forEach(function (id) {
+                    // Desktop keeps its .map-controls button; PWA answers through
+                    // the "Storage" row inside the account menu (styled via
+                    // #pwaStorageItem.is-active in index.html).
+                    ['savedLocationsBtn', 'pwaStorageItem'].forEach(function (id) {
                         var button = document.getElementById(id);
                         if (!button) return;
                         button.classList.toggle('is-active', active);
@@ -6022,7 +6094,7 @@
                     return 'web-' + Math.random().toString(36).slice(2);
                 }
             })();
-            function nearbyInitials(name) { return (name || '?').trim().split(/\s+/).slice(0,2).map(function(x){return x[0];}).join('').toUpperCase(); }
+            function nearbyInitials(name) { return String(name || '?').replace(/[<>&"']/g, '').trim().split(/\s+/).slice(0,2).map(function(x){return x[0];}).join('').toUpperCase() || '?'; }
             // Social action slot carried by every detectorist popup (live orange
             // pins AND black/white offline bubbles). It is intentionally EMPTY:
             // js/friends.js fills it from the map's 'popupopen' event with the
@@ -6040,6 +6112,16 @@
             }
             function nearbyDistance(a,b,c,d) { var R=6371, x=(c-a)*Math.PI/180, y=(d-b)*Math.PI/180; var q=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2; return 2*R*Math.asin(Math.sqrt(q)); }
             function nearbyUser() { return window._authUser && window._authUser(); }
+            // Mirrors the active state on both triggers: the desktop labelled
+            // button and the PWA icon in the left stack (whichever exists).
+            function setNearbyButtonsActive(on) {
+                ['nearbyDetectorsBtn', 'pwaNearbyBtn'].forEach(function (id) {
+                    try {
+                        var b = document.getElementById(id);
+                        if (b) b.classList.toggle('is-active', on);
+                    } catch (e) {}
+                });
+            }
             window.openNearbyDetectors = function() {
                 var m = document.getElementById('nearbyModal');
                 var hasPins = nearbyLayer && nearbyLayer.getLayers().length > 0;
@@ -6053,9 +6135,8 @@
                     }
                     var homeBtn = document.getElementById('nearbyHomeBtn');
                     if (homeBtn) homeBtn.style.display = 'none';
-                    
-                    var btnEl = document.getElementById('nearbyDetectorsBtn');
-                    if (btnEl) btnEl.classList.remove('is-active');
+
+                    setNearbyButtonsActive(false);
                     
                     var status = document.getElementById('nearbyStatus');
                     if (status) {
@@ -6079,7 +6160,7 @@
             // ── SOCIAL ACTIONS ON DETECTORIST PINS ──
             // Every live (orange) and offline (black/white) popup ships an empty
             // .detector-social-actions slot; friends.js paints it the moment the
-            // popup opens, so a tap on a detectorist offers "Adaugă prietenie",
+            // popup opens, so a tap on a detectorist offers "Adaugă prieten",
             // "Acceptă cererea", "Cerere trimisă / Anulează" or, for somebody who
             // is already a friend, "Trimite mesaj". Nothing renders when nobody
             // is signed in (or when the pin is another device of my own account).
@@ -6089,6 +6170,11 @@
                     if (!popupEl) return;
                     var F = window.DetectLabFriends;
                     if (F && typeof F.decorateDetectorPopup === 'function') F.decorateDetectorPopup(popupEl);
+                    // The slot was empty when Leaflet measured the popup; the paint
+                    // above injected the action row, so re-run the layout now —
+                    // otherwise the buttons and the confirmation message overflow
+                    // the frame ("mesajul iese din fereastră").
+                    if (e.popup && typeof e.popup.update === 'function') e.popup.update();
                 } catch (err) {
                     console.warn('[Nearby] social actions on popup failed:', err && err.message ? err.message : err);
                 }
@@ -6180,14 +6266,21 @@
                         } catch (e) {}
                         // zIndexOffset below the live pins (1100): a live detectorist
                         // standing at the same spot must stay clickable first.
+                        // Horizontal card: avatar left, identity right, actions below.
+                        // The outer .map-place-popup stays FIRST — the in-popup flow
+                        // override keys off it (one window, not two).
                         L.marker([lat, lng], { icon: icon, interactive: true, zIndexOffset: 900 })
-                            .bindPopup('<div class="map-place-popup">' +
-                                '<strong>' + safeName + '</strong>' +
-                                '<div style="font-size:0.72rem; opacity:0.75; margin:2px 0 4px;">⚪ Offline — ultima locație cunoscută / last known location</div>' +
-                                (where ? '<div style="font-size:0.76rem;">📍 ' + where + '</div>' : '') +
-                                (seenAt ? '<div style="font-size:0.7rem; opacity:0.6;">🕘 ' + seenAt + '</div>' : '') +
+                            .bindPopup('<div class="map-place-popup"><div class="detector-popup detector-offline">' +
+                                '<div class="detector-card-top">' +
+                                '<div class="detector-avatar">' + nearbyInitials(name) + '<span class="detector-presence"></span></div>' +
+                                '<div class="detector-id">' +
+                                '<div class="detector-name">' + safeName + '</div>' +
+                                '<div class="detector-status">⚪ Offline — ultima locație cunoscută / last known location</div>' +
+                                (where ? '<div class="detector-meta">📍 ' + where + '</div>' : '') +
+                                (seenAt ? '<div class="detector-meta">🕘 ' + seenAt + '</div>' : '') +
+                                '</div></div>' +
                                 detectorSocialSlotHtml(row.user_id, name, 'offline') +
-                                '</div>')
+                                '</div></div>')
                             .addTo(nearbyLayer);
                         added++;
                     });
@@ -6317,8 +6410,18 @@
                             // own position is still the one that receives the tap/click.
                             // Clicking a pin opens a small window with full name + email
                             // plus the social action slot (friend request / message).
+                            // Horizontal card (same shape as the offline bubbles):
+                            // avatar left, identity right, actions below.
                             L.marker([+row.latitude,+row.longitude],{icon:icon,interactive:true,zIndexOffset:1100})
-                                .bindPopup('<div class="map-place-popup"><strong>'+liveName+'</strong><br>'+liveEmail+detectorSocialSlotHtml(row.user_id, liveName, 'live')+'</div>')
+                                .bindPopup('<div class="map-place-popup"><div class="detector-popup detector-live">' +
+                                '<div class="detector-card-top">' +
+                                '<div class="detector-avatar">'+nearbyInitials(row.full_name)+'<span class="detector-presence"></span></div>' +
+                                '<div class="detector-id"><div class="detector-name">'+liveName+'</div>' +
+                                '<div class="detector-status">🟢 Live — în apropiere / nearby</div>' +
+                                (liveEmail ? '<div class="detector-meta">'+liveEmail+'</div>' : '') +
+                                '</div></div>' +
+                                detectorSocialSlotHtml(row.user_id, liveName, 'live') +
+                                '</div></div>')
                                 .addTo(nearbyLayer);
                         }
                     });
@@ -6346,18 +6449,15 @@
                             }
                             map.fitBounds(bounds.pad(0.2), { maxZoom: 17 });
                         }
-                        var btnEl = document.getElementById('nearbyDetectorsBtn');
-                        if (btnEl) btnEl.classList.add('is-active');
+                        setNearbyButtonsActive(true);
                         var homeBtn = document.getElementById('nearbyHomeBtn');
                         if (homeBtn) homeBtn.style.display = '';
                     } else if (total > 0) {
                         status.innerHTML = 'Niciun detectorist în raza de 10 km (' + total + ' activ(i) în total).<br><small>No detectorists within 10 km (' + total + ' active in total).</small>';
-                        var btnEl = document.getElementById('nearbyDetectorsBtn');
-                        if (btnEl) btnEl.classList.remove('is-active');
+                        setNearbyButtonsActive(false);
                     } else {
                         status.innerHTML = 'Nu sunt detectoriști în apropiere.<br><small>No detectorists found nearby.</small>';
-                        var btnEl = document.getElementById('nearbyDetectorsBtn');
-                        if (btnEl) btnEl.classList.remove('is-active');
+                        setNearbyButtonsActive(false);
                     }
                 } catch(e) {
                     var msg = (e && (e.message || (e.error && (e.error.message || e.error)) || e.details)) ? (e.message || (e.error && (e.error.message || e.error)) || e.details) : '';
@@ -6881,18 +6981,20 @@
             var DETECT_MAX_AGE_MS = 10 * 60 * 60 * 1000; // 10 hours
 
             // Keep ALL visible detect switches in sync when the state changes
-            // programmatically (restore / auto-enable / expiry): the floating map
-            // switch (#detectSwitch) and its PWA bottom-bar twin (#pwaDetectSwitch).
+            // programmatically (restore / auto-enable / expiry): the desktop map
+            // switch (#detectSwitch) and its PWA twin under the compass
+            // (#pwaDetectBtn, a button rather than a checkbox).
             // We set .checked directly instead of dispatching a synthetic 'change'
             // so the inline onchange handlers don't re-enter toggleDetection().
             function _syncDetectSwitchUI(on) {
                 try {
                     var sw = document.getElementById('detectSwitch');
                     if (sw) sw.checked = on;
-                    var pwa = document.getElementById('pwaDetectSwitch');
-                    if (pwa) pwa.checked = on;
-                    var pwaWrap = document.getElementById('pwaDetectWrap');
-                    if (pwaWrap) pwaWrap.classList.toggle('detect-active', on);
+                    var pwaBtn = document.getElementById('pwaDetectBtn');
+                    if (pwaBtn) {
+                        pwaBtn.classList.toggle('detect-active', on);
+                        pwaBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    }
                 } catch (e) {}
             }
 
@@ -8577,10 +8679,32 @@
                 }
 
                 // ── Visibility refresh ──
+                // Cele trei iconițe Iosefină (căutare clădiri dispărute / setări /
+                // sugerează) trăiesc sub sliderul vertical de opacitate
+                // (#verticalOpacityActions, mutate de js/vertical-opacity-control.js):
+                // sunt vizibile doar când stratul Josephine Map + e pornit ȘI
+                // selectat în oglinda verticală. Hint-ul bottom-center nu se mai
+                // arată niciodată — la zoom/arie insuficiente iconița de căutare
+                // rămâne vizibilă (estompată, .needs-zoom), iar bula ei de
+                // informații arată mesajul de zoom corect (in vs out), ca în
+                // FIX-ul 2026-07. Setările și sugestia rămân mereu disponibile
+                // (parametrii se pot regla oricând, iar desenul manual nu cere
+                // zoom de detecție); doar detecția automată cere zoom valid.
                 function _refreshVisibility() {
                     var btn  = document.getElementById('iosBldSearchHelpBtn');
                     var hint = document.getElementById('iosBldSearchHelpHint');
                     if (!btn || !hint) return;
+
+                    var btnLabel = document.getElementById('iosBldSearchHelpLabel');
+                    var settingsBtn = document.getElementById('iosBldSettingsBtn');
+                    var suggestBtn = document.getElementById('iosBldSuggestBtn');
+
+                    var _vo = (typeof window.DetectLabVerticalOpacity !== 'undefined')
+                        ? window.DetectLabVerticalOpacity : null;
+                    var verticalActive = false;
+                    if (_vo && typeof _vo.isActiveFor === 'function') {
+                        try { verticalActive = _vo.isActiveFor('josephineOpacitySlider'); } catch (e) { verticalActive = false; }
+                    }
 
                     // Butonul e activ dacă Josephine Map + (_jLayerRef) e pe hartă
                     var jOn = !!(window._jLayerRef && map.hasLayer(window._jLayerRef));
@@ -8588,46 +8712,40 @@
                     var zoomOk = _curZoom >= window.IOS_BLD_MIN_ZOOM && _curZoom <= window.IOS_BLD_MAX_ZOOM;
                     var areaOk = _areaKm2() <= MAX_AREA_KM2 && zoomOk;
 
-                    var settingsBtn = document.getElementById('iosBldSettingsBtn');
-                    var suggestBtn = document.getElementById('iosBldSuggestBtn');
+                    hint.classList.remove('visible');
+                    hint.style.display = 'none';
+                    _hintVisible = false;
 
-                    if (!jOn) {
+                    if (!jOn || !verticalActive) {
                         btn.style.display = 'none';
+                        btn.classList.remove('needs-zoom');
                         if (settingsBtn) settingsBtn.style.display = 'none';
                         if (suggestBtn) suggestBtn.style.display = 'none';
                         window._iosBldStopSuggestDrawing && window._iosBldStopSuggestDrawing();
-                        hint.classList.remove('visible');
-                        hint.style.display = 'none';
-                        _hintVisible = false;
                         return;
                     }
                     if (areaOk) {
-                        hint.classList.remove('visible');
-                        setTimeout(function(){ if(!_hintVisible) hint.style.display='none'; }, 250);
-                        _hintVisible = false;
                         btn.style.display = 'flex';
+                        btn.classList.remove('needs-zoom');
+                        if (btnLabel && !btn.disabled) btnLabel.textContent = _t('ios_bld_search_help');
                         if (settingsBtn) settingsBtn.style.display = 'flex';
                         if (suggestBtn) suggestBtn.style.display = 'flex';
                     } else {
-                        btn.style.display = 'none';
-                        if (settingsBtn) settingsBtn.style.display = 'none';
-                        if (suggestBtn) suggestBtn.style.display = 'none';
-                        window._iosBldStopSuggestDrawing && window._iosBldStopSuggestDrawing();
+                        btn.style.display = 'flex';
+                        btn.classList.add('needs-zoom');
                         // FIX (2026-07): mesajul era static ("Zoom in mai mult") indiferent de
                         // motiv — confuz când zoom-ul curent e PESTE maxim (14), caz în care
                         // utilizatorul trebuie să dea zoom OUT, nu in. Alegem textul corect în
                         // funcție de motivul real: zoom prea mic → zoom in; zoom prea mare →
                         // zoom out; zoom OK dar viewport prea mare → zoom in (micșorează aria).
-                        var hintLabel = document.getElementById('iosBldSearchHelpHintLabel');
-                        if (hintLabel) {
-                            var hintKey = (_curZoom > window.IOS_BLD_MAX_ZOOM) ? 'ios_bld_search_help_zoom_out' : 'ios_bld_search_help_zoom_in';
-                            hintLabel.textContent = _t(hintKey);
+                        // Textul ajunge acum în bula iconiței, nu în hint-ul bottom-center.
+                        if (btnLabel && !btn.disabled) {
+                            var zoomKey = (_curZoom > window.IOS_BLD_MAX_ZOOM) ? 'ios_bld_search_help_zoom_out' : 'ios_bld_search_help_zoom_in';
+                            btnLabel.textContent = _t(zoomKey);
                         }
-                        if (!_hintVisible) {
-                            hint.style.display = 'flex';
-                            requestAnimationFrame(function(){ hint.classList.add('visible'); });
-                            _hintVisible = true;
-                        }
+                        if (settingsBtn) settingsBtn.style.display = 'flex';
+                        if (suggestBtn) suggestBtn.style.display = 'flex';
+                        window._iosBldStopSuggestDrawing && window._iosBldStopSuggestDrawing();
                         window.clearIosBldSearchHelp && window.clearIosBldSearchHelp();
                     }
                 }
@@ -9262,6 +9380,9 @@
                         var lbl = document.getElementById('iosBldSearchHelpLabel');
                         if (btn) btn.disabled = false;
                         if (lbl) lbl.textContent = _t('ios_bld_search_help') || 'Clădiri Dispărute';
+                        /* Dacă zoom-ul s-a schimbat în timpul analizei, resincronizăm
+                           iconița (needs-zoom + bulă de zoom) imediat ce ieșim din loading. */
+                        try { _refreshVisibility(); } catch (e) { /* never break _finish */ }
                         console.log('[IosBld+] ── SFÂRȘIT căutare. found =', !!found, '| err =', !!err, '──────────────────');
                         if (err)  _toast(_t('ios_bld_search_help_error'), 4000);
                         else if (!found) _toast(_t('ios_bld_search_help_empty'), 3500);
@@ -9850,64 +9971,50 @@
                     _positionApm20Overlays();
                     var btn = document.getElementById('apm20SearchHelpBtn');
                     var hint = document.getElementById('apm20SearchHelpHint');
-                    console.log('[APM2.0] _refreshVisibility → btn:', btn, '| hint:', hint);
+                    var labelSpan = document.getElementById('apm20SearchHelpLabel');
                     if (!btn || !hint) {
                         console.error('[APM2.0] ❌ btn sau hint NU a fost găsit în DOM! Verifică ID-urile.');
                         return;
                     }
+                    // Iconița „Ajutor de căutare” trăiește sub sliderul vertical de
+                    // opacitate (#verticalOpacityActions): vizibilă doar când stratul
+                    // APM 2.0 e pornit ȘI selectat în oglinda verticală. Hint-ul
+                    // bottom-center nu se mai arată niciodată — la zoom insuficient
+                    // iconița rămâne vizibilă (estompată, .needs-zoom), iar bula ei
+                    // de informații arată mesajul de zoom.
+                    var _vo = (typeof window.DetectLabVerticalOpacity !== 'undefined')
+                        ? window.DetectLabVerticalOpacity : null;
+                    var verticalActive = false;
+                    if (_vo && typeof _vo.isActiveFor === 'function') {
+                        try { verticalActive = _vo.isActiveFor('apm20OpacitySlider'); } catch (e) { verticalActive = false; }
+                    }
                     var layerOn = !!(window._apm20Layer && map.hasLayer(window._apm20Layer));
                     var areaKm2 = _currentViewportAreaKm2();
                     var areaOk = areaKm2 <= MAX_AREA_KM2;
-                    console.log('[APM2.0] layerOn:', layerOn, '| areaKm2:', areaKm2.toFixed(1), '| MAX_AREA_KM2:', MAX_AREA_KM2, '| areaOk:', areaOk);
 
-                    if (!layerOn) {
-                        console.log('[APM2.0] Layer OFF → ascundem btn și hint');
+                    hint.classList.remove('visible');
+                    hint.style.display = 'none';
+                    _apm20HintVisible = false;
+
+                    if (!layerOn || !verticalActive) {
                         btn.style.display = 'none';
-                        hint.classList.remove('visible');
-                        hint.style.display = 'none';
-                        _apm20HintVisible = false;
+                        btn.classList.remove('needs-zoom');
                         return;
                     }
 
-                    var areaOk = _currentViewportAreaKm2() <= MAX_AREA_KM2;
-
+                    var lang = (typeof currentLang !== 'undefined' ? currentLang : 'en') || 'en';
+                    var T = (typeof translations !== 'undefined' && translations[lang]) ? translations[lang] : {};
                     if (areaOk) {
-                        // Zoom suficient → arătăm butonul, ascundem hint-ul
-                        console.log('[APM2.0] ✅ Zoom OK → afișăm butonul Search Help');
-                        hint.classList.remove('visible');
-                        if (_apm20HintVisible) {
-                            setTimeout(function () {
-                                if (!_apm20HintVisible) hint.style.display = 'none';
-                            }, 250);
-                        } else {
-                            hint.style.display = 'none';
-                        }
-                        _apm20HintVisible = false;
                         btn.style.display = 'flex';
                         btn.classList.remove('needs-zoom');
-                        // Verificare vizibilitate finală
-                        setTimeout(function() {
-                            var r = btn.getBoundingClientRect();
-                            console.log('[APM2.0] btn.getBoundingClientRect():', JSON.stringify({top: r.top.toFixed(0), left: r.left.toFixed(0), width: r.width.toFixed(0), height: r.height.toFixed(0)}));
-                            console.log('[APM2.0] btn computed display:', window.getComputedStyle(btn).display, '| visibility:', window.getComputedStyle(btn).visibility, '| opacity:', window.getComputedStyle(btn).opacity, '| z-index:', window.getComputedStyle(btn).zIndex);
-                            var parent = btn.parentElement;
-                            while (parent) {
-                                var s = window.getComputedStyle(parent);
-                                if (s.overflow === 'hidden' || s.overflow === 'clip') {
-                                    console.warn('[APM2.0] ⚠️ Părinte cu overflow:hidden găsit:', parent.id || parent.className, '| overflow:', s.overflow);
-                                }
-                                parent = parent.parentElement;
-                            }
-                        }, 100);
+                        if (labelSpan && !btn.disabled) {
+                            labelSpan.textContent = T['apm20_search_help'] || 'Search Help';
+                        }
                     } else {
-                        // Zoom insuficient → arătăm hint-ul, ascundem butonul
-                        console.log('[APM2.0] 🔍 Zoom insuficient → afișăm hint "Zoom in"');
-                        btn.style.display = 'none';
-                        btn.classList.remove('needs-zoom');
-                        if (!_apm20HintVisible) {
-                            hint.style.display = 'flex';
-                            requestAnimationFrame(function () { hint.classList.add('visible'); });
-                            _apm20HintVisible = true;
+                        btn.style.display = 'flex';
+                        btn.classList.add('needs-zoom');
+                        if (labelSpan && !btn.disabled) {
+                            labelSpan.textContent = T['apm20_search_help_zoom'] || 'Zoom in more to use Search Help';
                         }
                         if (typeof window.clearApm20SearchHelp === 'function') window.clearApm20SearchHelp();
                     }
@@ -10467,6 +10574,13 @@
                     function _finish(found, T, errored) {
                         _running = false;
                         _setButtonState(false, T);
+                        /* Dacă zoom-ul s-a schimbat în timpul analizei, resincronizăm
+                           iconița (needs-zoom + bulă de zoom) imediat ce ieșim din loading. */
+                        try {
+                            if (typeof window._refreshApm20SearchHelpBtnVisibility === 'function') {
+                                window._refreshApm20SearchHelpBtnVisibility();
+                            }
+                        } catch (e) { /* never break _finish */ }
                         if (errored) {
                             _showToast(T['apm20_search_help_error'] || 'Could not analyze the visible area, please try again', 4000);
                         } else if (!found) {
@@ -11063,12 +11177,21 @@
                 }
 
                 // togglePwa* functions are defined later in index.html. Listen on the
-                // shared bar instead of wrapping functions that do not exist yet;
-                // click/change cover dropdowns, touch/keyboard actions and detection.
-                var pwaBottomBar = document.getElementById('pwaBottomBar');
-                if (pwaBottomBar) {
-                    pwaBottomBar.addEventListener('click', scheduleLayerVisibilityCheck);
-                    pwaBottomBar.addEventListener('change', scheduleLayerVisibilityCheck);
+                // shared PWA containers instead of wrapping functions that do not
+                // exist yet; click/change cover dropdowns, touch/keyboard actions
+                // and detection. (Only getElementById is used here so the offline
+                // unit test's minimal document mock keeps working.)
+                var pwaStack = document.getElementById('pwa-br-stack');
+                if (pwaStack) {
+                    pwaStack.addEventListener('click', scheduleLayerVisibilityCheck);
+                    pwaStack.addEventListener('change', scheduleLayerVisibilityCheck);
+                }
+                // The compass column holds the PWA Detect toggle (flipping it can
+                // auto-enable layers). It is mounted asynchronously by
+                // js/map-rotate.js, so its absence here is normal and harmless.
+                var compassCol = document.getElementById('compassCol');
+                if (compassCol) {
+                    compassCol.addEventListener('click', scheduleLayerVisibilityCheck);
                 }
 
                 window.checkLayerVisibility();

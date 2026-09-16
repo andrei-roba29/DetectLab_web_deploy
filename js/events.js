@@ -3892,9 +3892,9 @@
     window.openEvents = async function () {
         var menu = document.getElementById('userMenu');
         if (menu) menu.classList.add('hidden');
-        var pwaDropdowns = document.querySelectorAll('#pwaBottomBar .pwa-dropdown');
+        var pwaDropdowns = document.querySelectorAll('#pwa-br-stack .pwa-dropdown');
         pwaDropdowns.forEach(function(dd){ dd.classList.remove('open'); });
-        var pwaTriggers = document.querySelectorAll('#pwaBottomBar .pwa-bar-trigger');
+        var pwaTriggers = document.querySelectorAll('#pwa-br-stack .pwa-bar-trigger');
         pwaTriggers.forEach(function(tr){ tr.classList.remove('active'); });
 
         var user = getCurrentUser();

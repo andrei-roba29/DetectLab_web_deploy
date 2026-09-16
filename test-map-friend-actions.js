@@ -22,9 +22,9 @@
 //      the slot with the right account id and kind, and that the popupopen hook
 //      calls into friends.js;
 //   2. js/friends.js — relationFor()/detectorActionsHtml() against every
-//      relationship (stranger is the ONLY one that offers "Adaugă prietenie");
+//      relationship (stranger is the ONLY one that offers "Adaugă prieten");
 //   3. js/friends.js end to end in a tiny fake DOM: the decorated slot, the
-//      click on "＋ Adaugă prietenie" turning into a real send_friend_request
+//      click on "＋ Adaugă prieten" turning into a real send_friend_request
 //      call (and the slot flipping to "Cerere de prietenie trimisă / Anulează"),
 //      accepting an incoming request and opening the chat for a friend;
 //   4. index.html / sw.js wiring (script order + cache-busted precache).
@@ -219,6 +219,12 @@ function makeMapSandbox() {
         /data-user-id="u-offline"/.test(offlineHtml) &&
         /data-detector-kind="offline"/.test(offlineHtml),
         (offlineHtml.match(/<div class="detector-social-actions"[^>]*>/) || ['<none>'])[0]);
+    check('both popups use the horizontal detectorist card (avatar + identity row, actions below)',
+        /class="detector-popup detector-live"/.test(liveHtml) &&
+        /class="detector-popup detector-offline"/.test(offlineHtml) &&
+        /class="detector-card-top"/.test(liveHtml) && /class="detector-card-top"/.test(offlineHtml) &&
+        /class="detector-avatar"/.test(liveHtml) && /class="detector-presence"/.test(offlineHtml),
+        liveHtml.slice(0, 160));
 
     /* the popupopen hook must hand the popup element over to friends.js */
     check('map.on(\'popupopen\') is registered', !!captured.mapHandlers.popupopen && captured.mapHandlers.popupopen.length === 1);
@@ -293,8 +299,8 @@ function runRendererPart() {
     s.state.outgoingRequests = [];
     s.state.incomingRequests = [];
     let out = html('u-stranger', { name: 'Ion' });
-    check('stranger → "＋ Adaugă prietenie" (data-social-action="add")',
-        /data-social-action="add"/.test(out) && /Adaugă prietenie/.test(out) && !/Trimite mesaj/.test(out), out);
+    check('stranger → "＋ Adaugă prieten" (data-social-action="add")',
+        /data-social-action="add"/.test(out) && /Adaugă prieten<\//.test(out) && !/Trimite mesaj/.test(out), out);
     check('stranger is tagged with the account id and name for the click handler',
         /data-user-id="u-stranger"/.test(out) && /data-user-name="Ion"/.test(out), out);
 
@@ -587,8 +593,8 @@ async function runIntegrationPart() {
     check('friend pin → "Trimite mesaj" button',
         /data-social-action="message"/.test(slotFriend.innerHTML) && /Trimite mesaj/.test(slotFriend.innerHTML),
         slotFriend.innerHTML);
-    check('stranger pin → "Adaugă prietenie" button',
-        /data-social-action="add"/.test(slotStranger.innerHTML) && /Adaugă prietenie/.test(slotStranger.innerHTML),
+    check('stranger pin → "Adaugă prieten" button',
+        /data-social-action="add"/.test(slotStranger.innerHTML) && /Adaugă prieten<\//.test(slotStranger.innerHTML),
         slotStranger.innerHTML);
     check('pending request pin → "Cerere de prietenie trimisă / Anulează"',
         /data-social-action="cancel"/.test(slotPending.innerHTML) && /Cerere de prietenie trimisă/.test(slotPending.innerHTML),
@@ -603,7 +609,7 @@ async function runIntegrationPart() {
     /* ── the click: stranger → friend request ── */
     await dom.click(dom.makeButton(slotStranger, 'add'));
     const sent = sb._rpcCalls.filter(c => c.name === 'send_friend_request');
-    check('tapping "Adaugă prietenie" sends a REAL friend request for that account',
+    check('tapping "Adaugă prieten" sends a REAL friend request for that account',
         sent.length === 1 && sent[0].params._addressee_id === 'u-stranger',
         JSON.stringify(sent));
     check('the slot flips to "Cerere de prietenie trimisă" without reopening the popup',
@@ -686,6 +692,15 @@ function runWiringPart() {
         /fire\("popupopen",\{popup:this\}\)/.test(LEAFLET_SRC));
     check('the vendored Leaflet exposes Popup#getElement() for the hook',
         /getElement:function\(\)\{return this\._container\}/.test(LEAFLET_SRC));
+    // Leaflet measures the popup while the social slot is still empty; every
+    // paint must re-run the layout or buttons/messages overflow the frame.
+    check('the vendored Leaflet exposes Popup#update() for the re-measure',
+        /getElement:function\(\)\{return this\._container\},update:function\(\)\{this\._map&&/.test(LEAFLET_SRC));
+    check('map-app re-runs the Leaflet layout after friends.js paints the slot',
+        /e\.popup\.update\(\)/.test(MAP_SRC));
+    check('friends.js re-measures the open popup after async repaints and feedback messages',
+        /function updateOpenDetectorPopup\(slot\)/.test(FRIENDS_SRC) &&
+        (FRIENDS_SRC.match(/updateOpenDetectorPopup\(slot\)/g) || []).length >= 3);
 
     check('the social action styles ship in css/styles.css',
         /\.detector-social-actions/.test(fs.readFileSync(path.join(ROOT, 'css/styles.css'), 'utf8')) &&
