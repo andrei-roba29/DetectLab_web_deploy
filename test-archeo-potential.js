@@ -247,56 +247,164 @@ console.log('\n[UAT tile math]');
 }
 
 // ── 7. END-TO-END pipeline (runArcheoPotentialAnalysis) ───────────────
+/* ═══════════════════════════════════════════════════════════════════════
+   End-to-end: API-ul vechi de candidați (folosit de Raportul arheologic)
+   + noul câmp de scor (bule dense / heatmap) + pin mov + slider de rază.
+   ═══════════════════════════════════════════════════════════════════════ */
 console.log('\n[End-to-end pipeline]');
 (async () => {
-    // fake DOM for status/summary/button
-    const fakeEl = (text) => ({
-        textContent: text || '',
+    // ── DOM fals: status, sumarul, sliderul de rază, modurile, pinul ──
+    const fakeEl = (extra) => Object.assign({
+        textContent: '',
         innerHTML: '',
         style: {},
-        classList: { add() {}, remove() {}, toggle() {} },
         disabled: false,
+        checked: false,
+        value: '',
+        min: '0',
+        max: '100',
         dataset: {},
-        addEventListener() {}
-    });
+        parentElement: null,
+        classList: (() => {
+            const set = new Set();
+            return {
+                add(c) { set.add(c); },
+                remove(c) { set.delete(c); },
+                toggle(c, on) { const v = (on === undefined) ? !set.has(c) : !!on; v ? set.add(c) : set.delete(c); return v; },
+                contains(c) { return set.has(c); }
+            };
+        })(),
+        addEventListener() {},
+        setAttribute() {},
+        getAttribute() { return null; },
+        appendChild(child) { return child; },
+        focus() {},
+        querySelector() { return null; }
+    }, extra || {});
+
     const dom = {
         archeoPotRunBtn: fakeEl(),
         archeoPotStatus: fakeEl(),
-        archeoPotSummary: fakeEl()
+        archeoPotSummary: fakeEl(),
+        archeoPotDistance: fakeEl({ value: '10', min: '1', max: '10' }),
+        archeoPotDistanceValue: fakeEl(),
+        archeoPotModeBubbles: fakeEl(),
+        archeoPotModeHeat: fakeEl(),
+        archeoPotLegendBubbles: fakeEl(),
+        archeoPotLegendHeat: fakeEl(),
+        archeoPotPinToggle: fakeEl({ checked: false }),
+        archeoPotToggle: fakeEl({ checked: true }),
+        archeoPotentialRow: fakeEl()
     };
     sandbox.document.getElementById = (id) => dom[id] || null;
 
-    // fake map + leaflet
-    const groupLayers = [];
+    // ── hartă + Leaflet fals ──
+    const panes = {};
+    const addedLayers = [];
+    const mapEvents = {};
     const fakeMap = {
         getCenter: () => ({ lat: 46.8, lng: 23.6 }),
-        getPane: () => null,
-        createPane: () => {},
-        removeLayer: () => {},
-        hasLayer: () => false
+        getZoom: () => 13,
+        getPane: (name) => panes[name] || null,
+        createPane(name) {
+            const pane = { name, children: [], style: {}, appendChild(c) { this.children.push(c); return c; } };
+            panes[name] = pane;
+            return pane;
+        },
+        addLayer(l) { addedLayers.push(l); return this; },
+        removeLayer(l) { const i = addedLayers.indexOf(l); if (i >= 0) addedLayers.splice(i, 1); return this; },
+        hasLayer(l) { return addedLayers.indexOf(l) !== -1; },
+        on(type, fn) { (mapEvents[type] = mapEvents[type] || []).push(fn); return this; },
+        off(type, fn) {
+            const arr = mapEvents[type] || [];
+            if (!fn) { arr.length = 0; return this; }
+            const i = arr.indexOf(fn);
+            if (i >= 0) arr.splice(i, 1);
+            return this;
+        },
+        fire(type, ev) { (mapEvents[type] || []).forEach((fn) => fn(ev)); return this; }
     };
     sandbox.window._dlMap = fakeMap;
-    sandbox.L.layerGroup = () => {
-        const g = {
-            layers: [],
-            addLayer(l) { this.layers.push(l); return this; },
-            addTo() { return this; },
-            bindPopup() { return this; }
-        };
-        groupLayers.push(g);
-        return g;
+
+    const groupLayers = [];
+    const heatLayers = [];
+    const leafletStub = {
+        layerGroup(layers) {
+            const g = {
+                isGroup: true,
+                layers: (layers || []).slice(),
+                addLayer(l) { this.layers.push(l); return this; },
+                removeLayer(l) { const i = this.layers.indexOf(l); if (i >= 0) this.layers.splice(i, 1); return this; },
+                clearLayers() { this.layers.length = 0; return this; },
+                addTo() { return this; },
+                bindPopup() { return this; }
+            };
+            groupLayers.push(g);
+            return g;
+        },
+        circle(ll, opts) {
+            return {
+                kind: 'circle',
+                latlng: Array.isArray(ll) ? { lat: ll[0], lng: ll[1] } : ll,
+                options: opts || {},
+                bindPopup(c) { this.popup = c; return this; },
+                bindTooltip() { return this; },
+                setRadius(r) { this.options.radius = r; return this; },
+                setStyle() { return this; },
+                addTo() { return this; }
+            };
+        },
+        circleMarker(ll, opts) { return { kind: 'circleMarker', latlng: ll, options: opts || {}, addTo() { return this; } }; },
+        polyline(pts, opts) { return { kind: 'polyline', points: pts, options: opts || {}, addTo() { return this; } }; },
+        polygon(pts, opts) { return { kind: 'polygon', points: pts, options: opts || {}, addTo() { return this; } }; },
+        rectangle(bounds, opts) { return { kind: 'rectangle', bounds, options: opts || {}, addTo() { return this; } }; },
+        canvas(opts) { return { kind: 'canvas', options: opts || {} }; },
+        marker(ll, opts) {
+            return {
+                kind: 'marker', latlng: ll, options: opts || {},
+                // Leaflet: addTo(map) → map.addLayer(this)
+                addTo(m) { if (m && m.addLayer) m.addLayer(this); return this; },
+                bindTooltip() { return this; },
+                setLatLng(x) { this.latlng = x; return this; }, on() { return this; }, off() { return this; }
+            };
+        },
+        divIcon(opts) { return { kind: 'divIcon', options: opts || {} }; },
+        heatLayer(points, opts) {
+            const h = {
+                kind: 'heat',
+                points: (points || []).slice(),
+                options: opts || {},
+                _canvas: { parentElement: null },
+                _archeoZoomWired: false,
+                addTo(m) { this._map = m; return this; },
+                setOptions(o) { Object.assign(this.options, o); return this; }
+            };
+            heatLayers.push(h);
+            return h;
+        },
+        latLng: (a, b) => ({ lat: a, lng: b }),
+        CRS: { EPSG3857: {} }
     };
-    sandbox.L.circle = (ll, opts) => ({ latlng: ll, options: opts, bindPopup() { return this; } });
-    sandbox.L.circleMarker = (ll, opts) => ({ latlng: ll, options: opts });
-    sandbox.L.polyline = (pts, opts) => ({ points: pts, options: opts });
-    sandbox.L.latLng = (a, b) => ({ lat: a, lng: b });
+    Object.keys(leafletStub).forEach((k) => { sandbox.L[k] = leafletStub[k]; });
+    sandbox.window.L = sandbox.L;
 
-    // UAT: fully opaque raster everywhere → every point is inside the "red zone"
-    const opaqueTile = { data: new Uint8ClampedArray(256 * 256 * 4).fill(255), size: 256 };
-    sandbox.window._uatGetTile = () => Promise.resolve(opaqueTile);
+    // ── UAT: jumătatea vestică a fiecărui tile e „intravilan” (alpha 0 →
+    //    exclusă, marcată cu roșu), jumătatea estică e liberă (alpha 255).
+    const size = 256;
+    const tileData = new Uint8ClampedArray(size * size * 4);
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const i = (y * size + x) * 4;
+            const free = x >= size / 2;
+            tileData[i] = free ? 192 : 0;
+            tileData[i + 1] = 0;
+            tileData[i + 2] = free ? 40 : 120;
+            tileData[i + 3] = free ? 255 : 0;
+        }
+    }
+    sandbox.window._uatGetTile = () => Promise.resolve({ data: tileData, size });
 
-    // rich fake heritage dataset: 4 dense clusters at the corners of a ~4 km
-    // square (real gaps between clusters → candidates should emerge) + 1 far site
+    // ── patrimoniu: 4 clustere dense + 1 sit departe ──
     const features = [];
     const clusters = [[-0.018, -0.018], [0.018, -0.018], [-0.018, 0.018], [0.018, 0.018]];
     let fid = 1;
@@ -311,46 +419,178 @@ console.log('\n[End-to-end pipeline]');
         }
     });
     features.push({ id: 99, geometry: { type: 'Point', coordinates: [26.0, 45.0] }, properties: { NUMESIT: 'far', COORD: 'DA' } });
-    sandbox.window._localLayerData = {
-        0: { features: features },
-        5: { features: [] },
-        6: { features: [] }
-    };
+    sandbox.window._localLayerData = { 0: { features }, 5: { features: [] }, 6: { features: [] } };
 
-    // config: keep working-area + triangulation rendering ENABLED so those
-    // code paths (ctx.centerLat/centerLng, polyline building) are exercised
     D.config.SHOW_WORKING_AREA = true;
     D.config.SHOW_TRIANGULATION = true;
     D.config.MAX_CANDIDATES = 30;
-    D.config.EXTRA_SAMPLES_MIN_RADIUS_M = 5000; // no extra barycentric samples
+    D.config.EXTRA_SAMPLES_MIN_RADIUS_M = 5000; // fără mostre baricentrice suplimentare
 
+    /* ── 1. API-ul vechi de candidați rămâne intact (îl consumă Raportul) ── */
+    const legacy = await sandbox.window.computeArcheoPotential(46.8, 23.6, 10000, { skipDataWait: true });
+    check('legacy API still returns candidates', legacy.status === 'ok' && legacy.results.length > 0,
+        legacy.status + ' / ' + legacy.results.length);
+    check('legacy classifications are medium/high',
+        legacy.results.every((r) => r.classification === 'medium' || r.classification === 'high'));
+    check('legacy candidates ≥ 700 m from the closest site',
+        legacy.results.every((r) => r.factors.closestSiteM >= 700));
+    check('legacy candidates inside 10 km',
+        legacy.results.every((r) => haversine(46.8, 23.6, r.lat, r.lng) <= 10001));
+    check('legacy candidate count respects MAX_CANDIDATES', legacy.results.length <= D.config.MAX_CANDIDATES);
+
+    /* ── 2. modul BULE: grid dens, fără goluri, fiecare celulă scorată ── */
+    sandbox.window.setArcheoPotentialMode('bubbles');
     await sandbox.window.runArcheoPotentialAnalysis();
 
-    const summary = dom.archeoPotSummary.innerHTML || '';
-    const status = dom.archeoPotStatus.textContent || '';
-    console.log('  [status] "' + status + '"');
-    check('status set (done or no_candidates)', status.length > 0, status);
-    check('summary populated', /candidates/i.test(summary), summary);
-    const m = summary.match(/(\d+)\s+candidates/);
-    const n = m ? parseInt(m[1], 10) : -1;
-    check('results rendered', n > 0, 'summary: ' + summary);
-    check('layer group has circles', groupLayers.length > 0 &&
-        groupLayers[0].layers.filter(l => l.options && l.options.radius === D.config.CANDIDATE_RADIUS_M).length === n,
-        'circles: ' + (groupLayers[0] ? groupLayers[0].layers.length : 0));
-    check('working-area circle rendered', groupLayers.length > 0 &&
-        groupLayers[0].layers.some(l => l.options && l.options.radius === D.config.SEARCH_RADIUS_M));
-    check('triangulation polylines rendered', groupLayers.length > 0 &&
-        groupLayers[0].layers.some(l => l.points && l.points.length === 4));
+    const state0 = sandbox.window._archeoPotentialState();
+    check('state reports bubbles mode + slider radius', state0.mode === 'bubbles' && state0.radiusKm === 10,
+        JSON.stringify(state0));
 
-    // all results must be inside the 10 km radius and classified validly
-    const results = sandbox.window._archeoPotentialResults() || [];
-    check('every result inside 10 km', results.every(r => {
-        const d = haversine(46.8, 23.6, r.lat, r.lng);
-        return d <= 10000 + 1;
-    }));
-    check('classifications valid', results.every(r => r.classification === 'medium' || r.classification === 'high'));
-    check('every candidate ≥ 700 m from closest site', results.every(r => r.factors.closestSiteM >= 700),
-        JSON.stringify(results.map(r => r.factors.closestSiteM)));
+    const field = sandbox.window._archeoPotentialField();
+    check('field computed', !!field && field.status === 'ok', field && field.status);
+    const st = field.stats;
+    check('grid tiles the whole circle', st.cells > 1500 &&
+        Math.abs(st.cells - (Math.PI * 10000 * 10000) / (field.cellM * field.cellM)) / st.cells < 0.05,
+        st.cells + ' cells @ ' + field.cellM + ' m');
+    check('scored + excluded = every cell (no point is ignored)',
+        st.scored + st.excludedUat + st.excludedHeritage === st.cells,
+        JSON.stringify(st));
+    check('UAT (intravilan) cells are excluded', st.excludedUat > 0, st.excludedUat);
+    check('heritage protection cells are excluded', st.excludedHeritage > 0, st.excludedHeritage);
+    check('excluded cells carry a reason',
+        field.excluded.length === st.excludedUat + st.excludedHeritage &&
+        field.excluded.every((c) => c.reason === 'uat' || c.reason === 'heritage'));
+    check('bubbles are smaller than the old 300 m candidates', field.bubbleRadiusM < 300, field.bubbleRadiusM);
+    check('neighbouring bubbles overlap → no gaps on the map',
+        field.bubbleRadiusM * 2 >= field.cellM, field.bubbleRadiusM + ' vs ' + field.cellM);
+    check('every scored cell is rendered as a bubble',
+        field.results.length === st.scored &&
+        groupLayers.some((g) => g.layers.filter((l) => l.kind === 'circle' && l.options.radius === field.bubbleRadiusM).length === st.scored),
+        'scored ' + st.scored);
+    check('bubble popups are built lazily',
+        groupLayers.some((g) => g.layers.some((l) => l.kind === 'circle' && typeof l.popup === 'function')));
+    check('working area circle uses the slider radius',
+        groupLayers.some((g) => g.layers.some((l) => l.kind === 'circle' && l.options.radius === 10000)));
+    check('triangulation polylines rendered',
+        groupLayers.some((g) => g.layers.some((l) => l.kind === 'polyline' && l.points.length === 4)));
+    check('red mask drawn in bubbles mode too',
+        groupLayers.some((g) => g.layers.some((l) => l.kind === 'rectangle' && /c0392b|e03c3c/i.test(l.options.fillColor))));
+    check('heritage protection radii drawn in red',
+        groupLayers.some((g) => g.layers.some((l) => l.kind === 'circle' && l.options.radius === 700 &&
+            /c0392b|e03c3c/i.test(String(l.options.fillColor)))));
+    check('no heat layer in bubbles mode', heatLayers.length === 0);
+    check('scored cells stay ≥ 700 m from sites',
+        field.results.every((r) => r.factors.closestSiteM >= 700));
+    check('every scored cell inside the radius',
+        field.results.every((r) => haversine(46.8, 23.6, r.lat, r.lng) <= 10000 + field.cellM));
+    check('summary counts scored cells', /scored cells/.test(dom.archeoPotSummary.innerHTML),
+        dom.archeoPotSummary.innerHTML);
+    check('status reports completion', (dom.archeoPotStatus.textContent || '').length > 0,
+        dom.archeoPotStatus.textContent);
+    check('public results mirror the field', (sandbox.window._archeoPotentialResults() || []).length === st.scored);
+
+    check('mode buttons + legend follow the selection',
+        dom.archeoPotModeBubbles.classList.contains('is-active') &&
+        !dom.archeoPotModeHeat.classList.contains('is-active') &&
+        dom.archeoPotLegendBubbles.style.display !== 'none' &&
+        dom.archeoPotLegendHeat.style.display === 'none',
+        JSON.stringify({ b: dom.archeoPotLegendBubbles.style.display, h: dom.archeoPotLegendHeat.style.display }));
+
+    /* ── 3. modul HEATMAP: fiecare punct primește scor + zone excluse roșii ── */
+    const groupsBeforeHeat = groupLayers.length;
+    sandbox.window.setArcheoPotentialMode('heat');
+    await sandbox.window.runArcheoPotentialAnalysis();
+
+    const hf = sandbox.window._archeoPotentialField();
+    check('heat mode active', hf.mode === 'heat' && sandbox.window._archeoPotentialState().mode === 'heat');
+    check('heat grid is finer than the bubble grid', hf.cellM <= field.cellM, hf.cellM + ' vs ' + field.cellM);
+    check('a heat layer was created', heatLayers.length > 0);
+    const heat = heatLayers[heatLayers.length - 1];
+    check('one heat point per scored cell', heat.points.length === hf.heatPoints.length &&
+        hf.stats.scored === heat.points.length, heat.points.length + ' / ' + hf.stats.scored);
+    check('heat points carry a normalised score',
+        heat.points.every((p) => Array.isArray(p) && p.length === 3 && p[2] > 0 && p[2] <= 1));
+    check('heat gradient keeps red out of the score ramp',
+        !!heat.options.gradient && Object.keys(heat.options.gradient).length >= 4 &&
+        Object.values(heat.options.gradient).every((c) => !/^#(e0|c0|f00|ff0000)/i.test(c)),
+        JSON.stringify(heat.options.gradient));
+    check('heat blob radius is in pixels and clamped',
+        heat.options.radius >= 10 && heat.options.radius <= 46, heat.options.radius);
+    check('excluded areas are painted red (rectangles)',
+        groupLayers.some((g) => g.layers.filter((l) => l.kind === 'rectangle').length > 0));
+    check('excluded reason split is reported',
+        hf.stats.excludedUat > 0 && hf.stats.excludedHeritage > 0, JSON.stringify(hf.stats));
+    check('heat mode swaps the buttons and the legend',
+        dom.archeoPotModeHeat.classList.contains('is-active') &&
+        !dom.archeoPotModeBubbles.classList.contains('is-active') &&
+        dom.archeoPotLegendHeat.style.display !== 'none' &&
+        dom.archeoPotLegendBubbles.style.display === 'none');
+    check('heat summary mentions the heatmap', /heatmap/i.test(dom.archeoPotSummary.innerHTML),
+        dom.archeoPotSummary.innerHTML);
+    // În modul heatmap nu se mai desenează bule: grupurile create de această
+    // rulare conțin doar aria de lucru, triunghiurile și masca roșie.
+    const heatRunLayers = groupLayers.slice(groupsBeforeHeat).reduce((a, g) => a.concat(g.layers), []);
+    check('no score bubbles drawn in heat mode',
+        heatRunLayers.filter((l) => l.kind === 'circle' && l.options.radius === hf.bubbleRadiusM).length === 0,
+        heatRunLayers.map((l) => l.kind + ':' + l.options.radius).join(','));
+    check('heat mode still draws the working area',
+        heatRunLayers.some((l) => l.kind === 'circle' && l.options.radius === 10000));
+
+    /* ── 4. pinul mov + sliderul de rază 1–10 km ── */
+    sandbox.window.setArcheoPotentialPinMode(true);
+    check('pin mode on', sandbox.window._archeoPotentialState().pinMode === true);
+    check('map click handler armed for the pin', (mapEvents.click || []).length > 0);
+    check('pin toggle reflected in the DOM', dom.archeoPotPinToggle.checked === true);
+    check('row marked as on', dom.archeoPotentialRow.classList.contains('is-on'));
+
+    sandbox.window._archeoPotSetPoint(46.805, 23.605);
+    check('pin stored in the state', (() => {
+        const p = sandbox.window._archeoPotentialState().pin;
+        return !!p && Math.abs(p.lat - 46.805) < 1e-9 && Math.abs(p.lng - 23.605) < 1e-9;
+    })(), JSON.stringify(sandbox.window._archeoPotentialState().pin));
+    // Cerința explicită: pinul stratului e MOV (nu albastru ca la LIDAR/Raport).
+    const pinMarker = addedLayers.filter((l) => l.kind === 'marker' &&
+        /archeo-pot-pin/.test(String((l.options.icon && l.options.icon.options && l.options.icon.options.html) || ''))).pop();
+    check('a purple pin marker is drawn on the map', !!pinMarker);
+    const cssSrc = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
+    const pinDotCss = (cssSrc.match(/\.archeo-pot-pin-dot\s*\{[^}]*\}/) || [''])[0];
+    check('the pin dot is styled purple', /#(c4a0f0|a370e8|b388e8)/i.test(pinDotCss), pinDotCss.slice(0, 90));
+    check('the pin is not the blue report/LIDAR pin', !/#66c8ff/i.test(pinDotCss));
+
+    sandbox.window.setArcheoPotentialRadiusKm(4);
+    check('radius slider drives the state', (() => {
+        const s = sandbox.window._archeoPotentialState();
+        return s.radiusKm === 4 && s.radiusM === 4000;
+    })(), JSON.stringify(sandbox.window._archeoPotentialState()));
+    check('radius label updated', (dom.archeoPotDistanceValue.textContent || '').indexOf('4') !== -1,
+        dom.archeoPotDistanceValue.textContent);
+
+    sandbox.window.setArcheoPotentialMode('bubbles');
+    await sandbox.window.runArcheoPotentialAnalysis();
+    const pf = sandbox.window._archeoPotentialField();
+    check('analysis is centred on the pin',
+        Math.abs(pf.centerLat - 46.805) < 1e-9 && Math.abs(pf.centerLng - 23.605) < 1e-9,
+        pf.centerLat + ',' + pf.centerLng);
+    check('analysis uses the slider radius', pf.radius === 4000, pf.radius);
+    check('every cell stays inside the pin radius',
+        pf.results.every((r) => haversine(46.805, 23.605, r.lat, r.lng) <= 4000 + pf.cellM));
+    check('smaller radius → coarser grid, fewer cells', pf.stats.cells < st.cells,
+        pf.stats.cells + ' vs ' + st.cells);
+
+    sandbox.window.setArcheoPotentialPinMode(false);
+    check('pin mode off removes the click handler', (mapEvents.click || []).length === 0);
+    await sandbox.window.runArcheoPotentialAnalysis();
+    const cf = sandbox.window._archeoPotentialField();
+    check('without a pin the map centre is used',
+        Math.abs(cf.centerLat - 46.8) < 1e-9 && Math.abs(cf.centerLng - 23.6) < 1e-9,
+        cf.centerLat + ',' + cf.centerLng);
+
+    /* ── 5. comutatorul stratului ascunde rezultatele, pinul și oglinda ── */
+    sandbox.window.toggleArcheoPotentialLayer(false);
+    check('layer off hides the results', sandbox.window._archeoPotentialState().resultsVisible === false);
+    check('layer off also closes the pin mode', sandbox.window._archeoPotentialState().pinMode === false);
+    sandbox.window.toggleArcheoPotentialLayer(true);
+    check('layer on restores the results', sandbox.window._archeoPotentialState().resultsVisible === true);
 
     console.log(failures === 0 ? '\nALL TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
     process.exit(failures === 0 ? 0 : 1);

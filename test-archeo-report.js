@@ -1048,10 +1048,10 @@ section('End-to-end analysis (runReport)');
         // Sat-base native-zoom fix: only js/archeo-report.js changed, so it gets its
         // own ?v= tag; the PDF builder, translations and styles keep their page tags.
         const Vpdf = '?v=20260831-arch-report-v4';   // archeo-report-pdf.js (unchanged this fix)
-        const Vfix = '?v=20260902-arch-report-v4';   // archeo-report.js — this fix's tag
+        const Vfix = '?v=20260916-analysis-dock';    // archeo-report.js — current page tag
         const V0 = '?v=20260827-arch-report';        // pdf-writer.js is unchanged this release
-        const Vtr = '?v=20260831-battles-v2';        // translations.js (current page tag)
-        const Vcss = '?v=20260901-battles-v5';       // styles.css (current page tag)
+        const Vtr = '?v=20260916-analysis-dock';     // translations.js (current page tag)
+        const Vcss = '?v=20260916-analysis-dock';    // styles.css (current page tag)
         check('js/archeo-report.js is loaded by index.html (this fix)', html.indexOf('src="js/archeo-report.js' + Vfix + '"') !== -1);
         check('js/archeo-report-pdf.js is loaded by index.html', html.indexOf('src="js/archeo-report-pdf.js' + Vpdf + '"') !== -1);
         check('js/translations.js is loaded by index.html', html.indexOf('src="js/translations.js' + Vtr + '"') !== -1);
@@ -1087,7 +1087,7 @@ section('End-to-end analysis (runReport)');
         check('every .arch-report-* class emitted by the JS is styled (' + classes.size + ')',
             unstyled.length === 0, unstyled.join(', '));
         check('CACHE_NAME was bumped for this release',
-            /const CACHE_NAME = 'detectlab-v63-satbase-native18'/.test(sw),
+            /const CACHE_NAME = 'detectlab-v96-analysis-dock'/.test(sw),
             (sw.match(/const CACHE_NAME = '[^']+'/) || [])[0]);
     }
 

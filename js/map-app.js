@@ -10750,6 +10750,8 @@
                 transylvania1859: {
                     // Harta Transilvaniei 1859 (Tiled Map Service, ArcGIS Online —
                     // Siebenburgen_1859). fullExtent-ul serviciului convertit în WGS84.
+                    // Digitalizare și publicare: Universitatea „Ștefan cel Mare” din
+                    // Suceava — sursă: bukowina1856.eu.
                     // Tile-urile native există doar la zoom 7-14 (minLOD 7, maxLOD 14),
                     // deci dreptunghiul roșu de acoperire se arată în afara intervalului.
                     bounds: [[45.2059, 22.2319], [47.7300, 26.7037]],
@@ -10762,6 +10764,8 @@
                 galicia1855: {
                     // Hartă administrativă a Galiției și Lodomeriei – 1855 (Tiled Map
                     // Service, ArcGIS Online — Kummerer_1855). fullExtent WGS84.
+                    // Digitalizare și publicare: Universitatea „Ștefan cel Mare” din
+                    // Suceava — sursă: bukowina1856.eu.
                     // Tile-urile native există doar la zoom 6-14 (minLOD 6, maxLOD 14).
                     bounds: [[46.8116, 18.3937], [50.8713, 26.6844]],
                     label: 'Hartă administrativă a Galiției și Lodomeriei – 1855',
@@ -11625,6 +11629,9 @@
             // ── HARTA TRANSILVANIEI 1859 (Tiled Map Service, ArcGIS Online) ──
             // Strat premium nou. Sursă: serviciu de tile-uri găzduit pe ArcGIS
             // Online (org. t2AVhHhEnEvHcPF6), public (share level Everyone).
+            // Digitalizare și publicare: Universitatea „Ștefan cel Mare” din
+            // Suceava — bukowina1856.eu (credit afișat în ⓘ layer info și în
+            // attribution-ul Leaflet al stratului).
             // LOD-urile native ale serviciului sunt 7-14 (minLOD 7, maxLOD 14),
             // deci sub z7 și peste z14 dreptunghiul roșu de acoperire preia
             // locul tile-urilor (vezi coverageMinZoom / coverageMaxZoom în
@@ -11650,7 +11657,10 @@
                         opacity: 0.80,
                         bounds: TRANSYLVANIA1859_BOUNDS,
                         pane: 'pane_transylvania1859',
-                        attribution: '© Administrativ Karte des Grossfürstenthums Siebenbürgen (1859; 1:144 000)'
+                        // Digitalizarea și publicarea tile-urilor aparțin
+                        // Universității „Ștefan cel Mare” din Suceava
+                        // (sursă: bukowina1856.eu).
+                        attribution: '© Administrativ Karte des Grossfürstenthums Siebenbürgen (1859; 1:144 000) · Digitalizare și publicare: Universitatea „Ștefan cel Mare” din Suceava · Sursă: <a href="https://bukowina1856.eu" target="_blank" rel="noopener noreferrer">bukowina1856.eu</a>'
                     }
                 );
 
@@ -11677,6 +11687,9 @@
             // ── HARTĂ ADMINISTRATIVĂ A GALIȚIEI ȘI LODOMERIEI – 1855 (Tiled Map Service, ArcGIS Online) ──
             // Strat premium nou. Sursă: serviciu de tile-uri găzduit pe ArcGIS
             // Online (org. t2AVhHhEnEvHcPF6), public (share level Everyone).
+            // Digitalizare și publicare: Universitatea „Ștefan cel Mare” din
+            // Suceava — bukowina1856.eu (credit afișat în ⓘ layer info și în
+            // attribution-ul Leaflet al stratului).
             // LOD-urile native ale serviciului sunt 6-14 (minLOD 6, maxLOD 14);
             // în afara intervalului, dreptunghiul roșu de acoperire e afișat.
             (function () {
@@ -11700,7 +11713,10 @@
                         opacity: 0.80,
                         bounds: GALICIA1855_BOUNDS,
                         pane: 'pane_galicia1855',
-                        attribution: '© Administrativ-Karte von Galizien und Lodomerien - Carl von Kummersberg 1855'
+                        // Digitalizarea și publicarea tile-urilor aparțin
+                        // Universității „Ștefan cel Mare” din Suceava
+                        // (sursă: bukowina1856.eu).
+                        attribution: '© Administrativ-Karte von Galizien und Lodomerien - Carl von Kummersberg 1855 · Digitalizare și publicare: Universitatea „Ștefan cel Mare” din Suceava · Sursă: <a href="https://bukowina1856.eu" target="_blank" rel="noopener noreferrer">bukowina1856.eu</a>'
                     }
                 );
 
