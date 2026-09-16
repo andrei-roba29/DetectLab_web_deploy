@@ -99,10 +99,10 @@ select u.email from profiles p join auth.users u on u.id=p.id where not p.newsle
 # Health public (fără auth)
 curl https://detectlab-backend-production.up.railway.app/api/newsletter/health
 
-# Listă diferențiată (necesită JWT + x-admin-key dacă backend are INGESTION_ADMIN_KEY)
+# Listă diferențiată (necesită JWT + cheia admin, dacă backend are una configurată)
 TOKEN=$(supabase auth token) # sau din browser: await supabaseClient.auth.getSession()
 curl -H "Authorization: Bearer $TOKEN" \
-     -H "x-admin-key: $INGESTION_ADMIN_KEY" \
+     -H "x-admin-key: $NEWSLETTER_ADMIN_KEY" \
      "https://detectlab-backend-production.up.railway.app/api/newsletter/subscribers?limit=200"
 
 # Doar abonați
@@ -112,7 +112,47 @@ curl -H "Authorization: Bearer $TOKEN" -H "x-admin-key: $KEY" \
 # Doar neabonați
 curl -H "Authorization: Bearer $TOKEN" -H "x-admin-key: $KEY" \
      "https://detectlab-backend-production.up.railway.app/api/newsletter/subscribers?subscribed=false"
+
+# Același lucru fără header (merge și din browser / telefon, unde nu ai consolă):
+curl "https://detectlab-backend-production.up.railway.app/api/newsletter/subscribers?limit=200&admin_key=$KEY" \
+     -H "Authorization: Bearer $TOKEN"
+
+# Diagnosticul cheiei — public, fără JWT și fără cheie. Nu spune niciodată cheia,
+# doar dacă există, din ce variabilă vine și dacă ce ai tastat se potrivește.
+curl "https://detectlab-backend-production.up.railway.app/api/newsletter/debug"
+curl "https://detectlab-backend-production.up.railway.app/api/newsletter/debug?admin_key=$KEY"
 ```
+
+### Dacă primești „Admin key required (x-admin-key)” / „Admin key mismatch”
+
+Semnificația e mereu aceeași: **backend-ul are o cheie configurată, iar textul primit
+nu e identic cu ea**. În ordinea în care se întâmplă de fapt:
+
+1. **Variabila e pe serviciul BACKEND**, nu pe cel al site-ului. În Railway:
+   *Project* → serviciul care conține `backend/src/app.js` → *Variables*.
+   În pagina de admin, caseta „🔎 Diagnostic cheie admin” arată ce adresă de backend
+   a fost interogată — trebuie să fie aceeași gazdă.
+2. **Oricare dintre aceste variabile deblochează endpointurile:**
+   `INGESTION_ADMIN_KEY`, `NEWSLETTER_ADMIN_KEY`, `ADMIN_KEY`, `ADMINKEY`.
+   (Până la acest fix, dacă exista `INGESTION_ADMIN_KEY`, aceasta umbrea complet
+   `NEWSLETTER_ADMIN_KEY` — cheia „corectă” părea refuzată. Acum e acceptată
+   oricare dintre ele.)
+3. **Valori identice, fără spații / ghilimele**. Ambele părți se normalizează
+   (se taie spațiile și ghilimelele de la capete), dar un spațiu din *mijloc* sau o
+   majusculă diferită tot pică. `GET /api/newsletter/debug?admin_key=...`
+   răspunde cu lungimile, nu cu cheia.
+4. **Redeploy** după orice modificare. Fără redeploy, backend-ul rulează cu
+   valorile vechi, indiferent ce ai scris în *Variables*.
+5. **Testul care taie orice dubiu**: șterge `NEWSLETTER_ADMIN_KEY` (și
+   `INGESTION_ADMIN_KEY`) de pe backend → Redeploy → redeschide pagina. Dacă se
+   încarcă, problema era exclusiv cheile; pune apoi *același text* copiat din
+   Railway în câmpul *Admin key* și repune variabila.
+
+Pe telefon nu ai nevoie de consolă: pagina `newsletter-admin.html` afișează caseta
+„🔎 Diagnostic cheie admin” (lungimea cheiei, pe ce cale a ajuns la
+backend, ce variabilă există pe server și pașii de mai jos), iar butonul
+„🔎 Verifică cheia admin (fără consolă)” ruleă diagnosticul oricând, chiar
+înainte de logare.
 
 ### UI
 - **Panou Cont** (fiecare user își vede propriul status): `ABONAT` / `NEABONAT` + toggle.
@@ -173,7 +213,7 @@ npm run newsletter:send:force
 * `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` / `NEWSLETTER_FROM` — via `nodemailer`
 * sau `RESEND_API_KEY` + `NEWSLETTER_FROM` — via `https://api.resend.com/emails`
 * `NEWSLETTER_SITE_URL` (default `STRIPE_SITE_URL` sau `https://detectlab.ro`) — pentru link-uri din template
-* `INGESTION_ADMIN_KEY` / `NEWSLETTER_ADMIN_KEY` — protejează `GET /subscribers` și `POST /send-first` (dacă nu e setat, orice user autentificat poate trimite — util în dev)
+* `INGESTION_ADMIN_KEY` / `NEWSLETTER_ADMIN_KEY` / `ADMIN_KEY` / `ADMINKEY` — protejează `GET /subscribers` și `POST /send-first`. Cheia se acceptă din header `x-admin-key` **sau** din query `?admin_key=` (ca să meargă și de pe telefon, fără consolă). Dacă nu e setată niciuna, orice user autentificat poate lista și trimite — util în dev. Diagnostic: `GET /api/newsletter/debug`
 
 ### Ce conține primul newsletter
 - **Subject**: `Bun venit în comunitatea DetectLab — noutăți, reduceri și hărți noi 🛰️`
