@@ -229,7 +229,12 @@ const cacheMatch = sw.match(/const CACHE_NAME = '([^']+)'/);
 assert.ok(cacheMatch, 'sw.js defines CACHE_NAME');
 assert.notStrictEqual(cacheMatch[1], 'detectlab-v80-patrimoniu-zoom-anchor',
     'CACHE_NAME bumped so installed PWAs replace stale scripts');
-assert.match(cacheMatch[1], /^detectlab-v8\d+-(premium-hist-pwa-fix|.+)$/, 'new CACHE_NAME marks the premium-history PWA fix');
+// Parse the version instead of pinning the major digit: every later release
+// re-bumps the name (v90-no-opacity-caption today), and a frozen `v8\d+`
+// pattern starts failing the moment the counter leaves the 80s.
+const cacheVersion = Number((cacheMatch[1].match(/-v(\d+)-/) || [])[1] || 0);
+assert.ok(cacheVersion >= 81,
+    'new CACHE_NAME marks at least the premium-history PWA fix (got: ' + cacheMatch[1] + ')');
 
 const scriptMatch = html.match(/<script src="js\/map-app\.js\?v=([^"]+)"><\/script>/);
 assert.ok(scriptMatch, 'index.html loads js/map-app.js with a version query');

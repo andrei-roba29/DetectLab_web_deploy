@@ -234,7 +234,10 @@ console.log('[5] Translations + PWA wiring');
         // (the visibility prompt bumped it to ?v=20260915-visibility-prompt),
         // so require the cache-buster pattern instead of one frozen string.
         /js\/map-app\.js\?v=\d{8}-/.test(indexHtml) &&
-        indexHtml.includes('js/vertical-opacity-control.js?v=20260916-sat-2016-only') &&
+        // vertical-opacity-control.js is re-versioned too (the dropped OPACITY
+        // caption bumped it past ?v=20260916-sat-2016-only), so match the
+        // cache-buster pattern instead of one frozen tag.
+        /js\/vertical-opacity-control\.js\?v=\d{8}-/.test(indexHtml) &&
         // translations.js keeps getting re-versioned by every later release
         // (social bumped it to ?v=20260915-social), so require the cache-buster
         // pattern instead of one frozen string.
@@ -247,20 +250,20 @@ console.log('[5] Translations + PWA wiring');
         swJs.includes("'js/map-app.js?v=20260915-sat-historic'") &&
         swJs.includes("'js/vertical-opacity-control.js?v=20260915-sat-historic'") &&
         swJs.includes("'css/styles.css?v=20260915-sat-historic'"));
-    check('SW pre-caches the sat-2016-only builds (the current ones)',
-        swJs.includes("'js/map-app.js?v=20260916-sat-2016-only'") &&
-        swJs.includes("'js/vertical-opacity-control.js?v=20260916-sat-2016-only'") &&
-        swJs.includes("'css/styles.css?v=20260916-sat-2016-only'") &&
-        swJs.includes("'js/auth.js?v=20260916-sat-2016-only'"));
-    // The page can only request ONE stylesheet URL: make sure whichever
-    // cache-buster index.html ships today is the one the service worker
-    // pre-caches (the sat-historic entry above stays in the list historically).
-    const liveCss = (indexHtml.match(/css\/styles\.css\?v=[^"']+/) || [])[0];
-    check('the stylesheet index.html actually requests is pre-cached (no offline gap)',
-        !!liveCss && swJs.includes("'" + liveCss + "'"), liveCss || '<none>');
-    // The cache name is re-bumped by every release; assert it is at least the
-    // sat-historic one (v85) rather than pinning a version that is already stale.
-    check('SW CACHE_NAME was bumped', /const CACHE_NAME = 'detectlab-v(8[5-9]|9\d)-/.test(swJs));
+    // The page can only request ONE URL per asset, so assert the LIVE
+    // relationship instead of frozen tags: every asset index.html requests must
+    // be the exact URL the service worker pre-caches (no offline gap), while
+    // the older entries above stay in the list purely historically.
+    ['css/styles.css', 'js/map-app.js', 'js/vertical-opacity-control.js', 'js/auth.js'].forEach(function (asset) {
+        const live = (indexHtml.match(new RegExp(asset.replace(/\./g, '\\.') + '\\?v=[^"\']+')) || [])[0];
+        check('SW pre-caches the live ' + asset + ' URL requested by index.html',
+            !!live && swJs.includes("'" + live + "'"), live || '<none>');
+    });
+    // The cache name is re-bumped by every release; parse the number and
+    // require at least the sat-historic bump (v85) instead of pinning a tag
+    // that goes stale with the next release.
+    const cacheVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1] || 0);
+    check('SW CACHE_NAME was bumped past the sat-historic release', cacheVersion >= 85, 'v' + cacheVersion);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

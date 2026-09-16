@@ -159,7 +159,11 @@
         if (source.id === 'satPeriodSlider') {
             return (window._currentLang && window._currentLang() === 'en') ? 'HISTORIC' : 'ISTORIC';
         }
-        return 'OPACITY';
+        /* Plain opacity ranges carry NO caption: the word "OPACITY" used to sit
+           above the map-side slider and only pushed the layer name down. The
+           label stays empty (and is hidden by CSS), while the accessible name
+           of the range still says what it controls. */
+        return '';
     }
 
     function sourceKind(source) {
@@ -309,7 +313,7 @@
         var name = getLayerName(opacitySource, activeOwner);
         layerLabel.textContent = name;
         layerLabel.title = name;
-        if (captionEl) captionEl.textContent = 'OPACITY';
+        if (captionEl) captionEl.textContent = ''; // no "OPACITY" strip above the mirror
         control.setAttribute('data-kind', 'opacity');
 
         verticalSlider.min = opacitySource.min || '0';
@@ -566,8 +570,9 @@
             }
         });
 
-        /* Bilingual mirrors: the layer name, the caption (OPACITY ↔ PERIOADĂ)
-           and the formatted value follow the live language. */
+        /* Bilingual mirrors: the layer name, the caption that mirrors still carry
+           (PERIOADĂ / ISTORIC) and the formatted value follow the live language.
+           Plain opacity mirrors have no caption any more. */
         document.addEventListener('detectlab:langchange', function () {
             if (!activeSource || !activeOwner) return;
             var name = getLayerName(activeSource, activeOwner);

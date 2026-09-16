@@ -4847,6 +4847,14 @@
             white-space: nowrap;
         }
 
+        /* Opacity mirrors no longer carry the word "OPACITY" above the range, so
+           the (empty) caption is dropped together with its 5px flex gap —
+           otherwise the layer name would float away from the top edge. The
+           period mirrors (ISTORIC / PERIOADĂ) keep their caption. */
+        .vertical-opacity-caption:empty {
+            display: none;
+        }
+
         .vertical-opacity-layer {
             width: 100%;
             min-height: 31px;

@@ -23,12 +23,22 @@ assert(!opacityIds.includes('lidarScannerDistance'), 'scanner distance is not an
 assert(indexHtml.includes('id="battlesPeriodSlider"'), 'battles period slider should be part of the panel');
 assert(indexHtml.includes('id="battlesPeriodValue"'), 'battles century bubble should exist in the panel');
 assert(!/id="battlesPeriodSlider"[^>]*title=/.test(indexHtml), 'battles slider native title tooltip should be gone (replaced by the century bubble)');
-assert(indexHtml.includes('id="verticalOpacityCaption"'), 'vertical control caption should be addressable for PERIOD/OPACITY switching');
+assert(indexHtml.includes('id="verticalOpacityCaption"'), 'vertical control caption should be addressable for PERIOD wording');
+// The word "OPACITY" must not sit above the map-side slider any more: the
+// caption element stays in the DOM (the Battles mirror still writes PERIOADĂ /
+// ISTORIC into its sibling) but ships empty, and CSS hides it while empty so
+// the layer name keeps the top edge of the control.
+const captionMarkup = (indexHtml.match(/<span[^>]*id="verticalOpacityCaption"[^>]*>([\s\S]*?)<\/span>/) || []);
+assert(captionMarkup[1] !== undefined && captionMarkup[1].trim() === '',
+    'the vertical mirror must not ship an OPACITY caption (got: ' + JSON.stringify(captionMarkup[1]) + ')');
+assert(!/verticalOpacityCaption"[^>]*>\s*OPACITY/i.test(indexHtml), 'the OPACITY caption strip should be gone from the markup');
 assert(indexHtml.includes('body.is-pwa .transp-panel'), 'page should retain its installed-PWA layer panel mode');
 
 // The Battles mirror must stay as compact as every other map-side slider.
 // Its longer century label may wrap, but must never widen the container.
 const stylesCss = fs.readFileSync(path.join(__dirname, 'css/styles.css'), 'utf8');
+assert(/\.vertical-opacity-caption:empty\s*\{[^}]*display\s*:\s*none/.test(stylesCss),
+    'an empty caption (opacity mirrors) must collapse instead of leaving a gap above the layer name');
 const periodContainerRules = stylesCss.match(/\.vertical-opacity-control\[data-kind=["']period["']\]\s*\{[^}]*\}/g) || [];
 assert(periodContainerRules.every(function (rule) { return !/\bwidth\s*:/.test(rule); }),
     'battles period control must not override the standard control width');
@@ -207,7 +217,7 @@ assert(control.classList.contains('visible'), 'vertical control should become vi
 assert(apmOwner.classList.contains('opacity-layer-selected'), 'selected row should be highlighted');
 assert.strictEqual(panelCloseClicks, 1, 'existing layer panel should close via its own tab');
 assert.strictEqual(label.textContent, 'APM Layer', 'translated live layer title should be used');
-assert.strictEqual(caption.textContent, 'OPACITY', 'opacity sources keep the OPACITY caption');
+assert.strictEqual(caption.textContent, '', 'opacity sources show no caption above the map-side slider');
 assert.strictEqual(control.getAttribute('data-kind'), 'opacity');
 assert.strictEqual(vertical.value, '80');
 assert.strictEqual(output.textContent, '80%');

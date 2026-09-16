@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260916-sat-2016-only">
+    <link rel="stylesheet" href="css/styles.css?v=20260916-no-opacity-caption">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260902-babel-safe-area">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260915-offline-panel">
@@ -1168,12 +1168,14 @@
 
                 <!-- Selected-layer opacity control. Clicking any layer card that owns an
                      opacity slider mirrors that slider here, vertically, so the map can
-                     remain visible while opacity is adjusted (desktop and installed PWA). -->
+                     remain visible while opacity is adjusted (desktop and installed PWA).
+                     No caption strip above the range: the mirror already shows the layer
+                     name, so the word "OPACITY" was dropped from the top of the slider. -->
                 <div class="vertical-opacity-control" id="verticalOpacityControl"
                      role="group" aria-label="Selected layer opacity" aria-hidden="true">
                     <button type="button" class="vertical-opacity-close" id="verticalOpacityClose"
                             title="Close opacity control" aria-label="Close opacity control">×</button>
-                    <span class="vertical-opacity-caption" id="verticalOpacityCaption">OPACITY</span>
+                    <span class="vertical-opacity-caption" id="verticalOpacityCaption"></span>
                     <span class="vertical-opacity-layer" id="verticalOpacityLayer">Layer</span>
                     <div class="vertical-opacity-slider-wrap">
                         <input type="range" class="vertical-opacity-slider" id="verticalOpacitySlider"
@@ -3625,7 +3627,7 @@
     <script src="js/map-app.js?v=20260916-sat-2016-only"></script>
     <script src="js/offline-maps.js?v=20260915-offline-panel"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
-    <script src="js/vertical-opacity-control.js?v=20260916-sat-2016-only"></script>
+    <script src="js/vertical-opacity-control.js?v=20260916-no-opacity-caption"></script>
     <script src="js/archeo-potential.js?v=20260827-arch-report"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
     <script src="js/lidar-scanner.js?v=20260827-arch-report"></script>

@@ -29,7 +29,10 @@
 // map-side mirrors of the Satellite layer stay side by side in the installed
 // PWA / on phones, where the ≤600px breakpoint used to stack them on the same
 // anchor so only the ISTORIC mirror was visible.
-const CACHE_NAME = 'detectlab-v89-sat-2016-only';
+// v90: the map-side opacity mirror no longer prints the word "OPACITY" above
+// the range — the slider shows the layer name only (period mirrors keep
+// ISTORIC / PERIOADĂ).
+const CACHE_NAME = 'detectlab-v90-no-opacity-caption';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -250,7 +253,11 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20260916-sat-2016-only',
   'js/map-app.js?v=20260916-sat-2016-only',
   'js/vertical-opacity-control.js?v=20260916-sat-2016-only',
-  'js/auth.js?v=20260916-sat-2016-only'
+  'js/auth.js?v=20260916-sat-2016-only',
+  // The map-side opacity mirror drops its "OPACITY" caption strip; the caption
+  // row collapses (:empty) so the layer name sits at the top of the control.
+  'css/styles.css?v=20260916-no-opacity-caption',
+  'js/vertical-opacity-control.js?v=20260916-no-opacity-caption'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──
