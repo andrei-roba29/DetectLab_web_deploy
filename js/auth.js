@@ -657,6 +657,10 @@ function _setMapControlsHidden(hidden) {
         'transpTab',
         'transpPanel',
         'verticalOpacityControl',
+        // The Satellite „Istoric” mirror is part of the same pair: hiding only
+        // the opacity one left this floating alone over the auth gate in the
+        // installed PWA (it looked like a single, orphaned slider).
+        'verticalSatPeriodControl',
         'mapHelpBtn'
     ];
     elements.forEach(function(elId) {

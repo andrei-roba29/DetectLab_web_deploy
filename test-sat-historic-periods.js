@@ -4,16 +4,23 @@
  * Guards the Satellite layer's "Istoric" period slider:
  *
  *   2016    → geospatial:of_2017_2020  (services.geo-spatial.org /geoserver/geospatial/wms)
- *   2018    → clc:of_2018_2020         (services.geo-spatial.org /geoserver/clc/wms)
  *   Prezent → the existing Esri World Imagery base (window._satLayer)
  *
+ *   The 2018 orthophoto (clc:of_2018_2020, GeoServer "clc") was removed from
+ *   the base layer, so the slider has two stops instead of three.
+ *
  * Requirements covered:
- *   1. The two orthophotos are real WMS layers owned by the Satellite layer —
- *      NOT sublayers in the panel; exactly one base period is on the map.
+ *   1. The 2016 orthophoto is a real WMS layer owned by the Satellite layer —
+ *      NOT a sublayer in the panel; exactly one base period is on the map and
+ *      nothing reaches for a 2018 layer any more.
  *   2. The panel Satellite card carries a second slider titled "Istoric" with
- *      three stops (2016 / 2018 / Prezent); switching shows the matching map.
+ *      two stops (2016 / Prezent); switching shows the matching map.
  *   3. The map-side vertical mirrors: opacity AND period both appear together
- *      whenever the Satellite layer is selected, even if only one is touched.
+ *      whenever the Satellite layer is selected, even if only one is touched —
+ *      on desktop AND at phone width (≤600px), which is what every installed
+ *      PWA reports. Both mirrors used to resolve to the SAME `right` edge
+ *      there (a later, equal-specificity media rule won the cascade), so only
+ *      the ISTORIC mirror was ever visible in the PWA.
  *
  * Run:  node test-sat-historic-periods.js
  */
@@ -42,52 +49,61 @@ function check(name, cond, detail) {
     }
 }
 
-console.log('[1] WMS layers for the 2016 / 2018 orthophotos');
+console.log('[1] WMS layer for the 2016 orthophoto (2018 removed)');
 {
     check('2016 layer uses the geo-spatial workspace WMS',
         /services\.geo-spatial\.org\/geoserver\/geospatial\/wms/.test(mapApp));
     check('2016 layer requests geospatial:of_2017_2020',
         /layers:\s*'geospatial:of_2017_2020'/.test(mapApp));
-    check('2018 layer uses the clc workspace WMS',
-        /services\.geo-spatial\.org\/geoserver\/clc\/wms/.test(mapApp));
-    check('2018 layer requests clc:of_2018_2020',
-        /layers:\s*'clc:of_2018_2020'/.test(mapApp));
-    check('historical layers live on the satellite-level pane',
-        /pane_sat_hist/.test(mapApp) && /window\._sat2016Layer/.test(mapApp) && /window\._sat2018Layer/.test(mapApp));
+    // The prose comment may still name the dropped layer; no CODE may use it.
+    check('the 2018 orthophoto is gone from the base layer',
+        !/layers:\s*'clc:of_2018_2020'/.test(mapApp) &&
+        !/geoserver\/clc\/wms/.test(mapApp) &&
+        !/_sat2018Layer/.test(mapApp) &&
+        !/'2018'\s*:/.test(mapApp));
+    check('historical layer lives on the satellite-level pane',
+        /pane_sat_hist/.test(mapApp) && /window\._sat2016Layer/.test(mapApp));
+    check('the historical registry still ships for external consumers',
+        /window\._satHistPeriods = SAT_HIST_PERIODS/.test(mapApp));
 }
 
 console.log('[2] Period switching (setSatPeriod)');
 {
     check('setSatPeriod is a global entry point', /window\.setSatPeriod\s*=\s*function/.test(mapApp));
-    check('period order is 2016 → 2018 → prezent',
-        /SAT_PERIOD_ORDER\s*=\s*\[\s*'2016',\s*'2018',\s*'prezent'\s*\]/.test(mapApp));
+    check('period order is 2016 → prezent (two stops)',
+        /SAT_PERIOD_ORDER\s*=\s*\[\s*'2016',\s*'prezent'\s*\]/.test(mapApp));
+    check('the last stop index is derived from the order, not hard-coded',
+        /SAT_PERIOD_LAST_INDEX\s*=\s*SAT_PERIOD_ORDER\.length - 1/.test(mapApp));
     check('the Esri base is removed when a historical period is active',
         /map\.removeLayer\(satelliteLayer\)/.test(mapApp));
-    check('opacity applies to the historical orthophotos too',
-        /SAT_HIST_PERIODS\['2016'\]\.setOpacity\(op\)/.test(mapApp) &&
-        /SAT_HIST_PERIODS\['2018'\]\.setOpacity\(op\)/.test(mapApp));
-    check('setSatOpacity keeps driving the historical layers',
+    check('opacity applies to the historical orthophoto too',
+        /SAT_HIST_PERIODS\['2016'\]\.setOpacity\(/.test(mapApp));
+    check('setSatOpacity keeps driving the historical layer',
         /window\._satHistPeriods\['2016'\]\.setOpacity\(opacity\)/.test(mapApp));
+    check('no opacity or visibility path still reaches a 2018 layer',
+        !/SAT_HIST_PERIODS\['2018'\]/.test(mapApp) && !/_satHistPeriods\['2018'\]/.test(mapApp));
 }
 
 console.log('[3] Panel UI: the "Istoric" slider inside the Satellite card');
 {
     const periodSliderTag = (indexHtml.match(/<input\b[^>]*id="satPeriodSlider"[^>]*>/) || [])[0] || '';
     check('period slider exists', !!periodSliderTag);
-    check('period slider has exactly three stops (min 0, max 2, step 1)',
-        /min="0"/.test(periodSliderTag) && /max="2"/.test(periodSliderTag) && /step="1"/.test(periodSliderTag));
-    check('period slider defaults to Prezent (value 2)', /value="2"/.test(periodSliderTag));
+    check('period slider has exactly two stops (min 0, max 1, step 1)',
+        /min="0"/.test(periodSliderTag) && /max="1"/.test(periodSliderTag) && /step="1"/.test(periodSliderTag));
+    check('period slider defaults to Prezent (value 1)', /value="1"/.test(periodSliderTag));
     check('period slider drives setSatPeriod', /oninput="setSatPeriod\(this\.value\)"/.test(periodSliderTag));
     check('period slider is NOT an opacity id (panel auto-discovery stays at 35)',
         !/id="[^"]*Opacity/.test(periodSliderTag));
     check('slider title "Istoric" is translated via data-key',
         /data-key="layer_sat_period_label"/.test(indexHtml));
-    check('third stop "Prezent" is translated via data-key',
+    check('last stop "Prezent" is translated via data-key',
         /data-key="layer_sat_period_present"/.test(indexHtml));
-    check('tick labels row with three stops ships in the card',
+    check('tick labels row with two stops ships in the card',
         /id="satPeriodTicks"/.test(indexHtml) &&
         (indexHtml.match(/<div class="sat-period-ticks" id="satPeriodTicks"[\s\S]{0,400}?<\/div>/) || [''])[0]
-            .split('<span').length - 1 === 3);
+            .split('<span').length - 1 === 2);
+    check('the 2018 tick label is gone from the card',
+        !/<div class="sat-period-ticks" id="satPeriodTicks"[\s\S]{0,400}?2018/.test(indexHtml));
     check('live period label element exists', /id="satPeriodLabel"/.test(indexHtml));
     check('period slider sits inside the Satellite card (no separate sublayer)',
         /<!-- Satellite basemap slider -->[\s\S]*?id="satOpacitySlider"[\s\S]*?id="satPeriodSlider"[\s\S]*?<\/div>\s*<div class="transp-divider/.test(indexHtml));
@@ -101,13 +117,108 @@ console.log('[4] Map-side vertical mirrors (opacity + period shown together)');
         /id="verticalSatPeriodValue"/.test(indexHtml));
     check('vertical period control is marked satperiod kind',
         /id="verticalSatPeriodControl"[\s\S]{0,300}?data-kind="satperiod"/.test(indexHtml));
-    check('vertical period slider mirrors the three stops',
-        /<input[^>]*id="verticalSatPeriodSlider"[^>]*min="0"[^>]*max="2"/.test(indexHtml));
+    check('vertical period slider mirrors the two stops',
+        /<input[^>]*id="verticalSatPeriodSlider"[^>]*min="0"[^>]*max="1"/.test(indexHtml));
     check('CSS anchors the period mirror to the left of the opacity mirror',
         /\.vertical-period-control\s*\{[^}]*right:\s*calc\(38px \+ 68px \+ 14px/.test(stylesCss));
     check('panel period slider ships stop markers',
         /input\.transp-slider\.sat-period-slider/.test(stylesCss));
     check('tick labels have an active state', /\.sat-period-ticks span\.active/.test(stylesCss));
+
+    /* ── PWA regression: the two mirrors must never land on the same anchor ──
+       Installed PWAs and phones are always ≤600px wide, where
+       `@media (max-width: 600px) { .vertical-opacity-control { right: 34px } }`
+       is the LAST `right` declaration for the generic mirror class. Because the
+       period anchor used to be a bare `.vertical-period-control` (same 0,1,0
+       specificity, earlier in the file) it lost that media rule and both
+       mirrors resolved to `right: 34px` — stacked on top of each other, so only
+       the ISTORIC one (last in the DOM) was visible. This mini-cascade
+       reproduces the browser's pick for both widths so the bug cannot return. */
+    function mediaRanges(condition) {
+        const ranges = [];
+        let idx = stylesCss.indexOf('@media (' + condition + ')');
+        while (idx !== -1) {
+            const open = stylesCss.indexOf('{', idx);
+            let depth = 0;
+            let end = open;
+            for (let i = open; i < stylesCss.length; i++) {
+                if (stylesCss[i] === '{') depth++;
+                else if (stylesCss[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+            }
+            ranges.push({ start: idx, end: end });
+            idx = stylesCss.indexOf('@media (' + condition + ')', end);
+        }
+        return ranges;
+    }
+
+    const mobileRanges = mediaRanges('max-width: 600px');
+    function inMobileBlock(index) {
+        return mobileRanges.some(function (r) { return index > r.start && index < r.end; });
+    }
+
+    function collectRightRules() {
+        const shapes = [
+            { selector: '\\.vertical-opacity-control', classes: 1 },
+            { selector: '\\.vertical-opacity-control\\.vertical-period-control', classes: 2 }
+        ];
+        const rules = [];
+        shapes.forEach(function (shape) {
+            const re = new RegExp(shape.selector + '\\s*\\{([^}]*)\\}', 'g');
+            let m;
+            while ((m = re.exec(stylesCss))) {
+                const right = (m[1].match(/(?:^|;|\{)\s*right\s*:\s*([^;]+);/) || [])[1];
+                if (!right) continue;
+                rules.push({
+                    selector: shape.selector.replace(/\\/g, ''),
+                    right: right.trim(),
+                    classes: shape.classes,
+                    order: m.index,
+                    mobile: inMobileBlock(m.index)
+                });
+            }
+        });
+        return rules;
+    }
+
+    function resolveRight(rules, viewportWidth) {
+        const applicable = rules.filter(function (r) { return !r.mobile || viewportWidth <= 600; });
+        applicable.sort(function (a, b) { return (a.classes - b.classes) || (a.order - b.order); });
+        return applicable[applicable.length - 1];
+    }
+
+    function calcPxTotal(value) {
+        const calc = value.match(/calc\(([^)]*)\)/);
+        let total = 0;
+        (calc ? calc[1] : value).split('+').forEach(function (part) {
+            const px = part.match(/(-?\d+(?:\.\d+)?)px/);
+            if (px) total += Number(px[1]);
+        });
+        return total;
+    }
+
+    const desktopWidth = 1280;
+    const phoneWidth = 390;
+    const rightRules = collectRightRules();
+    const opacityOnly = rightRules.filter(function (r) { return r.classes === 1; });
+    const desktopOpacity = resolveRight(opacityOnly, desktopWidth);
+    const desktopPeriod = resolveRight(rightRules, desktopWidth);
+    const phoneOpacity = resolveRight(opacityOnly, phoneWidth);
+    const phonePeriod = resolveRight(rightRules, phoneWidth);
+
+    check('desktop keeps the classic anchors (38px / 38 + 68 + 14)',
+        desktopOpacity.right === 'calc(38px + env(safe-area-inset-right, 0px))' &&
+        desktopPeriod.right === 'calc(38px + 68px + 14px + env(safe-area-inset-right, 0px))');
+    check('phone/PWA narrows the opacity mirror to 34px + 62px wide',
+        phoneOpacity.right === 'calc(34px + env(safe-area-inset-right, 0px))');
+    check('phone/PWA moves the period mirror left by its width + the gap',
+        phonePeriod.right === 'calc(34px + 62px + 14px + env(safe-area-inset-right, 0px))');
+    check('phone/PWA: the mirrors cannot overlap (period edge ≥ mirror + gap)',
+        calcPxTotal(phonePeriod.right) - calcPxTotal(phoneOpacity.right) >= 62 + 10,
+        phonePeriod.right + ' vs ' + phoneOpacity.right);
+    check('desktop: the mirrors cannot overlap either',
+        calcPxTotal(desktopPeriod.right) - calcPxTotal(desktopOpacity.right) >= 68 + 10);
+    check('a two-class period anchor wins the cascade at both widths',
+        desktopPeriod.classes === 2 && phonePeriod.classes === 2);
 }
 
 console.log('[5] Translations + PWA wiring');
@@ -123,27 +234,36 @@ console.log('[5] Translations + PWA wiring');
         // (the visibility prompt bumped it to ?v=20260915-visibility-prompt),
         // so require the cache-buster pattern instead of one frozen string.
         /js\/map-app\.js\?v=\d{8}-/.test(indexHtml) &&
-        indexHtml.includes('js/vertical-opacity-control.js?v=20260915-sat-historic') &&
+        // vertical-opacity-control.js is re-versioned too (the dropped OPACITY
+        // caption bumped it past ?v=20260916-sat-2016-only), so match the
+        // cache-buster pattern instead of one frozen tag.
+        /js\/vertical-opacity-control\.js\?v=\d{8}-/.test(indexHtml) &&
         // translations.js keeps getting re-versioned by every later release
         // (social bumped it to ?v=20260915-social), so require the cache-buster
         // pattern instead of one frozen string.
         /js\/translations\.js\?v=\d{8}-/.test(indexHtml) &&
-        // styles.css is re-versioned as well (the detectorist map pins bumped
-        // it to ?v=20260915-map-social), so match the pattern, not a frozen tag.
+        // styles.css is re-versioned as well (2018 removal + the PWA mirror
+        // fix bumped it to ?v=20260916-sat-2016-only), so match the pattern,
+        // not a frozen tag.
         /css\/styles\.css\?v=\d{8}-/.test(indexHtml));
     check('SW pre-caches the sat-historic builds',
         swJs.includes("'js/map-app.js?v=20260915-sat-historic'") &&
         swJs.includes("'js/vertical-opacity-control.js?v=20260915-sat-historic'") &&
         swJs.includes("'css/styles.css?v=20260915-sat-historic'"));
-    // The page can only request ONE stylesheet URL: make sure whichever
-    // cache-buster index.html ships today is the one the service worker
-    // pre-caches (the sat-historic entry above stays in the list historically).
-    const liveCss = (indexHtml.match(/css\/styles\.css\?v=[^"']+/) || [])[0];
-    check('the stylesheet index.html actually requests is pre-cached (no offline gap)',
-        !!liveCss && swJs.includes("'" + liveCss + "'"), liveCss || '<none>');
-    // The cache name is re-bumped by every release; assert it is at least the
-    // sat-historic one (v85) rather than pinning a version that is already stale.
-    check('SW CACHE_NAME was bumped', /const CACHE_NAME = 'detectlab-v(8[5-9]|9\d)-/.test(swJs));
+    // The page can only request ONE URL per asset, so assert the LIVE
+    // relationship instead of frozen tags: every asset index.html requests must
+    // be the exact URL the service worker pre-caches (no offline gap), while
+    // the older entries above stay in the list purely historically.
+    ['css/styles.css', 'js/map-app.js', 'js/vertical-opacity-control.js', 'js/auth.js'].forEach(function (asset) {
+        const live = (indexHtml.match(new RegExp(asset.replace(/\./g, '\\.') + '\\?v=[^"\']+')) || [])[0];
+        check('SW pre-caches the live ' + asset + ' URL requested by index.html',
+            !!live && swJs.includes("'" + live + "'"), live || '<none>');
+    });
+    // The cache name is re-bumped by every release; parse the number and
+    // require at least the sat-historic bump (v85) instead of pinning a tag
+    // that goes stale with the next release.
+    const cacheVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1] || 0);
+    check('SW CACHE_NAME was bumped past the sat-historic release', cacheVersion >= 85, 'v' + cacheVersion);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -225,7 +345,7 @@ const close = new MockElement('button', 'verticalOpacityClose');
 
 const periodControl = new MockElement('div', 'verticalSatPeriodControl');
 const periodCaption = new MockElement('span', 'verticalSatPeriodCaption');
-const periodVertical = range('verticalSatPeriodSlider', 2, '0', '2');
+const periodVertical = range('verticalSatPeriodSlider', 1, '0', '1');
 const periodOutput = new MockElement('output', 'verticalSatPeriodValue');
 const periodLabel = new MockElement('span', 'verticalSatPeriodLayer');
 
@@ -235,12 +355,11 @@ const satTitle = new MockElement('span');
 satTitle.textContent = 'Satelit';
 satTitle.setAttribute('data-key', 'layer_satellite');
 const satOpacity = range('satOpacitySlider', 100, '10', '100');
-const satPeriod = range('satPeriodSlider', 2, '0', '2');
+const satPeriod = range('satPeriodSlider', 1, '0', '1');
 const ticks = new MockElement('div', 'satPeriodTicks', ['sat-period-ticks']);
 const tick2016 = new MockElement('span'); tick2016.textContent = '2016';
-const tick2018 = new MockElement('span'); tick2018.textContent = '2018';
 const tickPrezent = new MockElement('span'); tickPrezent.textContent = 'Prezent';
-ticks.appendChild(tick2016); ticks.appendChild(tick2018); ticks.appendChild(tickPrezent);
+ticks.appendChild(tick2016); ticks.appendChild(tickPrezent);
 satOwner.appendChild(satTitle);
 satOwner.appendChild(satOpacity);
 satOwner.appendChild(satPeriod);
@@ -315,7 +434,9 @@ check('selecting the Satellite card also shows the period mirror',
 check('the opacity mirror keeps mirroring the opacity range',
     vertical.value === '100' && output.textContent === '100%');
 check('the period mirror starts on Prezent',
-    periodVertical.value === '2' && periodOutput.textContent === 'Prezent');
+    periodVertical.value === '1' && periodOutput.textContent === 'Prezent');
+check('the period mirror follows the panel range geometry (two stops, no phantom 2018)',
+    periodVertical.max === satPeriod.max && periodVertical.max === '1');
 check('the period caption reads ISTORIC in Romanian',
     periodCaption.textContent === 'ISTORIC');
 check('the satellite row stays highlighted',
@@ -331,15 +452,18 @@ check('vertical period drag propagates to the panel slider', satPeriod.value ===
 check('the panel slider input event fires exactly once', satPeriodInputs === 1);
 check('the period mirror value shows the year', periodOutput.textContent === '2016');
 
+// Back to the last stop: „Prezent" comes from the translated tick label.
 periodVertical.value = '1';
 periodVertical.dispatchEvent(new Event('input'));
-check('period 2018 renders on the mirror', periodOutput.textContent === '2018');
+check('the last stop renders the translated Prezent on the mirror',
+    periodOutput.textContent === 'Prezent');
+check('the panel slider is back on Prezent too', satPeriod.value === '1');
 
 // Programmatic panel updates (e.g. setSatPeriod) are picked up by the poll.
-satPeriod.value = '2';
+satPeriod.value = '0';
 intervals.forEach(function (fn) { fn(); });
-check('polling keeps the period mirror in sync', periodVertical.value === '2');
-check('Prezent label comes from the translated tick', periodOutput.textContent === 'Prezent');
+check('polling keeps the period mirror in sync', periodVertical.value === '0');
+check('the 2016 mirror label comes from the year itself', periodOutput.textContent === '2016');
 
 // Touching ONLY the period slider still shows both mirrors ("chiar daca doar
 // unul din ele e apasat").

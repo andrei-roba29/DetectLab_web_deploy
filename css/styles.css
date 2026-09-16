@@ -4847,6 +4847,14 @@
             white-space: nowrap;
         }
 
+        /* Opacity mirrors no longer carry the word "OPACITY" above the range, so
+           the (empty) caption is dropped together with its 5px flex gap —
+           otherwise the layer name would float away from the top edge. The
+           period mirrors (ISTORIC / PERIOADĂ) keep their caption. */
+        .vertical-opacity-caption:empty {
+            display: none;
+        }
+
         .vertical-opacity-layer {
             width: 100%;
             min-height: 31px;
@@ -4984,9 +4992,22 @@
            Selecting the Satellite layer (either its opacity slider or the
            „Istoric” period slider) shows BOTH vertical mirrors at the same
            time: the opacity one keeps its usual anchor, the period one sits
-           immediately to its left. Only three discrete stops (2016 / 2018 /
-           Prezent), so the value chip stays permanently visible. */
-        .vertical-period-control {
+           immediately to its left. Only two discrete stops (2016 / Prezent),
+           so the value chip stays permanently visible.
+
+           The selector carries BOTH classes on purpose. A bare
+           `.vertical-period-control` has the same specificity (0,1,0) as the
+           generic `.vertical-opacity-control` rules, so the responsive overrides
+           that appear LATER in this file (notably the @media (max-width:600px)
+           block that narrows the mirror to 62px and moves it to right:34px)
+           used to win the `right` declaration here as well. Both mirrors then
+           landed on the exact same anchor — stacked one on top of the other —
+           so on every phone / installed PWA only the period mirror (the last
+           one in the DOM) was ever visible, while desktop (>600px) showed the
+           pair side by side. Two classes (0,2,0) keep this offset in control
+           of any single-class rule; the mobile block below re-states the
+           narrower geometry with the same specificity. */
+        .vertical-opacity-control.vertical-period-control {
             right: calc(38px + 68px + 14px + env(safe-area-inset-right, 0px));
         }
 
@@ -4995,7 +5016,8 @@
             letter-spacing: 0.03em;
         }
 
-        /* Three stop dots on the vertical period track (top / middle / bottom). */
+        /* Two stop dots on the vertical period track: 2016 at the bottom of
+           the travel, Prezent at the top (the 2018 middle stop is gone). */
         .vertical-period-control .vertical-opacity-slider-wrap::after {
             content: '';
             position: absolute;
@@ -5004,20 +5026,21 @@
             width: 5px;
             height: 169px;
             transform: translate(-50%, -50%);
-            background-image: radial-gradient(circle, rgba(245,240,235,0.9) 1.4px, transparent 2px);
-            background-size: 5px 84px;
-            background-position: 50% 0;
-            background-repeat: repeat-y;
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(245,240,235,0.9) 1.4px, transparent 2px),
+                radial-gradient(circle at 50% 50%, rgba(245,240,235,0.9) 1.4px, transparent 2px);
+            background-size: 5px 5px;
+            background-position: 50% 0, 50% 100%;
+            background-repeat: no-repeat;
             pointer-events: none;
             z-index: 1;
         }
 
-        /* Panel „Istoric” slider: same look as every .transp-slider, plus three
-           stop markers aligned with the 2016 / 2018 / Prezent tick labels. */
+        /* Panel „Istoric” slider: same look as every .transp-slider, plus two
+           stop markers aligned with the 2016 / Prezent tick labels. */
         input.transp-slider.sat-period-slider {
             background:
                 radial-gradient(circle at 8px 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
-                radial-gradient(circle at 50% 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
                 radial-gradient(circle at calc(100% - 8px) 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
                 linear-gradient(90deg, rgba(160,112,232,0.55), rgba(184,216,240,0.14));
         }
@@ -5080,6 +5103,15 @@
                 height: 262px;
                 padding-left: 6px;
                 padding-right: 6px;
+            }
+
+            /* Phones / installed PWA: the mirror is 6px narrower here, so the
+               Satellite pair must re-derive its left anchor from THIS width
+               instead of keeping the desktop 68px. Same two-class specificity
+               as the desktop rule above and later in the file → wins, and the
+               two mirrors stay side by side instead of overlapping. */
+            .vertical-opacity-control.vertical-period-control {
+                right: calc(34px + 62px + 14px + env(safe-area-inset-right, 0px));
             }
 
             .vertical-opacity-slider {

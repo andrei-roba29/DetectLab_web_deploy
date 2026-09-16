@@ -48,26 +48,43 @@
     };
 
     /* The Satellite layer owns TWO ranges: its opacity and the „Istoric”
-       period selector (2016 / 2018 / Prezent). Selecting either one shows
-       both vertical mirrors on the map at the same time — each permanently
-       bound to its own panel slider. */
+       period selector (2016 / Prezent — the 2018 orthophoto was dropped from
+       the base layer). Selecting either one shows both vertical mirrors on the
+       map at the same time — each permanently bound to its own panel slider. */
     var SATELLITE_PAIR_IDS = ['satOpacitySlider', 'satPeriodSlider'];
-    var SAT_PERIOD_LABELS_FALLBACK = ['2016', '2018', 'Prezent'];
+    /* Only a last-resort fallback for when the panel ticks are not in the DOM
+       (unit tests / pre-render). The live ticks win, so the mirror follows
+       whatever stop list the panel actually ships. */
+    var SAT_PERIOD_LABELS_FALLBACK = ['2016', 'Prezent'];
 
     function isSatellitePairId(id) {
         return SATELLITE_PAIR_IDS.indexOf(id) !== -1;
     }
 
+    function satPeriodTickLabel(idx) {
+        var ticks = document.querySelectorAll('#satPeriodTicks span');
+        if (!ticks || !ticks[idx]) return '';
+        return String(ticks[idx].textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function satPeriodLastTickLabel() {
+        /* „Prezent” follows the translated last tick of the panel slider. */
+        var tick = document.querySelector('#satPeriodTicks span:last-child');
+        return tick ? String(tick.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    }
+
     function satPeriodLabel(value) {
-        var idx = Math.max(0, Math.min(2, Math.round(Number(value))));
-        if (!isFinite(idx)) idx = 2;
-        /* „Prezent” follows the translated third tick of the panel slider. */
-        if (idx === 2) {
-            var tick = document.querySelector('#satPeriodTicks span:last-child');
-            var tickText = tick ? tick.textContent.replace(/\s+/g, ' ').trim() : '';
-            if (tickText) return tickText;
+        var ticks = document.querySelectorAll('#satPeriodTicks span');
+        var lastIdx = (ticks && ticks.length ? ticks.length : SAT_PERIOD_LABELS_FALLBACK.length) - 1;
+        if (lastIdx < 0) lastIdx = 0;
+        var idx = Math.round(Number(value));
+        if (!isFinite(idx)) idx = lastIdx;
+        idx = Math.max(0, Math.min(lastIdx, idx));
+        if (idx === lastIdx) {
+            var present = satPeriodLastTickLabel();
+            if (present) return present;
         }
-        return SAT_PERIOD_LABELS_FALLBACK[idx];
+        return satPeriodTickLabel(idx) || SAT_PERIOD_LABELS_FALLBACK[idx] || String(value);
     }
 
     var control;
@@ -142,7 +159,11 @@
         if (source.id === 'satPeriodSlider') {
             return (window._currentLang && window._currentLang() === 'en') ? 'HISTORIC' : 'ISTORIC';
         }
-        return 'OPACITY';
+        /* Plain opacity ranges carry NO caption: the word "OPACITY" used to sit
+           above the map-side slider and only pushed the layer name down. The
+           label stays empty (and is hidden by CSS), while the accessible name
+           of the range still says what it controls. */
+        return '';
     }
 
     function sourceKind(source) {
@@ -252,6 +273,12 @@
     function syncPeriodFromSource() {
         var periodSource = document.getElementById('satPeriodSlider');
         if (!periodSource || !periodSlider) return;
+        /* Follow the panel range's own geometry, so a stop list that shrinks
+           (2016 / Prezent after the 2018 orthophoto was dropped) can never
+           leave the mirror pointing at a period the panel cannot reach. */
+        if (periodSource.max && periodSlider.max !== periodSource.max) periodSlider.max = periodSource.max;
+        if (periodSource.min && periodSlider.min !== periodSource.min) periodSlider.min = periodSource.min;
+        if (periodSource.step && periodSlider.step !== periodSource.step) periodSlider.step = periodSource.step;
         if (String(periodSlider.value) !== String(periodSource.value)) {
             periodSlider.value = periodSource.value;
         }
@@ -286,7 +313,7 @@
         var name = getLayerName(opacitySource, activeOwner);
         layerLabel.textContent = name;
         layerLabel.title = name;
-        if (captionEl) captionEl.textContent = 'OPACITY';
+        if (captionEl) captionEl.textContent = ''; // no "OPACITY" strip above the mirror
         control.setAttribute('data-kind', 'opacity');
 
         verticalSlider.min = opacitySource.min || '0';
@@ -543,8 +570,9 @@
             }
         });
 
-        /* Bilingual mirrors: the layer name, the caption (OPACITY ↔ PERIOADĂ)
-           and the formatted value follow the live language. */
+        /* Bilingual mirrors: the layer name, the caption that mirrors still carry
+           (PERIOADĂ / ISTORIC) and the formatted value follow the live language.
+           Plain opacity mirrors have no caption any more. */
         document.addEventListener('detectlab:langchange', function () {
             if (!activeSource || !activeOwner) return;
             var name = getLayerName(activeSource, activeOwner);

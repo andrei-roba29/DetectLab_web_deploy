@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260915-map-social">
+    <link rel="stylesheet" href="css/styles.css?v=20260916-no-opacity-caption">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260902-babel-safe-area">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260915-offline-panel">
@@ -1168,12 +1168,14 @@
 
                 <!-- Selected-layer opacity control. Clicking any layer card that owns an
                      opacity slider mirrors that slider here, vertically, so the map can
-                     remain visible while opacity is adjusted (desktop and installed PWA). -->
+                     remain visible while opacity is adjusted (desktop and installed PWA).
+                     No caption strip above the range: the mirror already shows the layer
+                     name, so the word "OPACITY" was dropped from the top of the slider. -->
                 <div class="vertical-opacity-control" id="verticalOpacityControl"
                      role="group" aria-label="Selected layer opacity" aria-hidden="true">
                     <button type="button" class="vertical-opacity-close" id="verticalOpacityClose"
                             title="Close opacity control" aria-label="Close opacity control">×</button>
-                    <span class="vertical-opacity-caption" id="verticalOpacityCaption">OPACITY</span>
+                    <span class="vertical-opacity-caption" id="verticalOpacityCaption"></span>
                     <span class="vertical-opacity-layer" id="verticalOpacityLayer">Layer</span>
                     <div class="vertical-opacity-slider-wrap">
                         <input type="range" class="vertical-opacity-slider" id="verticalOpacitySlider"
@@ -1187,15 +1189,17 @@
                 <!-- Satellite „Istoric” period control. Appears together with the
                      opacity mirror whenever the Satellite layer is selected: both
                      vertical sliders stay on screen at the same time, even if only
-                     one of them is touched. Drives #satPeriodSlider (2016 / 2018 /
-                     Prezent) from js/map-app.js. -->
+                     one of them is touched — on desktop AND in the installed PWA
+                     (the two anchors are kept apart at every breakpoint, see the
+                     .vertical-opacity-control.vertical-period-control rule). Drives
+                     #satPeriodSlider (2016 / Prezent) from js/map-app.js. -->
                 <div class="vertical-opacity-control vertical-period-control" id="verticalSatPeriodControl"
                      role="group" aria-label="Satellite imagery period" aria-hidden="true" data-kind="satperiod">
                     <span class="vertical-opacity-caption" id="verticalSatPeriodCaption">ISTORIC</span>
                     <span class="vertical-opacity-layer" id="verticalSatPeriodLayer">Satellite</span>
                     <div class="vertical-opacity-slider-wrap">
                         <input type="range" class="vertical-opacity-slider" id="verticalSatPeriodSlider"
-                               min="0" max="2" value="2" step="1"
+                               min="0" max="1" value="1" step="1"
                                aria-label="Satellite imagery period" aria-orientation="vertical">
                     </div>
                     <output class="vertical-opacity-value" id="verticalSatPeriodValue"
@@ -1357,21 +1361,21 @@
                                min="10" max="100" value="100"
                                oninput="setSatOpacity(this.value)">
 
-                        <!-- „Istoric”: perioada imaginii satelitare. Trei poziții —
-                             2016 și 2018 (ortofotoplanuri geo-spatial.org, WMS) și
-                             Prezent (stratul actual Esri). Comutarea afișează automat
-                             harta perioadei alese. -->
+                        <!-- „Istoric”: perioada imaginii satelitare. Două poziții —
+                             2016 (ortofotoplan geo-spatial.org, WMS) și Prezent
+                             (stratul actual Esri). Ortofotoplanul 2018 a fost scos
+                             din stratul de bază. Comutarea afișează automat harta
+                             perioadei alese. -->
                         <div class="transp-layer-label" style="margin-bottom:6px;margin-top:10px">
                             <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="layer_sat_period_label">Istoric</span>
                             <span class="pct" id="satPeriodLabel">Prezent</span>
                         </div>
                         <input type="range" class="transp-slider sat-period-slider" id="satPeriodSlider"
-                               min="0" max="2" step="1" value="2"
+                               min="0" max="1" step="1" value="1"
                                oninput="setSatPeriod(this.value)"
                                aria-label="Satellite imagery period / Perioada imaginii satelitare">
                         <div class="sat-period-ticks" id="satPeriodTicks" aria-hidden="true">
                             <span>2016</span>
-                            <span>2018</span>
                             <span class="t" data-key="layer_sat_period_present">Prezent</span>
                         </div>
                     </div>
@@ -3620,10 +3624,10 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260915-map-social"></script>
+    <script src="js/map-app.js?v=20260916-sat-2016-only"></script>
     <script src="js/offline-maps.js?v=20260915-offline-panel"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
-    <script src="js/vertical-opacity-control.js?v=20260915-sat-historic"></script>
+    <script src="js/vertical-opacity-control.js?v=20260916-no-opacity-caption"></script>
     <script src="js/archeo-potential.js?v=20260827-arch-report"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
     <script src="js/lidar-scanner.js?v=20260827-arch-report"></script>
@@ -4025,7 +4029,7 @@
           </div>
     </div>
 
-    <script src="js/auth.js?v=20260812-vertical-opacity"></script>
+    <script src="js/auth.js?v=20260916-sat-2016-only"></script>
     <script src="js/newsletter.js?v=20260916-newsletter"></script>
 
 
