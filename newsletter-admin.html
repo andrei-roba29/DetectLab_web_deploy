@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DetectLab — Newsletter Admin</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif;margin:0;background:#f4f6f9;color:#1a1a1a}
+  header{background:linear-gradient(135deg,#6B3FA0 0%,#2a6cb6 60%,#E8772A 100%);color:#fff;padding:24px 20px}
+  header h1{margin:0 0 6px;font-size:22px}
+  header p{margin:0;opacity:.9;font-size:13px;line-height:1.5;max-width:720px}
+  .wrap{max-width:980px;margin:0 auto;padding:20px}
+  .card{background:#fff;border:1px solid #e6e8eb;border-radius:12px;padding:18px;margin:0 0 16px;box-shadow:0 1px 8px rgba(0,0,0,.06)}
+  .card h2{margin:0 0 10px;font-size:16px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0}
+  .kpi{background:#f8f9fb;border:1px solid #eef0f3;border-radius:10px;padding:14px;text-align:center}
+  .kpi .n{font-size:28px;font-weight:800;line-height:1}
+  .kpi .lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;margin-top:4px}
+  .kpi.subs .n{color:#1b7a2b}
+  .kpi.nosub .n{color:#991b1b}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  input,select,button,textarea{font:inherit}
+  input[type=text],input[type=email],textarea,select{border:1px solid #dfe3ea;border-radius:8px;padding:10px 12px;background:#fff;width:100%}
+  button{border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .btnPrimary{background:#6B3FA0;color:#fff}
+  .btnPrimary:disabled{opacity:.5;cursor:not-allowed}
+  .btnGhost{background:#fff;border:1px solid #dfe3ea;color:#1a1a1a}
+  .btnDanger{background:#dc2626;color:#fff}
+  .badge{font-size:10px;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:999px;border:1px solid #e6e8eb}
+  .badge.sub{background:#e8f5e9;color:#1b7a2b;border-color:#b7e1bd}
+  .badge.no{background:#fef2f2;color:#991b1b;border-color:#fecaca}
+  .tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tbl th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#6b7280;text-align:left;padding:8px 6px;border-bottom:1px solid #eef0f3}
+  .tbl td{padding:9px 6px;border-bottom:1px solid #f0f2f5;vertical-align:top}
+  .muted{color:#6b7280}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+  .alert{padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5}
+  .alert.ok{background:#e8f5e9;border:1px solid #b7e1bd;color:#1b5e20}
+  .alert.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+  .alert.info{background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}.split{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding:0">
+    <h1>📧 DetectLab — Newsletter Admin</h1>
+    <p>Vezi cine este abonat și cine nu (profiles.newsletter_subscribed), filtrează după status și trimite primul newsletter. Necesită autentificare + cheie admin (<code class="mono">x-admin-key</code> = <code class="mono">INGESTION_ADMIN_KEY</code> / <code class="mono">NEWSLETTER_ADMIN_KEY</code>). Backend-ul este singurul scriitor care diferențiază corect audiența — checkbox-ul din formularul de înregistrare scrie direct în <code class="mono">public.profiles</code>.</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card" id="authCard">
+    <h2>🔐 Autentificare</h2>
+    <p class="muted" style="margin:0 0 10px;font-size:13px;line-height:1.5">Loghează-te cu un cont DetectLab, apoi introdu cheia admin dacă backend-ul este configurat cu <code class="mono">INGESTION_ADMIN_KEY</code>. În dev fără cheie, orice cont autentificat poate lista / trimite.</p>
+    <div class="row" style="gap:12px">
+      <button class="btnGhost" id="btnLogin" onclick="openAuth()">Log in / Register</button>
+      <span id="authStatus" class="muted" style="font-size:13px">Neautentificat</span>
+    </div>
+    <div style="margin-top:12px">
+      <label style="font-size:12px;font-weight:700;color:#6b7280">Admin key (x-admin-key) — opțional în dev</label>
+      <input type="text" id="adminKey" placeholder="INGESTION_ADMIN_KEY / NEWSLETTER_ADMIN_KEY" autocomplete="off" spellcheck="false">
+      <div class="muted" style="font-size:11px;margin-top:4px">Cheia nu este stocată pe server — rămâne doar în browser pentru acest tab (sessionStorage).</div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label style="font-size:13px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="useProdApi" checked> folosește producția (<span class="mono">detectlab-backend-production.up.railway.app</span>)</label>
+      <input type="text" id="apiBase" placeholder="API base (ex: http://localhost:3000/api)" style="flex:1;min-width:240px">
+    </div>
+  </div>
+
+  <div class="card" id="healthCard">
+    <h2>📊 Audiență — diferențiere abonat / neabonat</h2>
+    <div id="healthMsg" class="alert info">Se încarcă…</div>
+    <div class="grid" id="kpis" style="display:none">
+      <div class="kpi"><div class="n" id="kpiTotal">—</div><div class="lbl">Total conturi</div></div>
+      <div class="kpi subs"><div class="n" id="kpiSub">—</div><div class="lbl">✅ Abonați (subscribed = true)</div></div>
+      <div class="kpi nosub"><div class="n" id="kpiNo">—</div><div class="lbl">❌ Neabonați (subscribed = false)</div></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btnGhost" onclick="loadHealth()">↻ Reîncarcă</button>
+      <button class="btnGhost" onclick="loadSubscribers('all')">Vezi toți</button>
+      <button class="btnPrimary" onclick="loadSubscribers('subscribed')">✅ Doar abonați (audiența)</button>
+      <button class="btnGhost" onclick="loadSubscribers('not_subscribed')">❌ Doar neabonați</button>
+      <select id="limitSel" style="width:auto"><option value="50">50</option><option value="200" selected>200</option><option value="500">500</option></select>
+    </div>
+    <div style="margin-top:12px;overflow:auto;max-height:420px;border:1px solid #eef0f3;border-radius:10px">
+      <table class="tbl" id="tbl"><thead><tr><th>Email</th><th>Nume</th><th>Status</th><th>Plan</th><th>Subscribed at</th><th>ID</th></tr></thead><tbody id="tblBody"><tr><td colspan="6" class="muted" style="text-align:center;padding:18px">Apasă un buton de mai sus pentru a încărca lista.</td></tr></tbody></table>
+    </div>
+    <p class="muted" style="font-size:11px;margin:8px 0 0;line-height:1.4">Sursa: <code class="mono">public.profiles.newsletter_subscribed</code> + <code class="mono">auth.users</code> (view <code class="mono">newsletter_audience</code> pentru audiență). Checkbox-ul din <code class="mono">index.html#regNewsletter</code> este legat prin <code class="mono">js/auth.js</code> → <code class="mono">POST /api/newsletter/subscribe</code> (backend pool) + trigger <code class="mono">sync_newsletter_from_user_metadata</code>.</p>
+  </div>
+
+  <div class="card">
+    <h2>✉️ Trimite newsletter</h2>
+    <div class="split">
+      <div>
+        <h3 style="margin:0 0 8px;font-size:13px">1) Primul newsletter (recomandat)</h3>
+        <p class="muted" style="font-size:12px;line-height:1.5;margin:0 0 10px">Creează automat campania „Bun venit în comunitatea DetectLab” (HTML + text) și o trimite abonaților. Se poate retrimite cu <em>Force</em> dacă a fost deja marcată <code class="mono">sent</code>.</p>
+        <div class="row">
+          <button class="btnPrimary" id="btnSendFirst" onclick="sendFirst(false)">📤 Trimite primul newsletter</button>
+          <button class="btnGhost" onclick="sendFirst(true)">Force resend</button>
+        </div>
+        <div id="firstResult" style="margin-top:10px"></div>
+        <details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:#6b7280">Previzualizare HTML (primul newsletter)</summary>
+          <iframe id="previewFrame" style="width:100%;height:520px;border:1px solid #e6e8eb;border-radius:10px;margin-top:8px;background:#fff"></iframe>
+        </details>
+      </div>
+      <div>
+        <h3 style="margin:0 0 8px;font-size:13px">2) Campanie custom</h3>
+        <label style="font-size:12px;font-weight:700">Subject</label>
+        <input type="text" id="customSubject" placeholder="Ex: Noutăți DetectLab — Septembrie 2026">
+        <label style="font-size:12px;font-weight:700;margin-top:8px;display:block">Preview text (opțional)</label>
+        <input type="text" id="customPreview" placeholder="Text scurt vizibil în inbox">
+        <label style="font-size:12px;font-weight:700;margin-top:8px;display:block">HTML</label>
+        <textarea id="customHtml" rows="8" placeholder="<h1>Salut {{first_name}}!</h1><p>... {{unsubscribe_url}} ...</p>"></textarea>
+        <div class="muted" style="font-size:11px;margin-top:4px">Poți folosi <code class="mono">{{first_name}}</code> <code class="mono">{{full_name}}</code> <code class="mono">{{email}}</code> <code class="mono">{{unsubscribe_url}}</code> <code class="mono">{{site_url}}</code></div>
+        <label style="font-size:12px;font-weight:700;margin-top:8px;display:block">Text (plain, opțional)</label>
+        <textarea id="customText" rows="5" placeholder="Salut {{first_name}}! ..."></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="btnGhost" onclick="createCustom()">📝 Creează draft</button>
+          <button class="btnPrimary" onclick="createAndSendCustom()">📤 Creează + trimite</button>
+        </div>
+        <div id="customResult" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <h3 style="margin:16px 0 8px;font-size:13px">Campanii recente</h3>
+    <button class="btnGhost" onclick="loadCampaigns()">↻ Reîncarcă campanii</button>
+    <div style="margin-top:10px;overflow:auto">
+      <table class="tbl" id="campTbl"><thead><tr><th>Subject</th><th>Status</th><th>Destinatari</th><th>Sent / Failed</th><th>Creat</th><th>Trimis</th><th>ID</th></tr></thead><tbody id="campBody"><tr><td colspan="7" class="muted" style="text-align:center;padding:12px">—</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🧪 Test local (fără autentificare)</h2>
+    <p class="muted" style="font-size:12px;line-height:1.5">Poți verifica că tabelele există direct cu health-check-ul public (nu necesită token):</p>
+    <button class="btnGhost" onclick="loadHealthPublic()">GET /api/newsletter/health (public)</button>
+    <pre id="healthRaw" class="mono" style="background:#0b1220;color:#c7d2fe;padding:12px;border-radius:10px;overflow:auto;margin-top:10px;max-height:220px">—</pre>
+  </div>
+
+  <p class="muted" style="font-size:11px;text-align:center">DetectLab Newsletter Admin · Sursa: <code class="mono">backend/src/routes/newsletter.js</code> · Trimite via SMTP (<code class="mono">SMTP_HOST</code>) sau Resend (<code class="mono">RESEND_API_KEY</code>) — fallback <em>logged-only</em> dacă nu este configurat.</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase.js?v=20260811-event-sync"></script>
+<script>
+var API_PROD = 'https://detectlab-backend-production.up.railway.app/api';
+var API_FALLBACK = API_PROD;
+function apiBase() {
+  var custom = document.getElementById('apiBase').value.trim().replace(/\/$/, '');
+  if (custom) return custom;
+  var useProd = document.getElementById('useProdApi').checked;
+  return useProd ? API_PROD : (window._dlApiBase || API_FALLBACK);
+}
+function adminKey() {
+  var v = document.getElementById('adminKey').value.trim();
+  if (v) try{ sessionStorage.setItem('dl_newsletter_admin_key', v);}catch(e){}
+  return v || (function(){ try{return sessionStorage.getItem('dl_newsletter_admin_key')||'';}catch(e){return '';} })();
+}
+async function getToken() {
+  if (!window.supabaseClient || !window.supabaseClient.auth) return null;
+  try { var r = await window.supabaseClient.auth.getSession(); return r && r.data && r.data.session ? r.data.session.access_token : null; } catch(e){ return null; }
+}
+function setAuthUI(user){
+  var el = document.getElementById('authStatus');
+  if (user) el.innerHTML = 'Autentificat ca <strong>' + escapeHtml(user.email || user.id) + '</strong> <span class="badge sub">' + escapeHtml(user.id.slice(0,8)) + '</span>';
+  else el.textContent = 'Neautentificat — loghează-te pentru a lista abonații și a trimite.';
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function fmtDate(s){ if(!s) return '—'; try{ var d=new Date(s); return d.toLocaleString('ro-RO'); }catch(e){ return s; } }
+
+async function initAuth(){
+  try{ var v = sessionStorage.getItem('dl_newsletter_admin_key'); if(v) document.getElementById('adminKey').value=v; }catch(e){}
+  if (window.supabaseClient && window.supabaseClient.auth) {
+    window.supabaseClient.auth.onAuthStateChange(function(ev, sess){ setAuthUI(sess && sess.user ? sess.user : null); });
+    try{ var r = await window.supabaseClient.auth.getSession(); setAuthUI(r && r.data && r.data.session && r.data.session.user ? r.data.session.user : null);}catch(e){}
+  }
+  // preview iframe
+  try{
+    var api = apiBase();
+    // Try to fetch preview from backend buildFirstNewsletter via a dummy? Instead load local template.
+    // We'll fetch via creating a draft preview? Simple: show placeholder and load via backend if possible.
+  }catch(e){}
+  // default preview
+  var frame = document.getElementById('previewFrame');
+  if(frame){
+    frame.srcdoc = '<div style=\"padding:40px;text-align:center;color:#6b7280;font-family:system-ui\">Previzualizarea se încarcă după primul send sau poți vedea template-ul în <code>backend/src/services/newsletter.js → buildFirstNewsletter()</code></div>';
+  }
+}
+function openAuth(){
+  // Reuse the main app's auth modal if present, otherwise redirect to index.html#auth
+  if (window.opener && window.opener.openAuth) { window.opener.openAuth('login'); return; }
+  // Simple inline Supabase login fallback
+  var email = prompt('Email:');
+  if(!email) return;
+  var pass = prompt('Parolă:');
+  if(!pass) return;
+  window.supabaseClient.auth.signInWithPassword({email:email,password:pass}).then(function(res){
+    if(res.error) alert('Login failed: ' + res.error.message);
+    else { alert('Autentificat!'); setAuthUI(res.data.user); loadHealth(); }
+  });
+}
+
+async function loadHealth(){
+  var msg = document.getElementById('healthMsg');
+  var kpis = document.getElementById('kpis');
+  msg.className='alert info'; msg.textContent='Se încarcă…'; kpis.style.display='none';
+  var token = await getToken();
+  if(!token){ msg.className='alert err'; msg.textContent='Nu ești autentificat. Loghează-te mai întâi.'; return; }
+  try{
+    var r = await fetch(apiBase() + '/newsletter/subscribers?limit=1', { headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey() } });
+    var j = await r.json().catch(function(){return {};});
+    if(!r.ok) throw new Error(j.message || j.error || ('HTTP '+r.status));
+    var c = j.counts;
+    document.getElementById('kpiTotal').textContent = c.total_profiles;
+    document.getElementById('kpiSub').textContent = c.subscribed;
+    document.getElementById('kpiNo').textContent = c.not_subscribed;
+    kpis.style.display='grid';
+    msg.className='alert ok'; msg.innerHTML='Audiență încărcată. Poți diferenția abonații cu filtrele de mai jos. Sursa: <code class="mono">profiles.newsletter_subscribed</code>.';
+  }catch(e){
+    msg.className='alert err'; msg.textContent='Eroare: ' + e.message;
+  }
+}
+async function loadHealthPublic(){
+  var el = document.getElementById('healthRaw');
+  el.textContent='Se încarcă…';
+  try{
+    var r = await fetch(apiBase() + '/newsletter/health');
+    var j = await r.json();
+    el.textContent = JSON.stringify(j, null, 2);
+  }catch(e){ el.textContent='Eroare: '+e.message; }
+}
+async function loadSubscribers(which){
+  var token = await getToken();
+  if(!token){ alert('Loghează-te mai întâi.'); return; }
+  var limit = document.getElementById('limitSel').value;
+  var qs = '?limit=' + encodeURIComponent(limit);
+  if(which==='subscribed') qs+='&subscribed=true';
+  if(which==='not_subscribed') qs+='&subscribed=false';
+  var body = document.getElementById('tblBody');
+  body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:16px">Se încarcă…</td></tr>';
+  try{
+    var r = await fetch(apiBase() + '/newsletter/subscribers' + qs, { headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey() } });
+    var j = await r.json().catch(function(){return {};});
+    if(!r.ok) throw new Error(j.message || j.error || ('HTTP '+r.status));
+    var users = j.users || [];
+    if(users.length===0){ body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:16px" class="muted">Niciun rezultat pentru filtrul ales.</td></tr>'; return; }
+    body.innerHTML = users.map(function(u){
+      var sub = !!u.newsletter_subscribed;
+      return '<tr>'+
+        '<td class="mono">'+escapeHtml(u.email||'')+'</td>'+
+        '<td>'+escapeHtml(u.full_name||'')+'</td>'+
+        '<td><span class="badge '+(sub?'sub':'no')+'">'+(sub?'✅ ABONAT':'❌ NEABONAT')+'</span></td>'+
+        '<td>'+escapeHtml(u.plan||'')+'</td>'+
+        '<td class="mono" style="font-size:11px">'+escapeHtml(fmtDate(u.newsletter_subscribed_at||''))+'</td>'+
+        '<td class="mono" style="font-size:10px;max-width:90px;overflow:hidden;text-overflow:ellipsis">'+escapeHtml((u.user_id||'').slice(0,8))+'</td>'+
+        '</tr>';
+    }).join('');
+  }catch(e){
+    body.innerHTML='<tr><td colspan="6" class="alert err">'+escapeHtml(e.message)+'</td></tr>';
+  }
+}
+async function loadCampaigns(){
+  var token = await getToken();
+  if(!token){ alert('Loghează-te.'); return; }
+  var body=document.getElementById('campBody');
+  body.innerHTML='<tr><td colspan="7" style="text-align:center;padding:12px">Se încarcă…</td></tr>';
+  try{
+    var r = await fetch(apiBase() + '/newsletter/campaigns?limit=20', { headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey() } });
+    var j=await r.json().catch(function(){return {};});
+    if(!r.ok) throw new Error(j.message||j.error||('HTTP '+r.status));
+    var camps=j.campaigns||[];
+    if(camps.length===0){ body.innerHTML='<tr><td colspan="7" style="text-align:center;padding:12px" class="muted">Nicio campanie încă — trimite primul newsletter mai sus.</td></tr>'; return; }
+    body.innerHTML=camps.map(function(c){
+      return '<tr>'+
+        '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(c.subject)+'</td>'+
+        '<td><span class="badge '+(c.status==='sent'?'sub':c.status==='sending'?'':'no')+'">'+escapeHtml(c.status)+'</span></td>'+
+        '<td>'+(c.recipients_count!=null?c.recipients_count:'—')+'</td>'+
+        '<td>'+(c.sent_count!=null?c.sent_count:'—')+' / '+(c.failed_count!=null?c.failed_count:'—')+'</td>'+
+        '<td class="mono" style="font-size:11px">'+escapeHtml(fmtDate(c.created_at))+'</td>'+
+        '<td class="mono" style="font-size:11px">'+escapeHtml(fmtDate(c.sent_at))+'</td>'+
+        '<td class="mono" style="font-size:10px">'+escapeHtml((c.id||'').slice(0,8))+'</td>'+
+        '</tr>';
+    }).join('');
+  }catch(e){ body.innerHTML='<tr><td colspan="7" class="alert err">'+escapeHtml(e.message)+'</td></tr>'; }
+}
+async function sendFirst(force){
+  var token=await getToken();
+  if(!token){ alert('Loghează-te.'); return; }
+  var btn=document.getElementById('btnSendFirst');
+  var out=document.getElementById('firstResult');
+  btn.disabled=true; btn.textContent='Se trimite…';
+  out.innerHTML='<div class="alert info">Se creează campania și se trimite către abonați… (secvențial, poate dura câteva secunde)</div>';
+  try{
+    var url = apiBase() + '/newsletter/send-first' + (force?'?force=true':'');
+    var r = await fetch(url, { method:'POST', headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey(), 'Content-Type':'application/json' }, body:'{}' });
+    var j = await r.json().catch(function(){return {};});
+    if(!r.ok) throw new Error(j.message || j.error || ('HTTP '+r.status));
+    var mode = j.loggedOnly ? 'logged-only (fără SMTP/Resend — vezi logs)' : 'livrare reală';
+    out.innerHTML='<div class="alert ok"><strong>✅ Trimis!</strong> Campanie <code class="mono">'+escapeHtml(j.campaign_id||'')+'</code> → '+j.sent+' trimise, '+j.failed+' eșuate, din '+j.recipients+' destinatari.<br>Mod: '+escapeHtml(mode)+'.</div>';
+    loadCampaigns(); loadHealth();
+  }catch(e){
+    out.innerHTML='<div class="alert err">Eroare: '+escapeHtml(e.message)+'</div>';
+  }finally{ btn.disabled=false; btn.textContent='📤 Trimite primul newsletter'; }
+}
+async function createCustom(){
+  var token=await getToken();
+  if(!token){ alert('Loghează-te.'); return; }
+  var subject=document.getElementById('customSubject').value.trim();
+  var preview=document.getElementById('customPreview').value.trim();
+  var html=document.getElementById('customHtml').value.trim();
+  var text=document.getElementById('customText').value.trim();
+  if(!subject||!html){ alert('Subject și HTML sunt obligatorii.'); return; }
+  var out=document.getElementById('customResult');
+  out.innerHTML='<div class="alert info">Se creează…</div>';
+  try{
+    var r=await fetch(apiBase()+'/newsletter/campaigns', { method:'POST', headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey(), 'Content-Type':'application/json' }, body: JSON.stringify({ subject:subject, preview_text:preview, body_html:html, body_text:text }) });
+    var j=await r.json().catch(function(){return {};});
+    if(!r.ok) throw new Error(j.message||j.error||('HTTP '+r.status));
+    out.innerHTML='<div class="alert ok">✅ Draft creat: <code class="mono">'+escapeHtml(j.campaign.id)+'</code> — '+escapeHtml(j.campaign.subject)+'</div>';
+    loadCampaigns();
+  }catch(e){ out.innerHTML='<div class="alert err">Eroare: '+escapeHtml(e.message)+'</div>'; }
+}
+async function createAndSendCustom(){
+  var token=await getToken();
+  if(!token){ alert('Loghează-te.'); return; }
+  var subject=document.getElementById('customSubject').value.trim();
+  var preview=document.getElementById('customPreview').value.trim();
+  var html=document.getElementById('customHtml').value.trim();
+  var text=document.getElementById('customText').value.trim();
+  if(!subject||!html){ alert('Subject și HTML sunt obligatorii.'); return; }
+  var out=document.getElementById('customResult');
+  out.innerHTML='<div class="alert info">Se creează și se trimite…</div>';
+  try{
+    var r=await fetch(apiBase()+'/newsletter/campaigns', { method:'POST', headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey(), 'Content-Type':'application/json' }, body: JSON.stringify({ subject:subject, preview_text:preview, body_html:html, body_text:text }) });
+    var j=await r.json().catch(function(){return {};});
+    if(!r.ok) throw new Error(j.message||j.error||('HTTP '+r.status));
+    var cid=j.campaign.id;
+    var r2=await fetch(apiBase()+'/newsletter/send', { method:'POST', headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey(), 'Content-Type':'application/json' }, body: JSON.stringify({ campaign_id: cid }) });
+    var j2=await r2.json().catch(function(){return {};});
+    if(!r2.ok) throw new Error(j2.message||j2.error||('HTTP '+r2.status));
+    out.innerHTML='<div class="alert ok">✅ Trimis! '+j2.sent+' trimise din '+j2.recipients+' (failed: '+j2.failed+')</div>';
+    loadCampaigns(); loadHealth();
+  }catch(e){ out.innerHTML='<div class="alert err">Eroare: '+escapeHtml(e.message)+'</div>'; }
+}
+initAuth();
+loadHealthPublic();
+</script>
+</body>
+</html>

@@ -324,6 +324,9 @@
         // user.premiumExpiresAt — populated from the Supabase `profiles`
         // table by js/subscriptions.js).
         window.refreshAccountSubscription();
+        // Newsletter toggle — reflects profiles.newsletter_subscribed
+        if (typeof window.renderNewsletterToggle === 'function') window.renderNewsletterToggle();
+        if (typeof window.loadNewsletterStatus === 'function') window.loadNewsletterStatus();
 
         ['acctPwCurrent', 'acctPwNew', 'acctPwConfirm'].forEach(function (id) {
             var el = document.getElementById(id);
@@ -339,6 +342,13 @@
         var panel = document.getElementById('accountPanel');
         if (panel && panel.classList.contains('active')) {
             window.refreshAccountSubscription();
+            if (typeof window.renderNewsletterToggle === 'function') window.renderNewsletterToggle();
+        }
+    });
+    window.addEventListener('detectlab:newsletterchange', function () {
+        var panel = document.getElementById('accountPanel');
+        if (panel && panel.classList.contains('active') && typeof window.renderNewsletterToggle === 'function') {
+            window.renderNewsletterToggle();
         }
     });
 
