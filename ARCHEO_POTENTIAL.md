@@ -14,13 +14,13 @@ Premium map analysis layer for DetectLab.
 | File | Purpose |
 |---|---|
 | `js/archeo-potential.js` | The whole layer: triangulation, filtering, scoring, score field, rendering, pin/radius, UI wiring. |
-| `js/leaflet-heat.js` | `L.heatLayer` (simpleheat) — used by the **Heatmap** output mode. Loaded before `archeo-potential.js`. |
+| `js/leaflet-heat.js` | `L.heatLayer` (simpleheat). **No longer used by this layer** — the heatmap is now the layer's own score raster (see below). Still in the app shell, so keep it precached. |
 | `js/vertical-opacity-control.js` | Mirrors the layer's radius slider vertically on the map and docks its action button bottom-centre (`DISTANCE_SOURCES`, `syncDistanceDock`). |
 | `index.html` | Premium-tab UI row (pin switch, radius slider, output-mode buttons, run button, dual legend, status) + `#layerActionDock` + `<script>` includes. |
 | `css/styles.css` | `.archeo-pot-*` (row, pin, mode buttons, legend, heat bar), `.layer-action-dock*`, `[data-kind="distance"]` mirror colours. |
 | `js/translations.js` | RO/EN labels for the new UI. |
 | `sw.js` | Pre-cache list + cache version bump for the new scripts. |
-| `test-archeo-potential.js` | Node test harness (pure logic + field pipeline + pin/radius with stubs). Run with `node test-archeo-potential.js`. |
+| `test-archeo-potential.js` | Node test harness (pure logic + field pipeline + bubble separation + heat canvas with stubs). Run with `node test-archeo-potential.js`. |
 | `test-vertical-opacity-control.js` | Covers the distance mirror + action dock. Run with `node test-vertical-opacity-control.js`. |
 
 ---
@@ -78,30 +78,92 @@ stops are defined in `SCORE_COLOR_STOPS`.
 
 ## Two output modes (bubbles / heatmap)
 
-The bubbles-only output left visible gaps between candidates, so the layer now
-scores a dense grid and offers both readings of the same field
-(`#archeoPotModeBubbles` / `#archeoPotModeHeat`, `setArcheoPotentialMode`):
+Both modes read the **same dense score field**; they only differ in how they
+show it (`#archeoPotModeBubbles` / `#archeoPotModeHeat`,
+`setArcheoPotentialMode`). Switching modes re-renders the last analysis
+immediately — the rendering follows the UI mode, not the mode the field was
+computed with.
 
 | | **Bubbles** | **Heatmap** |
 |---|---|---|
-| Geometry | one `L.circle` per scored cell, radius = `cellM × 0.62` (min 40 m) → neighbouring bubbles overlap, so **no gaps** | `L.heatLayer` over the same scored cells |
+| Geometry | a **sparse selection** of the best cells (`selectBubbles`), one `L.circle` each, with **its own radius** | a **score raster** (1 px per grid cell) drawn on a canvas anchored to the geography |
 | Grid | `FIELD.BUBBLE_CELL_M` 250 m, ≤ `BUBBLE_MAX_CELLS` 2200 | `FIELD.HEAT_CELL_M` 120 m, ≤ `HEAT_MAX_CELLS` 9000 |
-| Score encoding | three purple tiers (`STYLE.low/medium/high`) + popup with star rating | `HEAT_GRADIENT` ramp (`#1b2a55 → #2f8fc4 → #4fd08a → #f0a030 → #7b3fd4`), blob radius in px recomputed on `zoomend` |
+| Score encoding | three purple tiers (`STYLE.low/medium/high`) + popup with star rating | `HEAT_GRADIENT` ramp (`#10233f → #1f7fc4 → #23c48e → #f2b134 → #8b3ff0`) **plus** alpha growing with the score |
 | Pane | `pane_archeo` (z 660) | `pane_archeo_heat` (z 656) |
 
 **Every point is considered**: `stats.scored + stats.excludedUat +
 stats.excludedHeritage === stats.cells`.
 
+### Bubbles — the "sweet spot"
+
+Drawing one bubble per scored cell made the map unreadable: up to ~2200
+overlapping circles that also covered the heritage radii. Bubbles are now a
+selection (`CONFIG.BUBBLE`), and a cell only becomes a bubble when its **whole
+disc** fits:
+
+- **score ≥ `BUBBLE.MIN_SCORE`** (0.30) — weak cells stay in the heatmap;
+- **≥ `MASK_CLEARANCE_M`** (90 m) of free ground to the red mask, measured
+  exactly: distance to the 700 m heritage rings, to the site polygons and to
+  the UAT built-up rectangles (point→box distance, boxes are cell-sized);
+- **≥ `GAP_M`** between any two bubbles, so they never touch or interleave;
+- radius = `min(bubbleBaseRadiusM, clearance − MASK_CLEARANCE_M)`, and a cell
+  whose radius would drop below `RADIUS_FLOOR_M` is not drawn at all.
+
+Size and count scale with the slider radius, so 1 km and 10 km analyses look
+equally airy:
+
+| | 1 km | 4 km | 10 km |
+|---|---|---|---|
+| base radius | 150 m | 266 m | 420 m |
+| gap | 88 m | 164 m | 260 m |
+| bubble cap (`PER_KM2` 0.22, `MIN_BUBBLES` 10, `MAX_BUBBLES` 140) | 10 | 11 | 69 |
+
+Selection is greedy by score (highest first) with a real pairwise distance
+check, using a uniform grid index. If the area is so fragmented by the
+intravilan that fewer than 4 bubbles fit at the preferred size, one relaxed
+pass runs (`RADIUS_FLOOR_M`, 60 % of the gaps) — otherwise the map would come
+back empty.
+
+### Heatmap — a real score surface
+
+`leaflet-heat` accumulates **alpha** from overlapping blobs. With a dense grid
+every pixel is covered by dozens of blobs, so alpha saturates at 1 nearly
+everywhere and the whole surface ends up one colour; on top of that its blob
+radius is in pixels and its canvas is repositioned only on `moveend`, so the
+heat visibly slides while zooming.
+
+The layer now builds its own surface (`buildHeatRaster`):
+
+1. every scored cell writes its score into a `cols × rows` grid
+   (`field.grid`, cells carry `row`/`col`);
+2. scores are **normalised over the run's own 2nd–98th percentile**
+   (`heatScoreWindow`) — if that window is narrower than `HEAT.MIN_WINDOW`
+   (0.12) it is expanded around the median, so a narrow score band still shows
+   contrast instead of a flat colour;
+3. a separable gaussian blur (`HEAT.SMOOTH_SIGMA_CELLS` = 1 cell) smooths
+   **between scored cells only** — excluded cells stay transparent, so the red
+   mask is not painted over;
+4. each cell is coloured through the 256-entry ramp LUT (`buildHeatRamp`) and
+   given an alpha between `HEAT.ALPHA_MIN` (0.46) and `HEAT.ALPHA_MAX` (0.97)
+   — weak zones read as faint, strong zones as saturated;
+5. the small raster is drawn scaled between the **geographic** corners of the
+   grid, on a canvas positioned with the same contract as the Patrimoniu
+   canvases in `map-app.js`: `containerPointToLayerPoint([0,0])` +
+   `project(latlng) − pixelOrigin` on every settled view
+   (`move/moveend/zoom/zoomend/viewreset/resize`), and the renderer transform
+   (`getZoomScale` + `_getNewPixelOrigin`, scaled around the recorded bitmap
+   anchor) during `zoomanim`/pinch. Unrounded projection keeps a zoom jump from
+   multiplying a half-pixel rounding error into a visible slide.
+
+So a colour always means the same thing — the score of that ground — and the
+surface stays glued to the map at every zoom. `test-archeo-potential.js`
+asserts both: the drawn width equals the grid's geographic extent at z10/z13/
+z16 (±2 %), and the ramp steps are far apart in RGB.
+
 **Excluded areas are red** (in both modes) and live in `pane_archeo_mask`
 (z 658): UAT-excluded cells merged into row-run `L.rectangle`s, the 600 + 100 m
 heritage protection rings, and the site-boundary polygon outlines. Red is
 reserved for exclusions — the score ramp ends in violet instead.
-
-`leaflet-heat` appends its canvas to `overlayPane` (z 400, below the app's
-historical rasters) and removes it from there in `onRemove`; `adoptHeatCanvas()`
-re-parents the canvas into `pane_archeo_heat` **and** replaces `onRemove` with a
-version that detaches from the real parent, so toggling the layer off cannot
-throw.
 
 ---
 
@@ -188,6 +250,9 @@ ARCH_POTENTIAL_CONFIG.SITE_RADIUS_M = 300;              // smaller site radii
 ARCH_POTENTIAL_CONFIG.CLASSIFY.SCORE_HIGH_FROM = 0.6;   // stricter High class
 ARCH_POTENTIAL_CONFIG.SCORING.W_TRIANGLE = 0.35;        // boost triangle weight
 ARCH_POTENTIAL_CONFIG.SHOW_TRIANGULATION = true;        // debug: draw triangles
+ARCH_POTENTIAL_CONFIG.BUBBLE.PER_KM2 = 0.35;            // more bubbles per km²
+ARCH_POTENTIAL_CONFIG.BUBBLE.RADIUS_M = 520;            // bigger bubbles at 10 km
+ARCH_POTENTIAL_CONFIG.HEAT.MIN_WINDOW = 0.2;            // even stronger heat contrast
 ```
 
 ---
@@ -206,9 +271,11 @@ ARCH_POTENTIAL_CONFIG.SHOW_TRIANGULATION = true;        // debug: draw triangles
 - **Grid caps keep phones alive**: `gridCellM()` grows the cell size until the
   circle holds at most `BUBBLE_MAX_CELLS` (2200) / `HEAT_MAX_CELLS` (9000)
   cells, so a 10 km run costs the same as a 3 km run.
-- Bubble **popups are built lazily** (`bindPopup(fn)`): with thousands of
-  bubbles, eager HTML strings would allocate ~1.5 MB per run for popups nobody
-  opens.
+- Bubble **popups are built lazily** (`bindPopup(fn)`), and there are only a
+  few dozen bubbles to bind in the first place (`CONFIG.BUBBLE`).
+- The heat surface is a **tiny raster** (≤ ~115 × 115 px) drawn with a single
+  `drawImage` per settled view — no per-cell DOM, no per-zoom recomputation of
+  the scores.
 - The UAT mask merges excluded cells into **row-run rectangles** instead of one
   rectangle per cell (a few hundred shapes instead of a few thousand).
 - A Web Worker is intentionally not used: the only slow part (tile fetching)
@@ -221,14 +288,17 @@ ARCH_POTENTIAL_CONFIG.SHOW_TRIANGULATION = true;        // debug: draw triangles
 
 ```js
 _archeoPotentialResults()          // scored cells of the last run (field mode)
-_archeoPotentialField()            // full field: grid, results, excluded, heatPoints, stats
+_archeoPotentialBubbles()          // the sparse bubble selection actually drawn
+_archeoPotentialHeat()             // the heat canvas layer (canvas, _lastFrame, anchor)
+_archeoPotentialHeatRaster()       // heat raster: rgba, values, valid, window, bbox
+_archeoPotentialField()            // full field: grid, results, bubbles, excluded, heat, stats
 _archeoPotentialState()            // { pinMode, pin, radiusKm, radiusM, mode, resultsVisible, running }
 setArcheoPotentialMode('heat')     // 'bubbles' | 'heat'
 setArcheoPotentialPinMode(true)    // arm the purple pin (map clicks place it)
 _archeoPotSetPoint(46.77, 23.59)   // drop the pin from the console
 setArcheoPotentialRadiusKm(4)      // move the radius slider (1–10)
 computeArcheoPotentialField(lat, lng, radiusM, { mode: 'heat' })  // field without rendering
-_archeoPotentialDebug.config       // live config object (incl. CONFIG.FIELD)
+_archeoPotentialDebug.config       // live config object (incl. CONFIG.FIELD / BUBBLE / HEAT)
 _archeoPotentialResetCache()       // force the global site index rebuild
 ```
 

@@ -37,7 +37,7 @@
 // by Universitatea „Ștefan cel Mare” din Suceava, with bukowina1856.eu as the
 // source (ⓘ popup, Leaflet attribution, offline-maps panel). The source domain
 // is rendered as a clickable link inside the ⓘ popup.
-const CACHE_NAME = 'detectlab-v96-analysis-dock';
+const CACHE_NAME = 'detectlab-v97-archeo-potential-sweetspot';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -313,7 +313,18 @@ const PRECACHE_URLS = [
   'js/vertical-opacity-control.js?v=20260916-analysis-dock',
   'js/archeo-potential.js?v=20260916-analysis-dock',
   'js/lidar-scanner.js?v=20260916-analysis-dock',
-  'js/archeo-report.js?v=20260916-analysis-dock'
+  'js/archeo-report.js?v=20260916-analysis-dock',
+  // Zone cu potențial arheologic — „sweet spot” pentru bule + heatmap real:
+  //   • bulele nu mai pavează toată harta: se desenează doar celulele care au
+  //     loc ca disc întreg, deci nu se ating între ele și nu intră peste razele
+  //     de protecție ale siturilor sau peste masca roșie UAT;
+  //   • heatmap-ul nu mai e leaflet-heat (alfa acumulat → culoare aproape
+  //     constantă + alunecare la zoom), ci un raster de scoruri desenat pe un
+  //     canvas ancorat în geografie, cu scala întinsă pe percentila 2..98 a
+  //     rulării ca diferența slab↔tare să se vadă clar.
+  'js/archeo-potential.js?v=20260916-archeo-sweetspot',
+  'css/styles.css?v=20260916-archeo-sweetspot',
+  'js/translations.js?v=20260916-archeo-sweetspot'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

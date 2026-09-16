@@ -115,29 +115,64 @@
         MAX_CANDIDATES: 80,          // cap the final output for readability
 
         // Score field --------------------------------------------------------
-        // The layer's own output is a DENSE GRID of scores covering the whole
-        // search circle, so there are no un-scored gaps between the bubbles.
-        // Both display modes (bubbles / heatmap) read the same field:
-        //   • bubbles — one small circle per scored cell (radius = cell × 0.62,
-        //     so neighbours slightly overlap and the map stays fully covered);
-        //   • heat    — smooth heatmap over every scored cell, plus a red mask
-        //     for the excluded areas (UAT built-up + heritage protection radii).
+        // Both display modes read the SAME dense grid of scores covering the
+        // whole search circle (no un-scored gaps):
+        //   • bubbles — a SPARSE, non-overlapping selection of the best cells
+        //     (see CONFIG.BUBBLE): readable circles that never touch each other
+        //     and never touch the red exclusion mask;
+        //   • heat    — a true score raster over every scored cell (see
+        //     CONFIG.HEAT), plus a red mask for the excluded areas (UAT built-up
+        //     + heritage protection radii).
         FIELD: {
             MODE: 'bubbles',              // 'bubbles' | 'heat' (UI: Bubbles / Heatmap)
             BUBBLE_CELL_M: 250,           // baseline cell spacing in bubble mode
             BUBBLE_MAX_CELLS: 2200,       // grows the cell size on big radii (phones)
-            BUBBLE_RADIUS_FACTOR: 0.62,   // bubble radius = cellM × factor
-            BUBBLE_MIN_SCORE: 0,          // 0 → every scored cell is drawn (no gaps)
             HEAT_CELL_M: 120,             // baseline cell spacing in heat mode
             HEAT_MAX_CELLS: 9000,
-            HEAT_RADIUS_PX_MIN: 10,       // heat blob radius, clamped to these px
-            HEAT_RADIUS_PX_MAX: 46,
-            HEAT_BLUR_FACTOR: 0.7,        // blur = radius × factor
-            HEAT_MIN_OPACITY: 0.16,
             TRI_INDEX_CELL_M: 2500,       // triangle bucket size for point lookups
             OUTSIDE_HULL_TRI_SCORE: 0.15, // cells beyond the site convex hull
             PROGRESS_EVERY: 500,          // cells between status updates
             CHUNK_SIZE: 120               // cells per async batch
+        },
+
+        // Bubble output — the "sweet spot" -----------------------------------
+        // The score grid stays dense (that is what the heatmap reads), but only
+        // a few cells are promoted to visible circles. A bubble is drawn only
+        // when the whole disc fits:
+        //   • ≥ GAP_M away from every other bubble (they never touch),
+        //   • ≥ GAP_M away from the red mask — the 700 m heritage rings, the
+        //     site polygons and the UAT built-up rectangles,
+        //   • score ≥ MIN_SCORE (weak cells stay in the heatmap).
+        // Count and size scale with the slider radius so a 1 km analysis and a
+        // 10 km analysis look equally readable on screen.
+        BUBBLE: {
+            RADIUS_M: 420,            // bubble radius at the 10 km reference radius
+            RADIUS_MIN_M: 150,        // preferred floor for a bubble radius
+            RADIUS_FLOOR_M: 90,       // absolute floor, used only by the relaxed pass
+            RADIUS_MAX_M: 520,
+            GAP_M: 260,               // clear gap BETWEEN BUBBLES at 10 km
+            GAP_MIN_M: 80,
+            MASK_CLEARANCE_M: 90,     // clear gap between a bubble and the red mask
+            MIN_SCORE: 0.30,          // below this the cell is left to the heatmap
+            PER_KM2: 0.22,            // target bubble density (sweet spot)
+            MIN_BUBBLES: 10,          // floor of the cap for small radii
+            MAX_BUBBLES: 140          // hard cap so the map never gets crowded
+        },
+
+        // Heatmap output ------------------------------------------------------
+        // The heat surface is a raster of SCORES (not accumulated alpha), so a
+        // colour always means the same thing: the score of that ground. The
+        // score window is stretched over the run's own 2nd..98th percentile so
+        // the weak/strong contrast stays visible even when the raw scores sit
+        // in a narrow band, and alpha also grows with the score.
+        HEAT: {
+            OPACITY: 0.80,            // whole-surface opacity over the basemap
+            ALPHA_MIN: 0.46,          // alpha of the weakest cells
+            ALPHA_MAX: 0.97,          // alpha of the strongest cells
+            SMOOTH_SIGMA_CELLS: 1.0,  // gaussian smoothing, in grid cells
+            LOW_PERCENTILE: 0.02,     // score window lower edge
+            HIGH_PERCENTILE: 0.98,    // score window upper edge
+            MIN_WINDOW: 0.12          // never compress the window below this span
         },
 
         // Rendering ----------------------------------------------------------
@@ -978,10 +1013,12 @@
      * @param {number} [radiusM]  raza (default: sliderul 1–10 km)
      * @param {Object} [opts]     mode 'bubbles'|'heat', isCancelled(), onProgress(0..1),
      *                            chunkSize, skipDataWait
-     * @returns {Promise<{status, mode, cellM, bubbleRadiusM, results, excluded,
-     *                     heatPoints, bbox, ctx, stats}>}
-     *          results = celulele scorate [{lat,lng,x,y,score,factors,classification}]
+     * @returns {Promise<{status, mode, cellM, bubbleBaseRadiusM, results, bubbles,
+     *                     excluded, heatPoints, heat, bbox, ctx, stats}>}
+     *          results = TOATE celulele scorate [{lat,lng,x,y,row,col,score,...}]
+     *          bubbles = selecția rară, ne-suprapusă, desenată în modul BULE
      *          excluded = [{lat,lng,x,y,row,col,reason:'uat'|'heritage'}]
+     *          heat    = fereastra de normalizare + rama folosite de heatmap
      */
     function computePotentialField(centerLat, centerLng, radiusM, opts) {
         opts = opts || {};
@@ -1018,14 +1055,17 @@
                 mode: mode,
                 centerLat: centerLat, centerLng: centerLng, radius: radius,
                 cellM: cellM,
-                bubbleRadiusM: Math.max(40, Math.round(cellM * (F.BUBBLE_RADIUS_FACTOR || 0.62))),
+                bubbleBaseRadiusM: bubbleBaseRadiusM(radius),
+                bubbleGapM: bubbleGapM(radius),
                 grid: grid, bbox: grid.bbox,
-                results: [], excluded: [], heatPoints: [],
+                results: [], bubbles: [], excluded: [], heatPoints: [],
+                heat: null,
                 ctx: ctx,
                 stats: {
                     sites: ctx.sites.length, cells: grid.cells.length,
                     scored: 0, excludedUat: 0, excludedHeritage: 0,
-                    high: 0, medium: 0, low: 0, ms: 0
+                    high: 0, medium: 0, low: 0,
+                    bubbles: 0, bubblesHigh: 0, bubblesMedium: 0, ms: 0
                 }
             };
 
@@ -1056,7 +1096,6 @@
             ctx.triIndex = buildTriangleIndex(triangles, F.TRI_INDEX_CELL_M || 2500);
 
             var cells = grid.cells;
-            var minScore = (typeof F.BUBBLE_MIN_SCORE === 'number') ? F.BUBBLE_MIN_SCORE : 0;
             var processed = 0;
 
             for (var b = 0; b < cells.length; b += chunkSize) {
@@ -1083,12 +1122,12 @@
                         var cls = classify(s.score);
                         var record = {
                             lat: s.lat, lng: s.lng, x: s.x, y: s.y,
+                            row: item.cell.row, col: item.cell.col,
                             score: s.score, factors: s.factors,
                             classification: cls,
-                            cellM: cellM,
-                            bubbleRadiusM: field.bubbleRadiusM
+                            cellM: cellM
                         };
-                        if (s.score >= minScore) field.results.push(record);
+                        field.results.push(record);
                         field.heatPoints.push([s.lat, s.lng, Math.max(0.02, s.score)]);
                         if (cls === 'high') field.stats.high++;
                         else if (cls === 'medium') field.stats.medium++;
@@ -1117,8 +1156,348 @@
                 if (isCancelled()) return finish('cancelled');
             }
 
-            return finish(field.results.length || field.heatPoints.length ? 'ok' : 'no_candidates');
+            // Bulele = selecția rară, ne-suprapusă a câmpului (modul BULE).
+            // Câmpul scorat rămâne dens: heatmap-ul îl citește integral.
+            field.bubbles = selectBubbles(field);
+            field.stats.bubbles = field.bubbles.length;
+            for (var bi = 0; bi < field.bubbles.length; bi++) {
+                if (field.bubbles[bi].classification === 'high') field.stats.bubblesHigh++;
+                else if (field.bubbles[bi].classification === 'medium') field.stats.bubblesMedium++;
+            }
+            // Heatmap: fereastra de normalizare a scorurilor acestei rulări
+            // (calculată mereu, ca legenda/rapoartele să știe scala reală).
+            field.heat = heatScoreWindow(field.results);
+
+            return finish(field.results.length ? 'ok' : 'no_candidates');
         })();
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+     * 7c. BULE RARE („sweet spot”) + RASTERUL DE SCOR PENTRU HEATMAP
+     * ═══════════════════════════════════════════════════════════════════════
+     * DE CE: câmpul de scor rămâne dens (heatmap-ul are nevoie de fiecare
+     * celulă), dar bulele NU mai pavează toată harta — erau prea dese și se
+     * suprapuneau între ele și peste razele siturilor. Aici alegem doar
+     * celulele care au loc să fie desenate ca disc întreg:
+     *   • la cel puțin BUBBLE.GAP_M de orice altă bulă (nu se ating),
+     *   • la cel puțin BUBBLE.MASK_CLEARANCE_M de masca roșie (raza de 700 m a
+     *     siturilor, poligoanele de sit, dreptunghiurile de intravilan UAT),
+     *   • cu scor ≥ BUBBLE.MIN_SCORE (celulele slabe rămân doar în heatmap).
+     * Numărul și dimensiunea scalează cu raza din slider, ca o analiză de 1 km
+     * și una de 10 km să arate la fel de aerisit pe ecran. */
+
+    // Raza bulelor la raza de analiză dată (referința: 10 km = BUBBLE.RADIUS_M).
+    // Scala e √(rază), nu liniară: la 1 km bulele rămân citibile, la 10 km nu
+    // devin puncte.
+    function bubbleScale(radiusM) {
+        return Math.max(0.34, Math.sqrt(Math.max(1, radiusM) / CONFIG.SEARCH_RADIUS_M));
+    }
+
+    function bubbleBaseRadiusM(radiusM) {
+        var B = CONFIG.BUBBLE;
+        var r = (B.RADIUS_M || 420) * bubbleScale(radiusM);
+        return Math.round(Math.max(B.RADIUS_MIN_M || 150, Math.min(B.RADIUS_MAX_M || 520, r)));
+    }
+
+    function bubbleGapM(radiusM) {
+        var B = CONFIG.BUBBLE;
+        var g = (B.GAP_M || 260) * bubbleScale(radiusM);
+        return Math.round(Math.max(B.GAP_MIN_M || 80, g));
+    }
+
+    // Câte bule are voie să aibă o rulare (sweet spot-ul de densitate).
+    function bubbleCountCap(radiusM) {
+        var B = CONFIG.BUBBLE;
+        var areaKm2 = Math.PI * radiusM * radiusM / 1e6;
+        var n = Math.round(areaKm2 * (B.PER_KM2 || 0.22));
+        return Math.max(B.MIN_BUBBLES || 10, Math.min(B.MAX_BUBBLES || 140, n));
+    }
+
+    /**
+     * Selecția bulelor. Parcurge celulele scorate în ordinea scorului și păstrează
+     * o celulă doar dacă discul ei nu atinge nicio bulă deja aleasă și nicio
+     * parte a măștii roșii (raza de 700 m a siturilor, poligoanele de sit,
+     * dreptunghiurile de intravilan UAT).
+     *
+     * Raza fiecărei bule e cea reală: `min(raza de bază, distanța liberă până la
+     * mască − clearance)`. Dacă zona e atât de fragmentată de intravilan încât
+     * nu încap bule la dimensiunea preferată, se reia o dată cu podeaua și
+     * gap-urile relaxate — altfel harta ar rămâne fără nicio bulă.
+     *
+     * @returns {Array<{lat,lng,x,y,row,col,score,factors,classification,radiusM,cellM}>}
+     */
+    function selectBubbles(field) {
+        var B = CONFIG.BUBBLE;
+        var ctx = field.ctx || {};
+        var cellM = field.cellM;
+        var gap = field.bubbleGapM || bubbleGapM(field.radius);
+        var baseR = field.bubbleBaseRadiusM || bubbleBaseRadiusM(field.radius);
+        var cap = bubbleCountCap(field.radius);
+        var minScore = (typeof B.MIN_SCORE === 'number') ? B.MIN_SCORE : 0;
+        var siteGuard = (ctx.siteRadius || CONFIG.SITE_RADIUS_M) +
+            (ctx.siteBuffer || CONFIG.SITE_BUFFER_M);
+        // Masca roșie e desenată exact pe cutia celulei excluse (dreptunghiurile
+        // UAT sunt celule unite pe rânduri), deci distanța liberă până la mască
+        // e distanța exactă punct→dreptunghi, nu cea până la centrul celulei.
+        var halfCell = cellM / 2;
+        var i, s, m;
+
+        // Index peste celulele excluse (adică peste masca roșie desenată).
+        var maskIndex = createGridIndex(Math.max(cellM, 250), Math.max(cellM, 250));
+        for (i = 0; i < field.excluded.length; i++) {
+            maskIndex.insert(field.excluded[i].x, field.excluded[i].y, field.excluded[i]);
+        }
+
+        // 1) spațiul liber din jurul fiecărei celule bune (o singură dată)
+        var cells = [];
+        for (i = 0; i < field.results.length; i++) {
+            var r = field.results[i];
+            if (r.score < minScore) continue;
+            var clearance = Infinity;
+
+            if (ctx.siteIndex) {
+                var near = ctx.siteIndex.queryCircle(r.x, r.y, baseR + siteGuard);
+                for (s = 0; s < near.length; s++) {
+                    var sdx = r.x - near[s].x, sdy = r.y - near[s].y;
+                    var sd = Math.sqrt(sdx * sdx + sdy * sdy) - siteGuard;
+                    if (sd < clearance) clearance = sd;
+                }
+            }
+            var masked = maskIndex.queryCircle(r.x, r.y, baseR + cellM);
+            for (m = 0; m < masked.length; m++) {
+                // distanța de la punct la dreptunghiul [x±halfCell, y±halfCell]
+                var mdx = Math.abs(r.x - masked[m].x) - halfCell;
+                var mdy = Math.abs(r.y - masked[m].y) - halfCell;
+                if (mdx < 0) mdx = 0;
+                if (mdy < 0) mdy = 0;
+                var md = Math.sqrt(mdx * mdx + mdy * mdy);
+                if (md < clearance) clearance = md;
+            }
+            if (!isFinite(clearance)) continue;
+            cells.push({ cell: r, clearance: clearance });
+        }
+
+        // 2) greedy, cu verificarea reală a distanței față de bulele deja alese
+        cells.sort(function (a, b) {
+            return (b.cell.score - a.cell.score) ||
+                (a.cell.row - b.cell.row) || (a.cell.col - b.cell.col);
+        });
+
+        function pass(minR, bubbleGap, maskGap) {
+            var keptIndex = createGridIndex(baseR * 2 + bubbleGap, baseR * 2 + bubbleGap);
+            var kept = [];
+            for (var k = 0; k < cells.length && kept.length < cap; k++) {
+                var radius = Math.min(baseR, Math.floor(cells[k].clearance - maskGap));
+                if (radius < minR) continue;
+                var c = cells[k].cell;
+                var reach = radius + baseR + bubbleGap;
+                var neighbours = keptIndex.queryCircle(c.x, c.y, reach);
+                var ok = true;
+                for (var n = 0; n < neighbours.length; n++) {
+                    var ndx = c.x - neighbours[n].x, ndy = c.y - neighbours[n].y;
+                    var need = radius + neighbours[n].radiusM + bubbleGap;
+                    if (ndx * ndx + ndy * ndy < need * need) { ok = false; break; }
+                }
+                if (!ok) continue;
+                var bubble = {
+                    lat: c.lat, lng: c.lng, x: c.x, y: c.y,
+                    row: c.row, col: c.col,
+                    score: c.score, factors: c.factors,
+                    classification: c.classification,
+                    cellM: cellM, radiusM: radius
+                };
+                kept.push(bubble);
+                keptIndex.insert(bubble.x, bubble.y, bubble);
+            }
+            return kept;
+        }
+
+        var maskGap = B.MASK_CLEARANCE_M === undefined ? 60 : B.MASK_CLEARANCE_M;
+        var bubbles = pass(B.RADIUS_MIN_M || 150, gap, maskGap);
+        // Zonă foarte fragmentată (intravilan dens): mai încercăm o dată, mai mic.
+        if (bubbles.length < Math.min(4, cap)) {
+            var relaxed = pass(B.RADIUS_FLOOR_M || 90, Math.round(gap * 0.6), Math.round(maskGap * 0.6));
+            if (relaxed.length > bubbles.length) bubbles = relaxed;
+        }
+        return bubbles;
+    }
+
+    /* ── Heatmap: fereastra de normalizare + rampa de culori ────────────────
+     * simpleheat aduna ALFA peste puncte suprapuse: cu o grilă densă fiecare
+     * pixel era acoperit de zeci de blob-uri, deci ajungea la 1 aproape peste
+     * tot și harta ieșea aproape monocoloră. Aici culoarea e funcție de SCOR,
+     * nu de numărul de vecini: fiecare celulă primește poziția ei în fereastra
+     * 2..98% a rulării, iar diferența slab↔tare rămâne vizibilă oriunde. */
+
+    function percentile(sortedAsc, p) {
+        if (!sortedAsc || !sortedAsc.length) return 0;
+        var idx = Math.max(0, Math.min(1, p)) * (sortedAsc.length - 1);
+        var i0 = Math.floor(idx), i1 = Math.ceil(idx);
+        if (i0 === i1) return sortedAsc[i0];
+        return sortedAsc[i0] + (sortedAsc[i1] - sortedAsc[i0]) * (idx - i0);
+    }
+
+    function heatScoreWindow(results) {
+        var H = CONFIG.HEAT;
+        var loP = (typeof H.LOW_PERCENTILE === 'number') ? H.LOW_PERCENTILE : 0.02;
+        var hiP = (typeof H.HIGH_PERCENTILE === 'number') ? H.HIGH_PERCENTILE : 0.98;
+        var minWindow = (typeof H.MIN_WINDOW === 'number') ? H.MIN_WINDOW : 0.12;
+        var scores = [];
+        for (var i = 0; i < (results || []).length; i++) scores.push(results[i].score);
+        var win = { lo: 0, hi: 1, min: 0, max: 0, count: scores.length, stretched: false };
+        if (!scores.length) return win;
+        scores.sort(function (a, b) { return a - b; });
+        win.min = scores[0];
+        win.max = scores[scores.length - 1];
+        var a = percentile(scores, loP);
+        var b = percentile(scores, hiP);
+        // Scoruri într-o bandă îngustă → întindem fereastra în jurul medianei,
+        // altfel toată harta ar ieși aceeași culoare.
+        if (b - a < minWindow) {
+            var mid = percentile(scores, 0.5);
+            a = mid - minWindow / 2;
+            b = mid + minWindow / 2;
+            win.stretched = true;
+        }
+        win.lo = a;
+        win.hi = b;
+        return win;
+    }
+
+    // Scor brut → 0..1 în fereastra rulării (0 = cel mai slab, 1 = cel mai bun).
+    function heatNormalize(score, win) {
+        if (!win || !(win.hi > win.lo)) return 0.5;
+        var t = (score - win.lo) / (win.hi - win.lo);
+        return Math.max(0, Math.min(1, t));
+    }
+
+    function parseHexColor(hex) {
+        var h = String(hex).replace('#', '');
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        var n = parseInt(h, 16);
+        if (!isFinite(n)) return [255, 255, 255];
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+
+    // Rampă → tabel de 256 de culori (o singură dată, apoi doar indexare).
+    function buildHeatRamp(stops) {
+        var keys = Object.keys(stops).map(Number).sort(function (a, b) { return a - b; });
+        var rgb = keys.map(function (k) { return parseHexColor(stops[k]); });
+        var lut = new Uint8ClampedArray(256 * 4);
+        for (var i = 0; i < 256; i++) {
+            var t = i / 255;
+            var k1 = keys.length - 1;
+            for (var k = 1; k < keys.length; k++) {
+                if (t <= keys[k]) { k1 = k; break; }
+            }
+            var k0 = Math.max(0, k1 - 1);
+            var span = (keys[k1] - keys[k0]) || 1;
+            var f = Math.max(0, Math.min(1, (t - keys[k0]) / span));
+            lut[i * 4] = Math.round(rgb[k0][0] + (rgb[k1][0] - rgb[k0][0]) * f);
+            lut[i * 4 + 1] = Math.round(rgb[k0][1] + (rgb[k1][1] - rgb[k0][1]) * f);
+            lut[i * 4 + 2] = Math.round(rgb[k0][2] + (rgb[k1][2] - rgb[k0][2]) * f);
+            lut[i * 4 + 3] = 255;
+        }
+        return lut;
+    }
+
+    // Netezire gaussiană separabilă, doar între celule cu scor: valorile nu se
+    // scurg în zonele excluse (acelea rămân transparente, sub masca roșie).
+    function smoothField(values, valid, cols, rows, sigmaCells) {
+        var sigma = Number(sigmaCells) || 0;
+        if (!(sigma > 0)) return values;
+        var radius = Math.max(1, Math.ceil(sigma * 2));
+        var kernel = [], ksum = 0, k;
+        for (k = -radius; k <= radius; k++) {
+            var w = Math.exp(-(k * k) / (2 * sigma * sigma));
+            kernel.push(w);
+            ksum += w;
+        }
+        for (k = 0; k < kernel.length; k++) kernel[k] /= ksum;
+
+        var tmp = new Float32Array(values.length);
+        var out = new Float32Array(values.length);
+        var x, y, i;
+        for (y = 0; y < rows; y++) {
+            for (x = 0; x < cols; x++) {
+                var acc = 0, wsum = 0;
+                for (k = -radius; k <= radius; k++) {
+                    var sx = x + k;
+                    if (sx < 0 || sx >= cols) continue;
+                    i = y * cols + sx;
+                    if (!valid[i]) continue;
+                    var wk = kernel[k + radius];
+                    acc += values[i] * wk;
+                    wsum += wk;
+                }
+                i = y * cols + x;
+                tmp[i] = wsum > 0 ? acc / wsum : 0;
+            }
+        }
+        for (x = 0; x < cols; x++) {
+            for (y = 0; y < rows; y++) {
+                var acc2 = 0, wsum2 = 0;
+                for (k = -radius; k <= radius; k++) {
+                    var sy = y + k;
+                    if (sy < 0 || sy >= rows) continue;
+                    i = sy * cols + x;
+                    if (!valid[i]) continue;
+                    var wk2 = kernel[k + radius];
+                    acc2 += tmp[i] * wk2;
+                    wsum2 += wk2;
+                }
+                i = y * cols + x;
+                out[i] = wsum2 > 0 ? acc2 / wsum2 : 0;
+            }
+        }
+        return out;
+    }
+
+    // Valori normalizate → RGBA. Alfa crește odată cu scorul: zonele slabe sunt
+    // translucide (se citesc ca „puțin interesant”), cele bune saturate.
+    function colorizeField(values, valid, cols, rows, lut, H) {
+        var aMin = (typeof H.ALPHA_MIN === 'number') ? H.ALPHA_MIN : 0.46;
+        var aMax = (typeof H.ALPHA_MAX === 'number') ? H.ALPHA_MAX : 0.97;
+        var rgba = new Uint8ClampedArray(cols * rows * 4);
+        for (var i = 0; i < values.length; i++) {
+            if (!valid[i]) continue;
+            var t = Math.max(0, Math.min(1, values[i]));
+            var li = Math.round(t * 255) * 4;
+            rgba[i * 4] = lut[li];
+            rgba[i * 4 + 1] = lut[li + 1];
+            rgba[i * 4 + 2] = lut[li + 2];
+            rgba[i * 4 + 3] = Math.round((aMin + (aMax - aMin) * Math.pow(t, 0.75)) * 255);
+        }
+        return rgba;
+    }
+
+    /**
+     * Rasterul de scor al rulării: o imagine de cols × rows pixeli în care
+     * fiecare celulă a grilei e un pixel colorat după scorul ei normalizat.
+     * @returns {{cols,rows,rgba,values,valid,window,bbox,cellM}}
+     */
+    function buildHeatRaster(field) {
+        var H = CONFIG.HEAT;
+        var grid = field.grid;
+        var cols = grid.cols, rows = grid.rows;
+        var win = field.heat || heatScoreWindow(field.results);
+        var values = new Float32Array(rows * cols);
+        var valid = new Uint8Array(rows * cols);
+        for (var i = 0; i < field.results.length; i++) {
+            var r = field.results[i];
+            if (r.row == null || r.col == null) continue;
+            var idx = r.row * cols + r.col;
+            if (idx < 0 || idx >= values.length) continue;
+            values[idx] = heatNormalize(r.score, win);
+            valid[idx] = 1;
+        }
+        var smooth = smoothField(values, valid, cols, rows, H.SMOOTH_SIGMA_CELLS);
+        return {
+            cols: cols, rows: rows,
+            values: smooth, valid: valid,
+            rgba: colorizeField(smooth, valid, cols, rows, heatRampLut(), H),
+            window: win, bbox: grid.bbox, cellM: grid.cellM
+        };
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -1129,7 +1508,7 @@
     var _heatLayer = null;       // canvas heatmap (pane_archeo_heat)
     var _maskGroup = null;       // mască roșie: UAT + raze patrimoniu (pane_archeo_mask)
     var _bubbleRenderer = null;  // renderer canvas partajat pentru bule
-    var _heatZoomWired = false;  // zoomend e legat o singură dată pe hartă
+    var _heatRaster = null;      // rasterul de scoruri al ultimei rulări (debug)
     var _currentResults = null;  // celulele scorate la ultima rulare (API public)
     var _currentField = null;    // câmpul complet (debug / teste)
     var _resultsVisible = true;
@@ -1216,16 +1595,24 @@
         return 'rgb(' + SCORE_COLOR_STOPS[SCORE_COLOR_STOPS.length - 1].rgb.join(',') + ')';
     }
 
-    // Rampa heatmap: albastru închis (scor mic) → verde → chihlimbar → violet
-    // (scor mare). Roșul e rezervat exclusiv zonelor excluse (UAT / patrimoniu),
-    // ca legenda să nu fie ambiguă.
+    // Rampa heatmap: indigo închis (cel mai slab) → albastru → verde →
+    // chihlimbar → violet (cel mai bun). Cinci trepte de nuanță bine separate,
+    // ca diferența dintre o zonă slabă și una bună să sară în ochi. Roșul e
+    // rezervat exclusiv zonelor excluse (UAT / patrimoniu), ca legenda să nu
+    // fie ambiguă. Aceeași rampă e în .archeo-pot-heatbar (css/styles.css).
     var HEAT_GRADIENT = {
-        0.0: '#1b2a55',
-        0.30: '#2f8fc4',
-        0.55: '#4fd08a',
-        0.80: '#f0a030',
-        1.0: '#7b3fd4'
+        0.00: '#10233f',
+        0.25: '#1f7fc4',
+        0.50: '#23c48e',
+        0.75: '#f2b134',
+        1.00: '#8b3ff0'
     };
+
+    var _heatRampLut = null;
+    function heatRampLut() {
+        if (!_heatRampLut) _heatRampLut = buildHeatRamp(HEAT_GRADIENT);
+        return _heatRampLut;
+    }
 
     // ── 5-star rating ───────────────────────────────────────────────────────
     // 5 gray stars with a colored overlay clipped to `score × 100%` — so the
@@ -1249,9 +1636,10 @@
         var color = scoreColor(c.score);
         var pct = Math.round(c.score * 100);
         var factors = c.factors || {};
-        var cellLine = (c.cellM && c.bubbleRadiusM)
-            ? tr('cell') + ': <strong style="color:' + color + '">' + c.cellM + ' m</strong><br>'
-            : '';
+        var cellLine = c.radiusM
+            ? tr('cell') + ': <strong style="color:' + color + '">' + c.radiusM + ' m</strong> ' +
+              tr('radius') + '<br>'
+            : (c.cellM ? tr('cell') + ': <strong style="color:' + color + '">' + c.cellM + ' m</strong><br>' : '');
         return '<div style="font-family:Outfit,sans-serif;min-width:215px;padding:2px">' +
             '<div style="font-family:Cinzel,serif;font-size:0.85rem;color:#c4a0f0;font-weight:700;margin-bottom:8px">' +
             '🔎 ' + tr('candidate') + ' #' + idx + '</div>' +
@@ -1281,12 +1669,15 @@
         if (_heatLayer) {
             try { map.removeLayer(_heatLayer); } catch (e) {}
             try {
-                if (_heatLayer._canvas && _heatLayer._canvas.parentElement) {
-                    _heatLayer._canvas.parentElement.removeChild(_heatLayer._canvas);
-                }
+                // onRemove dezlipește canvas-ul; aici e doar plasa de siguranță
+                // pentru hărțile-fantomă din teste (removeLayer fără onRemove).
+                var heatCanvas = _heatLayer._canvas;
+                var parent = heatCanvas && (heatCanvas.parentNode || heatCanvas.parentElement);
+                if (parent && parent.removeChild) parent.removeChild(heatCanvas);
             } catch (e) {}
             _heatLayer = null;
         }
+        _heatRaster = null;
         if (_maskGroup) { try { map.removeLayer(_maskGroup); } catch (e) {} _maskGroup = null; }
     }
 
@@ -1324,14 +1715,17 @@
         }
     }
 
-    /* ── MODUL 1: bule mici, dese, fără goluri ───────────────────────────── */
+    /* ── MODUL 1: bule rare, fără suprapuneri ────────────────────────────────
+     * Se desenează doar celulele alese de selectBubbles(), fiecare cu raza ei
+     * reală (deja limitată de distanța până la masca roșie). Rezultatul: bule
+     * aerisite, care nu se ating între ele și nu intră peste razele siturilor. */
     function renderBubbles(map, field, group) {
         var renderer = bubbleRendererOption(map);
-        var radiusM = field.bubbleRadiusM;
-        field.results.forEach(function (c, idx) {
+        var bubbles = field.bubbles || [];
+        bubbles.forEach(function (c, idx) {
             var style = styleFor(c.score);
             var options = assignPane(map, {
-                radius: radiusM,
+                radius: c.radiusM,
                 color: style.color,
                 weight: style.weight,
                 opacity: style.opacity,
@@ -1341,93 +1735,283 @@
             }, 'pane_archeo');
             if (renderer) options.renderer = renderer;
             var circle = L.circle([c.lat, c.lng], options);
-            // Popup construit leneș (funcție, nu șir): cu mii de bule, șirurile
-            // eager ar aloca ~1.5 MB de HTML nefolosit la fiecare rulare.
+            // Popup construit leneș (funcție, nu șir): cu sute de bule, șirurile
+            // eager ar aloca HTML nefolosit la fiecare rulare.
             if (circle.bindPopup) circle.bindPopup(makePopupContent(c, idx + 1));
             group.addLayer(circle);
         });
     }
 
-    /* ── MODUL 2: heatmap + mască roșie pentru zonele excluse ────────────── */
-    function metersToPixels(m) {
-        var map = window._dlMap;
-        if (!map || typeof map.getZoom !== 'function' || typeof L === 'undefined' || !L.CRS) return 25;
-        var z = map.getZoom();
-        var center = (typeof map.getCenter === 'function' && map.getCenter()) || { lat: 46 };
-        var worldPx = 256 * Math.pow(2, z);
-        var mPerPx = (40075016.686 * Math.cos(center.lat * Math.PI / 180)) / worldPx;
-        return m / Math.max(0.0001, mPerPx);
+    /* ── MODUL 2: heatmap = raster de scoruri ancorat în geografie ───────────
+     * Canvas propriu, cu exact contractul canvas-urilor Patrimoniu din
+     * map-app.js (același tip de suprafață, deja testat în
+     * test-patrimoniu-canvas-transform.js):
+     *   • la fiecare vedere așezată (move/moveend/zoom/zoomend/viewreset/
+     *     resize) canvas-ul e pus la colțul viewport-ului în layer points, iar
+     *     rasterul e desenat scalat între colțurile GEOGRAFICE ale grilei —
+     *     deci nu plutește niciodată față de hartă la zoom;
+     *   • în timpul animației de zoom (zoomanim / pinch) elementul primește
+     *     transformata de renderer (scalare în jurul ancorei bitmap-ului), ca
+     *     restul hărții, apoi e redesenat la zoom-ul final.
+     * Înlocuiește leaflet-heat: acela repoziționa canvas-ul doar la moveend,
+     * își repoziționa blob-urile într-o grilă de pixeli la fiecare redraw și
+     * folosea o rază în pixeli trunchiată — trei surse de „alunecare” la zoom.
+     * Iar culoarea nu mai e alfa acumulat, ci scorul celulei (vezi 7c). */
+
+    var HEAT_REDRAW_EVENTS = ['move', 'moveend', 'zoom', 'zoomend', 'viewreset', 'resize'];
+
+    // Poziția/transformata canvas-ului, scrise direct pe element. Leaflet face
+    // același lucru prin L.DomUtil (translate3d, opțional scale); îl ținem
+    // local ca să fie identic în browser și în testele Node.
+    function setCanvasPosition(el, point) {
+        if (!el || !el.style) return;
+        el._leaflet_pos = point;
+        el.style.transform = 'translate3d(' + point.x + 'px,' + point.y + 'px,0)';
     }
 
-    function heatRadiusPx(cellM) {
-        var F = CONFIG.FIELD;
-        var px = metersToPixels(cellM) * 1.7;
-        return Math.max(F.HEAT_RADIUS_PX_MIN || 10, Math.min(F.HEAT_RADIUS_PX_MAX || 46, px));
+    function setCanvasTransform(el, point, scale) {
+        if (!el || !el.style) return;
+        el._leaflet_pos = point;
+        el.style.transform = 'translate3d(' + point.x + 'px,' + point.y + 'px,0)' +
+            (scale && scale !== 1 ? ' scale(' + scale + ')' : '');
     }
 
-    function heatLayerOptions(cellM) {
-        var F = CONFIG.FIELD;
-        var radius = heatRadiusPx(cellM);
-        return {
-            radius: radius,
-            blur: Math.max(4, Math.round(radius * (F.HEAT_BLUR_FACTOR || 0.7))),
-            minOpacity: F.HEAT_MIN_OPACITY === undefined ? 0.16 : F.HEAT_MIN_OPACITY,
-            max: 1.0,
-            gradient: HEAT_GRADIENT
-        };
+    function createCanvasEl(w, h) {
+        if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+        var canvas = document.createElement('canvas');
+        if (!canvas || typeof canvas.getContext !== 'function') return null;
+        canvas.width = w;
+        canvas.height = h;
+        return canvas;
     }
 
-    // leaflet-heat își pune canvas-ul în overlayPane (z 400), adică sub toate
-    // rasterele istorice ale aplicației (615-655). Îl mutăm în pane-ul propriu
-    // ca heatmap-ul să stea deasupra hărților, dar sub bule/mască/pin.
-    function adoptHeatCanvas(map, layer) {
-        try {
-            if (!layer || !layer._canvas) return;
-            var pane = map.getPane && map.getPane('pane_archeo_heat');
-            if (pane && layer._canvas.parentNode !== pane) pane.appendChild(layer._canvas);
+    // Rasterul de scoruri, ca imagine sursă de cols × rows px (redimensionată
+    // de canvas la desenare — de aici aspectul neted, fără „trepte”).
+    function createHeatSourceCanvas(raster) {
+        if (!raster || !raster.cols || !raster.rows || !raster.rgba) return null;
+        var canvas = createCanvasEl(raster.cols, raster.rows);
+        if (!canvas) return null;
+        var ctx = canvas.getContext('2d');
+        if (!ctx || typeof ctx.createImageData !== 'function') return null;
+        var img = ctx.createImageData(raster.cols, raster.rows);
+        if (!img || !img.data) return canvas;
+        img.data.set(raster.rgba);
+        if (typeof ctx.putImageData === 'function') ctx.putImageData(img, 0, 0);
+        return canvas;
+    }
 
-            // leaflet-heat dezlipește canvas-ul din overlayPane în onRemove. Cum
-            // noi l-am mutat în pane-ul propriu, apelul original ar arunca
-            // NotFoundError la fiecare oprire a stratului / re-rulare; îl
-            // înlocuim cu o variantă care curăță din parintele real și păstrează
-            // restul de-legăturilor (moveend / zoomanim).
-            if (!layer._archeoRemovePatched) {
-                layer._archeoRemovePatched = true;
-                layer.onRemove = function (m) {
-                    try {
-                        var parent = this._canvas && this._canvas.parentNode;
-                        if (parent && parent.removeChild) parent.removeChild(this._canvas);
-                        if (m && typeof m.off === 'function') {
-                            m.off('moveend', this._reset, this);
-                            var any3d = (typeof L !== 'undefined' && L.Browser) ? L.Browser.any3d : false;
-                            if (m.options && m.options.zoomAnimation && any3d) {
-                                m.off('zoomanim', this._animateZoom, this);
-                            }
-                        }
-                    } catch (e) { /* DOM-only tests */ }
-                };
+    // Layer point FĂRĂ rotunjirea la pixel întreg a lui latLngToLayerPoint:
+    // bitmap-ul e scalat CSS în timpul zoom-ului, deci o jumătate de pixel
+    // înglobată în desen e înmulțită cu scara și apare ca o alunecare.
+    function layerPointUnrounded(map, latlng) {
+        if (typeof map.project === 'function') {
+            var origin = (typeof map.getPixelOrigin === 'function' && map.getPixelOrigin()) || { x: 0, y: 0 };
+            var p = map.project(latlng, map.getZoom());
+            return { x: p.x - origin.x, y: p.y - origin.y };
+        }
+        var lp = map.latLngToLayerPoint(latlng);
+        return { x: lp.x, y: lp.y };
+    }
+
+    function heatPaneEl(map) {
+        var pane = (map.getPane && map.getPane('pane_archeo_heat')) || null;
+        if (pane) return pane;
+        var container = map.getContainer && map.getContainer();
+        return (container && container.querySelector) ? container.querySelector('.leaflet-map-pane') : null;
+    }
+
+    var heatLayerProto = {
+        initialize: function (raster, options) {
+            this.options = options || {};
+            this._raster = raster || null;
+            this._srcCanvas = null;
+            this._canvas = null;
+            this._ctx = null;
+            this._map = null;
+            this._anchor = null;   // originea bitmap-ului în pixeli de proiectare
+            this._zoom = null;     // zoom-ul pentru care a fost desenat
+            this._frame = null;
+            this._lastFrame = null;
+            var self = this;
+            this._handlers = {
+                redraw: function () { self.scheduleRedraw(); },
+                zoomanim: function (e) { self.applyZoomTransform(e); },
+                pinch: function (e) {
+                    if (!e || !e.pinch || !self._map) return;
+                    self.applyZoomTransform({ center: self._map.getCenter(), zoom: self._map.getZoom() });
+                }
+            };
+            this._srcCanvas = createHeatSourceCanvas(this._raster);
+        },
+
+        onAdd: function (map) {
+            this._map = map;
+            if (!this.ensureCanvas()) return;
+            var pane = heatPaneEl(map);
+            if (pane && pane.appendChild && this._canvas.parentNode !== pane) pane.appendChild(this._canvas);
+            this.bindMap(map);
+            this.redraw();
+        },
+
+        onRemove: function (map) {
+            this.unbindMap(map);
+            this._frame = null;
+            var parent = this._canvas && this._canvas.parentNode;
+            if (parent && parent.removeChild) parent.removeChild(this._canvas);
+            this._map = null;
+            this._lastFrame = null;
+        },
+
+        ensureCanvas: function () {
+            if (!this._canvas) {
+                this._canvas = createCanvasEl(1, 1);
+                if (!this._canvas) return false;
+                // leaflet-zoom-animated: transformata de zoomanim e tranziționată
+                // odată cu restul hărții (regula CSS e activă doar în zoom).
+                this._canvas.className = 'leaflet-heatmap-layer leaflet-zoom-animated';
+                if (this._canvas.style) {
+                    this._canvas.style.position = 'absolute';
+                    this._canvas.style.top = '0';
+                    this._canvas.style.left = '0';
+                    this._canvas.style.pointerEvents = 'none';
+                }
+                this._ctx = this._canvas.getContext('2d');
             }
-        } catch (e) { /* DOM-only tests */ }
+            if (!this._srcCanvas && this._raster) this._srcCanvas = createHeatSourceCanvas(this._raster);
+            return !!this._ctx;
+        },
+
+        setRaster: function (raster) {
+            this._raster = raster || null;
+            this._srcCanvas = createHeatSourceCanvas(this._raster);
+            this._anchor = null;
+            this._zoom = null;
+            this.redraw();
+        },
+
+        bindMap: function (map) {
+            if (!map || typeof map.on !== 'function' || this._bound) return;
+            this._bound = true;
+            var self = this;
+            HEAT_REDRAW_EVENTS.forEach(function (type) { map.on(type, self._handlers.redraw); });
+            map.on('zoomanim', this._handlers.zoomanim);
+            map.on('zoom', this._handlers.pinch);
+        },
+
+        unbindMap: function (map) {
+            if (!map || typeof map.off !== 'function' || !this._bound) return;
+            this._bound = false;
+            var self = this;
+            HEAT_REDRAW_EVENTS.forEach(function (type) { map.off(type, self._handlers.redraw); });
+            map.off('zoomanim', this._handlers.zoomanim);
+            map.off('zoom', this._handlers.pinch);
+        },
+
+        scheduleRedraw: function () {
+            var self = this;
+            if (this._frame !== null || !this._canvas) return;
+            this._frame = raf(function () {
+                self._frame = null;
+                if (!self._map || !self._canvas) return;
+                self.redraw();
+            });
+        },
+
+        // Redesenare la vedere așezată: repoziționare în layer points + rasterul
+        // desenat între colțurile geografice ale grilei.
+        redraw: function () {
+            var map = this._map;
+            if (!map || !this._canvas || !this._ctx) return;
+            // În timpul animației CSS de zoom / pinch nu redesenăm: bitmap-ul e
+            // transformat de applyZoomTransform() odată cu restul hărții.
+            if (map._animatingZoom) return;
+            if (map.touchZoom && map.touchZoom._zooming) return;
+            var size = (typeof map.getSize === 'function' && map.getSize()) || null;
+            if (!size) return;
+            if (this._canvas.width !== size.x) this._canvas.width = size.x;
+            if (this._canvas.height !== size.y) this._canvas.height = size.y;
+
+            var topLeft = map.containerPointToLayerPoint([0, 0]);
+            setCanvasPosition(this._canvas, topLeft);   // curăță orice transform de zoom
+            this._zoom = map.getZoom();
+            var origin = (typeof map.getPixelOrigin === 'function' && map.getPixelOrigin()) || { x: 0, y: 0 };
+            this._anchor = { x: origin.x + topLeft.x, y: origin.y + topLeft.y };
+
+            var ctx = this._ctx;
+            ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
+            if (!this._srcCanvas || !this._raster || !this._raster.bbox) return;
+            var bbox = this._raster.bbox;
+            var nw = layerPointUnrounded(map, { lat: bbox.maxLat, lng: bbox.minLng });
+            var se = layerPointUnrounded(map, { lat: bbox.minLat, lng: bbox.maxLng });
+            var x = nw.x - topLeft.x;
+            var y = nw.y - topLeft.y;
+            var w = se.x - nw.x;
+            var h = se.y - nw.y;
+            if (!(w > 0) || !(h > 0)) return;
+
+            if (typeof ctx.save === 'function') ctx.save();
+            ctx.globalAlpha = (typeof this.options.opacity === 'number') ? this.options.opacity : 0.8;
+            if ('imageSmoothingEnabled' in ctx) ctx.imageSmoothingEnabled = true;
+            if ('mozImageSmoothingEnabled' in ctx) ctx.mozImageSmoothingEnabled = true;
+            if ('webkitImageSmoothingEnabled' in ctx) ctx.webkitImageSmoothingEnabled = true;
+            ctx.drawImage(this._srcCanvas, x, y, w, h);
+            if (typeof ctx.restore === 'function') ctx.restore();
+
+            this._lastFrame = {
+                topLeft: { x: topLeft.x, y: topLeft.y },
+                x: x, y: y, w: w, h: h,
+                zoom: this._zoom,
+                anchor: { x: this._anchor.x, y: this._anchor.y },
+                transform: this._canvas.style ? this._canvas.style.transform : null
+            };
+        },
+
+        // Transformata de animație de zoom — aceeași formă ca
+        // _updateCanvasTransform() din map-app.js: scalare în jurul ancorei
+        // bitmap-ului (pixelOrigin + topLeft), nu în jurul centrului proiectat.
+        applyZoomTransform: function (e) {
+            var map = this._map;
+            if (!map || !this._canvas || !this._anchor || this._zoom == null) return;
+            if (!e || e.center == null || e.zoom == null) return;
+            if (typeof map.getZoomScale !== 'function' || typeof map._getNewPixelOrigin !== 'function') return;
+            var scale = map.getZoomScale(e.zoom, this._zoom);
+            var npo = map._getNewPixelOrigin(e.center, e.zoom);
+            setCanvasTransform(this._canvas, {
+                x: Math.round(this._anchor.x * scale - npo.x),
+                y: Math.round(this._anchor.y * scale - npo.y)
+            }, scale);
+        }
+    };
+
+    var _HeatLayerClass = null;
+
+    // În browser e un L.Layer real (map.addLayer/removeLayer, onAdd/onRemove).
+    // Fără L.Layer (teste Node) e același obiect, cu un addTo minim.
+    function makeHeatLayer(raster, options) {
+        if (typeof L !== 'undefined' && L.Layer && typeof L.Layer.extend === 'function') {
+            if (!_HeatLayerClass) _HeatLayerClass = L.Layer.extend(heatLayerProto);
+            return new _HeatLayerClass(raster, options);
+        }
+        var inst = Object.create(heatLayerProto);
+        heatLayerProto.initialize.call(inst, raster, options);
+        inst.addTo = function (map) {
+            if (map && typeof map.addLayer === 'function') map.addLayer(this);
+            else this.onAdd(map);
+            return this;
+        };
+        return inst;
     }
 
     function renderHeat(map, field) {
-        if (typeof L === 'undefined' || typeof L.heatLayer !== 'function' || !field.heatPoints.length) return;
-        _heatLayer = L.heatLayer(field.heatPoints, heatLayerOptions(field.cellM));
-        _heatLayer.addTo(map);
-        adoptHeatCanvas(map, _heatLayer);
-        // Raza blob-urilor e în pixeli: o recalculăm la fiecare zoom ca
-        // heatmap-ul să rămână lipit de geografie. Legarea se face O SINGURĂ
-        // dată pe hartă și lucrează mereu pe stratul/câmpul curent, ca rulările
-        // repetate să nu acumuleze handlere.
-        if (typeof map.on === 'function' && !_heatZoomWired) {
-            _heatZoomWired = true;
-            map.on('zoomend', function () {
-                if (!_heatLayer || !_currentField || typeof _heatLayer.setOptions !== 'function') return;
-                var opts = heatLayerOptions(_currentField.cellM);
-                _heatLayer.setOptions({ radius: opts.radius, blur: opts.blur });
-                adoptHeatCanvas(window._dlMap, _heatLayer);
-            });
-        }
+        if (!field || !field.results.length) return;
+        var raster = buildHeatRaster(field);
+        if (!raster) return;
+        var layer = makeHeatLayer(raster, { opacity: CONFIG.HEAT.OPACITY });
+        if (!layer) return;
+        _heatLayer = layer;
+        _heatRaster = raster;
+        if (typeof layer.addTo === 'function') layer.addTo(map);
+        else if (typeof map.addLayer === 'function') map.addLayer(layer);
     }
 
     // Celulele excluse de UAT sunt unite pe rânduri (run-length) în dreptunghiuri,
@@ -1542,7 +2126,10 @@
         _layerGroup = L.layerGroup([]);
         renderWorkingArea(map, ctx, _layerGroup);
 
-        if (field.mode === 'heat') renderHeat(map, field);
+        // Modul de afișare e cel din UI, nu cel cu care a fost calculat câmpul:
+        // comutarea Bule↔Heatmap redesenează imediat ultima analiză în noul mod
+        // (altfel butoanele par să nu facă nimic până la următoarea „Detectează”).
+        if (outputMode() === 'heat') renderHeat(map, field);
         else renderBubbles(map, field, _layerGroup);
 
         // Masca roșie (intravilan UAT + razele de protecție + contururile
@@ -1570,10 +2157,12 @@
             no_sites: 'Not enough archaeological sites in the area (need at least 3).',
             no_triangles: 'Sites are collinear / too clustered — no valid triangles.',
             no_candidates: 'No cell passed the filters (UAT red zone / site distances). Try a different area.',
+            no_bubbles: 'Every scored cell sits too close to the UAT built-up area or a heritage radius for a whole bubble to fit — switch to Heatmap to read the scores.',
             error: 'Analysis failed — check the console for details.',
             cancelled: 'Analysis cancelled.',
             candidate: 'Candidate',
             cell: 'Cell',
+            radius: 'radius',
             class_high: 'High Potential',
             class_medium: 'Medium Potential',
             nearby: 'Nearby sites',
@@ -1582,7 +2171,7 @@
             density: 'Density',
             tri_quality: 'Triangle quality',
             summary: '{n} candidates · {h} High · {m} Medium',
-            summary_field: '{n} scored cells · {h} High · {m} Medium · {x} excluded (red)',
+            summary_field: '{n} bubbles ({h} High · {m} Medium) from {s} scored cells · {x} excluded (red)',
             summary_heat: '{n} scored cells in the heatmap · {x} excluded (red)',
             pin_hint: 'Pin mode off — the analysis starts from the map center.',
             pin_armed: 'Tap the map to drop the purple pin, then press “Detect”.',
@@ -1600,10 +2189,12 @@
             no_sites: 'Nu sunt suficiente situri arheologice în zonă (e nevoie de cel puțin 3).',
             no_triangles: 'Siturile sunt coliniare / prea grupate — fără triunghiuri valide.',
             no_candidates: 'Nicio celulă nu a trecut filtrele (zona roșie UAT / distanțe față de situri). Încearcă altă zonă.',
+            no_bubbles: 'Fiecare celulă cu scor e prea aproape de intravilanul UAT sau de o rază de protecție ca să încapă o bulă întreagă — treci pe Heatmap ca să vezi scorurile.',
             error: 'Analiza a eșuat — vezi consola pentru detalii.',
             cancelled: 'Analiză anulată.',
             candidate: 'Candidat',
             cell: 'Celulă',
+            radius: 'rază',
             class_high: 'Potențial Ridicat',
             class_medium: 'Potențial Mediu',
             nearby: 'Situri apropiate',
@@ -1612,7 +2203,7 @@
             density: 'Densitate',
             tri_quality: 'Calitate triunghi',
             summary: '{n} candidați · {h} Ridicat · {m} Mediu',
-            summary_field: '{n} celule cu scor · {h} Ridicat · {m} Mediu · {x} excluse (roșu)',
+            summary_field: '{n} bule ({h} Ridicat · {m} Mediu) din {s} celule cu scor · {x} excluse (roșu)',
             summary_heat: '{n} celule în heatmap · {x} excluse (roșu)',
             pin_hint: 'Modul pin e oprit — analiza pornește din centrul hărții.',
             pin_armed: 'Atinge harta ca să pui pinul mov, apoi apasă „Detectează”.',
@@ -1651,10 +2242,12 @@
         var n = stats.scored || 0;
         if (n > 0) {
             var excluded = (stats.excludedUat || 0) + (stats.excludedHeritage || 0);
+            // Modul BULE numără bulele desenate, modul HEAT celulele scorate.
             var text = tr(mode === 'heat' ? 'summary_heat' : 'summary_field')
-                .replace('{n}', n)
-                .replace('{h}', stats.high || 0)
-                .replace('{m}', stats.medium || 0)
+                .replace('{n}', mode === 'heat' ? n : (stats.bubbles || 0))
+                .replace('{h}', mode === 'heat' ? (stats.high || 0) : (stats.bubblesHigh || 0))
+                .replace('{m}', mode === 'heat' ? (stats.medium || 0) : (stats.bubblesMedium || 0))
+                .replace('{s}', n)
                 .replace('{x}', excluded);
             summaryEl.style.display = '';
             summaryEl.innerHTML = '<span style="color:#c4a0f0;font-weight:600">' + text + '</span>';
@@ -2153,7 +2746,8 @@
                     st.excludedHeritage + ' heritage-excluded (' + st.high + ' high, ' +
                     st.medium + ' medium, ' + st.low + ' low) — ' + st.ms + ' ms');
 
-                if (!field.results.length && !field.heatPoints.length) setStatus('no_candidates', true);
+                if (!field.results.length) setStatus('no_candidates', true);
+                else if (mode !== 'heat' && !field.bubbles.length) setStatus('no_bubbles', true);
                 else setStatus('done');
                 setSummary(st, mode);
             } catch (err) {
@@ -2187,7 +2781,7 @@
                 var has = (typeof map.hasLayer === 'function') ? map.hasLayer(layer) : false;
                 if (_resultsVisible) {
                     if (!has) layer.addTo(map);
-                    if (layer === _heatLayer) adoptHeatCanvas(map, layer);
+                    if (layer === _heatLayer && typeof layer.ensureCanvas === 'function') layer.ensureCanvas();
                 } else if (has) {
                     map.removeLayer(layer);
                 }
@@ -2201,7 +2795,7 @@
 
     function onLangChange() {
         setStatus(_lastStatus.key, _lastStatus.isError, _lastStatus.vars);
-        if (_currentField) setSummary(_currentField.stats, _currentField.mode);
+        if (_currentField) setSummary(_currentField.stats, outputMode());
         if (!_runInFlight) setRunning(false);
         // Tooltip-ul pinului și eticheta cercului urmăresc limba curentă.
         if (_pinMode && _pinLatLng) drawPin(_pinLatLng);
@@ -2275,6 +2869,10 @@
     window.computeArcheoPotentialField = computePotentialField;
     window._archeoPotentialResults = function () { return _currentResults; };
     window._archeoPotentialField = function () { return _currentField; };
+    // Bulele desenate (selecția rară) + suprafața de heatmap a ultimei rulări.
+    window._archeoPotentialBubbles = function () { return _currentField ? _currentField.bubbles : null; };
+    window._archeoPotentialHeat = function () { return _heatLayer; };
+    window._archeoPotentialHeatRaster = function () { return _heatRaster; };
     window._archeoPotentialState = function () {
         return {
             pinMode: _pinMode,
@@ -2323,8 +2921,21 @@
         triScoreAt: triScoreAt,
         exclusionReason: exclusionReason,
         uatMaskRectangles: uatMaskRectangles,
-        heatRadiusPx: heatRadiusPx,
-        heatLayerOptions: heatLayerOptions,
+        // bule rare (sweet spot) + rasterul de scor pentru heatmap
+        selectBubbles: selectBubbles,
+        bubbleBaseRadiusM: bubbleBaseRadiusM,
+        bubbleGapM: bubbleGapM,
+        bubbleCountCap: bubbleCountCap,
+        heatScoreWindow: heatScoreWindow,
+        heatNormalize: heatNormalize,
+        buildHeatRamp: buildHeatRamp,
+        buildHeatRaster: buildHeatRaster,
+        smoothField: smoothField,
+        colorizeField: colorizeField,
+        percentile: percentile,
+        HEAT_GRADIENT: HEAT_GRADIENT,
+        heatLayerProto: heatLayerProto,
+        makeHeatLayer: makeHeatLayer,
         renderField: renderField,
         outputMode: outputMode,
         setOutputMode: setOutputMode,

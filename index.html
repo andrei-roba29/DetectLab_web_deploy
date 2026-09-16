@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260916-analysis-dock">
+    <link rel="stylesheet" href="css/styles.css?v=20260916-archeo-sweetspot">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260902-babel-safe-area">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-no-bottom-bar">
@@ -2808,14 +2808,17 @@
                         <div class="archeo-pot-legend archeo-pot-legend-heat" id="archeoPotLegendHeat" style="display:none">
                             <span class="archeo-pot-legend-item">
                                 <span class="archeo-pot-heatbar" aria-hidden="true"></span>
-                                <span class="t" data-key="archeo_legend_score">Score 0–100%</span>
+                                <span class="archeo-pot-heatlabels">
+                                    <span class="t" data-key="archeo_legend_heat_lo">Weak</span>
+                                    <span class="t" data-key="archeo_legend_heat_hi">Strong</span>
+                                </span>
                             </span>
                             <span class="archeo-pot-legend-item">
                                 <span class="archeo-pot-swatch archeo-pot-swatch-red" aria-hidden="true"></span>
                                 <span class="t" data-key="archeo_legend_excluded">UAT / heritage radius</span>
                             </span>
                         </div>
-                        <div style="font-size:0.66rem;color:rgba(245,240,235,0.38);margin-top:7px;line-height:1.45" class="t" data-key="archeo_hint">Candidates = gaps between known sites, inside the UAT red zone, ≥ 700 m from every site.</div>
+                        <div style="font-size:0.66rem;color:rgba(245,240,235,0.38);margin-top:7px;line-height:1.45" class="t" data-key="archeo_hint">Bubbles = the best spots only, spaced so they never touch each other or a heritage radius. Heatmap = every scored cell, colour = score. Red = UAT built-up area and heritage protection radii.</div>
                     </div>
 
                     <!-- Archeological Report (premium) — "Raport arheologic".
@@ -3630,7 +3633,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260916-analysis-dock"></script>
+    <script src="js/translations.js?v=20260916-archeo-sweetspot"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -3673,7 +3676,7 @@
     <script src="js/vertical-opacity-control.js?v=20260916-analysis-dock"></script>
     <!-- Heatmap renderer used by the "Archeological Potential Sites" heat output. -->
     <script src="js/leaflet-heat.js?v=20260916-analysis-dock"></script>
-    <script src="js/archeo-potential.js?v=20260916-analysis-dock"></script>
+    <script src="js/archeo-potential.js?v=20260916-archeo-sweetspot"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
     <script src="js/lidar-scanner.js?v=20260916-analysis-dock"></script>
     <script src="js/library-of-babel.js?v=20260902-babel-osm-nearby"></script>

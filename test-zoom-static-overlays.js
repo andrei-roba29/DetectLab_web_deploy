@@ -104,23 +104,41 @@ assert.match(
     /L\.circle\(\s*\[\s*c\.lat\s*,\s*c\.lng\s*\]/,
     'archeo candidates must be L.circle at the candidate lat/lng'
 );
-// The layer now scores a dense grid instead of a few 300 m candidates, but the
-// bubble radius is still expressed in METRES (derived from the grid cell), so
+// The layer now scores a dense grid instead of a few 300 m candidates, and the
+// bubbles are a sparse selection of that grid. Each bubble still takes its
+// radius in METRES (its own radiusM, capped by the free ground around it), so
 // every bubble stays glued to its geography while zooming.
 assert.match(
     archeo,
-    /var radiusM = field\.bubbleRadiusM;/,
-    'archeo bubbles must take their radius in metres from the scored field'
+    /var bubbles = field\.bubbles \|\| \[\];/,
+    'archeo bubbles must come from the scored field selection'
 );
 assert.match(
     archeo,
-    /radius:\s*radiusM,/,
+    /radius:\s*c\.radiusM,/,
     'archeo bubbles must use that metre radius so they stay geographically static while zooming'
 );
+// The heatmap is no longer leaflet-heat (pixel-radius blobs that slid on zoom):
+// it is a score raster drawn between the geographic corners of the grid, so it
+// cannot drift while zooming either.
 assert.match(
     archeo,
-    /bubbleRadiusM:\s*Math\.max\(40,\s*Math\.round\(cellM/,
-    'the bubble radius is a metre value derived from the grid cell (no pixel radii)'
+    /var nw = layerPointUnrounded\(map, \{ lat: bbox\.maxLat, lng: bbox\.minLng \}\);/,
+    'the heat surface must be drawn between the geographic corners of the grid'
+);
+assert.ok(
+    !/L\.heatLayer\(/.test(archeo),
+    'the archeo layer must not fall back to pixel-radius leaflet-heat blobs'
+);
+assert.match(
+    archeo,
+    /function bubbleBaseRadiusM\(radiusM\) \{/,
+    'the bubble base radius is a metre value derived from the analysis radius (no pixel radii)'
+);
+assert.match(
+    archeo,
+    /var radius = Math\.min\(baseR, Math\.floor\(cells\[k\]\.clearance - maskGap\)\);/,
+    'each bubble radius stays in metres, limited by the free ground around it'
 );
 assert.match(
     archeo,
