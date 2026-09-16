@@ -18,7 +18,7 @@
 //    drawing, not only on Finish.
 // 4. Layout: .offline-map-panel was clamped to min(76vh, 620px), so with many
 //    downloadable layers it grew taller than the map canvas and spilled out of
-//    it; in the installed app the fixed .pwa-bottom-bar covered the download
+//    it; in the installed app the PWA bottom stacks covered the download
 //    button and the phone status bar covered the "Hărți offline salvate"
 //    library header (and with it its close button).
 //

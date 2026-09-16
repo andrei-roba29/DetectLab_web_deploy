@@ -1,16 +1,18 @@
 /* ──────────────────────────────────────────────────────────────
    DetectLab — Mini tutorial (slides)
    ------------------------------------------------------------
-   A "?" button in the top-right corner of the map opens a 5-slide
+   A "?" button in the top-right corner of the map opens a 6-slide
    walkthrough drawn on top of the live UI:
 
      1. arrows + explanations for every button on the LEFT side
-     2. arrows + explanations for every button in the BOTTOM bar
-        (PWA bottom bar; falls back to the desktop .map-controls row)
-     3. the layers panel: on/off switch, opacity slider, the vertical
+     2. arrows + explanations for detection / storage / account
+        (PWA floating controls; falls back to the desktop .map-controls row)
+     3. the Friends panel: unified people search, requests and chats
+        (opened automatically for signed-in users, like the layers panel)
+     4. the layers panel: on/off switch, opacity slider, the vertical
         slider on the map, the neon-green "visible on screen" frame
-     4. the layer catalogue with GRATIS / PREMIUM tabs
-     5. tips for optimal performance
+     5. the layer catalogue with GRATIS / PREMIUM tabs
+     6. tips for optimal performance
 
    Everything is purple with a transparent, blurred background.
    Targets are resolved at runtime from the real DOM, so the guide
@@ -68,8 +70,8 @@
                     sel: '#btnLiveLocation',
                     title: { ro: 'Locația mea', en: 'My location' },
                     desc: {
-                        ro: 'Pornește / oprește urmărirea GPS în timp real și centrează harta pe poziția ta.',
-                        en: 'Start / stop real-time GPS tracking and centre the map on your position.'
+                        ro: 'Pornește / oprește urmărirea GPS în timp real și centrează harta pe poziția ta. În aplicația instalată, butonul stă dreapta-jos, deasupra iconiței contului.',
+                        en: 'Start / stop real-time GPS tracking and centre the map on your position. In the installed app, the button sits at the bottom-right, above the account icon.'
                     }
                 },
                 {
@@ -108,8 +110,8 @@
                     sel: '#detectlab-map .detectlab-compass',
                     title: { ro: 'Busolă & blocare rotire', en: 'Compass & rotation lock' },
                     desc: {
-                        ro: 'Arată nordul și readuce harta la 0°. Trage-o în jos pe „LOCK” ca să blochezi rotirea hărții.',
-                        en: 'Show north and reset the map to 0°. Drag it down onto “LOCK” to lock map rotation.'
+                        ro: 'Arată nordul — atinge busola ca să readuci harta la 0°. Butonul cu lacăt de dedesubt blochează sau deblochează rotirea hărții. În aplicația instalată, tot sub busolă găsești și comutatorul Detectare.',
+                        en: 'Shows north — tap the compass to reset the map to 0°. The lock button underneath locks or unlocks map rotation. In the installed app, the Detect switch sits under the compass too.'
                     }
                 }
             ],
@@ -132,20 +134,20 @@
         },
         {
             id: 'bottom',
-            title: { ro: 'Bara de jos', en: 'The bottom bar' },
+            title: { ro: 'Detectare, stocare și cont', en: 'Detection, storage & account' },
             type: 'targets',
             placement: 'top',
             targets: [
                 {
-                    sel: ['#pwaDetectWrap', '#detectWrap'],
+                    sel: ['#pwaDetectBtn', '#detectWrap'],
                     title: { ro: 'Detectare activitate', en: 'Activity detection' },
                     desc: {
-                        ro: 'Te avertizează în timp real când te apropii de un sit arheologic sau de zona lui de protecție.',
-                        en: 'Get real-time warnings when you approach an archaeological site or its protection zone.'
+                        ro: 'Te avertizează în timp real când te apropii de un sit arheologic sau de zona lui de protecție. În aplicația instalată, comutatorul e sub busolă, stânga-jos.',
+                        en: 'Get real-time warnings when you approach an archaeological site or its protection zone. In the installed app, the switch sits under the compass, at the bottom-left.'
                     }
                 },
                 {
-                    sel: ['#pwaSavedLocationsBtn', '#savedLocationsBtn'],
+                    sel: '#savedLocationsBtn',
                     title: { ro: 'Locații salvate', en: 'Saved locations' },
                     desc: {
                         ro: 'Deschide lista coordonatelor salvate; atinge una și harta sare direct la ea. Aici găsești și categoria „Hărți offline”, de unde activezi sau ștergi hărțile salvate local.',
@@ -153,27 +155,19 @@
                     }
                 },
                 {
-                    sel: '#pwaLangItem',
-                    title: { ro: 'Limbă', en: 'Language' },
-                    desc: {
-                        ro: 'Schimbă limba aplicației între română și engleză.',
-                        en: 'Switch the app language between Romanian and English.'
-                    }
-                },
-                {
-                    sel: ['.pwa-nearby-item', '#nearbyDetectorsBtn'],
+                    sel: ['#pwaNearbyBtn', '#nearbyDetectorsBtn'],
                     title: { ro: 'Detectoriști din zonă', en: 'Detectorists nearby' },
                     desc: {
-                        ro: 'Vezi ceilalți detectoriști activi în apropiere (necesită detectare + locație live pornite).',
-                        en: 'See other detectorists active nearby (requires detection + live location switched on).'
+                        ro: 'Vezi ceilalți detectoriști activi în apropiere (necesită detectare + locație live pornite). În aplicația instalată, butonul cu lupă stă în coloana de iconițe din stânga hărții. Atinge un pin și, din cartonașul lui, poți trimite o cerere de prietenie cu „＋ Adaugă prieten”.',
+                        en: 'See other detectorists active nearby (requires detection + live location switched on). In the installed app, the magnifier button sits in the icon column on the left of the map. Tap a pin and, from its card, you can send a friend request with “＋ Add friend”.'
                     }
                 },
                 {
                     sel: '#pwaUserItem',
                     title: { ro: 'Contul tău', en: 'Your account' },
                     desc: {
-                        ro: 'Autentificare, administrarea contului și a abonamentului, evenimente și delogare.',
-                        en: 'Log in, manage your account and subscription, events and log out.'
+                        ro: 'Autentificare, administrarea contului și a abonamentului, evenimente și delogare. Tot aici găsești și categoriile Limbă (română / engleză) și Stocare (pin-uri, trasee și hărți salvate), plus intrarea spre Prieteni (căutare, cereri, chat).',
+                        en: 'Log in, manage your account and subscription, events and log out. The Language (Romanian / English) and Storage (pins, trails and saved maps) sections live here too, plus the entry to Friends (search, requests, chat).'
                     }
                 },
                 {
@@ -182,6 +176,52 @@
                     desc: {
                         ro: 'Extinde harta pe tot ecranul.',
                         en: 'Expand the map to the full screen.'
+                    }
+                }
+            ]
+        },
+        {
+            id: 'friends',
+            title: { ro: 'Prieteni', en: 'Friends' },
+            type: 'targets',
+            placement: 'below',
+            openFriends: true,
+            requiresAuth: true,
+            authNote: {
+                ro: 'Panoul Prieteni apare după autentificare. Din meniul contului deschizi Prieteni: cauți detectoriști după nume, e-mail sau localitate (merge și parțial, fără diacritice), trimiți cereri de prietenie și discuți pe chat.',
+                en: 'The Friends panel appears after you sign in. From the account menu you open Friends: search detectorists by name, e-mail or place (partial works, diacritics optional), send friend requests and chat.'
+            },
+            targets: [
+                {
+                    sel: '#frSearchInput',
+                    title: { ro: 'Caută detectoriști', en: 'Search detectorists' },
+                    desc: {
+                        ro: 'Caută după nume, e-mail, localitate sau ID: merge și parțial („mihai” îl găsește pe Mihai), fără diacritice („muresan” îl găsește pe Mureșan), iar la mai multe cuvinte fiecare trebuie potrivită undeva („ana cluj”).',
+                        en: 'Search by name, e-mail, place or id: partial works (“mihai” finds Mihai), diacritics are optional (“muresan” finds Mureșan), and with several words each must match somewhere (“ana cluj”).'
+                    }
+                },
+                {
+                    sel: '#frCountySelect',
+                    title: { ro: 'Filtru județ', en: 'County filter' },
+                    desc: {
+                        ro: 'Restrânge rezultatele căutării la un singur județ.',
+                        en: 'Narrow the search results to a single county.'
+                    }
+                },
+                {
+                    sel: '#friendsManagerPanel .fr-tab[data-tab="requests"]',
+                    title: { ro: 'Cereri', en: 'Requests' },
+                    desc: {
+                        ro: 'Aici accepți sau refuzi cererile primite și vezi cererile trimise de tine.',
+                        en: 'Accept or decline incoming requests here, and see the ones you sent.'
+                    }
+                },
+                {
+                    sel: '#friendsManagerPanel .fr-tab[data-tab="chats"]',
+                    title: { ro: 'Chat-uri', en: 'Chats' },
+                    desc: {
+                        ro: 'Discuții private cu prietenii și grupuri. Din cartonașul unui detectorist de pe hartă ajungi direct la chat cu „💬 Trimite mesaj”.',
+                        en: 'Private chats with friends and groups. From a detectorist’s map card you jump straight to chat with “💬 Send message”.'
                     }
                 }
             ]
@@ -388,10 +428,12 @@
         tab: 'free',
         openedPanel: false,
         panelTabRestore: null,
+        openedFriends: false,
         // Transition bookkeeping:
         seq: 0,            // invalidates pending timeouts when the user moves fast
         quiet: false,      // repaint in place (no entrance animation) — resize etc.
         panelOpening: false,
+        friendsOpening: false,
         suppressTap: false // a swipe just navigated — ignore the tap that follows
     };
 
@@ -677,6 +719,68 @@
         timer = setTimeout(fire, PANEL_MAX_WAIT);
     }
 
+    // ── Friends panel handling (slide 3) ─────────────────────────
+    function signedIn() {
+        try {
+            var u = (typeof window._authUser === 'function') ? window._authUser() : null;
+            return !!(u && u.id);
+        } catch (e) { return false; }
+    }
+
+    function friendsPanelIsOpen() {
+        return !!document.getElementById('friendsManagerPanel');
+    }
+
+    /* Mirrors ensurePanel(): the guide demonstrates on the friends tab, and
+       only ever closes a panel it opened itself. Signed-out visitors never
+       get openFriends() called on them — that would pop the auth modal over
+       the guide; they see the step's authNote instead. */
+    function ensureFriends(open) {
+        if (open && !friendsPanelIsOpen()) {
+            if (!signedIn()) return;
+            if (typeof window.openFriends === 'function') {
+                window.openFriends('friends');
+                state.openedFriends = true;
+                state.friendsOpening = true;
+            }
+        } else if (open && friendsPanelIsOpen()) {
+            try {
+                var tab = document.querySelector('#friendsManagerPanel .fr-tab[data-tab="friends"]');
+                if (tab && typeof tab.click === 'function') tab.click();
+            } catch (e) { /* keep the guide usable no matter what */ }
+        } else if (!open && state.openedFriends) {
+            if (typeof window._closeFriendsPanel === 'function') window._closeFriendsPanel();
+            state.openedFriends = false;
+            state.friendsOpening = false;
+        }
+    }
+
+    /* openFriends() renders after its async refreshAll() lands, so — unlike
+       the layers panel — there is no transition to wait for: poll for the
+       search input instead, with a hard cap so the guide can never get stuck
+       on an invisible slide. */
+    var FRIENDS_MAX_WAIT = 6000;
+    function whenFriendsReady(cb) {
+        var waited = 0, fired = false, timer = null;
+
+        function fire() {
+            if (fired) return;
+            fired = true;
+            state.friendsOpening = false;
+            if (timer) clearInterval(timer);
+            try { cb(); } catch (e) { /* keep the guide usable no matter what */ }
+        }
+
+        timer = setInterval(function () {
+            if (!state.open) { fire(); return; }
+            var input = null;
+            try { input = document.querySelector('#frSearchInput'); } catch (e) { input = null; }
+            if (input && isVisible(input)) { fire(); return; }
+            waited += 120;
+            if (waited >= FRIENDS_MAX_WAIT) fire();
+        }, 120);
+    }
+
     // ── Geometry helpers ─────────────────────────────────────────
     function roundRectPath(x, y, w, h, r) {
         r = Math.min(r, w / 2, h / 2);
@@ -860,6 +964,9 @@
         // The layers panel is only needed on its own slide — start opening it
         // right away so it animates in behind the outgoing slide.
         ensurePanel(!!step.openPanel);
+        // Same for the Friends panel on its own slide (signed-in users only;
+        // signed-out visitors get the step's authNote instead).
+        ensureFriends(!!step.openFriends);
 
         if (!dir || reduceMotion()) {
             commit(step);
@@ -907,6 +1014,7 @@
         }
 
         if (step.openPanel && state.panelOpening) whenPanelSettled(reveal);
+        else if (step.openFriends && state.friendsOpening) whenFriendsReady(reveal);
         else reveal();
     }
 
@@ -930,6 +1038,18 @@
     }
 
     function paintTargets(step) {
+        // The Friends slide needs a signed-in account: opening the panel for
+        // a visitor would pop the auth modal over the guide, so they get an
+        // explanatory note pointing at the account menu instead.
+        if (step.requiresAuth && !signedIn()) {
+            resetScrim();
+            var auth = el('div', 'dl-tut-note', stage);
+            auth.style.cssText += 'left:50%;top:50%;transform:translate(-50%,-50%);width:min(340px,calc(100% - 32px));text-align:center;';
+            auth.innerHTML = '<div class="dl-tut-note-item"><span class="dl-tut-note-ico">👥</span><span>' +
+                tr(step.authNote) + '</span></div>';
+            return;
+        }
+
         var found = [];
         step.targets.forEach(function (t) {
             var node = pick(t.sel);
@@ -974,7 +1094,7 @@
         // so the callouts drop underneath the highlighted row instead.
         if (placement === 'left' && (uni.x1 - 30) < 190) placement = 'below';
 
-        // PWA bottom bar: number each button left-to-right so the callout
+        // PWA floating controls: number each button left-to-right so the callout
         // clearly maps to its control even when arrows cross.
         var numberBar = placement === 'top' && isPwa();
         var nums = [];
@@ -1026,7 +1146,7 @@
         } else if (placement === 'below') {
             colW = Math.min(360, vw() - 24);
             colX = Math.max(12, Math.min((uni.x1 + uni.x2) / 2 - colW / 2, vw() - colW - 12));
-        } else { // 'top' — bottom bar
+        } else { // 'top' — detection / storage / account slide
             colW = Math.min(340, vw() - 24);
             colX = (vw() - colW) / 2;
         }
@@ -1069,13 +1189,13 @@
 
         if (placement === 'top') {
             // Order the callouts left-to-right by the x of their target and
-            // stack them upwards from just above the bar.
+            // stack them upwards from just above the topmost target.
             var lowerBound = Math.max(top, minTargetTop - 16);
             items.sort(function (a, b) { return a.box.f.rect.x - b.box.f.rect.x; });
 
             if (numberBar && items.length >= 2) {
-                // Two columns above the PWA bar: left buttons → left column,
-                // right buttons → right column. Arrows stay mostly vertical.
+                // Two columns over the map: left targets → left column,
+                // right targets → right column. Arrows stay mostly vertical.
                 var split = Math.ceil(items.length / 2);
                 var leftCol = items.slice(0, split);
                 var rightCol = items.slice(split);
@@ -1281,6 +1401,7 @@
             if (!state.open) return;
             var step = STEPS[state.idx];
             if (step && step.openPanel && state.panelOpening) return; // commit() paints once the panel lands
+            if (step && step.openFriends && state.friendsOpening) return; // commit() paints once the friends tab renders
             paint(step);
         });
 
@@ -1304,6 +1425,7 @@
 
         var finish = function () {
             ensurePanel(false);
+            ensureFriends(false);
             root.classList.remove('open', 'dl-tut-closing', 'dl-tut-leaving',
                                  'dl-tut-entering', 'dl-tut-quiet');
             clearStage();

@@ -1,8 +1,11 @@
 // Regression tests for the SOCIAL layer ("Prieteni / Friends").
 //
 // What is exercised against the REAL js/friends.js and js/events.js:
-//   1. The search bar finds people by e-mail, display name or account id and
-//      the county (județ) filter narrows the results.
+//   1. The UNIFIED search bar finds people by a partial query matched against
+//      display name, e-mail, county, city or the account id prefix —
+//      diacritics-insensitive ("muresan" finds "Mureșan"), multi-word queries
+//      need every word somewhere — and the county (județ) filter narrows
+//      the results.
 //   2. A friend request lands in the addressee's "Cereri" tab; accepting it
 //      puts both users in each other's friend list WITH a chat button.
 //   3. Private (1:1) and group conversations: only friends can be invited,
@@ -38,7 +41,7 @@ function ok(label) { passed++; console.log('  ✔ ' + label); }
 
 /* ══════════════════════════════════════════════════════════════════════════
    In-memory social server — mirrors the rules of migrations
-   20260915000000 … 20260915030000 so the client is tested against the same
+   20260915000000 … 20260916010000 so the client is tested against the same
    contract the database enforces.
 ══════════════════════════════════════════════════════════════════════════ */
 
@@ -68,7 +71,7 @@ const LIMITS = {
 const USERS = {
     ana: { id: 'u-ana', name: 'Ana Pop', email: 'ana.pop@detectlab.ro', county: 'Cluj' },
     mihai: { id: 'u-mihai', name: 'Mihai Ionescu', email: 'mihai.i@example.com', county: 'Cluj' },
-    elena: { id: 'u-elena', name: 'Elena Dobre', email: 'elena@dorelmail.com', county: 'Bihor' },
+    elena: { id: 'u-elena', name: 'Elena Dobre', email: 'elena@dorelmail.com', county: 'Bihor', city: 'Oradea' },
     vlad: { id: 'u-vlad', name: 'Vlad Mureșan', email: 'vlad@muresan.ro', county: 'Maramureș' },
     ioana: { id: 'u-ioana', name: 'Ioana Radu', email: 'ioana@radu.ro', county: 'Cluj' }
 };
@@ -81,6 +84,28 @@ function normaliseCounty(raw) {
         .toLowerCase()
         .replace(/[ăâ]/g, 'a').replace(/î/g, 'i').replace(/[șş]/g, 's').replace(/[țţ]/g, 't')
         .replace(/\b(judetul|judet|jud|county|province|region|regiunea|municipiul)\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// Mirrors public.search_normalise() in
+// supabase/migrations/20260916010000_social_unified_search.sql — keep both in
+// sync (same fold set: Romanian ș/ț in both the comma-below and the cedilla
+// spellings, plus the Hungarian/European vowels common in Transylvanian
+// names).
+function searchNormalise(raw) {
+    return String(raw || '')
+        .toLowerCase()
+        .replace(/[ăâáàäãå]/g, 'a')
+        .replace(/[îíìï]/g, 'i')
+        .replace(/[șş]/g, 's')
+        .replace(/[țţ]/g, 't')
+        .replace(/[éèëê]/g, 'e')
+        .replace(/[óòöõø]/g, 'o')
+        .replace(/[úùüû]/g, 'u')
+        .replace(/[ýÿ]/g, 'y')
+        .replace(/ç/g, 'c')
+        .replace(/ñ/g, 'n')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -98,7 +123,7 @@ function createSocialServer(options) {
                 const u = USERS[k];
                 return {
                     user_id: u.id, display_name: u.name, email: u.email,
-                    county: u.county, city: null, discoverable: true,
+                    county: u.county, city: u.city || null, discoverable: true,
                     updated_at: new Date().toISOString()
                 };
             }),
@@ -141,6 +166,11 @@ function createSocialServer(options) {
         },
 
         upsert_my_social_profile: function (p) {
+            // Mirrors the SQL guard (auth.uid() null → 'Not signed in').
+            // Without it the boot-time upsert — fired before server.as() —
+            // would forge a ghost row with user_id null; the real function
+            // raises instead.
+            if (!me()) return fail('Not signed in');
             let row = profile(me());
             if (!row) {
                 row = { user_id: me(), display_name: '', email: '', county: null, city: null, discoverable: true };
@@ -155,16 +185,28 @@ function createSocialServer(options) {
         },
 
         search_social_users: function (p) {
-            const q = String(p._query || '').toLowerCase();
+            // Unified rule, mirroring the migration: every normalised query
+            // word must appear (as a substring) in at least one visible
+            // column — display name, e-mail, county, city — or prefix-match
+            // the account id.
+            const tokens = searchNormalise(p._query).split(' ').filter(Boolean);
             const county = normaliseCounty(p._county);
             const rows = server.tables.user_social_profiles.filter(function (row) {
                 if (row.user_id === me()) return false;
                 if (!row.discoverable) return false;
                 if (county && normaliseCounty(row.county) !== county) return false;
-                if (!q) return true;
-                return row.email.toLowerCase().indexOf(q) !== -1 ||
-                    row.display_name.toLowerCase().indexOf(q) !== -1 ||
-                    String(row.user_id).toLowerCase().indexOf(q) === 0;
+                if (!tokens.length) return true;
+                const haystacks = [
+                    searchNormalise(row.display_name),
+                    searchNormalise(row.email),
+                    searchNormalise(row.county),
+                    searchNormalise(row.city)
+                ];
+                const idText = String(row.user_id).toLowerCase();
+                return tokens.every(function (tok) {
+                    return idText.indexOf(tok) === 0 ||
+                        haystacks.some(function (h) { return h.indexOf(tok) !== -1; });
+                });
             });
             const data = rows.slice(0, p._limit_n || 25).map(function (row) {
                 const pending = server.tables.friend_requests.filter(function (r) {
@@ -933,7 +975,7 @@ async function partOne() {
     assert.strictEqual(api.backendAvailable(), true, 'backend must be detected as installed');
     ok('limits are read from public.app_limits and the backend is detected');
 
-    /* ── Search by e-mail / name / id + county filter ── */
+    /* ── Unified search: partial, diacritic-insensitive, every column ── */
     server.as(USERS.ana.id);
     let res = await server.rpc('search_social_users', { _query: 'mihai.i@', _county: null, _limit_n: 25 });
     assert(res.data.some(r => r.user_id === USERS.mihai.id), 'search by e-mail must find Mihai');
@@ -951,6 +993,49 @@ async function partOne() {
     assert(clujIds.indexOf(USERS.elena.id) === -1, 'county filter must exclude Elena (Bihor)');
     assert(clujIds.indexOf(USERS.ana.id) === -1, 'search must never return the caller');
     ok('search matches e-mail, name and id, and "Județul Cluj" filters to Cluj only');
+
+    /* ── … and the unified rule: diacritics, county/city, multi-word ── */
+    async function searchIds(query) {
+        const r = await server.rpc('search_social_users', { _query: query, _county: null, _limit_n: 25 });
+        return r.data.map(x => x.user_id);
+    }
+    assert.deepStrictEqual(await searchIds('muresan'), [USERS.vlad.id],
+        '"muresan" (no diacritics) must find "Mureșan"');
+    assert.deepStrictEqual(await searchIds('MUREȘAN'), [USERS.vlad.id],
+        'uppercase + diacritics must find Vlad too');
+    assert.deepStrictEqual(await searchIds('vlad muresan'), [USERS.vlad.id],
+        'every word of a multi-word query must match somewhere');
+    assert.deepStrictEqual(await searchIds('mihai cluj'), [USERS.mihai.id],
+        '"mihai cluj" must match the name AND the county of the same row');
+    assert.deepStrictEqual(await searchIds('mih'), [USERS.mihai.id],
+        'a 3-letter fragment must already return results');
+    assert.deepStrictEqual(await searchIds('cluj'), [USERS.mihai.id, USERS.ioana.id],
+        'a county typed in the search box must match the county column');
+    assert.deepStrictEqual(await searchIds('oradea'), [USERS.elena.id],
+        'a city typed in the search box must match the city column');
+    assert.deepStrictEqual(await searchIds('elena bihor'), [USERS.elena.id],
+        'name + county words must combine on one row');
+    assert.deepStrictEqual(await searchIds('  elena   '), [USERS.elena.id],
+        'surrounding whitespace must not break the search');
+    assert.deepStrictEqual(await searchIds(''), [USERS.mihai.id, USERS.elena.id, USERS.vlad.id, USERS.ioana.id],
+        'a blank query lists the whole directory except the caller');
+    ok('unified search: partial + diacritic-insensitive across name, e-mail, county, city and id');
+
+    /* ── The SQL migration the mock mirrors ── */
+    const unifiedSql = fs.readFileSync(path.join(__dirname, 'supabase/migrations/20260916010000_social_unified_search.sql'), 'utf8');
+    assert(unifiedSql.indexOf('create or replace function public.search_normalise(raw text)') !== -1,
+        'the migration must define public.search_normalise()');
+    assert(unifiedSql.indexOf("'ăâîșşțţáàäãåéèëêíìïóòöõøúùüûýÿçñ'") !== -1,
+        'search_normalise() must fold the same diacritic set the mock folds');
+    assert(/bool_and\(/.test(unifiedSql),
+        'multi-word queries must need EVERY word (bool_and over the tokens)');
+    assert(unifiedSql.indexOf('strpos(public.search_normalise(p.county), t) > 0') !== -1,
+        'county must be a searchable column');
+    assert(unifiedSql.indexOf('strpos(public.search_normalise(p.city), t) > 0') !== -1,
+        'city must be a searchable column');
+    assert(unifiedSql.indexOf('starts_with(lower(p.user_id::text), t)') !== -1,
+        'the account id prefix must stay searchable');
+    ok('migration 20260916010000 defines the unified rule the mock reproduces');
 
     /* ── Friend request → accept → friend list with a chat button ── */
     server.as(USERS.ana.id);

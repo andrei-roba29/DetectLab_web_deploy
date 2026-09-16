@@ -32,7 +32,7 @@
 // v90: the map-side opacity mirror no longer prints the word "OPACITY" above
 // the range — the slider shows the layer name only (period mirrors keep
 // ISTORIC / PERIOADĂ).
-const CACHE_NAME = 'detectlab-v90-no-opacity-caption';
+const CACHE_NAME = 'detectlab-v94-tutorial-friends';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -257,7 +257,36 @@ const PRECACHE_URLS = [
   // The map-side opacity mirror drops its "OPACITY" caption strip; the caption
   // row collapses (:empty) so the layer name sits at the top of the control.
   'css/styles.css?v=20260916-no-opacity-caption',
-  'js/vertical-opacity-control.js?v=20260916-no-opacity-caption'
+  'js/vertical-opacity-control.js?v=20260916-no-opacity-caption',
+  // PWA bottom bar removed: the bottom-right account stack absorbs
+  // language + storage, Detect moves under the tap-to-lock compass,
+  // nearby detectorists join the left icon stack, live-location sits
+  // above the account avatar.
+  'css/styles.css?v=20260916-no-bottom-bar',
+  'css/offline-maps.css?v=20260916-no-bottom-bar',
+  'js/map-app.js?v=20260916-no-bottom-bar',
+  'js/events.js?v=20260916-no-bottom-bar',
+  'js/friends.js?v=20260916-no-bottom-bar',
+  'js/tutorial.js?v=20260916-no-bottom-bar',
+  'js/translations.js?v=20260916-no-bottom-bar',
+  'js/vertical-opacity-control.js?v=20260916-no-bottom-bar',
+  // Detectorist popups become a horizontal card (avatar + identity row,
+  // actions below); the popup re-runs its Leaflet layout after friends.js
+  // paints the slot, so buttons and messages stay inside the frame.
+  // "Adaugă prietenie" is renamed to "Adaugă prieten".
+  'css/styles.css?v=20260916-friend-card',
+  'js/friends.js?v=20260916-friend-card',
+  'js/map-app.js?v=20260916-friend-card',
+  'js/translations.js?v=20260916-friend-card',
+  // Unified friend search (migration 20260916010000): one query matched
+  // partially, diacritics folded, against name / e-mail / county / city /
+  // id; multi-word queries need every word in at least one column.
+  'js/friends.js?v=20260916-unified-search',
+  // "?" tutorial: 6th slide for the Friends panel (unified search,
+  // requests, chats), PWA control positions (Detect under the compass,
+  // live-location above the account icon, magnifier in the left stack)
+  // and the "Adaugă prieten" detectorist card.
+  'js/tutorial.js?v=20260916-tutorial-friends'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

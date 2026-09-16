@@ -1,14 +1,15 @@
-/* DetectLab map rotation + compass with sliding rotation lock
+/* DetectLab map rotation + compass with tap rotation lock
  *
  * Leaflet 1.9 has no built-in bearing. This module:
  *  - rotates the map pane around the viewport centre
  *  - keeps click / pan / pinch coordinates correct
  *  - lets the user twist the map with two fingers (touch)
  *    or Alt/Option-drag / Ctrl-wheel (desktop) with stable deadband
- *  - shows a bottom-left compass with a vertical lock dock underneath:
- *      * slide compass down over the lock -> disables screen turning
- *      * slide back up towards initial position, or tap -> re-enables screen turning
- *      * tap when unlocked -> resets orientation to true north
+ *  - shows a bottom-left column of three 38x38 map buttons:
+ *      * compass (tap -> resets orientation to true north)
+ *      * rotation lock (tap -> toggles screen-turning lock)
+ *      * Detect toggle (tap -> toggles activity detection; PWA only,
+ *        hidden on desktop via CSS - desktop keeps the .map-controls switch)
  */
 (function (L) {
     'use strict';
@@ -40,13 +41,6 @@
 
     function angleBetween(a, b) {
         return Math.atan2(b.y - a.y, b.x - a.x) * RAD;
-    }
-
-    function getClientY(e) {
-        if (e.clientY !== undefined) return e.clientY;
-        if (e.touches && e.touches.length > 0) return e.touches[0].clientY;
-        if (e.changedTouches && e.changedTouches.length > 0) return e.changedTouches[0].clientY;
-        return 0;
     }
 
     var origSetPosition = L.DomUtil.setPosition;
@@ -357,8 +351,6 @@
         }
     });
 
-    var SLIDE_MAX = 44; // Vertical travel in pixels
-
     L.Control.Compass = L.Control.extend({
         options: {
             position: 'bottomleft'
@@ -366,71 +358,77 @@
         onAdd: function (map) {
             var self = this;
             this._map = map;
-            this._slideMax = SLIDE_MAX;
             this._isLocked = map.isRotateLocked ? map.isRotateLocked() : false;
-            this._currentY = this._isLocked ? this._slideMax : 0;
 
             var wrap = this._container = L.DomUtil.create('div', 'leaflet-control detectlab-compass');
-            var track = this._track = L.DomUtil.create('div', 'detectlab-compass-track', wrap);
-            
-            var dock = this._dock = L.DomUtil.create('div', 'detectlab-compass-lock-dock', track);
-            dock.setAttribute('role', 'button');
-            dock.setAttribute('aria-label', 'Toggle rotation lock');
-            dock.innerHTML =
-                '<div class="dl-compass-lock-icons" aria-hidden="true">' +
-                    '<svg class="dl-lock-icon-unlocked" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
-                        '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
-                        '<path d="M7 11V7a5 5 0 0 1 9.9-1"/>' +
-                    '</svg>' +
-                    '<svg class="dl-lock-icon-locked" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
-                        '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
-                        '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>' +
-                    '</svg>' +
-                '</div>' +
-                '<span class="dl-lock-dock-label">LOCK</span>';
+            var col = this._track = L.DomUtil.create('div', 'detectlab-compass-col', wrap);
+            col.id = 'compassCol';
 
-            var guide = L.DomUtil.create('div', 'detectlab-compass-guide', track);
-            guide.innerHTML = '<span class="dl-guide-arrow" aria-hidden="true">▾</span>';
-
-            var btn = this._btn = L.DomUtil.create('button', 'detectlab-compass-btn', track);
+            // 1. Compass rose (tap -> reset to true north).
+            var btn = this._btn = L.DomUtil.create('button', 'detectlab-compass-btn', col);
             btn.type = 'button';
-            btn.setAttribute('aria-label', 'Compass and rotation lock');
+            btn.setAttribute('aria-label', 'Reset north');
+            btn.title = 'Reseteaza nordul / Reset north';
             btn.innerHTML =
                 '<span class="detectlab-compass-rose" aria-hidden="true">' +
                     '<svg viewBox="0 0 48 48">' +
                         '<circle class="dl-compass-ring" cx="24" cy="24" r="21.5"/>' +
-                        '<circle class="dl-compass-hub" cx="24" cy="24" r="3"/>' +
                         '<path class="dl-compass-needle-n" d="M24 7 L28.2 24 L24 21.4 L19.8 24 Z"/>' +
                         '<path class="dl-compass-needle-s" d="M24 41 L28.2 24 L24 26.6 L19.8 24 Z"/>' +
+                        '<circle class="dl-compass-hub" cx="24" cy="24" r="3"/>' +
                         '<text class="dl-compass-n" x="24" y="16" text-anchor="middle">N</text>' +
-                    '</svg>' +
-                '</span>' +
-                '<span class="dl-compass-mini-lock" aria-hidden="true">' +
-                    '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">' +
-                        '<path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>' +
                     '</svg>' +
                 '</span>';
             this._rose = btn.querySelector('.detectlab-compass-rose');
 
+            // 2. Rotation lock toggle (tap -> lock / unlock screen turning).
+            var lock = this._dock = L.DomUtil.create('button', 'detectlab-compass-lock', col);
+            lock.type = 'button';
+            lock.id = 'compassLockBtn';
+            lock.setAttribute('aria-label', 'Toggle rotation lock');
+            lock.innerHTML =
+                '<svg class="dl-lock-icon-unlocked" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                    '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+                    '<path d="M7 11V7a5 5 0 0 1 9.9-1"/>' +
+                '</svg>' +
+                '<svg class="dl-lock-icon-locked" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                    '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+                    '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>' +
+                '</svg>';
+
+            // 3. Activity-detection toggle (PWA only, hidden on desktop via CSS).
+            var det = this._detectBtn = L.DomUtil.create('button', 'compass-detect-btn', col);
+            det.type = 'button';
+            det.id = 'pwaDetectBtn';
+            det.setAttribute('aria-label', 'Toggle activity detection');
+            det.setAttribute('aria-pressed', 'false');
+            det.title = 'Detectare activitate / Activity detection';
+            det.innerHTML =
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                    '<line x1="5" y1="3" x2="9" y2="7"/>' +
+                    '<path d="M5 3 Q3 3 3 5 Q3 7 5 7 L9 7"/>' +
+                    '<line x1="9" y1="7" x2="17" y2="18"/>' +
+                    '<ellipse cx="18.5" cy="19.5" rx="3.5" ry="1.8" transform="rotate(-30 18.5 19.5)"/>' +
+                '</svg>';
+
             L.DomEvent.disableClickPropagation(wrap);
             L.DomEvent.disableScrollPropagation(wrap);
 
-            // Bind drag & tap handlers
-            this._onDragStart = this._onDragStart.bind(this);
-            this._onDragMove = this._onDragMove.bind(this);
-            this._onDragEnd = this._onDragEnd.bind(this);
-
-            if (window.PointerEvent) {
-                btn.addEventListener('pointerdown', this._onDragStart);
-            } else {
-                btn.addEventListener('touchstart', this._onDragStart, { passive: false });
-                btn.addEventListener('mousedown', this._onDragStart);
-            }
-
-            dock.addEventListener('click', function (e) {
+            this._onCompassTap = function (e) {
+                L.DomEvent.stop(e);
+                if (self._map) self._map.resetBearing();
+            };
+            this._onLockTap = function (e) {
                 L.DomEvent.stop(e);
                 self.setLocked(!self._isLocked);
-            });
+            };
+            this._onDetectTap = function (e) {
+                L.DomEvent.stop(e);
+                if (typeof window.togglePwaDetection === 'function') window.togglePwaDetection();
+            };
+            btn.addEventListener('click', this._onCompassTap);
+            lock.addEventListener('click', this._onLockTap);
+            det.addEventListener('click', this._onDetectTap);
 
             this._onRotate = L.bind(this._update, this);
             this._onLockChange = L.bind(this._updateLock, this);
@@ -444,130 +442,20 @@
         onRemove: function (map) {
             map.off('rotate', this._onRotate);
             map.off('rotatelockchange', this._onLockChange);
-            if (window.PointerEvent) {
-                if (this._btn) this._btn.removeEventListener('pointerdown', this._onDragStart);
-            } else {
-                if (this._btn) {
-                    this._btn.removeEventListener('touchstart', this._onDragStart);
-                    this._btn.removeEventListener('mousedown', this._onDragStart);
-                }
-            }
-        },
-        _onDragStart: function (e) {
-            if (e.button !== undefined && e.button !== 0) return;
-            this._isDragging = true;
-            this._dragMoved = false;
-            this._startY = getClientY(e);
-            this._dragStartTime = Date.now();
-            this._startPosY = this._isLocked ? this._slideMax : 0;
-            this._track.classList.add('is-dragging');
-
-            if (e.target && e.target.setPointerCapture && e.pointerId !== undefined) {
-                try {
-                    e.target.setPointerCapture(e.pointerId);
-                    this._pointerId = e.pointerId;
-                } catch (err) {}
-            }
-
-            if (window.PointerEvent) {
-                window.addEventListener('pointermove', this._onDragMove, { passive: false });
-                window.addEventListener('pointerup', this._onDragEnd);
-                window.addEventListener('pointercancel', this._onDragEnd);
-            } else {
-                window.addEventListener('touchmove', this._onDragMove, { passive: false });
-                window.addEventListener('touchend', this._onDragEnd);
-                window.addEventListener('touchcancel', this._onDragEnd);
-                window.addEventListener('mousemove', this._onDragMove);
-                window.addEventListener('mouseup', this._onDragEnd);
-            }
-            L.DomEvent.stop(e);
-        },
-        _onDragMove: function (e) {
-            if (!this._isDragging) return;
-            var currentY = getClientY(e);
-            var deltaY = currentY - this._startY;
-            if (Math.abs(deltaY) > 4) {
-                this._dragMoved = true;
-            }
-            var nextY = Math.max(0, Math.min(this._slideMax, this._startPosY + deltaY));
-            this._currentY = nextY;
-            this._btn.style.transform = 'translateY(' + nextY + 'px)';
-            L.DomEvent.preventDefault(e);
-            L.DomEvent.stopPropagation(e);
-        },
-        _onDragEnd: function (e) {
-            if (!this._isDragging) return;
-            this._isDragging = false;
-            this._track.classList.remove('is-dragging');
-
-            if (window.PointerEvent) {
-                window.removeEventListener('pointermove', this._onDragMove);
-                window.removeEventListener('pointerup', this._onDragEnd);
-                window.removeEventListener('pointercancel', this._onDragEnd);
-            } else {
-                window.removeEventListener('touchmove', this._onDragMove);
-                window.removeEventListener('touchend', this._onDragEnd);
-                window.removeEventListener('touchcancel', this._onDragEnd);
-                window.removeEventListener('mousemove', this._onDragMove);
-                window.removeEventListener('mouseup', this._onDragEnd);
-            }
-
-            if (this._pointerId !== undefined && this._btn && this._btn.releasePointerCapture) {
-                try {
-                    this._btn.releasePointerCapture(this._pointerId);
-                } catch (err) {}
-                this._pointerId = undefined;
-            }
-
-            var endY = getClientY(e);
-            var totalDist = Math.abs(endY - this._startY);
-            var duration = Date.now() - this._dragStartTime;
-
-            // If tap (minimal movement, short duration)
-            if (!this._dragMoved || (totalDist < 6 && duration < 300)) {
-                if (this._isLocked) {
-                    // Tapped while locked -> Unlock!
-                    this.setLocked(false);
-                } else {
-                    // Tapped while unlocked -> Reset north!
-                    if (this._map) this._map.resetBearing();
-                }
-                L.DomEvent.stop(e);
-                return;
-            }
-
-            // Dragged -> Snap to position based on release point
-            var threshold = this._slideMax * 0.45;
-            if (this._startPosY === 0) {
-                // Dragged down from top position:
-                if (this._currentY >= threshold) {
-                    this.setLocked(true);
-                } else {
-                    this.setLocked(false);
-                }
-            } else {
-                // Dragged up from bottom position:
-                if (this._currentY <= (this._slideMax * 0.55)) {
-                    this.setLocked(false);
-                } else {
-                    this.setLocked(true);
-                }
-            }
-            L.DomEvent.stop(e);
+            if (this._btn && this._onCompassTap) this._btn.removeEventListener('click', this._onCompassTap);
+            if (this._dock && this._onLockTap) this._dock.removeEventListener('click', this._onLockTap);
+            if (this._detectBtn && this._onDetectTap) this._detectBtn.removeEventListener('click', this._onDetectTap);
         },
         setLocked: function (locked, options) {
             locked = !!locked;
             this._isLocked = locked;
-            this._currentY = locked ? this._slideMax : 0;
-            if (this._btn) {
-                this._btn.style.transform = 'translateY(' + this._currentY + 'px)';
-                this._btn.classList.toggle('is-locked', locked);
+            if (this._dock) {
                 if (locked) {
-                    this._btn.setAttribute('aria-label', 'Screen rotation locked. Tap or slide up to unlock.');
-                    this._btn.title = 'Rotirea ecranului este blocată / Screen rotation locked. Atinge sau glisează în sus pentru a debloca / Tap or slide up to unlock.';
+                    this._dock.setAttribute('aria-label', 'Screen rotation locked. Tap to unlock.');
+                    this._dock.title = 'Rotirea ecranului este blocata / Screen rotation locked. Atinge pentru a debloca / Tap to unlock.';
                 } else {
-                    this._btn.setAttribute('aria-label', 'Screen rotation unlocked. Slide down to lock. Tap to reset north.');
-                    this._btn.title = 'Glisează în jos pentru a bloca rotirea / Slide down to lock rotation. Apasă pentru a reseta nordul / Tap to reset north.';
+                    this._dock.setAttribute('aria-label', 'Screen rotation unlocked. Tap to lock.');
+                    this._dock.title = 'Atinge pentru a bloca rotirea / Tap to lock rotation.';
                 }
             }
             if (this._track) {

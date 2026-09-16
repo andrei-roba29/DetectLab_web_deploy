@@ -16,6 +16,7 @@
                 tab_free: '🔓 Free Preview', tab_member: '🔐 Members Map',
                 manage_account: 'Manage Account',
                 nav_events: 'Events', nav_friends: 'Friends', nav_logout: 'Log Out',
+                menu_language: 'Language', menu_storage: 'Storage',
                 lock_title: 'Members-Only Map', lock_desc: 'Subscribe to unlock full-resolution APM layers, advanced filters, and export tools.', lock_btn: 'View Plans',
                 apm_score: 'APM Score:',
                 how_label: 'Process', how_title: 'How <span class="hl">DetectLab</span> Works',
@@ -485,6 +486,8 @@
                 ios_bld_search_help_zoom: 'Zoom in more',
                 ios_bld_search_help_zoom_in: 'Zoom in more',
                 ios_bld_search_help_zoom_out: 'Zoom out more',
+                ios_bld_settings: 'Detection settings',
+                ios_bld_suggest: 'Suggest a vanished building',
             },
             ro: {
                 nav_apm: 'Ce este APM', nav_map: 'Explorează Harta', nav_how: 'Cum Funcționează', nav_pricing: 'Prețuri', nav_useful: 'Informații Utile', nav_cta: 'Obține Acces',
@@ -502,6 +505,7 @@
                 tab_free: '🔓 Previzualizare Gratuită', tab_member: '🔐 Harta Membrilor',
                 manage_account: 'Gestionează Contul',
                 nav_events: 'Evenimente', nav_friends: 'Prieteni', nav_logout: 'Deconectare',
+                menu_language: 'Limbă', menu_storage: 'Stocare',
                 lock_title: 'Hartă Exclusivă Membrilor', lock_desc: 'Abonează-te pentru a debloca straturi APM la rezoluție completă, filtre avansate și instrumente de export.', lock_btn: 'Vezi Planuri',
                 apm_score: 'Scor APM:',
                 how_label: 'Proces', how_title: 'Cum Funcționează <span class="hl">DetectLab</span>',
@@ -970,6 +974,8 @@
                 ios_bld_search_help_zoom: 'Zoom in mai mult',
                 ios_bld_search_help_zoom_in: 'Zoom in mai mult',
                 ios_bld_search_help_zoom_out: 'Zoom out mai mult',
+                ios_bld_settings: 'Setări detecție',
+                ios_bld_suggest: 'Sugerează o clădire dispărută',
             }
         };
 
@@ -1410,3 +1416,4 @@
         }, { threshold: 0.12 });
 
         document.querySelectorAll('.what-card, .step, .plan-card').forEach(el => observer.observe(el));
+;

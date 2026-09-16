@@ -167,6 +167,15 @@ vm.runInContext(
         'slot=' + (html.match(/<div class="detector-social-actions"[^>]*>/) || ['<none>'])[0]);
     check('the social slot ships WITHOUT pre-rendered buttons (friends.js owns the state)',
         !/data-social-action=/.test(html));
+    check('the popup uses the horizontal detectorist card', /class="detector-popup detector-offline"/.test(html));
+    check('the card shows an avatar with initials and a presence dot',
+        /class="detector-avatar">AP<span class="detector-presence"><\/span>/.test(html));
+    check('the card CSS lays the avatar and the identity out in a row',
+        /\.detector-card-top\s*\{[^}]*display:\s*flex/.test(CSS_SRC));
+    check('the card reserves popup width for the late-painted social slot',
+        /\.detector-popup\s*\{[^}]*min-width:\s*228px/.test(CSS_SRC));
+    check('the feedback message can never overflow the card',
+        /\.detector-social-msg\s*\{[^}]*overflow-wrap:\s*anywhere/.test(CSS_SRC));
 
     /* ── 2. Resolve the shipped CSS cascade for that card ──────────────────── */
 
