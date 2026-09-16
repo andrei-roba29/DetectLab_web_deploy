@@ -236,14 +236,14 @@
             url: 'https://tiles.arcgis.com/tiles/t2AVhHhEnEvHcPF6/arcgis/rest/services/Siebenburgen_1859/MapServer/tile/{z}/{y}/{x}',
             minZoom: 7, maxNativeZoom: 14, tms: false,
             bounds: boundsArray(45.2059, 22.2319, 47.7300, 26.7037),
-            description: { ro: 'Hartă administrativă istorică', en: 'Historical administrative map' }, onlineKey: '_transylvania1859MapLayer'
+            description: { ro: 'Hartă administrativă istorică · Digitalizare și publicare: Universitatea „Ștefan cel Mare” din Suceava · Sursă: bukowina1856.eu', en: 'Historical administrative map · Digitized and published by “Ștefan cel Mare” University of Suceava · Source: bukowina1856.eu' }, onlineKey: '_transylvania1859MapLayer'
         },
         {
             id: 'galicia1855', label: { ro: 'Galiția și Lodomeria 1855', en: 'Galicia and Lodomeria 1855' }, category: 'premium', requiresPremium: true,
             url: 'https://tiles.arcgis.com/tiles/t2AVhHhEnEvHcPF6/arcgis/rest/services/Kummerer_1855/MapServer/tile/{z}/{y}/{x}',
             minZoom: 6, maxNativeZoom: 14, tms: false,
             bounds: boundsArray(46.8116, 18.3937, 50.8713, 26.6844),
-            description: { ro: 'Hartă administrativă istorică regională', en: 'Regional historical administrative map' }, onlineKey: '_galicia1855MapLayer'
+            description: { ro: 'Hartă administrativă istorică regională · Digitalizare și publicare: Universitatea „Ștefan cel Mare” din Suceava · Sursă: bukowina1856.eu', en: 'Regional historical administrative map · Digitized and published by “Ștefan cel Mare” University of Suceava · Source: bukowina1856.eu' }, onlineKey: '_galicia1855MapLayer'
         }
     ];
 

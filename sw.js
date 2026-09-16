@@ -1,5 +1,5 @@
 /* ============================================================
-   DetectLab — Service Worker v1.4.7
+   DetectLab — Service Worker v1.4.8
    ============================================================ */
 
 // Bump this when a client-side feature or data-sync fix ships so installed
@@ -32,7 +32,12 @@
 // v90: the map-side opacity mirror no longer prints the word "OPACITY" above
 // the range — the slider shows the layer name only (period mirrors keep
 // ISTORIC / PERIOADĂ).
-const CACHE_NAME = 'detectlab-v94-tutorial-friends';
+// v95: layer info for "Harta Transilvaniei 1859" and "Hartă administrativă a
+// Galiției și Lodomeriei – 1855" also credits the digitization and publication
+// by Universitatea „Ștefan cel Mare” din Suceava, with bukowina1856.eu as the
+// source (ⓘ popup, Leaflet attribution, offline-maps panel). The source domain
+// is rendered as a clickable link inside the ⓘ popup.
+const CACHE_NAME = 'detectlab-v95-map-source-usv';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -286,7 +291,15 @@ const PRECACHE_URLS = [
   // requests, chats), PWA control positions (Detect under the compass,
   // live-location above the account icon, magnifier in the left stack)
   // and the "Adaugă prieten" detectorist card.
-  'js/tutorial.js?v=20260916-tutorial-friends'
+  'js/tutorial.js?v=20260916-tutorial-friends',
+  // Harta Transilvaniei 1859 + Hartă administrativă a Galiției și Lodomeriei
+  // 1855: ⓘ layer info, Leaflet attribution and the offline-maps panel now also
+  // state "Digitalizare și publicare: Universitatea „Ștefan cel Mare” din
+  // Suceava · Sursă: bukowina1856.eu" (the source domain is clickable in the
+  // popup, hence the styles.css + map-app.js re-version).
+  'css/styles.css?v=20260916-map-source-usv',
+  'js/map-app.js?v=20260916-map-source-usv',
+  'js/offline-maps.js?v=20260916-map-source-usv'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

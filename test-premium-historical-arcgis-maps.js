@@ -7,7 +7,8 @@
 //      native zoom range and per-service bounds.
 //   2. The UI rows live inside PREMIUM → Harti istorice (histPremiumSubLayers)
 //      with the exact requested names, opacity sliders and info buttons
-//      carrying the required copyright texts.
+//      carrying the required copyright texts plus the digitization credit
+//      (Universitatea „Ștefan cel Mare” din Suceava · sursă bukowina1856.eu).
 //   3. Premium gating: rows are registered with the premium group, and the
 //      toggle functions are wrapped by subscriptions.js PREMIUM_TOGGLE_FNS.
 //   4. Red coverage rectangle shows whenever the zoom is OUTSIDE the
@@ -108,10 +109,34 @@ assert.ok(enBlock.includes('layer_transylvania1859') && enBlock.includes('layer_
 assert.ok(roBlock.includes('layer_transylvania1859') && roBlock.includes('layer_galicia1855'), 'ro locale has the new layer keys');
 
 // Info buttons with the mandatory copyright texts.
-assert.ok(subPanel.includes("showLayerInfo('Harta Transilvaniei 1859','© Administrativ Karte des Grossfürstenthums Siebenbürgen nach der neuesten Landeseintheilung (1859; 1:144 000, 1 w.zoll= 2000 w. klaftern)')"),
+const TRANSYLVANIA_INFO = '© Administrativ Karte des Grossfürstenthums Siebenbürgen nach der neuesten Landeseintheilung (1859; 1:144 000, 1 w.zoll= 2000 w. klaftern)';
+const GALICIA_INFO = '© Administrativ-Karte von den Königreichen Galizien und Lodomerien mit dem Grossherzogthume Krakau und den Herzogthümern Auschwitz, Zator und Bukowina : in 60 Blättern - Carl von Kummersberg 1855';
+// Digitization / publication credit + source, required on both maps.
+const DIGITIZATION_CREDIT = 'Digitalizare și publicare: Universitatea „Ștefan cel Mare” din Suceava';
+const SOURCE_CREDIT = 'Sursă: bukowina1856.eu';
+
+assert.ok(subPanel.includes(`showLayerInfo('Harta Transilvaniei 1859','${TRANSYLVANIA_INFO} · ${DIGITIZATION_CREDIT} · ${SOURCE_CREDIT}')`),
     'Transylvania info button carries the required copyright line');
-assert.ok(subPanel.includes("showLayerInfo('Hartă administrativă a Galiției și Lodomeriei – 1855','© Administrativ-Karte von den Königreichen Galizien und Lodomerien mit dem Grossherzogthume Krakau und den Herzogthümern Auschwitz, Zator und Bukowina : in 60 Blättern - Carl von Kummersberg 1855')"),
+assert.ok(subPanel.includes(`showLayerInfo('Hartă administrativă a Galiției și Lodomeriei – 1855','${GALICIA_INFO} · ${DIGITIZATION_CREDIT} · ${SOURCE_CREDIT}')`),
     'Galicia info button carries the required copyright line');
+
+// The ⓘ popup, the Leaflet attribution and the offline-maps panel all repeat
+// the digitization credit and the bukowina1856.eu source.
+[transylvaniaBlock, galiciaBlock].forEach((block, i) => {
+    const which = i === 0 ? 'Transylvania' : 'Galicia';
+    assert.ok(block.includes(DIGITIZATION_CREDIT), which + ' Leaflet attribution credits the USV digitization');
+    assert.ok(block.includes('bukowina1856.eu'), which + ' Leaflet attribution names bukowina1856.eu as the source');
+});
+const offlineMaps = read('js/offline-maps.js');
+for (const id of ['transylvania1859', 'galicia1855']) {
+    const entry = offlineMaps.slice(offlineMaps.indexOf(`id: '${id}'`));
+    const desc = entry.slice(0, entry.indexOf('onlineKey'));
+    assert.ok(desc.includes('bukowina1856.eu') && /Ștefan cel Mare|Suceava/.test(desc),
+        'offline-maps description for ' + id + ' carries the digitization credit + source');
+}
+// The popup renderer turns the source domain into a link (no innerHTML).
+assert.ok(html.includes('renderLayerInfoAttribution') && html.includes("LAYER_INFO_SOURCE_DOMAINS = ['bukowina1856.eu']"),
+    'ⓘ popup renders bukowina1856.eu as a clickable source link');
 
 // ── 4. Premium gating wiring ────────────────────────────────────────
 assert.match(mapApp, /\{\s*key:\s*'transylvania1859',\s*toggle:\s*'transylvania1859MapToggle',\s*row:\s*'transylvania1859Row'\s*\}/,
@@ -189,6 +214,8 @@ assert.ok(read('sw.js').includes('tiles.arcgis.com'), 'sw.js allowlist covers ti
 
 console.log('  ✓ tile endpoints (Siebenburgen_1859 z7-14, Kummerer_1855 z6-14) + service bounds');
 console.log('  ✓ exact names + copyright info popups inside PREMIUM → Harti istorice');
+console.log('  ✓ digitization credit (Universitatea „Ștefan cel Mare” din Suceava · bukowina1856.eu)');
+console.log('    in the ⓘ popup, the Leaflet attribution and the offline-maps descriptions');
 console.log('  ✓ premium gating (group category, master switch, wrapped toggles)');
 console.log('  ✓ red coverage rectangle whenever zoom is outside the available LOD range');
 console.log('OK — ArcGIS premium historical maps wired correctly.');

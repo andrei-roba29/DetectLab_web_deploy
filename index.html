@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260916-friend-card">
+    <link rel="stylesheet" href="css/styles.css?v=20260916-map-source-usv">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260902-babel-safe-area">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-no-bottom-bar">
@@ -2581,7 +2581,7 @@
                                         <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
                                     </span>
                                     <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
-                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Harta Transilvaniei 1859','© Administrativ Karte des Grossfürstenthums Siebenbürgen nach der neuesten Landeseintheilung (1859; 1:144 000, 1 w.zoll= 2000 w. klaftern)')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Harta Transilvaniei 1859','© Administrativ Karte des Grossfürstenthums Siebenbürgen nach der neuesten Landeseintheilung (1859; 1:144 000, 1 w.zoll= 2000 w. klaftern) · Digitalizare și publicare: Universitatea „Ștefan cel Mare” din Suceava · Sursă: bukowina1856.eu')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
                                         <span class="pct" id="transylvania1859MapPct">80%</span>
                                     </span>
                                 </div>
@@ -2608,7 +2608,7 @@
                                         <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
                                     </span>
                                     <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
-                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Hartă administrativă a Galiției și Lodomeriei – 1855','© Administrativ-Karte von den Königreichen Galizien und Lodomerien mit dem Grossherzogthume Krakau und den Herzogthümern Auschwitz, Zator und Bukowina : in 60 Blättern - Carl von Kummersberg 1855')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Hartă administrativă a Galiției și Lodomeriei – 1855','© Administrativ-Karte von den Königreichen Galizien und Lodomerien mit dem Grossherzogthume Krakau und den Herzogthümern Auschwitz, Zator und Bukowina : in 60 Blättern - Carl von Kummersberg 1855 · Digitalizare și publicare: Universitatea „Ștefan cel Mare” din Suceava · Sursă: bukowina1856.eu')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
                                         <span class="pct" id="galicia1855MapPct">80%</span>
                                     </span>
                                 </div>
@@ -3603,8 +3603,8 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260916-friend-card"></script>
-    <script src="js/offline-maps.js?v=20260915-offline-panel"></script>
+    <script src="js/map-app.js?v=20260916-map-source-usv"></script>
+    <script src="js/offline-maps.js?v=20260916-map-source-usv"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20260916-no-bottom-bar"></script>
     <script src="js/archeo-potential.js?v=20260827-arch-report"></script>
@@ -4046,10 +4046,36 @@
     </div>
 
     <script>
+        // Source domains inside an attribution (e.g. "Sursă: bukowina1856.eu"
+        // for the digitized Transylvania 1859 / Galicia & Lodomeria 1855 maps)
+        // are rendered as clickable links. The text is still built node by node
+        // — never with innerHTML — so the attribution cannot inject markup.
+        var LAYER_INFO_SOURCE_DOMAINS = ['bukowina1856.eu'];
+        function renderLayerInfoAttribution(box, text) {
+            box.textContent = '';
+            var linkRe = new RegExp('(https?:\\/\\/[^\\s\'"<>)]+|(?:www\\.)?(?:' +
+                LAYER_INFO_SOURCE_DOMAINS.join('|').replace(/\./g, '\\.') + '))', 'gi');
+            var last = 0, m;
+            while ((m = linkRe.exec(text)) !== null) {
+                var url = m[0].replace(/[.,;:!?)\]]+$/, '');
+                if (!url) continue;
+                if (m.index > last) box.appendChild(document.createTextNode(text.slice(last, m.index)));
+                var a = document.createElement('a');
+                a.textContent = url;
+                a.href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                box.appendChild(a);
+                last = m.index + url.length;
+                linkRe.lastIndex = last;
+            }
+            if (last < text.length) box.appendChild(document.createTextNode(text.slice(last)));
+        }
         function showLayerInfo(name, attribution) {
             var overlay = document.getElementById('layerInfoOverlay');
             document.getElementById('layerInfoTitle').textContent = name;
-            document.getElementById('layerInfoAttribution').textContent = attribution;
+            renderLayerInfoAttribution(document.getElementById('layerInfoAttribution'),
+                String(attribution == null ? '' : attribution));
             overlay.classList.add('open');
         }
         function closeLayerInfo() {

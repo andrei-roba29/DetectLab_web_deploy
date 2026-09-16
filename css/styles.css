@@ -6817,6 +6817,20 @@
             margin: 0;
         }
 
+        /* Source links inside a layer attribution (e.g. bukowina1856.eu for the
+           maps digitized by Universitatea „Ștefan cel Mare” din Suceava). */
+        .layer-info-attribution a {
+            color: #c8a96e;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            word-break: break-word;
+        }
+
+        .layer-info-attribution a:hover,
+        .layer-info-attribution a:focus-visible {
+            color: #f5f0eb;
+        }
+
         /* Heritage 600 m radius canvas lives as a direct child of the map
            pane. Pin its zoom-animation origin to 0 0 (same as Leaflet's
            own renderers) so the circles stay on their sites while zooming.
