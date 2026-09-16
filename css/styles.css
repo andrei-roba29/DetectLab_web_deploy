@@ -5173,7 +5173,7 @@
            Când un strat de analiză e apăsat — LIDAR Scanner, Zone cu potențial
            arheologic sau Raport arheologic — sliderul său de distanță/rază e
            oglindit vertical în dreapta (exact ca opacitatea), iar butonul de
-           acțiune (Scan / Zone candidati / Generează raport) e mutat fizic aici,
+           acțiune (Scan / Detectează / Generează raport) e mutat fizic aici,
            centrat în partea de jos a ecranului principal. Mutarea fizică (nu o
            clonă) păstrează id-ul, listener-ele, starea disabled și spinner-ul
            butonului original; js/vertical-opacity-control.js îl duce înapoi în
@@ -5218,6 +5218,30 @@
 
         .layer-action-dock-inner:empty {
             display: none;
+        }
+
+        .layer-action-dock-inner > button[style*="display: none"],
+        .layer-action-dock-inner > button[style*="display:none"],
+        .layer-action-dock-inner > button.is-hidden {
+            display: none !important;
+        }
+
+        #lidarScannerRun.is-hidden,
+        #lidarScannerRun[style*="display: none"],
+        #lidarScannerRun[style*="display:none"] {
+            display: none !important;
+        }
+
+        #archeoPotRunBtn.is-hidden,
+        #archeoPotRunBtn[style*="display: none"],
+        #archeoPotRunBtn[style*="display:none"] {
+            display: none !important;
+        }
+
+        #archReportRunBtn.is-hidden,
+        #archReportRunBtn[style*="display: none"],
+        #archReportRunBtn[style*="display:none"] {
+            display: none !important;
         }
 
         /* Butonul mutat în dock pierde lățimea de 100% din rândul panoului și

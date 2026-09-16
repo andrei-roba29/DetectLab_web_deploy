@@ -1476,7 +1476,19 @@
     // The run button only makes sense once a point has been picked.
     function updateRunButton() {
         var btn = el('archReportRunBtn');
-        if (btn && !_state.running) btn.disabled = !_state.point;
+        var show = !!_state.point;
+        if (btn) {
+            if (!_state.running) btn.disabled = !show;
+            if (btn.style) btn.style.display = show ? '' : 'none';
+            if (btn.classList && typeof btn.classList.toggle === 'function') {
+                btn.classList.toggle('is-hidden', !show);
+            }
+        }
+        try {
+            if (window.DetectLabVerticalOpacity && typeof window.DetectLabVerticalOpacity.refreshDock === 'function') {
+                window.DetectLabVerticalOpacity.refreshDock();
+            }
+        } catch (e) {}
     }
 
     // The heritage FeatureCollections load asynchronously with the page.
@@ -2413,6 +2425,7 @@
     function onMapClick(e) {
         if (!_state.active || _state.running) return;
         _state.point = { lat: e.latlng.lat, lng: e.latlng.lng };
+        try { window._dlSearchAreaPin = { lat: e.latlng.lat, lng: e.latlng.lng }; } catch (err) {}
         drawPointMarker(e.latlng);
         setStatus('arch_report_point_set', false, {
             lat: _state.point.lat.toFixed(5), lng: _state.point.lng.toFixed(5)
@@ -2501,6 +2514,7 @@
         if (valueLabel && slider) valueLabel.textContent = currentRadiusKm() + ' km';
         syncPdfLangUi();
         updateUi();
+        updateRunButton();
     }
 
     function setDragClass(on) {
