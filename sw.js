@@ -24,7 +24,12 @@
 // button now asks "Vrei să fii vizibil și pentru alți utilizatori?" (Da/Nu);
 // the answer gates every presence publish so users are only shown to other
 // detectorists after an explicit "Da".
-const CACHE_NAME = 'detectlab-v88-map-social';
+// v89: Satellite „Istoric” keeps only the 2016 orthophoto (the 2018 layer is
+// removed from the base layer → two stops, 2016 / Prezent) and the two
+// map-side mirrors of the Satellite layer stay side by side in the installed
+// PWA / on phones, where the ≤600px breakpoint used to stack them on the same
+// anchor so only the ISTORIC mirror was visible.
+const CACHE_NAME = 'detectlab-v89-sat-2016-only';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -233,7 +238,19 @@ const PRECACHE_URLS = [
   // when the popup opens.
   'js/friends.js?v=20260915-map-social',
   'js/map-app.js?v=20260915-map-social',
-  'css/styles.css?v=20260915-map-social'
+  'css/styles.css?v=20260915-map-social',
+  // Satellite „Istoric” without 2018 + the installed-PWA mirror fix:
+  // • the base layer keeps only the 2016 orthophoto (GeoServer „geospatial”)
+  //   and the present-day Esri imagery — the 2018 layer (GeoServer „clc”) is
+  //   gone, so the period slider has two stops (2016 / Prezent);
+  // • the two map-side vertical mirrors (opacity + period) no longer collapse
+  //   onto the same anchor inside the ≤600px breakpoint, which is exactly the
+  //   width every installed PWA / phone reports — in standalone mode only the
+  //   ISTORIC mirror used to be visible, never the pair.
+  'css/styles.css?v=20260916-sat-2016-only',
+  'js/map-app.js?v=20260916-sat-2016-only',
+  'js/vertical-opacity-control.js?v=20260916-sat-2016-only',
+  'js/auth.js?v=20260916-sat-2016-only'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

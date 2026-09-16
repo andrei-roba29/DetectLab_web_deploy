@@ -270,8 +270,15 @@ assert(!Object.prototype.hasOwnProperty.call(manifest, 'screenshots'), 'empty sc
 assert(manifest.icons.some((i) => i.sizes === '192x192'), 'manifest needs a 192px icon');
 assert(manifest.icons.some((i) => i.sizes === '512x512'), 'manifest needs a 512px icon');
 
-assert(swSrc.includes("const CACHE_NAME = 'detectlab-v78-android-install-chrome'"),
-    'service worker cache must be bumped so installed PWAs pick up the new install flow');
+// The cache name is re-bumped by every release (a pinned string went stale at
+// v78 while the app already shipped v88). Keep the guarantee — the install
+// flow's bump happened, and no later release may go backwards — without
+// freezing a version that rots on the next release.
+const cacheName = (swSrc.match(/const CACHE_NAME = '([^']+)'/) || [])[1] || '';
+const cacheVersion = Number((cacheName.match(/-v(\d+)-/) || [])[1] || 0);
+assert(cacheVersion >= 78,
+    'service worker cache must be bumped so installed PWAs pick up the new install flow (found ' +
+    (cacheName || '<none>') + ')');
 console.log('  ✔ styles, manifest (id/scope) and SW cache bump in place');
 
 console.log('\n✅ ALL PWA ANDROID INSTALL TESTS PASSED\n');
