@@ -12,13 +12,22 @@
    · GET  /api/newsletter/health      (public) → counts w/o auth (for dashboard badge)
 
    Auth:   requireUser (verifies Supabase JWT)
-   Admin:  requires header x-admin-key === INGESTION_ADMIN_KEY (or
-           Authorization still verified for audit). Falls back to
-           NEWSLETTER_ADMIN_KEY if set. In dev with no key configured,
-           any authenticated user may list/send (useful for demo).
+   Admin:  requires the admin key in header `x-admin-key` (or
+           `x-ingestion-key`) OR as a query param `?admin_key=` / `?key=` /
+           `?x_admin_key=`. The query fallback exists because from a phone
+           there is no console to debug with — the admin page sends both.
+           Accepted keys (any one of them, first match wins for reporting):
+           INGESTION_ADMIN_KEY → NEWSLETTER_ADMIN_KEY → ADMIN_KEY → ADMINKEY.
+           In dev with no key configured, any authenticated user may
+           list/send (useful for demo).
+   Debug:  GET /api/newsletter/debug (public, no key, no JWT) answers "is a key
+           configured at all, and does what you just typed match it?" so the
+           admin page can print the reason inline instead of in a console.
+           It never echoes the key itself — only lengths and booleans.
    ═══════════════════════════════════════════════════════════════════════ */
 
 import { Router } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import { pool } from '../config/db.js';
 import { logger } from '../logger.js';
 import { env } from '../config/env.js';
@@ -27,18 +36,124 @@ import * as newsletter from '../services/newsletter.js';
 
 const router = Router();
 
-function isAdmin(req) {
-  const key = env.ingestionAdminKey || env.newsletter.adminKey || '';
-  if (!key) return true; // no admin key configured → allow authenticated (dev/demo)
-  const header = req.headers['x-admin-key'] || req.headers['x-ingestion-key'] || '';
-  return header === key;
+// ── Admin key plumbing ────────────────────────────────────────────────
+//
+// Every key comparison goes through normalizeKey() on BOTH sides. Pasting a
+// secret from a phone keyboard very often appends a space or wraps it in
+// straight quotes, and an invisible trailing space is exactly the kind of bug
+// that produces "Admin key required" while the value *looks* identical.
+const ADMIN_KEY_ENV_NAMES = ['INGESTION_ADMIN_KEY', 'NEWSLETTER_ADMIN_KEY', 'ADMIN_KEY', 'ADMINKEY'];
+
+function normalizeKey(value) {
+  let out = value == null ? '' : String(value);
+  out = out.replace(/^[\s"'`]+|[\s"'`]+$/g, ''); // trim whitespace + wrapping quotes
+  return out;
 }
 
-function requireAdmin(req, res, next) {
-  if (!isAdmin(req)) {
-    return res.status(403).json({ error: 'forbidden', message: 'Admin key required (x-admin-key)' });
+/** All keys the backend will accept, in precedence order. */
+export function getConfiguredAdminKeys() {
+  const raw = [
+    env.ingestionAdminKey,
+    env.newsletter && env.newsletter.adminKey,
+    process.env.ADMIN_KEY,
+    process.env.ADMINKEY,
+  ];
+  const keys = [];
+  for (const entry of raw) {
+    const key = normalizeKey(entry);
+    if (key && !keys.includes(key)) keys.push(key);
   }
-  next();
+  return keys;
+}
+
+/** The primary configured key (empty string when admin gating is off). */
+export function getConfiguredAdminKey() {
+  const keys = getConfiguredAdminKeys();
+  return keys.length ? keys[0] : '';
+}
+
+/** Which env vars are actually set — the answer to "did I put it in the wrong service?" */
+export function adminKeySources() {
+  return ADMIN_KEY_ENV_NAMES.filter((name) => normalizeKey(process.env[name]));
+}
+
+/**
+ * The key the caller sent: header first, query params as a no-console
+ * fallback. `via` says where it came from so it can be shown to the user.
+ */
+export function getProvidedAdminKey(req) {
+  const headers = (req && req.headers) || {};
+  const fromHeader = normalizeKey(headers['x-admin-key'] || headers['x-ingestion-key'] || '');
+  if (fromHeader) return { key: fromHeader, via: 'header' };
+
+  const query = (req && req.query) || {};
+  for (const name of ['admin_key', 'key', 'x_admin_key']) {
+    const value = Array.isArray(query[name]) ? query[name][0] : query[name];
+    const fromQuery = normalizeKey(value);
+    if (fromQuery) return { key: fromQuery, via: `query:${name}` };
+  }
+  return { key: '', via: 'none' };
+}
+
+function keysMatch(a, b) {
+  if (!a || !b) return false;
+  const left = Buffer.from(String(a), 'utf8');
+  const right = Buffer.from(String(b), 'utf8');
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+export function isAdmin(req) {
+  const configured = getConfiguredAdminKeys();
+  if (!configured.length) return true; // no admin key configured → allow authenticated (dev/demo)
+  const { key } = getProvidedAdminKey(req);
+  return configured.some((candidate) => keysMatch(candidate, key));
+}
+
+/** Console-free diagnostics — booleans and lengths only, never the key. */
+export function adminKeyDiagnostics(req) {
+  const configured = getConfiguredAdminKeys();
+  const provided = getProvidedAdminKey(req);
+  const matched = configured.length ? configured.some((candidate) => keysMatch(candidate, provided.key)) : true;
+  return {
+    hasConfiguredKey: configured.length > 0,
+    adminKeyConfigured: configured.length > 0,
+    configuredFrom: adminKeySources(),
+    providedKeyLength: provided.key.length,
+    providedKeyLooksEmpty: provided.key.length === 0,
+    receivedVia: provided.via,
+    lengthMatchesConfigured: configured.length > 0 && provided.key.length > 0
+      ? configured.some((candidate) => candidate.length === provided.key.length)
+      : null,
+    isAdmin: isAdmin(req),
+    matched,
+  };
+}
+
+export function adminKeyHint(diag) {
+  if (!diag.hasConfiguredKey) {
+    return 'Backend-ul nu are nicio cheie admin configurată — merge fără cheie (mod dev). Dacă nu e ce vrei, setează NEWSLETTER_ADMIN_KEY pe serviciul BACKEND și dă Redeploy.';
+  }
+  if (!diag.providedKeyLength) {
+    return 'Nu a ajuns nicio cheie la backend. Scrie-o în câmpul „Admin key” din pagină și apasă din nou — nu e nevoie de consolă.';
+  }
+  if (diag.lengthMatchesConfigured === false) {
+    return `Ai trimis ${diag.providedKeyLength} caractere, dar cheia de pe backend are altă lungime — de obicei un spațiu în plus sau ghilimele la copy-paste. Șterge tot și tastează cheia din nou.`;
+  }
+  return 'Cheia are aceeași lungime dar alt conținut: verifică diacriticele/majusculele și asigură-te că variabila e pe serviciul BACKEND din Railway (nu pe site), cu numele exact NEWSLETTER_ADMIN_KEY sau INGESTION_ADMIN_KEY, apoi dă Redeploy.';
+}
+
+export function requireAdmin(req, res, next) {
+  if (isAdmin(req)) return next();
+  const diag = adminKeyDiagnostics(req);
+  res.status(403).json({
+    error: diag.providedKeyLength ? 'admin_key_mismatch' : 'admin_key_required',
+    message: diag.providedKeyLength
+      ? 'Admin key mismatch — cheia trimisă nu e identică cu cea de pe backend'
+      : 'Admin key required (x-admin-key sau ?admin_key=)',
+    hint: adminKeyHint(diag),
+    debug: diag,
+  });
 }
 
 // ── User endpoints (auth) ────────────────────────────────────────────
@@ -93,11 +208,34 @@ router.post('/newsletter/toggle', requireUser, async (req, res) => {
 router.get('/newsletter/health', async (req, res) => {
   try {
     const counts = await newsletter.getSubscriberCounts();
-    res.json({ ok: true, ...counts });
+    res.json({ ok: true, adminKeyConfigured: getConfiguredAdminKeys().length > 0, ...counts });
   } catch (err) {
     // Table may not exist before migration 013 — return soft error
-    res.json({ ok: false, error: err.message.slice(0, 200) });
+    res.json({ ok: false, adminKeyConfigured: getConfiguredAdminKeys().length > 0, error: err.message.slice(0, 200) });
   }
+});
+
+// Console-free troubleshooting for the admin page (no JWT, no key required).
+// Safe to expose: it only reports booleans/lengths about the key you already
+// typed, never the key itself.
+router.get('/newsletter/debug', (req, res) => {
+  const diag = adminKeyDiagnostics(req);
+  res.json({
+    ok: true,
+    service: 'detectlab-backend',
+    nodeEnv: env.nodeEnv,
+    adminKeyConfigured: diag.adminKeyConfigured,
+    adminKeyConfiguredFrom: diag.configuredFrom,
+    providedKeyLength: diag.providedKeyLength,
+    providedVia: diag.receivedVia,
+    lengthMatchesConfigured: diag.lengthMatchesConfigured,
+    isAdmin: diag.isAdmin,
+    hint: diag.isAdmin && diag.hasConfiguredKey ? null : adminKeyHint(diag),
+    accepted: {
+      headers: ['x-admin-key', 'x-ingestion-key'],
+      query: ['admin_key', 'key', 'x_admin_key'],
+    },
+  });
 });
 
 router.get('/newsletter/subscribers', requireUser, requireAdmin, async (req, res) => {

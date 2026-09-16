@@ -47,7 +47,7 @@
 <header>
   <div class="wrap" style="padding:0">
     <h1>📧 DetectLab — Newsletter Admin</h1>
-    <p>Vezi cine este abonat și cine nu (profiles.newsletter_subscribed), filtrează după status și trimite primul newsletter. Necesită autentificare + cheie admin (<code class="mono">x-admin-key</code> = <code class="mono">INGESTION_ADMIN_KEY</code> / <code class="mono">NEWSLETTER_ADMIN_KEY</code>). Backend-ul este singurul scriitor care diferențiază corect audiența — checkbox-ul din formularul de înregistrare scrie direct în <code class="mono">public.profiles</code>.</p>
+    <p>Vezi cine este abonat și cine nu (profiles.newsletter_subscribed), filtrează după status și trimite primul newsletter. Necesită autentificare +, dacă backend-ul are o cheie configurată, cheia admin (<code class="mono">NEWSLETTER_ADMIN_KEY</code> / <code class="mono">INGESTION_ADMIN_KEY</code>) — pagina o trimite simultan ca header <code class="mono">x-admin-key</code> și ca query <code class="mono">?admin_key=</code>, deci merge și de pe telefon, fără consolă. Diagnosticul cheiei se vede în caseta „🔎 Diagnostic cheie admin” de mai jos. Backend-ul este singurul scriitor care diferențiază corect audiența — checkbox-ul din formularul de înregistrare scrie direct în <code class="mono">public.profiles</code>.</p>
   </div>
 </header>
 
@@ -73,6 +73,7 @@
   <div class="card" id="healthCard">
     <h2>📊 Audiență — diferențiere abonat / neabonat</h2>
     <div id="healthMsg" class="alert info">Se încarcă…</div>
+    <div id="adminDebug" class="alert info" style="margin-top:8px;display:none;font-size:12px;line-height:1.55"></div>
     <div class="grid" id="kpis" style="display:none">
       <div class="kpi"><div class="n" id="kpiTotal">—</div><div class="lbl">Total conturi</div></div>
       <div class="kpi subs"><div class="n" id="kpiSub">—</div><div class="lbl">✅ Abonați (subscribed = true)</div></div>
@@ -135,6 +136,7 @@
     <h2>🧪 Test local (fără autentificare)</h2>
     <p class="muted" style="font-size:12px;line-height:1.5">Poți verifica că tabelele există direct cu health-check-ul public (nu necesită token):</p>
     <button class="btnGhost" onclick="loadHealthPublic()">GET /api/newsletter/health (public)</button>
+    <button class="btnGhost" onclick="probeAdminKey().then(function(d){ renderAdminDebug(d, null); document.getElementById('healthCard').scrollIntoView({behavior:'smooth'}); })">🔎 Verifică cheia admin (fără consolă)</button>
     <pre id="healthRaw" class="mono" style="background:#0b1220;color:#c7d2fe;padding:12px;border-radius:10px;overflow:auto;margin-top:10px;max-height:220px">—</pre>
   </div>
 
@@ -156,6 +158,23 @@ function adminKey() {
   var v = document.getElementById('adminKey').value.trim();
   if (v) try{ sessionStorage.setItem('dl_newsletter_admin_key', v);}catch(e){}
   return v || (function(){ try{return sessionStorage.getItem('dl_newsletter_admin_key')||'';}catch(e){return '';} })();
+}
+// The key is sent BOTH as a header and as a query param: from a phone there is
+// no console to inspect headers with, and some proxies/HTTP clients drop
+// non-standard ones. The backend accepts either (see routes/newsletter.js).
+function withAdminKey(url) {
+  var k = adminKey();
+  if (!k) return url;
+  return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'admin_key=' + encodeURIComponent(k);
+}
+function authHeaders(token) {
+  var h = { 'Authorization': 'Bearer ' + token };
+  var k = adminKey();
+  if (k) h['x-admin-key'] = k;
+  return h;
+}
+function viaLabel() {
+  return adminKey() ? 'header x-admin-key + query ?admin_key=' : 'nicăieri (câmpul e gol)';
 }
 async function getToken() {
   if (!window.supabaseClient || !window.supabaseClient.auth) return null;
@@ -206,11 +225,12 @@ async function loadHealth(){
   var kpis = document.getElementById('kpis');
   msg.className='alert info'; msg.textContent='Se încarcă…'; kpis.style.display='none';
   var token = await getToken();
-  if(!token){ msg.className='alert err'; msg.textContent='Nu ești autentificat. Loghează-te mai întâi.'; return; }
+  if(!token){ msg.className='alert err'; msg.textContent='Nu ești autentificat. Loghează-te mai întâi.'; renderAdminDebug(null, 'Nu ești logat cu un cont DetectLab — apasă „Log in / Register”, apoi din nou „Reîncarcă”.'); return; }
   try{
-    var r = await fetch(apiBase() + '/newsletter/subscribers?limit=1', { headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey() } });
+    renderAdminDebug(await probeAdminKey(), null);
+    var r = await fetch(withAdminKey(apiBase() + '/newsletter/subscribers?limit=1'), { headers: authHeaders(token) });
     var j = await r.json().catch(function(){return {};});
-    if(!r.ok) throw new Error(j.message || j.error || ('HTTP '+r.status));
+    if(!r.ok) throw new Error(describeApiError(j, r.status));
     var c = j.counts;
     document.getElementById('kpiTotal').textContent = c.total_profiles;
     document.getElementById('kpiSub').textContent = c.subscribed;
@@ -220,6 +240,95 @@ async function loadHealth(){
   }catch(e){
     msg.className='alert err'; msg.textContent='Eroare: ' + e.message;
   }
+}
+
+// ── Console-free diagnostics ──────────────────────────────────────────
+// Queries the public debug endpoint (no token, no key needed) and prints what
+// the backend actually sees, so the key can be fixed from a phone without a
+// developer console.
+async function probeAdminKey(){
+  var k = adminKey();
+  try{
+    var url = apiBase() + '/newsletter/debug' + (k ? '?admin_key=' + encodeURIComponent(k) : '');
+    var r = await fetch(url);
+    var j = await r.json().catch(function(){return {};});
+    if(!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
+    return j;
+  }catch(e){
+    return { probeError: e.message };
+  }
+}
+function renderAdminDebug(d, customNote){
+  var el = document.getElementById('adminDebug');
+  if(!el) return;
+  var sent = adminKey();
+  var lines = [];
+  var cls = 'alert info';
+  if(customNote){
+    lines.push('<strong>Autentificare:</strong> ' + escapeHtml(customNote));
+    cls = 'alert err';
+  } else if (!d || d.probeError) {
+    lines.push('<strong>Backend:</strong> nu am putut consulta <code class="mono">' + escapeHtml(apiBase()) + '/newsletter/debug</code>' + (d && d.probeError ? ' — ' + escapeHtml(d.probeError) : '') + '. Dacă apare „Failed to fetch”, înseamnă că URL-ul din câmpul de mai jos nu e serviciul BACKEND din Railway (sau backend-ul e o versiune veche, fără acest endpoint — face-i un Redeploy).');
+    cls = 'alert err';
+  } else {
+    var configured = !!d.adminKeyConfigured;
+    lines.push('<strong>Backend interogat:</strong> <code class="mono">' + escapeHtml(apiBase()) + '</code>');
+    lines.push('<strong>Cheie configurată pe backend:</strong> ' + (configured
+      ? 'DA' + (d.adminKeyConfiguredFrom && d.adminKeyConfiguredFrom.length ? ' (variabila ' + escapeHtml(d.adminKeyConfiguredFrom.join(' / ')) + ' există)' : '')
+      : 'NU → backend-ul lasă orice cont logat să listeze și să trimită, fără cheie.'));
+    lines.push('<strong>Cheie trimisă de tine:</strong> ' + (sent
+      ? sent.length + ' caractere, trimisă prin ' + escapeHtml(viaLabel()) + ' — backendul a citit-o din <code class="mono">' + escapeHtml(String(d.providedVia || 'none')) + '</code>'
+      : '0 caractere — câmpul „Admin key” e gol'));
+    if (configured && !sent.length) {
+      cls = 'alert err';
+      lines.push('<strong>❌ Verdict:</strong> backend-ul cere o cheie, dar câmpul „Admin key” e gol. Scrie valoarea variabilei din Railway în câmp, apoi „↻ Reîncarcă”.');
+      lines.push(adminKeyChecklist());
+    } else if (configured && d.isAdmin) {
+      cls = 'alert ok';
+      lines.push('<strong>✅ Verdict:</strong> cheia se potrivește. Dacă mai apare o eroare, nu e de la cheie — citește mesajul roșu de sus.');
+    } else if (!configured) {
+      lines.push('<strong>ℹ️ Verdict:</strong> nu există cheie pe backend, deci ai dreptate că merge fără — nu ai ce greși aici.');
+    } else {
+      cls = 'alert err';
+      lines.push('<strong>❌ Verdict:</strong> cheia trimisă NU e egală cu cea de pe backend. ' + escapeHtml(d.hint || ''));
+      lines.push(adminKeyChecklist());
+    }
+  }
+  el.className = cls;
+  el.style.display = 'block';
+  el.innerHTML = '🔎 <strong>Diagnostic cheie admin</strong> (fără consolă)<br>' + lines.join('<br>');
+}
+function adminKeyChecklist(){
+  return '<div style="margin-top:8px;padding:10px 12px;background:rgba(255,255,255,.7);border-radius:8px">' +
+    '<strong>4 pași de verificat, în ordinea asta:</strong>' +
+    '<ol style="margin:6px 0 0;padding-left:20px;line-height:1.6">' +
+    '<li>Variabila trebuie să fie pe serviciul <strong>BACKEND</strong> din Railway (cel cu adresa <code class="mono">.up.railway.app</code> din câmpul „API base” de mai sus), <em>nu</em> pe serviciul site-ului.</li>' +
+    '<li>Numele exact <code class="mono">NEWSLETTER_ADMIN_KEY</code>. Dacă există și <code class="mono">INGESTION_ADMIN_KEY</code>, backendul o acceptă pe oricare — dar nu pune o valoare diferită în una dintre ele.</li>' +
+    '<li>Valoare identică în ambele locuri: fără spațiu la final, fără ghilimele. Cel mai sigur: copiază din Railway și lipește în câmpul „Admin key”, apoi Reîncarcă.</li>' +
+    '<li>După modificare în Railway apasă <strong>Redeploy</strong> pe backend (altfel rulează încă cu valorile vechi), apoi aici „↻ Reîncarcă”.</li>' +
+    '</ol>' +
+    '<div style="margin-top:8px"><strong>Test care dă răspunsul definitive</strong>: șterge <code class="mono">NEWSLETTER_ADMIN_KEY</code> de pe backend → Redeploy. Dacă pagina se încarcă, problema era strict în cheie; pune apoi exact același text în Railway și în câmp.</div>' +
+    '</div>';
+}
+// Renders the backend 403 payload (error + message + hint + debug) inline.
+function describeApiError(j, status){
+  if (j && (j.debug || j.hint)) {
+    var d = j.debug || {};
+    var parts = [j.message || j.error || ('HTTP ' + status)];
+    if (d.hasConfiguredKey === false) parts.push('backendul nu are nicio cheie configurată');
+    else parts.push('cheia ta: ' + (d.providedKeyLength || 0) + ' caractere, primită ' + (d.receivedVia || 'nicăieri'));
+    if (j.hint) parts.push(j.hint);
+    var el = document.getElementById('adminDebug');
+    if (el) {
+      el.className = 'alert err';
+      el.style.display = 'block';
+      el.innerHTML += '<br><span class="mono" style="font-size:11px;opacity:.85">răspuns backend: ' +
+        escapeHtml(JSON.stringify({ error: j.error, hasConfiguredKey: d.hasConfiguredKey, providedKeyLength: d.providedKeyLength, receivedVia: d.receivedVia, lengthMatchesConfigured: d.lengthMatchesConfigured })) +
+        '</span>' + adminKeyChecklist();
+    }
+    return parts.join(' · ');
+  }
+  return (j && (j.message || j.error)) || ('HTTP ' + status);
 }
 async function loadHealthPublic(){
   var el = document.getElementById('healthRaw');
@@ -240,9 +349,10 @@ async function loadSubscribers(which){
   var body = document.getElementById('tblBody');
   body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:16px">Se încarcă…</td></tr>';
   try{
-    var r = await fetch(apiBase() + '/newsletter/subscribers' + qs, { headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey() } });
+    renderAdminDebug(await probeAdminKey(), null);
+    var r = await fetch(withAdminKey(apiBase() + '/newsletter/subscribers' + qs), { headers: authHeaders(token) });
     var j = await r.json().catch(function(){return {};});
-    if(!r.ok) throw new Error(j.message || j.error || ('HTTP '+r.status));
+    if(!r.ok) throw new Error(describeApiError(j, r.status));
     var users = j.users || [];
     if(users.length===0){ body.innerHTML='<tr><td colspan="6" style="text-align:center;padding:16px" class="muted">Niciun rezultat pentru filtrul ales.</td></tr>'; return; }
     body.innerHTML = users.map(function(u){
@@ -266,9 +376,9 @@ async function loadCampaigns(){
   var body=document.getElementById('campBody');
   body.innerHTML='<tr><td colspan="7" style="text-align:center;padding:12px">Se încarcă…</td></tr>';
   try{
-    var r = await fetch(apiBase() + '/newsletter/campaigns?limit=20', { headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey() } });
+    var r = await fetch(withAdminKey(apiBase() + '/newsletter/campaigns?limit=20'), { headers: authHeaders(token) });
     var j=await r.json().catch(function(){return {};});
-    if(!r.ok) throw new Error(j.message||j.error||('HTTP '+r.status));
+    if(!r.ok) throw new Error(describeApiError(j, r.status));
     var camps=j.campaigns||[];
     if(camps.length===0){ body.innerHTML='<tr><td colspan="7" style="text-align:center;padding:12px" class="muted">Nicio campanie încă — trimite primul newsletter mai sus.</td></tr>'; return; }
     body.innerHTML=camps.map(function(c){
@@ -292,10 +402,10 @@ async function sendFirst(force){
   btn.disabled=true; btn.textContent='Se trimite…';
   out.innerHTML='<div class="alert info">Se creează campania și se trimite către abonați… (secvențial, poate dura câteva secunde)</div>';
   try{
-    var url = apiBase() + '/newsletter/send-first' + (force?'?force=true':'');
-    var r = await fetch(url, { method:'POST', headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey(), 'Content-Type':'application/json' }, body:'{}' });
+    var url = withAdminKey(apiBase() + '/newsletter/send-first' + (force?'?force=true':''));
+    var r = await fetch(url, { method:'POST', headers: Object.assign(authHeaders(token), { 'Content-Type':'application/json' }), body:'{}' });
     var j = await r.json().catch(function(){return {};});
-    if(!r.ok) throw new Error(j.message || j.error || ('HTTP '+r.status));
+    if(!r.ok) throw new Error(describeApiError(j, r.status));
     var mode = j.loggedOnly ? 'logged-only (fără SMTP/Resend — vezi logs)' : 'livrare reală';
     out.innerHTML='<div class="alert ok"><strong>✅ Trimis!</strong> Campanie <code class="mono">'+escapeHtml(j.campaign_id||'')+'</code> → '+j.sent+' trimise, '+j.failed+' eșuate, din '+j.recipients+' destinatari.<br>Mod: '+escapeHtml(mode)+'.</div>';
     loadCampaigns(); loadHealth();
@@ -314,9 +424,9 @@ async function createCustom(){
   var out=document.getElementById('customResult');
   out.innerHTML='<div class="alert info">Se creează…</div>';
   try{
-    var r=await fetch(apiBase()+'/newsletter/campaigns', { method:'POST', headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey(), 'Content-Type':'application/json' }, body: JSON.stringify({ subject:subject, preview_text:preview, body_html:html, body_text:text }) });
+    var r=await fetch(withAdminKey(apiBase()+'/newsletter/campaigns'), { method:'POST', headers: Object.assign(authHeaders(token), { 'Content-Type':'application/json' }), body: JSON.stringify({ subject:subject, preview_text:preview, body_html:html, body_text:text }) });
     var j=await r.json().catch(function(){return {};});
-    if(!r.ok) throw new Error(j.message||j.error||('HTTP '+r.status));
+    if(!r.ok) throw new Error(describeApiError(j, r.status));
     out.innerHTML='<div class="alert ok">✅ Draft creat: <code class="mono">'+escapeHtml(j.campaign.id)+'</code> — '+escapeHtml(j.campaign.subject)+'</div>';
     loadCampaigns();
   }catch(e){ out.innerHTML='<div class="alert err">Eroare: '+escapeHtml(e.message)+'</div>'; }
@@ -332,19 +442,22 @@ async function createAndSendCustom(){
   var out=document.getElementById('customResult');
   out.innerHTML='<div class="alert info">Se creează și se trimite…</div>';
   try{
-    var r=await fetch(apiBase()+'/newsletter/campaigns', { method:'POST', headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey(), 'Content-Type':'application/json' }, body: JSON.stringify({ subject:subject, preview_text:preview, body_html:html, body_text:text }) });
+    var r=await fetch(withAdminKey(apiBase()+'/newsletter/campaigns'), { method:'POST', headers: Object.assign(authHeaders(token), { 'Content-Type':'application/json' }), body: JSON.stringify({ subject:subject, preview_text:preview, body_html:html, body_text:text }) });
     var j=await r.json().catch(function(){return {};});
-    if(!r.ok) throw new Error(j.message||j.error||('HTTP '+r.status));
+    if(!r.ok) throw new Error(describeApiError(j, r.status));
     var cid=j.campaign.id;
-    var r2=await fetch(apiBase()+'/newsletter/send', { method:'POST', headers:{ 'Authorization':'Bearer '+token, 'x-admin-key': adminKey(), 'Content-Type':'application/json' }, body: JSON.stringify({ campaign_id: cid }) });
+    var r2=await fetch(withAdminKey(apiBase()+'/newsletter/send'), { method:'POST', headers: Object.assign(authHeaders(token), { 'Content-Type':'application/json' }), body: JSON.stringify({ campaign_id: cid }) });
     var j2=await r2.json().catch(function(){return {};});
-    if(!r2.ok) throw new Error(j2.message||j2.error||('HTTP '+r2.status));
+    if(!r2.ok) throw new Error(describeApiError(j2, r2.status));
     out.innerHTML='<div class="alert ok">✅ Trimis! '+j2.sent+' trimise din '+j2.recipients+' (failed: '+j2.failed+')</div>';
     loadCampaigns(); loadHealth();
   }catch(e){ out.innerHTML='<div class="alert err">Eroare: '+escapeHtml(e.message)+'</div>'; }
 }
 initAuth();
 loadHealthPublic();
+// Show the key diagnostic right away — even before login, so a user on a phone
+// can see whether the backend has a key at all without opening a console.
+probeAdminKey().then(renderAdminDebug);
 </script>
 </body>
 </html>

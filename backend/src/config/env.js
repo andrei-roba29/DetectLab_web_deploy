@@ -40,6 +40,10 @@ export const env = {
 
   // Protects national-ingestion and review administration endpoints.
   ingestionAdminKey: process.env.INGESTION_ADMIN_KEY || '',
+  // Generic alias, so a Railway variable named just ADMIN_KEY (or ADMINKEY)
+  // still unlocks the admin endpoints — handy when the newsletter key name is
+  // the thing that is mistyped.
+  legacyAdminKey: process.env.ADMIN_KEY || process.env.ADMINKEY || '',
   evidenceWorkerEnabled: process.env.EVIDENCE_WORKER_ENABLED === 'true',
   // Wall-clock budget for the live crawl a user search triggers. The source is
   // politely throttled through one request lane, so an unbounded run can
@@ -79,6 +83,6 @@ export const env = {
   newsletter: {
     fromEmail: process.env.NEWSLETTER_FROM || process.env.SMTP_FROM || 'DetectLab <noreply@detectlab.ro>',
     siteUrl: process.env.NEWSLETTER_SITE_URL || process.env.STRIPE_SITE_URL || '',
-    adminKey: process.env.NEWSLETTER_ADMIN_KEY || '',
+    adminKey: process.env.NEWSLETTER_ADMIN_KEY || process.env.ADMIN_KEY || '',
   },
 };
