@@ -83,7 +83,13 @@
      * ═══════════════════════════════════════════════════════════════════════ */
     var CONFIG = {
         // Working area -------------------------------------------------------
-        SEARCH_RADIUS_M: 10000,      // radius around the current map center (10 km)
+        SEARCH_RADIUS_M: 10000,      // pipeline default (also the report's radius)
+        // The layer's own slider: 1–10 km around the purple pin (or around the
+        // map centre when pin mode is off). SEARCH_RADIUS_M stays the default
+        // for headless callers (js/archeo-report.js).
+        RADIUS_KM_MIN: 1,
+        RADIUS_KM_MAX: 10,
+        RADIUS_KM_DEFAULT: 10,
         SITE_LAYERS: [0, 5, 6],      // DetectLab API layer ids used as "known sites"
                                      //   0 = RAN archaeological sites (points)
                                      //   5 = Tumuli (points)
@@ -102,15 +108,62 @@
         EXTRA_SAMPLES_MIN_RADIUS_M: 2000, // triangles with circumradius ≥ this get interior samples
         MAX_SAMPLES_PER_TRIANGLE: 5, // hard cap on candidate seeds per triangle
 
-        // Candidate output ---------------------------------------------------
+        // Candidate output (Delaunay-seed pipeline — window.computeArcheoPotential,
+        // consumed by the Archeological Report; unchanged on purpose) ---------
         CANDIDATE_RADIUS_M: 300,     // rendered circle radius
         CANDIDATE_MIN_SEPARATION_M: 900, // suppress candidates closer than this (300 m circles won't overlap)
         MAX_CANDIDATES: 80,          // cap the final output for readability
 
+        // Score field --------------------------------------------------------
+        // The layer's own output is a DENSE GRID of scores covering the whole
+        // search circle, so there are no un-scored gaps between the bubbles.
+        // Both display modes (bubbles / heatmap) read the same field:
+        //   • bubbles — one small circle per scored cell (radius = cell × 0.62,
+        //     so neighbours slightly overlap and the map stays fully covered);
+        //   • heat    — smooth heatmap over every scored cell, plus a red mask
+        //     for the excluded areas (UAT built-up + heritage protection radii).
+        FIELD: {
+            MODE: 'bubbles',              // 'bubbles' | 'heat' (UI: Bubbles / Heatmap)
+            BUBBLE_CELL_M: 250,           // baseline cell spacing in bubble mode
+            BUBBLE_MAX_CELLS: 2200,       // grows the cell size on big radii (phones)
+            BUBBLE_RADIUS_FACTOR: 0.62,   // bubble radius = cellM × factor
+            BUBBLE_MIN_SCORE: 0,          // 0 → every scored cell is drawn (no gaps)
+            HEAT_CELL_M: 120,             // baseline cell spacing in heat mode
+            HEAT_MAX_CELLS: 9000,
+            HEAT_RADIUS_PX_MIN: 10,       // heat blob radius, clamped to these px
+            HEAT_RADIUS_PX_MAX: 46,
+            HEAT_BLUR_FACTOR: 0.7,        // blur = radius × factor
+            HEAT_MIN_OPACITY: 0.16,
+            TRI_INDEX_CELL_M: 2500,       // triangle bucket size for point lookups
+            OUTSIDE_HULL_TRI_SCORE: 0.15, // cells beyond the site convex hull
+            PROGRESS_EVERY: 500,          // cells between status updates
+            CHUNK_SIZE: 120               // cells per async batch
+        },
+
         // Rendering ----------------------------------------------------------
         PANE_Z_INDEX: 660,           // above heritage canvas (650) + markers (600), below popups (700)
-        SHOW_WORKING_AREA: true,     // draw the 10 km search circle + center marker
+        PANE_Z_HEAT: 656,            // heatmap canvas, under the bubbles
+        PANE_Z_MASK: 658,            // red exclusion mask (UAT + heritage radii)
+        PANE_Z_PIN: 662,             // purple analysis pin + its tooltip
+        SHOW_WORKING_AREA: true,     // draw the search circle + center marker
         SHOW_TRIANGULATION: false,   // debug: draw the Delaunay triangles
+
+        // Purple analysis pin (same anatomy as the report's blue pin) --------
+        PIN: {
+            COLOR: '#a070e8',
+            FILL: '#c4a0f0',
+            CIRCLE_IDLE: { color: '#c4a0f0', weight: 1.8, dashArray: '5 6', fill: true, fillColor: '#a070e8', fillOpacity: 0.05, opacity: 0.85 },
+            CIRCLE_DRAG: { color: '#c4a0f0', weight: 2, dashArray: null, fill: false, fillColor: '#a070e8', fillOpacity: 0, opacity: 0.95 }
+        },
+
+        // Red exclusion mask -------------------------------------------------
+        MASK: {
+            COLOR: '#e03c3c',
+            FILL: '#c0392b',
+            FILL_OPACITY_UAT: 0.34,
+            FILL_OPACITY_SITE: 0.20,
+            OPACITY: 0.75
+        },
 
         // Classification thresholds ------------------------------------------
         CLASSIFY: {
@@ -783,25 +836,359 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
+     * 7b. CÂMP DE SCOR — grilă densă peste întreaga rază de analiză
+     * ═══════════════════════════════════════════════════════════════════════
+     * DE CE: pipeline-ul pe semințe Delaunay produce candidați doar *în
+     * interiorul* triunghiurilor rețelei de situri cunoscute, deci bulele
+     * lăsau goluri mari nescorate pe hartă. Câmpul scorează FIECARE celulă a
+     * unei grile regulate peste cercul de analiză, cu aceiași factori și
+     * aceleași filtre obligatorii, și alimentează ambele moduri de afișare:
+     *   • bule    — cercuri mici și dese care pavează toată zona (fără goluri);
+     *   • heatmap — hartă termică peste celulele scorate + mască roșie peste
+     *               cele excluse (intravilan UAT și razele de protecție).
+     * Partea asincronă e doar citirea rasterului UAT (tile-uri cache-uite). */
+
+    // Dimensiunea celulei astfel încât cercul să aibă cel mult `maxCells`
+    // celule (crește automat pe raze mari, ca telefonul să rămână fluid),
+    // rotunjită la 25 m.
+    function gridCellM(radiusM, baseCellM, maxCells) {
+        var area = Math.PI * radiusM * radiusM;
+        var needed = Math.sqrt(area / Math.max(1, maxCells));
+        var cell = Math.max(baseCellM || 250, needed);
+        return Math.max(25, Math.round(cell / 25) * 25);
+    }
+
+    // Index uniform de bucket-uri peste triunghiurile Delaunay (inserare pe
+    // bbox), ca o celulă a grilei să-și găsească triunghiul conținător în O(1)
+    // în loc de O(număr triunghiuri).
+    function buildTriangleIndex(triangles, cellM) {
+        var index = createGridIndex(cellM, cellM);
+        var records = [];
+        for (var i = 0; i < triangles.length; i++) {
+            var t = triangles[i];
+            var minX = Math.min(t.a.x, t.b.x, t.c.x);
+            var maxX = Math.max(t.a.x, t.b.x, t.c.x);
+            var minY = Math.min(t.a.y, t.b.y, t.c.y);
+            var maxY = Math.max(t.a.y, t.b.y, t.c.y);
+            var cc = circumcircle(t);
+            var rec = {
+                t: t,
+                quality: triangleQuality(t),
+                circumR: cc ? cc.r : 0,
+                centroid: triangleCentroid(t)
+            };
+            records.push(rec);
+            for (var bx = Math.floor(minX / cellM); bx <= Math.floor(maxX / cellM); bx++) {
+                for (var by = Math.floor(minY / cellM); by <= Math.floor(maxY / cellM); by++) {
+                    index.insert(bx * cellM, by * cellM, rec);
+                }
+            }
+        }
+        return { index: index, cellM: cellM, records: records };
+    }
+
+    function triangleRecordAt(x, y, triIndex) {
+        if (!triIndex) return null;
+        var bucket = triIndex.index.queryCircle(x, y, 0);
+        for (var i = 0; i < bucket.length; i++) {
+            var t = bucket[i].t;
+            if (pointInPolygon(x, y, [t.a, t.b, t.c])) return bucket[i];
+        }
+        return null;
+    }
+
+    // triScore pentru un punct oarecare: aceeași formulă pe care
+    // sampleTriangles() o folosește pentru o sămânță (calitate × proximitate
+    // față de centroid). În afara anvelopei de situri → un bază mică, ca
+    // celulele îndepărtate să nu arate identic cu un gol „perfect”.
+    function triScoreAt(x, y, triIndex) {
+        var rec = triangleRecordAt(x, y, triIndex);
+        if (!rec) return { triScore: CONFIG.FIELD.OUTSIDE_HULL_TRI_SCORE, triQuality: 0 };
+        var dx = x - rec.centroid.x, dy = y - rec.centroid.y;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        var bonus = rec.circumR > 0 ? clamp01(1 - d / rec.circumR) : 1;
+        return { triScore: rec.quality * (0.5 + 0.5 * bonus), triQuality: rec.quality };
+    }
+
+    // Grila regulată de celule peste cercul de analiză (numai celulele ale
+    // căror centre cad în cerc). Cellulele sunt deja în metri locali.
+    function buildFieldCells(centerLat, centerLng, radiusM, cellM, lat0) {
+        var kLat = 111320;
+        var kLng = Math.max(1, 111320 * Math.cos(lat0 * Math.PI / 180));
+        var halfLat = radiusM / kLat;
+        var halfLng = radiusM / kLng;
+        var cellLat = cellM / kLat;
+        var cellLng = cellM / kLng;
+        var rows = Math.max(1, Math.ceil(2 * halfLat / cellLat));
+        var cols = Math.max(1, Math.ceil(2 * halfLng / cellLng));
+        var center = projectToLocalMeters(centerLat, centerLng, lat0);
+        var r2 = radiusM * radiusM;
+        var cells = [];
+        for (var r = 0; r < rows; r++) {
+            for (var c = 0; c < cols; c++) {
+                var lat = centerLat - halfLat + (r + 0.5) * cellLat;
+                var lng = centerLng - halfLng + (c + 0.5) * cellLng;
+                var p = projectToLocalMeters(lat, lng, lat0);
+                var dx = p.x - center.x, dy = p.y - center.y;
+                if (dx * dx + dy * dy > r2) continue;
+                cells.push({ lat: lat, lng: lng, x: p.x, y: p.y, row: r, col: c });
+            }
+        }
+        return {
+            cells: cells, rows: rows, cols: cols, cellM: cellM,
+            cellLat: cellLat, cellLng: cellLng,
+            bbox: {
+                minLat: centerLat - halfLat, maxLat: centerLat + halfLat,
+                minLng: centerLng - halfLng, maxLng: centerLng + halfLng
+            }
+        };
+    }
+
+    // Aceleași filtre obligatorii ca la candidați, dar raportează MOTIVUL
+    // excluderii, ca modul heatmap să poată picta masca roșie:
+    //   'heritage' → în raza de protecție / în poligonul unui sit cunoscut
+    //   'outside'  → în afara cercului de analiză
+    //   null       → trece filtrele spațiale (urmează verificarea UAT)
+    function exclusionReason(cell, ctx) {
+        var dx = cell.x - ctx.center.x, dy = cell.y - ctx.center.y;
+        if (dx * dx + dy * dy > ctx.radius * ctx.radius) return 'outside';
+
+        for (var p = 0; p < ctx.polygons.length; p++) {
+            var rings = ctx.polygons[p].rings;
+            for (var r = 0; r < rings.length; r++) {
+                if (pointInPolygon(cell.x, cell.y, rings[r])) return 'heritage';
+            }
+        }
+
+        var minDist = ctx.siteRadius + ctx.siteBuffer;
+        var minDist2 = minDist * minDist;
+        var nearby = ctx.siteIndex.queryCircle(cell.x, cell.y, minDist);
+        for (var s = 0; s < nearby.length; s++) {
+            var ddx = cell.x - nearby[s].x, ddy = cell.y - nearby[s].y;
+            if (ddx * ddx + ddy * ddy < minDist2) return 'heritage';
+        }
+        return null;
+    }
+
+    /**
+     * Câmpul dens de scor — sursa ambelor moduri de afișare ale stratului.
+     *
+     * @param {number} centerLat  centrul analizei (pinul mov sau centrul hărții)
+     * @param {number} centerLng
+     * @param {number} [radiusM]  raza (default: sliderul 1–10 km)
+     * @param {Object} [opts]     mode 'bubbles'|'heat', isCancelled(), onProgress(0..1),
+     *                            chunkSize, skipDataWait
+     * @returns {Promise<{status, mode, cellM, bubbleRadiusM, results, excluded,
+     *                     heatPoints, bbox, ctx, stats}>}
+     *          results = celulele scorate [{lat,lng,x,y,score,factors,classification}]
+     *          excluded = [{lat,lng,x,y,row,col,reason:'uat'|'heritage'}]
+     */
+    function computePotentialField(centerLat, centerLng, radiusM, opts) {
+        opts = opts || {};
+        var F = CONFIG.FIELD;
+        var mode = (opts.mode === 'heat') ? 'heat' : 'bubbles';
+        var radius = (typeof radiusM === 'number' && isFinite(radiusM))
+            ? radiusM
+            : (typeof currentRadiusM === 'function' ? currentRadiusM() : CONFIG.SEARCH_RADIUS_M);
+        var lat0 = centerLat;
+        var t0 = performance.now();
+        var isCancelled = typeof opts.isCancelled === 'function' ? opts.isCancelled : function () { return false; };
+        var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+        var chunkSize = Math.max(1, opts.chunkSize || F.CHUNK_SIZE || 120);
+
+        return (async function main() {
+            if (!opts.skipDataWait) await waitForSiteData();
+
+            var ctx = collectSitesInRadius(centerLat, centerLng, radius, lat0);
+            ctx.center = projectToLocalMeters(centerLat, centerLng, lat0);
+            ctx.centerLat = centerLat;
+            ctx.centerLng = centerLng;
+            ctx.radius = radius;
+            ctx.siteRadius = CONFIG.SITE_RADIUS_M;
+            ctx.siteBuffer = CONFIG.SITE_BUFFER_M;
+            ctx.mode = mode;
+            ctx.triangles = [];
+            ctx.triIndex = null;
+
+            var cellM = gridCellM(radius, mode === 'heat' ? F.HEAT_CELL_M : F.BUBBLE_CELL_M,
+                mode === 'heat' ? F.HEAT_MAX_CELLS : F.BUBBLE_MAX_CELLS);
+            var grid = buildFieldCells(centerLat, centerLng, radius, cellM, lat0);
+
+            var field = {
+                mode: mode,
+                centerLat: centerLat, centerLng: centerLng, radius: radius,
+                cellM: cellM,
+                bubbleRadiusM: Math.max(40, Math.round(cellM * (F.BUBBLE_RADIUS_FACTOR || 0.62))),
+                grid: grid, bbox: grid.bbox,
+                results: [], excluded: [], heatPoints: [],
+                ctx: ctx,
+                stats: {
+                    sites: ctx.sites.length, cells: grid.cells.length,
+                    scored: 0, excludedUat: 0, excludedHeritage: 0,
+                    high: 0, medium: 0, low: 0, ms: 0
+                }
+            };
+
+            function finish(status) {
+                field.status = status;
+                field.stats.ms = Math.round(performance.now() - t0);
+                return field;
+            }
+
+            if (ctx.sites.length < 3) return finish('no_sites');
+
+            ctx.siteIndex = createGridIndex(1200, 1200);
+            for (var i = 0; i < ctx.sites.length; i++) {
+                ctx.siteIndex.insert(ctx.sites[i].x, ctx.sites[i].y, ctx.sites[i]);
+            }
+
+            var points = ctx.sites.map(function (s, idx) {
+                return { x: s.x, y: s.y, lat: s.lat, lng: s.lng, i: idx };
+            });
+            var triangles = delaunayTriangulation(points);
+            ctx.triangles = triangles.map(function (t) {
+                return {
+                    a: { x: t.a.x, y: t.a.y, lat: points[t.a.i].lat, lng: points[t.a.i].lng },
+                    b: { x: t.b.x, y: t.b.y, lat: points[t.b.i].lat, lng: points[t.b.i].lng },
+                    c: { x: t.c.x, y: t.c.y, lat: points[t.c.i].lat, lng: points[t.c.i].lng }
+                };
+            });
+            ctx.triIndex = buildTriangleIndex(triangles, F.TRI_INDEX_CELL_M || 2500);
+
+            var cells = grid.cells;
+            var minScore = (typeof F.BUBBLE_MIN_SCORE === 'number') ? F.BUBBLE_MIN_SCORE : 0;
+            var processed = 0;
+
+            for (var b = 0; b < cells.length; b += chunkSize) {
+                var batch = cells.slice(b, b + chunkSize);
+                var res = await Promise.all(batch.map(async function (cell) {
+                    var reason = exclusionReason(cell, ctx);
+                    if (reason) return { cell: cell, excluded: reason };
+
+                    // UAT: celula trebuie să stea pe rasterul roșu (în afara
+                    // intravilanului); tile lipsă/necitibil → eșuăm închis.
+                    var uat = await uatPixelAt(cell.lat, cell.lng);
+                    if (uat !== true) return { cell: cell, excluded: 'uat' };
+
+                    var tri = triScoreAt(cell.x, cell.y, ctx.triIndex);
+                    cell.triScore = tri.triScore;
+                    cell.triQuality = tri.triQuality;
+                    return { cell: cell, scored: scoreCandidate(cell, ctx) };
+                }));
+
+                for (var k = 0; k < res.length; k++) {
+                    var item = res[k];
+                    if (item.scored) {
+                        var s = item.scored;
+                        var cls = classify(s.score);
+                        var record = {
+                            lat: s.lat, lng: s.lng, x: s.x, y: s.y,
+                            score: s.score, factors: s.factors,
+                            classification: cls,
+                            cellM: cellM,
+                            bubbleRadiusM: field.bubbleRadiusM
+                        };
+                        if (s.score >= minScore) field.results.push(record);
+                        field.heatPoints.push([s.lat, s.lng, Math.max(0.02, s.score)]);
+                        if (cls === 'high') field.stats.high++;
+                        else if (cls === 'medium') field.stats.medium++;
+                        else field.stats.low++;
+                        field.stats.scored++;
+                    } else if (item.excluded === 'uat') {
+                        field.excluded.push({
+                            lat: item.cell.lat, lng: item.cell.lng,
+                            x: item.cell.x, y: item.cell.y,
+                            row: item.cell.row, col: item.cell.col, reason: 'uat'
+                        });
+                        field.stats.excludedUat++;
+                    } else if (item.excluded === 'heritage') {
+                        field.excluded.push({
+                            lat: item.cell.lat, lng: item.cell.lng,
+                            x: item.cell.x, y: item.cell.y,
+                            row: item.cell.row, col: item.cell.col, reason: 'heritage'
+                        });
+                        field.stats.excludedHeritage++;
+                    }
+                }
+
+                processed += batch.length;
+                if (onProgress) onProgress(Math.min(1, processed / Math.max(1, cells.length)));
+                await yieldToUI();
+                if (isCancelled()) return finish('cancelled');
+            }
+
+            return finish(field.results.length || field.heatPoints.length ? 'ok' : 'no_candidates');
+        })();
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
      * 8. RENDERING
      * ═══════════════════════════════════════════════════════════════════════ */
 
-    var _layerGroup = null;
-    var _currentResults = null;
+    var _layerGroup = null;      // bule + aria de lucru (pane_archeo)
+    var _heatLayer = null;       // canvas heatmap (pane_archeo_heat)
+    var _maskGroup = null;       // mască roșie: UAT + raze patrimoniu (pane_archeo_mask)
+    var _bubbleRenderer = null;  // renderer canvas partajat pentru bule
+    var _heatZoomWired = false;  // zoomend e legat o singură dată pe hartă
+    var _currentResults = null;  // celulele scorate la ultima rulare (API public)
+    var _currentField = null;    // câmpul complet (debug / teste)
     var _resultsVisible = true;
 
-    // Medium = lighter purple, semi-transparent; High = darker purple, stronger opacity.
+    // Bulele mici păstrează limbajul vizual mov, dar au trei trepte: scorurile
+    // slabe sunt desenate pal (ca să nu rămână goluri pe hartă, fără a concura
+    // vizual cu zonele bune), cele medii ca înainte, cele ridicate saturat.
     var STYLE = {
-        medium: { color: '#B388E8', weight: 1.5, opacity: 0.85, fillColor: '#B388E8', fillOpacity: 0.28 },
-        high: { color: '#5E2B9E', weight: 2.2, opacity: 0.95, fillColor: '#6B2FA0', fillOpacity: 0.55 }
+        low:    { color: '#B388E8', weight: 0.7, opacity: 0.40, fillColor: '#B388E8', fillOpacity: 0.09 },
+        medium: { color: '#B388E8', weight: 1.1, opacity: 0.75, fillColor: '#B388E8', fillOpacity: 0.24 },
+        high:   { color: '#5E2B9E', weight: 1.6, opacity: 0.92, fillColor: '#6B2FA0', fillOpacity: 0.48 }
     };
 
+    function styleFor(score) {
+        var cls = classify(score);
+        if (cls === 'high') return STYLE.high;
+        if (cls === 'medium') return STYLE.medium;
+        return STYLE.low;
+    }
+
+    // Paneele stratului: heatmap sub mască, masca sub bule, bulele sub pin.
+    var PANE_DEFS = [
+        ['pane_archeo_heat', function () { return CONFIG.PANE_Z_HEAT; }, 'none'],
+        ['pane_archeo_mask', function () { return CONFIG.PANE_Z_MASK; }, 'none'],
+        ['pane_archeo', function () { return CONFIG.PANE_Z_INDEX; }, ''],
+        ['pane_archeo_pin', function () { return CONFIG.PANE_Z_PIN; }, '']
+    ];
+
     function ensurePane(map) {
-        var pane = map.getPane('pane_archeo');
-        if (!pane) {
-            pane = map.createPane('pane_archeo');
+        if (!map || typeof map.createPane !== 'function') return false;
+        for (var i = 0; i < PANE_DEFS.length; i++) {
+            var name = PANE_DEFS[i][0];
+            var pane = map.getPane ? map.getPane(name) : null;
+            if (!pane) pane = map.createPane(name);
+            if (pane && pane.style) {
+                pane.style.zIndex = PANE_DEFS[i][1]();
+                pane.style.pointerEvents = PANE_DEFS[i][2];
+            }
         }
-        if (pane && pane.style) pane.style.zIndex = CONFIG.PANE_Z_INDEX;
+        return true;
+    }
+
+    function paneOption(map, name) {
+        return (ensurePane(map) && map.getPane && map.getPane(name)) ? name : undefined;
+    }
+
+    function assignPane(map, options, name) {
+        var pane = paneOption(map, name);
+        if (pane) options.pane = pane;
+        return options;
+    }
+
+    // Renderer canvas pentru bule: cu câteva sute/mii de cercuri, SVG-ul ar
+    // muta un nod DOM la fiecare repaint; canvas-ul doar redesenează pixeli.
+    function bubbleRendererOption(map) {
+        if (!_bubbleRenderer && typeof L !== 'undefined' && L.canvas) {
+            _bubbleRenderer = L.canvas(assignPane(map, { padding: 0.25 }, 'pane_archeo'));
+        }
+        return _bubbleRenderer;
     }
 
     // ── Score → color (heat scale) ──────────────────────────────────────────
@@ -829,6 +1216,17 @@
         return 'rgb(' + SCORE_COLOR_STOPS[SCORE_COLOR_STOPS.length - 1].rgb.join(',') + ')';
     }
 
+    // Rampa heatmap: albastru închis (scor mic) → verde → chihlimbar → violet
+    // (scor mare). Roșul e rezervat exclusiv zonelor excluse (UAT / patrimoniu),
+    // ca legenda să nu fie ambiguă.
+    var HEAT_GRADIENT = {
+        0.0: '#1b2a55',
+        0.30: '#2f8fc4',
+        0.55: '#4fd08a',
+        0.80: '#f0a030',
+        1.0: '#7b3fd4'
+    };
+
     // ── 5-star rating ───────────────────────────────────────────────────────
     // 5 gray stars with a colored overlay clipped to `score × 100%` — so the
     // number of lit stars equals the score (e.g. 0.72 → 3.6/5 stars) and the
@@ -850,6 +1248,10 @@
         var cls = classify(c.score) === 'high' ? tr('class_high') : tr('class_medium');
         var color = scoreColor(c.score);
         var pct = Math.round(c.score * 100);
+        var factors = c.factors || {};
+        var cellLine = (c.cellM && c.bubbleRadiusM)
+            ? tr('cell') + ': <strong style="color:' + color + '">' + c.cellM + ' m</strong><br>'
+            : '';
         return '<div style="font-family:Outfit,sans-serif;min-width:215px;padding:2px">' +
             '<div style="font-family:Cinzel,serif;font-size:0.85rem;color:#c4a0f0;font-weight:700;margin-bottom:8px">' +
             '🔎 ' + tr('candidate') + ' #' + idx + '</div>' +
@@ -859,79 +1261,294 @@
             '<div style="margin-bottom:8px">' + starRatingHtml(c.score) + '</div>' +
             '<div style="font-size:0.72rem;color:rgba(245,240,235,0.65);line-height:1.7">' +
             '📍 ' + c.lat.toFixed(5) + ', ' + c.lng.toFixed(5) + '<br>' +
-            tr('closest_site') + ': <strong style="color:' + color + '">' + c.factors.closestSiteM + ' m</strong><br>' +
-            tr('nearby') + ': ' + c.factors.nearbyCount + ' &nbsp;·&nbsp; ' +
-            tr('avg_dist') + ': ' + c.factors.avgDistM + ' m<br>' +
-            tr('density') + ': ' + c.factors.densityCount + ' &nbsp;·&nbsp; ' +
-            tr('tri_quality') + ': ' + c.factors.triQuality.toFixed(2) + '</div></div>';
+            cellLine +
+            tr('closest_site') + ': <strong style="color:' + color + '">' + factors.closestSiteM + ' m</strong><br>' +
+            tr('nearby') + ': ' + factors.nearbyCount + ' &nbsp;·&nbsp; ' +
+            tr('avg_dist') + ': ' + factors.avgDistM + ' m<br>' +
+            tr('density') + ': ' + factors.densityCount + ' &nbsp;·&nbsp; ' +
+            tr('tri_quality') + ': ' + Number(factors.triQuality || 0).toFixed(2) + '</div></div>';
     }
 
-    function render(results, ctx) {
-        var map = window._dlMap;
+    // Conținutul popup-ului ca funcție — Leaflet îl apelează doar la deschidere.
+    function makePopupContent(c, idx) {
+        return function () { return popupHtml(c, idx); };
+    }
+
+    /* ── curățarea rezultatelor anterioare ───────────────────────────────── */
+    function clearRendered(map) {
         if (!map) return;
-        ensurePane(map);
-
-        if (_layerGroup) {
-            map.removeLayer(_layerGroup);
-            _layerGroup = null;
+        if (_layerGroup) { try { map.removeLayer(_layerGroup); } catch (e) {} _layerGroup = null; }
+        if (_heatLayer) {
+            try { map.removeLayer(_heatLayer); } catch (e) {}
+            try {
+                if (_heatLayer._canvas && _heatLayer._canvas.parentElement) {
+                    _heatLayer._canvas.parentElement.removeChild(_heatLayer._canvas);
+                }
+            } catch (e) {}
+            _heatLayer = null;
         }
-        _layerGroup = L.layerGroup([]);
+        if (_maskGroup) { try { map.removeLayer(_maskGroup); } catch (e) {} _maskGroup = null; }
+    }
 
-        if (CONFIG.SHOW_WORKING_AREA) {
-            var workCircle = L.circle([ctx.centerLat, ctx.centerLng], {
-                radius: CONFIG.SEARCH_RADIUS_M,
-                pane: 'pane_archeo',
-                color: '#a070e8',
-                weight: 1.4,
-                dashArray: '6 6',
-                fillColor: '#a070e8',
-                fillOpacity: 0.03,
-                opacity: 0.5,
-                interactive: false
-            });
-            _layerGroup.addLayer(workCircle);
+    /* ── aria de lucru: cercul razei + punctul central ───────────────────── */
+    function renderWorkingArea(map, ctx, group) {
+        if (!CONFIG.SHOW_WORKING_AREA) return;
+        var style = CONFIG.PIN || {};
+        group.addLayer(L.circle([ctx.centerLat, ctx.centerLng], assignPane(map, {
+            radius: ctx.radius,
+            color: style.COLOR || '#a070e8',
+            weight: 1.4,
+            dashArray: '6 6',
+            fillColor: style.COLOR || '#a070e8',
+            fillOpacity: 0.03,
+            opacity: 0.5,
+            interactive: false
+        }, 'pane_archeo')));
 
-            var centerDot = L.circleMarker([ctx.centerLat, ctx.centerLng], {
-                pane: 'pane_archeo',
-                radius: 4,
-                color: '#a070e8',
-                weight: 1.5,
-                fillColor: '#c4a0f0',
-                fillOpacity: 0.9,
-                interactive: false
-            });
-            _layerGroup.addLayer(centerDot);
-        }
+        group.addLayer(L.circleMarker([ctx.centerLat, ctx.centerLng], assignPane(map, {
+            radius: 4,
+            color: style.COLOR || '#a070e8',
+            weight: 1.5,
+            fillColor: style.FILL || '#c4a0f0',
+            fillOpacity: 0.9,
+            interactive: false
+        }, 'pane_archeo')));
 
-        if (CONFIG.SHOW_TRIANGULATION) {
+        if (CONFIG.SHOW_TRIANGULATION && ctx.triangles) {
             ctx.triangles.forEach(function (t) {
-                _layerGroup.addLayer(L.polyline(
+                group.addLayer(L.polyline(
                     [[t.a.lat, t.a.lng], [t.b.lat, t.b.lng], [t.c.lat, t.c.lng], [t.a.lat, t.a.lng]],
-                    {
-                        pane: 'pane_archeo',
-                        color: 'rgba(163,112,232,0.55)',
-                        weight: 1,
-                        interactive: false
-                    }
+                    assignPane(map, { color: 'rgba(163,112,232,0.55)', weight: 1, interactive: false }, 'pane_archeo')
                 ));
             });
         }
+    }
 
-        results.forEach(function (c, idx) {
-            var cls = classify(c.score) === 'high' ? 'high' : 'medium';
-            var style = STYLE[cls];
-            var circle = L.circle([c.lat, c.lng], {
-                pane: 'pane_archeo',
-                radius: CONFIG.CANDIDATE_RADIUS_M,
+    /* ── MODUL 1: bule mici, dese, fără goluri ───────────────────────────── */
+    function renderBubbles(map, field, group) {
+        var renderer = bubbleRendererOption(map);
+        var radiusM = field.bubbleRadiusM;
+        field.results.forEach(function (c, idx) {
+            var style = styleFor(c.score);
+            var options = assignPane(map, {
+                radius: radiusM,
                 color: style.color,
                 weight: style.weight,
                 opacity: style.opacity,
                 fillColor: style.fillColor,
-                fillOpacity: style.fillOpacity
-            });
-            circle.bindPopup(popupHtml(c, idx + 1));
-            _layerGroup.addLayer(circle);
+                fillOpacity: style.fillOpacity,
+                stroke: style.weight > 0.9
+            }, 'pane_archeo');
+            if (renderer) options.renderer = renderer;
+            var circle = L.circle([c.lat, c.lng], options);
+            // Popup construit leneș (funcție, nu șir): cu mii de bule, șirurile
+            // eager ar aloca ~1.5 MB de HTML nefolosit la fiecare rulare.
+            if (circle.bindPopup) circle.bindPopup(makePopupContent(c, idx + 1));
+            group.addLayer(circle);
         });
+    }
+
+    /* ── MODUL 2: heatmap + mască roșie pentru zonele excluse ────────────── */
+    function metersToPixels(m) {
+        var map = window._dlMap;
+        if (!map || typeof map.getZoom !== 'function' || typeof L === 'undefined' || !L.CRS) return 25;
+        var z = map.getZoom();
+        var center = (typeof map.getCenter === 'function' && map.getCenter()) || { lat: 46 };
+        var worldPx = 256 * Math.pow(2, z);
+        var mPerPx = (40075016.686 * Math.cos(center.lat * Math.PI / 180)) / worldPx;
+        return m / Math.max(0.0001, mPerPx);
+    }
+
+    function heatRadiusPx(cellM) {
+        var F = CONFIG.FIELD;
+        var px = metersToPixels(cellM) * 1.7;
+        return Math.max(F.HEAT_RADIUS_PX_MIN || 10, Math.min(F.HEAT_RADIUS_PX_MAX || 46, px));
+    }
+
+    function heatLayerOptions(cellM) {
+        var F = CONFIG.FIELD;
+        var radius = heatRadiusPx(cellM);
+        return {
+            radius: radius,
+            blur: Math.max(4, Math.round(radius * (F.HEAT_BLUR_FACTOR || 0.7))),
+            minOpacity: F.HEAT_MIN_OPACITY === undefined ? 0.16 : F.HEAT_MIN_OPACITY,
+            max: 1.0,
+            gradient: HEAT_GRADIENT
+        };
+    }
+
+    // leaflet-heat își pune canvas-ul în overlayPane (z 400), adică sub toate
+    // rasterele istorice ale aplicației (615-655). Îl mutăm în pane-ul propriu
+    // ca heatmap-ul să stea deasupra hărților, dar sub bule/mască/pin.
+    function adoptHeatCanvas(map, layer) {
+        try {
+            if (!layer || !layer._canvas) return;
+            var pane = map.getPane && map.getPane('pane_archeo_heat');
+            if (pane && layer._canvas.parentNode !== pane) pane.appendChild(layer._canvas);
+
+            // leaflet-heat dezlipește canvas-ul din overlayPane în onRemove. Cum
+            // noi l-am mutat în pane-ul propriu, apelul original ar arunca
+            // NotFoundError la fiecare oprire a stratului / re-rulare; îl
+            // înlocuim cu o variantă care curăță din parintele real și păstrează
+            // restul de-legăturilor (moveend / zoomanim).
+            if (!layer._archeoRemovePatched) {
+                layer._archeoRemovePatched = true;
+                layer.onRemove = function (m) {
+                    try {
+                        var parent = this._canvas && this._canvas.parentNode;
+                        if (parent && parent.removeChild) parent.removeChild(this._canvas);
+                        if (m && typeof m.off === 'function') {
+                            m.off('moveend', this._reset, this);
+                            var any3d = (typeof L !== 'undefined' && L.Browser) ? L.Browser.any3d : false;
+                            if (m.options && m.options.zoomAnimation && any3d) {
+                                m.off('zoomanim', this._animateZoom, this);
+                            }
+                        }
+                    } catch (e) { /* DOM-only tests */ }
+                };
+            }
+        } catch (e) { /* DOM-only tests */ }
+    }
+
+    function renderHeat(map, field) {
+        if (typeof L === 'undefined' || typeof L.heatLayer !== 'function' || !field.heatPoints.length) return;
+        _heatLayer = L.heatLayer(field.heatPoints, heatLayerOptions(field.cellM));
+        _heatLayer.addTo(map);
+        adoptHeatCanvas(map, _heatLayer);
+        // Raza blob-urilor e în pixeli: o recalculăm la fiecare zoom ca
+        // heatmap-ul să rămână lipit de geografie. Legarea se face O SINGURĂ
+        // dată pe hartă și lucrează mereu pe stratul/câmpul curent, ca rulările
+        // repetate să nu acumuleze handlere.
+        if (typeof map.on === 'function' && !_heatZoomWired) {
+            _heatZoomWired = true;
+            map.on('zoomend', function () {
+                if (!_heatLayer || !_currentField || typeof _heatLayer.setOptions !== 'function') return;
+                var opts = heatLayerOptions(_currentField.cellM);
+                _heatLayer.setOptions({ radius: opts.radius, blur: opts.blur });
+                adoptHeatCanvas(window._dlMap, _heatLayer);
+            });
+        }
+    }
+
+    // Celulele excluse de UAT sunt unite pe rânduri (run-length) în dreptunghiuri,
+    // ca masca roșie să aibă câteva sute de forme în loc de câteva mii.
+    function uatMaskRectangles(field) {
+        var byRow = {};
+        field.excluded.forEach(function (c) {
+            if (c.reason !== 'uat') return;
+            (byRow[c.row] = byRow[c.row] || []).push(c);
+        });
+        var rects = [];
+        var halfCellLat = field.grid.cellLat / 2;
+        var halfCellLng = field.grid.cellLng / 2;
+        Object.keys(byRow).forEach(function (rowKey) {
+            var cells = byRow[rowKey].sort(function (a, b) { return a.col - b.col; });
+            var run = null;
+            var flush = function () {
+                if (!run) return;
+                rects.push([
+                    [run.minLat - halfCellLat, run.minLng - halfCellLng],
+                    [run.maxLat + halfCellLat, run.maxLng + halfCellLng]
+                ]);
+                run = null;
+            };
+            cells.forEach(function (c) {
+                if (run && c.col === run.lastCol + 1) {
+                    run.lastCol = c.col;
+                    run.minLat = Math.min(run.minLat, c.lat); run.maxLat = Math.max(run.maxLat, c.lat);
+                    run.minLng = Math.min(run.minLng, c.lng); run.maxLng = Math.max(run.maxLng, c.lng);
+                } else {
+                    flush();
+                    run = { lastCol: c.col, minLat: c.lat, maxLat: c.lat, minLng: c.lng, maxLng: c.lng };
+                }
+            });
+            flush();
+        });
+        return rects;
+    }
+
+    function renderExclusionMask(map, field, ctx) {
+        var M = CONFIG.MASK || {};
+        var group = L.layerGroup([]);
+        var renderer = null;
+        if (typeof L.canvas === 'function') {
+            renderer = L.canvas(assignPane(map, { padding: 0.2 }, 'pane_archeo_mask'));
+        }
+
+        // 1. intravilan UAT (celule picate pe rasterul non-roșu)
+        uatMaskRectangles(field).forEach(function (bounds) {
+            var options = assignPane(map, {
+                color: M.COLOR || '#e03c3c',
+                weight: 0.6,
+                opacity: M.OPACITY === undefined ? 0.75 : M.OPACITY,
+                fillColor: M.FILL || '#c0392b',
+                fillOpacity: M.FILL_OPACITY_UAT === undefined ? 0.34 : M.FILL_OPACITY_UAT,
+                interactive: false,
+                stroke: false
+            }, 'pane_archeo_mask');
+            if (renderer) options.renderer = renderer;
+            group.addLayer(L.rectangle(bounds, options));
+        });
+
+        // 2. razele de protecție ale siturilor cunoscute (600 m + 100 m buffer)
+        var siteRadius = (ctx.siteRadius || CONFIG.SITE_RADIUS_M) + (ctx.siteBuffer || CONFIG.SITE_BUFFER_M);
+        (ctx.sites || []).forEach(function (s) {
+            if (s.isGuard) return; // gărzile de poligon ar umple harta cu cercuri
+            var options = assignPane(map, {
+                radius: siteRadius,
+                color: M.COLOR || '#e03c3c',
+                weight: 1,
+                opacity: 0.6,
+                fillColor: M.FILL || '#c0392b',
+                fillOpacity: M.FILL_OPACITY_SITE === undefined ? 0.2 : M.FILL_OPACITY_SITE,
+                interactive: false
+            }, 'pane_archeo_mask');
+            if (renderer) options.renderer = renderer;
+            group.addLayer(L.circle([s.lat, s.lng], options));
+        });
+
+        // 3. contururile siturilor poligon (layer 6)
+        (ctx.polygons || []).forEach(function (poly) {
+            poly.rings.forEach(function (ring) {
+                var latlngs = ring.map(function (p) {
+                    var ll = localMetersToLatLng(p.x, p.y, ctx.centerLat);
+                    return [ll.lat, ll.lng];
+                });
+                var options = assignPane(map, {
+                    color: M.COLOR || '#e03c3c',
+                    weight: 1.2,
+                    opacity: 0.8,
+                    fillColor: M.FILL || '#c0392b',
+                    fillOpacity: 0.3,
+                    interactive: false
+                }, 'pane_archeo_mask');
+                if (renderer) options.renderer = renderer;
+                group.addLayer(L.polygon(latlngs, options));
+            });
+        });
+
+        _maskGroup = group;
+        if (_resultsVisible) group.addTo(map);
+    }
+
+    /* ── randarea completă a unei rulări ─────────────────────────────────── */
+    function renderField(field) {
+        var map = window._dlMap;
+        if (!map || !field) return;
+        ensurePane(map);
+        clearRendered(map);
+
+        var ctx = field.ctx;
+        _layerGroup = L.layerGroup([]);
+        renderWorkingArea(map, ctx, _layerGroup);
+
+        if (field.mode === 'heat') renderHeat(map, field);
+        else renderBubbles(map, field, _layerGroup);
+
+        // Masca roșie (intravilan UAT + razele de protecție + contururile
+        // poligon) se desenează în AMBELE moduri: explică de ce există goluri
+        // între bule și marchează zonele în care detectarea nu e permisă.
+        renderExclusionMask(map, field, ctx);
 
         if (_resultsVisible) _layerGroup.addTo(map);
     }
@@ -944,14 +1561,19 @@
         en: {
             run_btn: 'Candidate Areas',
             running_short: 'Analyzing',
-            running: 'Analyzing the 10 km area around the map center…',
+            running: 'Analyzing the {r} km area…',
+            running_pin: 'Analyzing the {r} km area around the purple pin…',
+            running_center: 'Analyzing the {r} km area around the map center…',
+            progress: 'Analyzing… {p}%',
+            ready: 'Set the radius (1–10 km) and press the button. With the pin switch on, tap the map first.',
             done: 'Analysis complete.',
             no_sites: 'Not enough archaeological sites in the area (need at least 3).',
             no_triangles: 'Sites are collinear / too clustered — no valid triangles.',
-            no_candidates: 'No candidate passed the filters (UAT red zone / site distances). Try a different area.',
+            no_candidates: 'No cell passed the filters (UAT red zone / site distances). Try a different area.',
             error: 'Analysis failed — check the console for details.',
             cancelled: 'Analysis cancelled.',
             candidate: 'Candidate',
+            cell: 'Cell',
             class_high: 'High Potential',
             class_medium: 'Medium Potential',
             nearby: 'Nearby sites',
@@ -959,19 +1581,29 @@
             avg_dist: 'Avg. distance',
             density: 'Density',
             tri_quality: 'Triangle quality',
-            summary: '{n} candidates · {h} High · {m} Medium'
+            summary: '{n} candidates · {h} High · {m} Medium',
+            summary_field: '{n} scored cells · {h} High · {m} Medium · {x} excluded (red)',
+            summary_heat: '{n} scored cells in the heatmap · {x} excluded (red)',
+            pin_hint: 'Pin mode off — the analysis starts from the map center.',
+            pin_armed: 'Tap the map to drop the purple pin, then press “Candidate Areas”.',
+            pin_set: 'Pin at {lat}, {lng} · radius {r} km — press “Candidate Areas”.'
         },
         ro: {
             run_btn: 'Zone candidati',
             running_short: 'Se analizează',
-            running: 'Se analizează zona de 10 km din jurul centrului hărții…',
+            running: 'Se analizează raza de {r} km…',
+            running_pin: 'Se analizează raza de {r} km din jurul pinului mov…',
+            running_center: 'Se analizează raza de {r} km din jurul centrului hărții…',
+            progress: 'Se analizează… {p}%',
+            ready: 'Alege raza (1–10 km) și apasă butonul. Cu comutatorul de pin pornit, atinge întâi harta.',
             done: 'Analiză finalizată.',
             no_sites: 'Nu sunt suficiente situri arheologice în zonă (e nevoie de cel puțin 3).',
             no_triangles: 'Siturile sunt coliniare / prea grupate — fără triunghiuri valide.',
-            no_candidates: 'Niciun candidat nu a trecut filtrele (zona roșie UAT / distanțe față de situri). Încearcă altă zonă.',
+            no_candidates: 'Nicio celulă nu a trecut filtrele (zona roșie UAT / distanțe față de situri). Încearcă altă zonă.',
             error: 'Analiza a eșuat — vezi consola pentru detalii.',
             cancelled: 'Analiză anulată.',
             candidate: 'Candidat',
+            cell: 'Celulă',
             class_high: 'Potențial Ridicat',
             class_medium: 'Potențial Mediu',
             nearby: 'Situri apropiate',
@@ -979,7 +1611,12 @@
             avg_dist: 'Distanță medie',
             density: 'Densitate',
             tri_quality: 'Calitate triunghi',
-            summary: '{n} candidați · {h} Ridicat · {m} Mediu'
+            summary: '{n} candidați · {h} Ridicat · {m} Mediu',
+            summary_field: '{n} celule cu scor · {h} Ridicat · {m} Mediu · {x} excluse (roșu)',
+            summary_heat: '{n} celule în heatmap · {x} excluse (roșu)',
+            pin_hint: 'Modul pin e oprit — analiza pornește din centrul hărții.',
+            pin_armed: 'Atinge harta ca să pui pinul mov, apoi apasă „Zone candidati”.',
+            pin_set: 'Pin la {lat}, {lng} · rază {r} km — apasă „Zone candidati”.'
         }
     };
 
@@ -991,22 +1628,36 @@
 
     function el(id) { return document.getElementById(id); }
 
-    function setStatus(key, isError) {
+    var _lastStatus = { key: 'ready', isError: false, vars: null };
+
+    function setStatus(key, isError, vars) {
+        _lastStatus = { key: key, isError: !!isError, vars: vars || null };
         var statusEl = el('archeoPotStatus');
         if (!statusEl) return;
-        statusEl.textContent = tr(key);
-        statusEl.classList.toggle('error', !!isError);
+        var text = tr(key);
+        if (vars) {
+            Object.keys(vars).forEach(function (k) {
+                text = String(text).split('{' + k + '}').join(vars[k]);
+            });
+        }
+        statusEl.textContent = text;
+        if (statusEl.classList && statusEl.classList.toggle) statusEl.classList.toggle('error', !!isError);
     }
 
-    function setSummary(n, h, m) {
+    function setSummary(stats, mode) {
         var summaryEl = el('archeoPotSummary');
         if (!summaryEl) return;
+        stats = stats || {};
+        var n = stats.scored || 0;
         if (n > 0) {
+            var excluded = (stats.excludedUat || 0) + (stats.excludedHeritage || 0);
+            var text = tr(mode === 'heat' ? 'summary_heat' : 'summary_field')
+                .replace('{n}', n)
+                .replace('{h}', stats.high || 0)
+                .replace('{m}', stats.medium || 0)
+                .replace('{x}', excluded);
             summaryEl.style.display = '';
-            summaryEl.innerHTML =
-                '<span style="color:#c4a0f0;font-weight:600">' +
-                tr('summary').replace('{n}', n).replace('{h}', h).replace('{m}', m) +
-                '</span>';
+            summaryEl.innerHTML = '<span style="color:#c4a0f0;font-weight:600">' + text + '</span>';
         } else {
             summaryEl.style.display = 'none';
             summaryEl.textContent = '';
@@ -1036,6 +1687,266 @@
         var out = [];
         for (var i = 0; i < array.length; i += size) out.push(array.slice(i, i + size));
         return out;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+     * 9b. PIN MOV + RAZĂ 1–10 KM + MOD DE AFIȘARE (bule / heatmap)
+     * ═══════════════════════════════════════════════════════════════════════
+     * Același tip de interacțiune ca la LIDAR Scanner și Raport arheologic:
+     * comutatorul de pin pornește modul de selectare, un tap pe hartă pune
+     * pinul (mov, ca identitatea stratului) și cercul razei, iar sliderul
+     * 1–10 km redimensionează cercul în timp real. Fără pin, analiza pornește
+     * din centrul hărții — comportamentul vechi rămâne disponibil. */
+
+    var _pinMode = false;
+    var _pinLatLng = null;
+    var _pinMarker = null;
+    var _pinCircle = null;
+    var _pinRenderer = null;
+    var _mode = null;                 // null → CONFIG.FIELD.MODE
+    var _draggingRadius = false;
+
+    var raf = (typeof window !== 'undefined' && window.requestAnimationFrame &&
+        window.requestAnimationFrame.bind(window)) || function (fn) { return setTimeout(fn, 16); };
+
+    function outputMode() {
+        if (_mode === 'heat' || _mode === 'bubbles') return _mode;
+        return CONFIG.FIELD.MODE === 'heat' ? 'heat' : 'bubbles';
+    }
+
+    function radiusKm() {
+        var slider = el('archeoPotDistance');
+        var value = slider ? parseFloat(slider.value) : NaN;
+        if (!isFinite(value)) value = CONFIG.RADIUS_KM_DEFAULT;
+        return Math.max(CONFIG.RADIUS_KM_MIN, Math.min(CONFIG.RADIUS_KM_MAX, value));
+    }
+
+    function currentRadiusM() {
+        return radiusKm() * 1000;
+    }
+
+    function setRadiusKm(km) {
+        var slider = el('archeoPotDistance');
+        var value = Math.max(CONFIG.RADIUS_KM_MIN, Math.min(CONFIG.RADIUS_KM_MAX, Number(km) || CONFIG.RADIUS_KM_DEFAULT));
+        if (slider) {
+            slider.value = String(value);
+            if (typeof slider.dispatchEvent === 'function') {
+                slider.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+        updateRadiusLabel(value);
+        if (_pinLatLng) drawPinCircle(_pinLatLng, false);
+        return value;
+    }
+
+    function updateRadiusLabel(km) {
+        var label = el('archeoPotDistanceValue');
+        if (label) label.textContent = (km === undefined ? radiusKm() : km) + ' km';
+    }
+
+    function setOutputMode(mode) {
+        _mode = (mode === 'heat') ? 'heat' : 'bubbles';
+        CONFIG.FIELD.MODE = _mode;
+        var bubblesBtn = el('archeoPotModeBubbles');
+        var heatBtn = el('archeoPotModeHeat');
+        if (bubblesBtn && bubblesBtn.classList) bubblesBtn.classList.toggle('is-active', _mode === 'bubbles');
+        if (heatBtn && heatBtn.classList) heatBtn.classList.toggle('is-active', _mode === 'heat');
+        var legendBubbles = el('archeoPotLegendBubbles');
+        var legendHeat = el('archeoPotLegendHeat');
+        if (legendBubbles) legendBubbles.style.display = _mode === 'bubbles' ? 'flex' : 'none';
+        if (legendHeat) legendHeat.style.display = _mode === 'heat' ? 'flex' : 'none';
+        // Comutarea modului redesenează imediat ultima analiză (dacă există).
+        if (_currentField) renderField(_currentField);
+        return _mode;
+    }
+
+    function pinRendererOption(map) {
+        if (!_pinRenderer && typeof L !== 'undefined' && L.canvas) {
+            _pinRenderer = L.canvas(assignPane(map, { padding: 0.3 }, 'pane_archeo'));
+        }
+        return _pinRenderer;
+    }
+
+    function drawPinCircle(latlng, dragging) {
+        var map = window._dlMap;
+        if (!map || typeof L === 'undefined' || !L.circle) return;
+        var style = dragging ? CONFIG.PIN.CIRCLE_DRAG : CONFIG.PIN.CIRCLE_IDLE;
+        var radiusM = currentRadiusM();
+        if (_pinCircle && _pinCircle.setLatLng && _pinCircle.setRadius) {
+            _pinCircle.setLatLng(latlng);
+            _pinCircle.setRadius(radiusM);
+            if (_pinCircle.setStyle) _pinCircle.setStyle(style);
+            return;
+        }
+        var options = assignPane(map, {
+            radius: radiusM,
+            color: style.color,
+            weight: style.weight,
+            dashArray: style.dashArray,
+            fill: style.fill,
+            fillColor: style.fillColor,
+            fillOpacity: style.fillOpacity,
+            opacity: style.opacity,
+            interactive: false
+        }, 'pane_archeo');
+        var renderer = pinRendererOption(map);
+        if (renderer) options.renderer = renderer;
+        _pinCircle = L.circle(latlng, options);
+        if (_pinCircle.addTo) _pinCircle.addTo(map);
+        else if (map.addLayer) map.addLayer(_pinCircle);
+    }
+
+    function clearPinCircle() {
+        var map = window._dlMap;
+        if (map && _pinCircle && map.removeLayer) map.removeLayer(_pinCircle);
+        _pinCircle = null;
+    }
+
+    // Pinul mov: aceeași anatomie ca pinul albastru al Raportului arheologic
+    // (halou pulsant + punct central), în culoarea stratului.
+    function drawPin(latlng) {
+        var map = window._dlMap;
+        if (!map) return;
+        if (_pinMarker && map.removeLayer) map.removeLayer(_pinMarker);
+        _pinLatLng = { lat: latlng.lat, lng: latlng.lng };
+        if (typeof L === 'undefined' || !L.marker || !L.divIcon) { drawPinCircle(latlng, false); return; }
+        var icon = L.divIcon({
+            className: 'archeo-pot-pin-wrapper',
+            html: '<div class="archeo-pot-pin" title="' + tr('candidate') + '">' +
+                  '<div class="archeo-pot-pin-pulse"></div><div class="archeo-pot-pin-dot"></div></div>',
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+        });
+        _pinMarker = L.marker(latlng, assignPane(map, { icon: icon, zIndexOffset: 2000, interactive: false }, 'pane_archeo_pin'));
+        if (_pinMarker.addTo) _pinMarker.addTo(map);
+        if (_pinMarker.bindTooltip) {
+            _pinMarker.bindTooltip(
+                '<span class="archeo-pot-tag"><b>' + tr('candidate') + '</b><br>' +
+                latlng.lat.toFixed(4) + ', ' + latlng.lng.toFixed(4) + '</span>',
+                assignPane(map, { direction: 'top', offset: [0, -14], className: 'archeo-pot-tooltip' }, 'pane_archeo_pin')
+            );
+        }
+        drawPinCircle(latlng, false);
+    }
+
+    function clearPin() {
+        var map = window._dlMap;
+        if (map && _pinMarker && map.removeLayer) map.removeLayer(_pinMarker);
+        _pinMarker = null;
+        _pinLatLng = null;
+        clearPinCircle();
+    }
+
+    function onMapClick(e) {
+        if (!_pinMode || _runInFlight) return;
+        var latlng = e && e.latlng ? e.latlng : null;
+        if (!latlng) return;
+        drawPin(latlng);
+        setStatus('pin_set', false, {
+            lat: latlng.lat.toFixed(5), lng: latlng.lng.toFixed(5), r: radiusKm()
+        });
+    }
+
+    function setPinMode(on) {
+        _pinMode = !!on;
+        var map = window._dlMap;
+        var row = el('archeoPotentialRow');
+        if (row && row.classList) row.classList.toggle('is-on', _pinMode);
+        var toggle = el('archeoPotPinToggle');
+        if (toggle && toggle.checked !== _pinMode) toggle.checked = _pinMode;
+
+        if (map && typeof map.on === 'function') {
+            if (_pinMode) {
+                ensurePane(map);
+                map.on('click', onMapClick);
+                if (_pinLatLng) drawPinCircle(_pinLatLng, false);
+                setStatus(_pinLatLng ? 'pin_set' : 'pin_armed', false, _pinLatLng ? {
+                    lat: _pinLatLng.lat.toFixed(5), lng: _pinLatLng.lng.toFixed(5), r: radiusKm()
+                } : null);
+            } else {
+                if (typeof map.off === 'function') map.off('click', onMapClick);
+                clearPin();
+                setStatus('pin_hint');
+            }
+        }
+        // Oglinda verticală a razei + butonul andocat jos urmează modul pin.
+        notifyVerticalControl(_pinMode ? 'archeoPotDistance' : null);
+        return _pinMode;
+    }
+
+    // Trimite stratul către oglinda verticală (slider de rază în dreapta) și
+    // către dock-ul centrat jos (butonul „Zone candidati”). Absența modulului
+    // (teste node, încărcare parțială) e ignorată.
+    function notifyVerticalControl(sliderId) {
+        try {
+            var api = window.DetectLabVerticalOpacity;
+            if (!api) return;
+            if (sliderId && typeof api.select === 'function') api.select(sliderId);
+            else if (!sliderId && typeof api.getActiveSliderId === 'function' &&
+                     api.getActiveSliderId() === 'archeoPotDistance' && typeof api.close === 'function') {
+                api.close();
+            }
+        } catch (e) { /* controlul nu e încă inițializat */ }
+    }
+
+    // Sliderul de rază: aceeași optimizare ca la LIDAR Scanner / Raport —
+    // cercul e redesenat o singură dată pe frame, cu stilul „drag” (fără fill
+    // și fără dash) cât timp degetul e pe slider, apoi revine la stilul normal.
+    function wireRadiusSlider(slider) {
+        var pending = null;
+        var scheduled = false;
+        var frame = null;
+        var releaseTimer = null;
+
+        function paint() {
+            scheduled = false;
+            frame = null;
+            var value = pending;
+            pending = null;
+            if (value == null) return;
+            updateRadiusLabel(value);
+            if (_pinLatLng && _pinCircle && _pinCircle.setRadius) _pinCircle.setRadius(value * 1000);
+        }
+
+        function schedule() {
+            if (scheduled) return;
+            scheduled = true;
+            frame = raf(paint);
+        }
+
+        function beginDrag() {
+            if (_draggingRadius) return;
+            _draggingRadius = true;
+            if (document.body && document.body.classList) document.body.classList.add('arch-distance-dragging');
+            if (_pinCircle && _pinCircle.setStyle) _pinCircle.setStyle(CONFIG.PIN.CIRCLE_DRAG);
+        }
+
+        function endDrag() {
+            if (!_draggingRadius) return;
+            _draggingRadius = false;
+            if (pending !== null) {
+                if (scheduled && typeof window !== 'undefined' && window.cancelAnimationFrame) window.cancelAnimationFrame(frame);
+                else clearTimeout(frame);
+                scheduled = false;
+                paint();
+            }
+            if (_pinCircle && _pinCircle.setStyle) _pinCircle.setStyle(CONFIG.PIN.CIRCLE_IDLE);
+            if (document.body && document.body.classList) document.body.classList.remove('arch-distance-dragging');
+        }
+
+        slider.addEventListener('input', function () {
+            pending = +this.value;
+            beginDrag();
+            schedule();
+            clearTimeout(releaseTimer);
+            releaseTimer = setTimeout(endDrag, 220);
+        });
+        ['change', 'pointerup', 'pointercancel', 'touchend', 'touchcancel', 'mouseup', 'blur'].forEach(function (type) {
+            slider.addEventListener(type, function () {
+                clearTimeout(releaseTimer);
+                endDrag();
+            });
+        });
     }
 
     var _runInFlight = false;
@@ -1162,7 +2073,9 @@
 
     /**
      * Main entry point — called every time the user presses
-     * "Candidate Areas / Zone candidati".
+     * "Candidate Areas / Zone candidati". Analizează raza din slider (1–10 km)
+     * în jurul pinului mov, sau în jurul centrului hărții când modul pin e
+     * oprit, și randează câmpul de scor în modul ales (bule / heatmap).
      */
     function runArcheoPotentialAnalysis() {
         if (_runInFlight) return Promise.resolve(false);
@@ -1177,43 +2090,52 @@
             return Promise.resolve(false);
         }
 
-        var center = map.getCenter();
+        var center = _pinLatLng ? { lat: _pinLatLng.lat, lng: _pinLatLng.lng } : map.getCenter();
+        var radiusM = currentRadiusM();
+        var mode = outputMode();
         setRunning(true);
-        setStatus('running');
-        setSummary(0, 0, 0);
+        setStatus(_pinLatLng ? 'running_pin' : 'running_center', false, { r: radiusKm() });
+        setSummary({ scored: 0 }, mode);
 
         return (async function main() {
-            var run = null;
+            var field = null;
             try {
-                run = await computeCandidates(center.lat, center.lng, CONFIG.SEARCH_RADIUS_M, {
+                field = await computePotentialField(center.lat, center.lng, radiusM, {
+                    mode: mode,
                     isCancelled: function () { return myVersion !== _runVersion; },
-                    chunkSize: 30,
-                    yieldModulo: 4
+                    onProgress: function (ratio) {
+                        if (myVersion !== _runVersion) return;
+                        setStatus('progress', false, { p: Math.round(ratio * 100) });
+                    }
                 });
 
                 if (myVersion !== _runVersion) return; // superseded by a newer run
 
-                if (run.status === 'cancelled') { setStatus('cancelled'); return; }
-                if (run.status === 'no_sites') { setStatus('no_sites', true); setSummary(0, 0, 0); return; }
-                if (run.status === 'no_triangles') { setStatus('no_triangles', true); setSummary(0, 0, 0); return; }
+                if (field.status === 'cancelled') { setStatus('cancelled'); return; }
+                if (field.status === 'no_sites') {
+                    setStatus('no_sites', true);
+                    setSummary(field.stats, mode);
+                    return;
+                }
 
-                _currentResults = run.results;
-                render(run.results, run.ctx);
+                _currentField = field;
+                _currentResults = field.results;
+                renderField(field);
 
-                var s = run.stats;
-                console.log('[ArcheoPotential] ' +
-                    s.sites + ' sites, ' + s.triangles + ' triangles, ' +
-                    s.seeds + ' seeds, ' + s.passed + ' passed filters, ' +
-                    run.results.length + ' candidates (' + s.high + ' high, ' + s.medium + ' medium) — ' +
-                    s.ms + ' ms');
+                var st = field.stats;
+                console.log('[ArcheoPotential] ' + mode + ' · ' +
+                    st.sites + ' sites, ' + st.cells + ' cells (' + field.cellM + ' m), ' +
+                    st.scored + ' scored, ' + st.excludedUat + ' UAT-excluded, ' +
+                    st.excludedHeritage + ' heritage-excluded (' + st.high + ' high, ' +
+                    st.medium + ' medium, ' + st.low + ' low) — ' + st.ms + ' ms');
 
-                if (run.results.length === 0) setStatus('no_candidates', true);
+                if (!field.results.length && !field.heatPoints.length) setStatus('no_candidates', true);
                 else setStatus('done');
-                setSummary(run.results.length, s.high, s.medium);
+                setSummary(st, mode);
             } catch (err) {
                 console.error('[ArcheoPotential] Analysis failed:', err);
                 setStatus('error', true);
-                setSummary(0, 0, 0);
+                setSummary({ scored: 0 }, mode);
             } finally {
                 if (myVersion === _runVersion) _runInFlight = false;
                 setRunning(false);
@@ -1221,20 +2143,45 @@
         })();
     }
 
+    function layerList() {
+        var out = [];
+        if (_layerGroup) out.push(_layerGroup);
+        if (_maskGroup) out.push(_maskGroup);
+        if (_heatLayer) out.push(_heatLayer);
+        return out;
+    }
+
     function toggleArcheoPotentialLayer(on) {
-        _resultsVisible = on;
+        _resultsVisible = !!on;
+        // Stratul oprit → și modul pin se oprește (iar oglinda razei + dock-ul
+        // de acțiune se închid), ca să nu rămână unelte active fără rezultate.
+        if (!_resultsVisible && _pinMode) setPinMode(false);
         var map = window._dlMap;
-        if (!map || !_layerGroup) return;
-        if (on) {
-            if (!map.hasLayer(_layerGroup)) _layerGroup.addTo(map);
-        } else {
-            if (map.hasLayer(_layerGroup)) map.removeLayer(_layerGroup);
-        }
+        if (!map) return;
+        layerList().forEach(function (layer) {
+            try {
+                var has = (typeof map.hasLayer === 'function') ? map.hasLayer(layer) : false;
+                if (_resultsVisible) {
+                    if (!has) layer.addTo(map);
+                    if (layer === _heatLayer) adoptHeatCanvas(map, layer);
+                } else if (has) {
+                    map.removeLayer(layer);
+                }
+            } catch (e) { /* DOM-only tests */ }
+        });
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
      * 10. WIRE-UP + PUBLIC API
      * ═══════════════════════════════════════════════════════════════════════ */
+
+    function onLangChange() {
+        setStatus(_lastStatus.key, _lastStatus.isError, _lastStatus.vars);
+        if (_currentField) setSummary(_currentField.stats, _currentField.mode);
+        if (!_runInFlight) setRunning(false);
+        // Tooltip-ul pinului și eticheta cercului urmăresc limba curentă.
+        if (_pinMode && _pinLatLng) drawPin(_pinLatLng);
+    }
 
     function wireUI() {
         var btn = el('archeoPotRunBtn');
@@ -1249,6 +2196,37 @@
                 toggleArcheoPotentialLayer(toggle.checked);
             });
         }
+        var pinToggle = el('archeoPotPinToggle');
+        if (pinToggle && !pinToggle.dataset.archeoWired) {
+            pinToggle.dataset.archeoWired = '1';
+            pinToggle.addEventListener('change', function () {
+                setPinMode(this.checked);
+            });
+        }
+        var slider = el('archeoPotDistance');
+        if (slider && !slider.dataset.archeoWired) {
+            slider.dataset.archeoWired = '1';
+            wireRadiusSlider(slider);
+        }
+        updateRadiusLabel();
+
+        var bubblesBtn = el('archeoPotModeBubbles');
+        if (bubblesBtn && !bubblesBtn.dataset.archeoWired) {
+            bubblesBtn.dataset.archeoWired = '1';
+            bubblesBtn.addEventListener('click', function () { setOutputMode('bubbles'); });
+        }
+        var heatBtn = el('archeoPotModeHeat');
+        if (heatBtn && !heatBtn.dataset.archeoWired) {
+            heatBtn.dataset.archeoWired = '1';
+            heatBtn.addEventListener('click', function () { setOutputMode('heat'); });
+        }
+        setOutputMode(outputMode());
+
+        if (typeof document !== 'undefined' && document.addEventListener) {
+            document.addEventListener('detectlab:langchange', onLangChange);
+        }
+        setStatus(_pinLatLng ? 'pin_set' : (_pinMode ? 'pin_armed' : 'ready'), false,
+            _pinLatLng ? { lat: _pinLatLng.lat.toFixed(5), lng: _pinLatLng.lng.toFixed(5), r: radiusKm() } : null);
     }
 
     // The panel may load before or after this script — wire on both events.
@@ -1261,11 +2239,35 @@
     // Public API (used by index.html handlers + console)
     window.runArcheoPotentialAnalysis = runArcheoPotentialAnalysis;
     window.toggleArcheoPotentialLayer = toggleArcheoPotentialLayer;
+    window.setArcheoPotentialMode = setOutputMode;
+    window.setArcheoPotentialPinMode = setPinMode;
+    window.setArcheoPotentialRadiusKm = setRadiusKm;
     // Headless pipeline — used by js/archeo-report.js (the Premium
     // "Archeological Report") so that its "potential zones" are exactly the
     // bubbles this layer would return, with the same filters and scoring.
     window.computeArcheoPotential = computeCandidates;
+    // Dense score field (both display modes of this layer).
+    window.computeArcheoPotentialField = computePotentialField;
     window._archeoPotentialResults = function () { return _currentResults; };
+    window._archeoPotentialField = function () { return _currentField; };
+    window._archeoPotentialState = function () {
+        return {
+            pinMode: _pinMode,
+            pin: _pinLatLng ? { lat: _pinLatLng.lat, lng: _pinLatLng.lng } : null,
+            radiusKm: radiusKm(),
+            radiusM: currentRadiusM(),
+            mode: outputMode(),
+            resultsVisible: _resultsVisible,
+            running: _runInFlight
+        };
+    };
+    // Console helper: _archeoPotSetPoint(46.77, 23.59) then runArcheoPotentialAnalysis()
+    window._archeoPotSetPoint = function (lat, lng) {
+        var latlng = (typeof L !== 'undefined' && L.latLng) ? L.latLng(lat, lng) : { lat: lat, lng: lng };
+        if (!_pinMode) setPinMode(true);
+        drawPin(latlng);
+        return _pinLatLng;
+    };
     window._archeoPotentialResetCache = function () { _siteIndexCache = null; };
     window._archeoPotentialDebug = {
         config: CONFIG,
@@ -1286,6 +2288,24 @@
         projectToLocalMeters: projectToLocalMeters,
         localMetersToLatLng: localMetersToLatLng,
         haversineM: haversineM,
-        _uatTileZ: uatTileZ
+        _uatTileZ: uatTileZ,
+        // câmp de scor (grilă densă) + moduri de afișare
+        computePotentialField: computePotentialField,
+        gridCellM: gridCellM,
+        buildFieldCells: buildFieldCells,
+        buildTriangleIndex: buildTriangleIndex,
+        triangleRecordAt: triangleRecordAt,
+        triScoreAt: triScoreAt,
+        exclusionReason: exclusionReason,
+        uatMaskRectangles: uatMaskRectangles,
+        heatRadiusPx: heatRadiusPx,
+        heatLayerOptions: heatLayerOptions,
+        renderField: renderField,
+        outputMode: outputMode,
+        setOutputMode: setOutputMode,
+        radiusKm: radiusKm,
+        currentRadiusM: currentRadiusM,
+        setPinMode: setPinMode,
+        state: function () { return window._archeoPotentialState(); }
     };
 })();

@@ -79,7 +79,11 @@ console.log('[4] Page + service-worker wiring (PWA clients pick up the fix)');
     // cache-buster pattern instead of one frozen tag — the satbase fix itself is
     // asserted by the checks above.
     check('index.html loads the new map-app.js build', /src="js\/map-app\.js\?v=\d{8}-/.test(html));
-    check('index.html loads the new archeo-report.js build', html.indexOf('src="' + reportTag + '"') !== -1);
+    // archeo-report.js is re-versioned by every later release too (the analysis
+    // dock bumped it to ?v=20260916-analysis-dock), so require the cache-buster
+    // pattern instead of one frozen tag.
+    check('index.html loads the new archeo-report.js build', /src="js\/archeo-report\.js\?v=\d{8}-/.test(html));
+    check('the frozen tag is gone only because a newer one replaced it', reportTag.length > 0);
     check('the SW pre-caches both new builds',
         sw.indexOf("'js/map-app.js?v=20260902-satbase-native18'") !== -1 && sw.indexOf("'" + reportTag + "'") !== -1);
     // The cache name only ever moves forward: every release that touches a

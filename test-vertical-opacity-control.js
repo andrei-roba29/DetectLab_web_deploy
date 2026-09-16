@@ -76,8 +76,22 @@ class MockElement extends EventTarget {
         this.max = '';
         this.step = '';
         this.focused = false;
+        this.dataset = {};
     }
+    get firstChild() { return this.children.length ? this.children[0] : null; }
     appendChild(child) { child.parentElement = this; this.children.push(child); return child; }
+    insertBefore(child, ref) {
+        child.parentElement = this;
+        const idx = ref ? this.children.indexOf(ref) : -1;
+        if (idx >= 0) this.children.splice(idx, 0, child); else this.children.push(child);
+        return child;
+    }
+    removeChild(child) {
+        const idx = this.children.indexOf(child);
+        if (idx >= 0) this.children.splice(idx, 1);
+        child.parentElement = null;
+        return child;
+    }
     setAttribute(name, value) { this.attributes[name] = String(value); }
     getAttribute(name) { return this.attributes[name] || null; }
     querySelectorAll(selector) {
@@ -134,11 +148,26 @@ const lidar = range('lidarHdOpacitySlider', 0);
 lidarOwner.appendChild(lidar);
 panel.appendChild(lidarOwner);
 
-// This visually similar range is not opacity and must never become selectable.
-const distanceOwner = new MockElement('div', 'distanceOwner');
+// This visually similar range is NOT opacity: the generic panel selector must
+// keep ignoring it, but the explicit distance registration mirrors it (km) and
+// docks the layer's action button in the bottom-centred dock.
+const distanceOwner = new MockElement('div', 'distanceOwner', ['transp-layer-row']);
 const distance = range('lidarScannerDistance', 10);
+distance.min = '10'; distance.max = '50';
+const scannerTitle = new MockElement('span');
+scannerTitle.textContent = 'LIDAR Scanner';
+const scanButton = new MockElement('button', 'lidarScannerRun');
+const scannerToggle = new MockElement('input', 'lidarScannerToggle');
+scannerToggle.checked = false;
+distanceOwner.appendChild(scannerTitle);
 distanceOwner.appendChild(distance);
+distanceOwner.appendChild(scanButton);
+distanceOwner.appendChild(scannerToggle);
 panel.appendChild(distanceOwner);
+
+const dock = new MockElement('div', 'layerActionDock');
+const dockInner = new MockElement('div', 'layerActionDockInner');
+dock.appendChild(dockInner);
 
 // The Battles century range: min -8 … max 20 (8th c. BC … 20th c. AD).
 const battlesOwner = new MockElement('div', 'battlesOwner', ['transp-layer-row']);
@@ -149,7 +178,8 @@ battlesOwner.appendChild(battles);
 panel.appendChild(battlesOwner);
 
 const byId = {};
-[panel, tab, control, caption, vertical, output, label, close, apm, lidar, distance, battles].forEach(function (el) {
+[panel, tab, control, caption, vertical, output, label, close, apm, lidar, distance, battles,
+ dock, dockInner, scanButton, scannerToggle].forEach(function (el) {
     byId[el.id] = el;
 });
 
@@ -162,7 +192,10 @@ tab.addEventListener('click', function () {
 const documentMock = new (class extends EventTarget {
     constructor() { super(); this.readyState = 'complete'; }
     getElementById(id) { return byId[id] || null; }
+    createElement(tag) { return new MockElement(tag); }
     querySelectorAll(selector) {
+        // Selectorul generic de opacitate din panou NU trebuie să prindă
+        // sliderele de distanță (au altă unitate și alt dock de acțiune).
         if (selector.indexOf('[id*="Opacity"]') !== -1) return [apm, lidar, battles];
         return [];
     }
@@ -208,7 +241,11 @@ vm.runInContext(
 assert(apmOwner.classList.contains('opacity-layer-selectable'), 'APM row should be clickable');
 assert(lidarOwner.classList.contains('opacity-layer-selectable'), 'nested LIDAR row should be clickable');
 assert(battlesOwner.classList.contains('opacity-layer-selectable'), 'battles period row should be clickable');
-assert(!distanceOwner.classList.contains('opacity-layer-selectable'), 'distance range must not register as opacity');
+// The distance range is registered EXPLICITLY (by id), not through the opacity
+// selector: the mock selector above never returns it, yet the row is clickable
+// and the mirror reports kind "distance" with a km formatter.
+assert(distanceOwner.classList.contains('opacity-layer-selectable'),
+    'distance row is registered explicitly for its own mirror');
 
 // Clicking a layer row selects it, opens the vertical mirror and closes the panel.
 apmOwner.click();
@@ -293,5 +330,64 @@ close.click();
 assert(!control.classList.contains('visible'), 'close button should hide the mirror');
 assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), null);
 assert.strictEqual(intervals.size, 0, 'sync timer should stop when closed');
+
+// ── Distance mirror (LIDAR Scanner) + bottom-centred action dock ──
+distanceOwner.click();
+assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), 'lidarScannerDistance');
+assert.strictEqual(control.getAttribute('data-kind'), 'distance', 'distance mirrors carry their own kind');
+assert.strictEqual(control.getAttribute('data-owner'), 'lidarScannerDistance', 'data-owner drives the per-layer colours');
+assert.strictEqual(vertical.min, '10', 'the mirror adopts the source range (10–50 km)');
+assert.strictEqual(vertical.max, '50');
+assert.strictEqual(output.textContent, '10 km', 'distance is formatted in km, not %');
+assert.strictEqual(caption.textContent, 'DISTANȚĂ', 'distance caption (RO default in this sandbox)');
+assert.strictEqual(label.textContent, 'LIDAR Scanner', 'layer name comes from the row title / fallback table');
+
+// The layer's own button is physically moved into the bottom dock, together
+// with a radius chip; the dock only shows while the mirror is visible.
+assert(dock.classList.contains('visible'), 'action dock should appear with the distance mirror');
+assert.strictEqual(dock.getAttribute('aria-hidden'), 'false');
+assert.strictEqual(scanButton.parentElement, dockInner, 'Scan button docks in the bottom-centre container');
+assert(scanButton.classList.contains('la-docked'), 'docked button keeps a hook class for styling');
+// MockElement ține className ca proprietate simplă (nelegată de classList).
+const dockChip = dockInner.children.filter(function (c) {
+    return String(c.className || '').indexOf('layer-action-dock-radius') !== -1;
+})[0];
+assert(dockChip, 'the dock shows the current radius next to the button');
+assert.strictEqual(dockChip.textContent, '10 km');
+
+// Dragging the vertical distance mirror drives the panel range and the chip.
+let distanceInputs = 0;
+distance.addEventListener('input', function () { distanceInputs++; });
+vertical.value = '25';
+vertical.dispatchEvent(new Event('input'));
+assert.strictEqual(distance.value, '25', 'mirror drives the real distance range');
+assert.strictEqual(distanceInputs, 1, 'source input event fires exactly once');
+assert.strictEqual(output.textContent, '25 km');
+assert.strictEqual(dockChip.textContent, '25 km', 'dock chip follows the mirror');
+
+// The layer's own switch turns the mirror + dock on and off.
+windowMock.DetectLabVerticalOpacity.close();
+assert(!dock.classList.contains('visible'), 'dock hides with the mirror');
+assert.strictEqual(scanButton.parentElement, distanceOwner, 'button returns to its panel row');
+scannerToggle.checked = true;
+scannerToggle.dispatchEvent(new Event('change'));
+assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), 'lidarScannerDistance',
+    'switching the layer ON re-opens its distance mirror');
+assert(dock.classList.contains('visible'), 'and its action dock');
+scannerToggle.checked = false;
+scannerToggle.dispatchEvent(new Event('change'));
+assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), null,
+    'switching the layer OFF closes the mirror');
+assert(!dock.classList.contains('visible'), 'and the dock');
+assert.strictEqual(scanButton.parentElement, distanceOwner, 'button stays home afterwards');
+
+// Selecting an opacity layer must not keep the dock open.
+scannerToggle.checked = true;
+scannerToggle.dispatchEvent(new Event('change'));
+windowMock.DetectLabVerticalOpacity.select('apmOpacitySlider');
+assert.strictEqual(control.getAttribute('data-kind'), 'opacity');
+assert(!dock.classList.contains('visible'), 'an opacity layer has no action dock');
+assert.strictEqual(scanButton.parentElement, distanceOwner, 'its button is back in the panel row');
+close.click();
 
 console.log('✅ test-vertical-opacity-control.js passed: layer click, vertical sync, century mirror, filtering and close behavior work.');

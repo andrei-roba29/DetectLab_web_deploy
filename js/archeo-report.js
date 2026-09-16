@@ -2420,6 +2420,19 @@
         updateRunButton();
     }
 
+    /* Oglinda verticală a sliderului de rază + dock-ul de acțiune centrat jos
+       sunt gestionate de vertical-opacity-control.js; aici le anunțăm când
+       stratul pornește/se oprește PROGRAMATIC (din catalog, din gating-ul de
+       abonament etc.), caz în care „change” pe comutator nu se declanșează. */
+    function notifyDistanceMirror(on) {
+        try {
+            var api = window.DetectLabVerticalOpacity;
+            if (!api) return;
+            if (on) { if (!api.isActiveFor('archReportDistance')) api.select('archReportDistance'); }
+            else if (api.isActiveFor('archReportDistance')) api.close();
+        } catch (e) {}
+    }
+
     function setActive(on) {
         _state.active = !!on;
         var map = window._dlMap;
@@ -2437,6 +2450,7 @@
             setStatus('arch_report_hint');
             updateUi();
             updateRunButton();
+            notifyDistanceMirror(false);
             return;
         }
         ensurePanes(map);
@@ -2444,6 +2458,7 @@
         setStatus(_state.point ? 'arch_report_point_set' : 'arch_report_hint');
         updateUi();
         updateRunButton();
+        notifyDistanceMirror(true);
     }
 
     function wireUI() {

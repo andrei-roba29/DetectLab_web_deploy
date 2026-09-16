@@ -44,8 +44,37 @@
         banatMapOpacitySlider: 'Banat 1769–1772',
         satellite60sMapOpacitySlider: "Satellite imagery 60's",
         battlesPeriodSlider: 'Battles / Bătălii',
-        satPeriodSlider: 'Satellite'
+        satPeriodSlider: 'Satellite',
+        lidarScannerDistance: 'LIDAR Scanner',
+        archeoPotDistance: 'Archeological Potential Sites',
+        archReportDistance: 'Archeological Report'
     };
+
+    /* ── OGLINZI DE DISTANȚĂ / RAZĂ + DOCK DE ACȚIUNE ──
+       Straturile de analiză (LIDAR Scanner, Zone cu potențial arheologic,
+       Raport arheologic) au un slider de distanță/rază în panou. Când stratul
+       e apăsat — clic pe rând sau comutatorul pornit — sliderul e oglindit
+       vertical pe hartă exact ca opacitatea, iar butonul de acțiune al
+       stratului (Scan / Zone candidati / Generează raport) e mutat în dock-ul
+       centrat în partea de jos a ecranului principal. Înregistrarea e pe id
+       (nu după șablonul „Opacity”), ca unitatea, eticheta și acțiunile să
+       poată fi specifice fiecărui strat. */
+    var DISTANCE_SOURCES = [
+        { id: 'lidarScannerDistance', toggle: 'lidarScannerToggle', actions: ['lidarScannerRun'], caption: 'distance' },
+        { id: 'archeoPotDistance', toggle: 'archeoPotPinToggle', actions: ['archeoPotRunBtn'], caption: 'radius' },
+        { id: 'archReportDistance', toggle: 'archReportToggle', actions: ['archReportRunBtn'], caption: 'radius' }
+    ];
+
+    function distanceDef(sliderId) {
+        for (var i = 0; i < DISTANCE_SOURCES.length; i++) {
+            if (DISTANCE_SOURCES[i].id === sliderId) return DISTANCE_SOURCES[i];
+        }
+        return null;
+    }
+
+    function isDistanceId(sliderId) {
+        return !!distanceDef(sliderId);
+    }
 
     /* The Satellite layer owns TWO ranges: its opacity and the „Istoric”
        period selector (2016 / Prezent — the 2018 orthophoto was dropped from
@@ -237,6 +266,101 @@
         syncActionAriaLabels();
     }
 
+    /* ── dock-ul centrat jos: butonul de acțiune al stratului de analiză ──
+       Butonul e mutat fizic (nu clonat), deci își păstrează id-ul,
+       listener-ele, starea disabled și spinner-ul; la dezactivare se întoarce
+       exact în rândul lui din panou. Alături rămâne o etichetă cu raza curentă,
+       sincronizată cu oglinda verticală și cu sliderul din panou. */
+    var dock = null;
+    var dockInner = null;
+    var dockRadius = null;
+    var dockActionHome = {};
+
+    function ensureDock() {
+        if (!dock) { try { dock = document.getElementById('layerActionDock'); } catch (e) { dock = null; } }
+        if (!dockInner) { try { dockInner = document.getElementById('layerActionDockInner'); } catch (e) { dockInner = null; } }
+        return !!(dock && dockInner);
+    }
+
+    function ensureDockRadius() {
+        if (dockRadius || !dockInner) return null;
+        dockRadius = document.createElement('span');
+        dockRadius.className = 'layer-action-dock-radius';
+        if (typeof dockInner.insertBefore === 'function' && dockInner.firstChild) {
+            dockInner.insertBefore(dockRadius, dockInner.firstChild);
+        } else {
+            dockInner.appendChild(dockRadius);
+        }
+        return dockRadius;
+    }
+
+    function updateDockRadius() {
+        if (!dockRadius || !activeSource || !isDistanceId(activeSource.id)) return;
+        dockRadius.textContent = distanceText(activeSource.value);
+    }
+
+    function syncDistanceDock() {
+        if (!ensureDock()) return;
+        var activeId = activeSource ? activeSource.id : null;
+        var def = activeId ? distanceDef(activeId) : null;
+        var controlVisible = false;
+        try { controlVisible = control.classList.contains('visible'); } catch (e) { controlVisible = false; }
+        var visible = !!def && controlVisible;
+        var wanted = visible ? def.actions : [];
+
+        for (var i = 0; i < DISTANCE_SOURCES.length; i++) {
+            var actions = DISTANCE_SOURCES[i].actions;
+            for (var j = 0; j < actions.length; j++) {
+                var id = actions[j];
+                var btn = null;
+                try { btn = document.getElementById(id); } catch (e) { btn = null; }
+                if (!btn) continue;
+                if (!dockActionHome[id]) {
+                    dockActionHome[id] = { parent: btn.parentElement, next: btn.nextSibling };
+                }
+                if (wanted.indexOf(id) !== -1) {
+                    if (btn.parentElement !== dockInner) {
+                        try { dockInner.appendChild(btn); } catch (e) { /* DOM-only tests */ }
+                    }
+                    if (btn.classList) btn.classList.add('la-docked');
+                } else {
+                    var home = dockActionHome[id];
+                    if (home && home.parent && btn.parentElement !== home.parent) {
+                        try {
+                            if (home.next && home.next.parentElement === home.parent &&
+                                typeof home.parent.insertBefore === 'function') {
+                                home.parent.insertBefore(btn, home.next);
+                            } else {
+                                home.parent.appendChild(btn);
+                            }
+                        } catch (e) {
+                            try { home.parent.appendChild(btn); } catch (e2) { /* DOM-only tests */ }
+                        }
+                    }
+                    if (btn.classList) btn.classList.remove('la-docked');
+                }
+            }
+        }
+
+        if (visible) {
+            ensureDockRadius();
+            updateDockRadius();
+        } else if (dockRadius && dockRadius.parentElement) {
+            try { dockRadius.parentElement.removeChild(dockRadius); } catch (e) { /* DOM-only tests */ }
+            dockRadius = null;
+        }
+
+        if (dock.classList) dock.classList.toggle('visible', visible);
+        if (dock.setAttribute) dock.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        // Ridică stack-ul de controale plutitoare centrate jos (ajutor APM20,
+        // hint-uri de zoom) cât timp dock-ul e vizibil, ca să nu se suprapună.
+        try {
+            if (document.body && document.body.classList) {
+                document.body.classList.toggle('layer-dock-open', visible);
+            }
+        } catch (e) { /* DOM-only tests */ }
+    }
+
     function isVerticalActiveFor(sliderId) {
         try {
             return !!(activeSource && activeSource.id === sliderId && control && control.classList.contains('visible'));
@@ -274,7 +398,14 @@
        Its value formatter and caption come from battles-layer.js
        (window.DetectLabBattlesPeriod); percentage formatting stays the default
        for every other range. */
+    function distanceText(value) {
+        var number = Number(value);
+        if (!isFinite(number)) return String(value) + ' km';
+        return number + ' km';
+    }
+
     function sourceFormatter(source) {
+        if (isDistanceId(source.id)) return distanceText;
         if (source.id === 'battlesPeriodSlider') {
             if (window.DetectLabBattlesPeriod && typeof window.DetectLabBattlesPeriod.format === 'function') {
                 return window.DetectLabBattlesPeriod.format;
@@ -288,6 +419,12 @@
     }
 
     function sourceCaption(source) {
+        if (isDistanceId(source.id)) {
+            var def = distanceDef(source.id);
+            var en = (window._currentLang && window._currentLang() === 'en');
+            if (def && def.caption === 'radius') return en ? 'RADIUS' : 'RAZĂ';
+            return en ? 'DISTANCE' : 'DISTANȚĂ';
+        }
         if (source.id === 'battlesPeriodSlider') {
             if (window.DetectLabBattlesPeriod && typeof window.DetectLabBattlesPeriod.caption === 'function') {
                 return window.DetectLabBattlesPeriod.caption();
@@ -305,6 +442,7 @@
     }
 
     function sourceKind(source) {
+        if (isDistanceId(source.id)) return 'distance';
         if (source.id === 'battlesPeriodSlider') return 'period';
         if (source.id === 'satPeriodSlider') return 'satperiod';
         return 'opacity';
@@ -376,6 +514,7 @@
         }
         valueOutput.textContent = activeFormatter(activeSource.value);
         verticalSlider.setAttribute('aria-valuetext', valueOutput.textContent);
+        updateDockRadius();
         if (valueOutput.classList.contains('visible')) positionPeriodTip();
     }
 
@@ -501,6 +640,7 @@
         layerLabel.title = name;
         if (captionEl) captionEl.textContent = sourceCaption(source);
         control.setAttribute('data-kind', kind);
+        control.setAttribute('data-owner', source.id);
 
         verticalSlider.min = source.min || '0';
         verticalSlider.max = source.max || '100';
@@ -517,6 +657,7 @@
 
         if (closePanel) closeLayerPanel();
         syncLayerActions();
+        syncDistanceDock();
     }
 
     function hideControl() {
@@ -532,6 +673,7 @@
             syncTimer = null;
         }
         syncLayerActions();
+        syncDistanceDock();
     }
 
     function isInteractiveTarget(target) {
@@ -581,6 +723,68 @@
         source.addEventListener('change', function () {
             if (source === activeSource) syncFromSource();
         });
+    }
+
+    /* Înregistrarea unui slider de distanță/rază: aceeași interacțiune ca la
+       opacitate (clic pe rând → oglindă + închiderea panoului), plus comutatorul
+       stratului, care porneste/oprește și el oglinda. Rândul proprietar e
+       `.transp-layer-row` (sliderul de distanță e copil direct al rândului, spre
+       deosebire de cele de opacitate, care stau în eticheta rândului). */
+    function registerDistanceSource(def) {
+        var source = null;
+        try { source = document.getElementById(def.id); } catch (e) { source = null; }
+        if (!source) return;
+
+        var owner = source.parentElement;
+        if (owner && typeof owner.closest === 'function') {
+            owner = owner.closest('.transp-layer-row') || owner;
+        }
+        if (!owner) return;
+
+        if (owner.classList) owner.classList.add('opacity-layer-selectable');
+        if (owner.setAttribute) {
+            if (!owner.getAttribute('tabindex')) owner.setAttribute('tabindex', '0');
+            owner.setAttribute('role', 'group');
+            owner.setAttribute('aria-label', 'Select ' + getLayerName(source, owner) + ' distance control');
+        }
+
+        owner.addEventListener('click', function (event) {
+            if (isInteractiveTarget(event.target)) {
+                if (event.target === source) selectSource(source, false);
+                return;
+            }
+            selectSource(source, true);
+        });
+
+        owner.addEventListener('keydown', function (event) {
+            if (event.target !== owner) return;
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                selectSource(source, true);
+                verticalSlider.focus();
+            }
+        });
+
+        source.addEventListener('pointerdown', function () { selectSource(source, false); });
+        source.addEventListener('focus', function () { selectSource(source, false); });
+        source.addEventListener('input', function () {
+            if (source === activeSource) syncFromSource();
+        });
+        source.addEventListener('change', function () {
+            if (source === activeSource) syncFromSource();
+        });
+
+        // Comutatorul stratului (LIDAR Scanner / pin potențial / raport):
+        // pornit → oglinda + dock-ul apar; oprit → se ascund, dacă erau pe el.
+        var toggle = null;
+        try { toggle = def.toggle ? document.getElementById(def.toggle) : null; } catch (e) { toggle = null; }
+        if (toggle && toggle.addEventListener && !toggle.dataset.voDistanceWired) {
+            toggle.dataset.voDistanceWired = '1';
+            toggle.addEventListener('change', function () {
+                if (this.checked) selectSource(source, false);
+                else if (activeSource === source) hideControl();
+            });
+        }
     }
 
     function emitSourceEvent(type) {
@@ -647,6 +851,10 @@
            so it gets the paired registration (no duplicate row handlers). */
         var satPeriodSource = document.getElementById('satPeriodSlider');
         if (satPeriodSource) registerPairedSource(satPeriodSource);
+
+        /* Sliderele de distanță/rază ale straturilor de analiză: înregistrate
+           explicit (vezi DISTANCE_SOURCES), cu dock de acțiune centrat jos. */
+        for (var d = 0; d < DISTANCE_SOURCES.length; d++) registerDistanceSource(DISTANCE_SOURCES[d]);
 
         verticalSlider.addEventListener('input', function () {
             emitSourceEvent('input');
@@ -735,6 +943,7 @@
            (PERIOADĂ / ISTORIC) and the formatted value follow the live language.
            Plain opacity mirrors have no caption any more. */
         document.addEventListener('detectlab:langchange', function () {
+            syncDistanceDock();
             if (!activeSource || !activeOwner) {
                 /* Chiar și fără strat activ, etichetele/aria butoanelor mutate
                    trebuie să urmeze limba curentă. */

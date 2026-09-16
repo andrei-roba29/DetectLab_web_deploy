@@ -433,6 +433,20 @@
             scanning = false;
         });
     }
+    /* Oglinda verticală a sliderului de distanță + dock-ul de acțiune centrat
+       jos sunt gestionate de vertical-opacity-control.js; aici doar le spunem
+       când stratul pornește/se oprește PROGRAMATIC (din catalog, din gating-ul
+       de abonament etc.), caz în care evenimentul „change” al comutatorului nu
+       se declanșează. */
+    function notifyDistanceMirror(on) {
+        try {
+            var api = window.DetectLabVerticalOpacity;
+            if (!api) return;
+            if (on) { if (!api.isActiveFor('lidarScannerDistance')) api.select('lidarScannerDistance'); }
+            else if (api.isActiveFor('lidarScannerDistance')) api.close();
+        } catch (e) {}
+    }
+
     function setActive(on) {
         active = on;
         if (!map) return;
@@ -452,6 +466,7 @@
             // promise in the browser console.
             load().catch(function () {});
         }
+        notifyDistanceMirror(on);
     }
     function onMapClick(e){ if(active&&!scanning)drawSelection(e.latlng); }
     function load() {

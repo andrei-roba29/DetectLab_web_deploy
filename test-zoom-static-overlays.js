@@ -104,10 +104,28 @@ assert.match(
     /L\.circle\(\s*\[\s*c\.lat\s*,\s*c\.lng\s*\]/,
     'archeo candidates must be L.circle at the candidate lat/lng'
 );
+// The layer now scores a dense grid instead of a few 300 m candidates, but the
+// bubble radius is still expressed in METRES (derived from the grid cell), so
+// every bubble stays glued to its geography while zooming.
 assert.match(
     archeo,
-    /radius:\s*CONFIG\.CANDIDATE_RADIUS_M/,
-    'archeo candidates must use a metre radius so they stay geographically static while zooming'
+    /var radiusM = field\.bubbleRadiusM;/,
+    'archeo bubbles must take their radius in metres from the scored field'
+);
+assert.match(
+    archeo,
+    /radius:\s*radiusM,/,
+    'archeo bubbles must use that metre radius so they stay geographically static while zooming'
+);
+assert.match(
+    archeo,
+    /bubbleRadiusM:\s*Math\.max\(40,\s*Math\.round\(cellM/,
+    'the bubble radius is a metre value derived from the grid cell (no pixel radii)'
+);
+assert.match(
+    archeo,
+    /radius:\s*siteRadius,/,
+    'the red heritage protection rings must also be metre circles'
 );
 assert.match(
     archeo,
