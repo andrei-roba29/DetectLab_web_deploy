@@ -59,7 +59,7 @@
         #apm20SearchHelpBtn {
             display: none;
             position: absolute;
-            bottom: 36px;
+            bottom: 26px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 900;
@@ -326,7 +326,7 @@
         #apm20SearchHelpHint {
             display: none;
             position: absolute;
-            bottom: 36px;
+            bottom: 26px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 900;
