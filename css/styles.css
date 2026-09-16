@@ -5553,10 +5553,17 @@
             width:96px; height:9px; border-radius:5px; flex-shrink:0;
             border:1px solid rgba(184,216,240,.22);
             /* aceeași rampă ca HEAT_GRADIENT din js/archeo-potential.js:
-               indigo (scor mic) → albastru → verde → chihlimbar → violet (mare).
-               Roșul e rezervat zonelor excluse (UAT / rază patrimoniu). */
-            background:linear-gradient(90deg,#1b2a55,#2f8fc4,#4fd08a,#f0a030,#7b3fd4);
+               indigo închis (cel mai slab) → albastru → verde → chihlimbar →
+               violet (cel mai bun). Roșul e rezervat zonelor excluse
+               (UAT / rază patrimoniu), ca legenda să nu fie ambiguă. */
+            background:linear-gradient(90deg,#10233f,#1f7fc4,#23c48e,#f2b134,#8b3ff0);
         }
+        .archeo-pot-heatlabels {
+            display:flex; justify-content:space-between; gap:6px;
+            min-width:96px; font-size:.62rem; letter-spacing:.04em;
+            color:rgba(245,240,235,.55);
+        }
+        .archeo-pot-heatlabels span:last-child { color:#c4a0f0; font-weight:600; }
         .archeo-pot-swatch { width:11px; height:11px; border-radius:3px; flex-shrink:0; display:inline-block; }
         .archeo-pot-swatch-red { background:rgba(224,60,60,.75); border:1px solid #ff6b6b; }
 

@@ -20,7 +20,32 @@ const sandbox = {
     document: {
         readyState: 'complete',
         addEventListener() {},
-        getElementById: () => null
+        getElementById: () => null,
+        // Canvas minim: suficient ca rendererul de heatmap să fie exercitat
+        // real (createImageData / putImageData / drawImage) și în Node.
+        createElement(tag) {
+            if (tag !== 'canvas') return { style: {} };
+            const canvas = {
+                tagName: 'CANVAS', width: 0, height: 0, style: {}, className: '',
+                parentNode: null, parentElement: null, draws: [], ops: [],
+                appendChild(x) { return x; },
+                getContext() {
+                    const ctx = {
+                        globalAlpha: 1, imageSmoothingEnabled: false,
+                        createImageData(w, h) {
+                            canvas.ops.push('createImageData:' + w + 'x' + h);
+                            return { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
+                        },
+                        putImageData() { canvas.ops.push('putImageData'); },
+                        clearRect() { canvas.ops.push('clearRect'); },
+                        drawImage(img, x, y, w, h) { canvas.draws.push({ x, y, w, h }); },
+                        save() {}, restore() {}
+                    };
+                    return ctx;
+                }
+            };
+            return canvas;
+        }
     },
     window: {},
     L: { layerGroup: () => ({}), circle: () => ({}), circleMarker: () => ({}), polyline: () => ({}), latLng: (a, b) => ({ lat: a, lng: b }) }
@@ -303,16 +328,52 @@ console.log('\n[End-to-end pipeline]');
     const addedLayers = [];
     const mapEvents = {};
     const fakeMap = {
-        getCenter: () => ({ lat: 46.8, lng: 23.6 }),
-        getZoom: () => 13,
+        _center: { lat: 46.8, lng: 23.6 },
+        _zoom: 13,
+        getCenter() { return this._center; },
+        getZoom() { return this._zoom; },
+        getSize: () => ({ x: 900, y: 700 }),
+        getContainer: () => ({ querySelector: () => null }),
+        // Web Mercator, la fel ca Leaflet: canvas-ul de heatmap se ancorează
+        // exact cu aceste formule.
+        project(ll, zoom) {
+            const z = (zoom === undefined ? this._zoom : zoom);
+            const scale = 256 * Math.pow(2, z);
+            return {
+                x: (ll.lng + 180) / 360 * scale,
+                y: (0.5 - Math.log(Math.tan(Math.PI / 4 + ll.lat * Math.PI / 180 / 2)) / (2 * Math.PI)) * scale
+            };
+        },
+        getPixelOrigin() { return this.project(this._center, this._zoom); },
+        containerPointToLayerPoint: () => ({ x: 0, y: 0 }),
+        getZoomScale(to, from) { return Math.pow(2, to - from); },
+        _getNewPixelOrigin(center, zoom) {
+            const p = this.project(center, zoom);
+            const size = this.getSize();
+            return { x: p.x - size.x / 2, y: p.y - size.y / 2 };
+        },
         getPane: (name) => panes[name] || null,
         createPane(name) {
-            const pane = { name, children: [], style: {}, appendChild(c) { this.children.push(c); return c; } };
+            const pane = {
+                name, children: [], style: {},
+                appendChild(c) { this.children.push(c); c.parentNode = this; c.parentElement = this; return c; },
+                removeChild(c) {
+                    const i = this.children.indexOf(c);
+                    if (i >= 0) this.children.splice(i, 1);
+                    c.parentNode = null; c.parentElement = null;
+                    return c;
+                }
+            };
             panes[name] = pane;
             return pane;
         },
-        addLayer(l) { addedLayers.push(l); return this; },
-        removeLayer(l) { const i = addedLayers.indexOf(l); if (i >= 0) addedLayers.splice(i, 1); return this; },
+        addLayer(l) { addedLayers.push(l); if (l && typeof l.onAdd === 'function') l.onAdd(this); return this; },
+        removeLayer(l) {
+            const i = addedLayers.indexOf(l);
+            if (i >= 0) addedLayers.splice(i, 1);
+            if (l && typeof l.onRemove === 'function') l.onRemove(this);   // ca Leaflet
+            return this;
+        },
         hasLayer(l) { return addedLayers.indexOf(l) !== -1; },
         on(type, fn) { (mapEvents[type] = mapEvents[type] || []).push(fn); return this; },
         off(type, fn) {
@@ -460,13 +521,73 @@ console.log('\n[End-to-end pipeline]');
     check('excluded cells carry a reason',
         field.excluded.length === st.excludedUat + st.excludedHeritage &&
         field.excluded.every((c) => c.reason === 'uat' || c.reason === 'heritage'));
-    check('bubbles are smaller than the old 300 m candidates', field.bubbleRadiusM < 300, field.bubbleRadiusM);
-    check('neighbouring bubbles overlap → no gaps on the map',
-        field.bubbleRadiusM * 2 >= field.cellM, field.bubbleRadiusM + ' vs ' + field.cellM);
-    check('every scored cell is rendered as a bubble',
-        field.results.length === st.scored &&
-        groupLayers.some((g) => g.layers.filter((l) => l.kind === 'circle' && l.options.radius === field.bubbleRadiusM).length === st.scored),
-        'scored ' + st.scored);
+    /* ── 2b. bulele: selecție rară, fără suprapuneri (sweet spot) ─────────
+       Cerința: bulele nu trebuie să fie dese/înghesuite și nu au voie să se
+       atingă între ele sau să intre peste razele siturilor arheologice. */
+    const B = D.config.BUBBLE;
+    const bubbles = field.bubbles || [];
+    const bubbleCap = D.bubbleCountCap(field.radius);
+    check('bubbles are a sparse selection, not one circle per scored cell',
+        bubbles.length > 0 && bubbles.length <= bubbleCap && bubbles.length * 3 < st.scored,
+        bubbles.length + ' bubbles / ' + st.scored + ' scored cells (cap ' + bubbleCap + ')');
+    check('only strong cells are promoted to bubbles',
+        bubbles.every((b) => b.score >= B.MIN_SCORE),
+        'min bubble score ' + Math.min(...bubbles.map((b) => b.score)).toFixed(2));
+    check('every bubble keeps its own radius, inside the configured bounds',
+        bubbles.every((b) => b.radiusM >= (B.RADIUS_FLOOR_M || 90) && b.radiusM <= field.bubbleBaseRadiusM),
+        bubbles.map((b) => b.radiusM).slice(0, 6).join(','));
+
+    // margine la margine între bule
+    let minEdge = Infinity;
+    let overlaps = 0;
+    for (let i = 0; i < bubbles.length; i++) {
+        for (let j = i + 1; j < bubbles.length; j++) {
+            const gapM = haversine(bubbles[i].lat, bubbles[i].lng, bubbles[j].lat, bubbles[j].lng) -
+                bubbles[i].radiusM - bubbles[j].radiusM;
+            if (gapM < minEdge) minEdge = gapM;
+            if (gapM < -1) overlaps++;
+        }
+    }
+    check('no two bubbles touch or interleave', overlaps === 0 && minEdge >= -1,
+        'closest edges ' + minEdge.toFixed(0) + ' m apart, ' + overlaps + ' overlaps');
+    check('bubbles keep a visible gap between them',
+        !isFinite(minEdge) || minEdge >= 0.5 * D.bubbleGapM(field.radius),
+        minEdge.toFixed(0) + ' m vs gap ' + D.bubbleGapM(field.radius) + ' m');
+
+    // marginea bulei față de raza de protecție a fiecărui sit (600 + 100 m)
+    const siteRingM = D.config.SITE_RADIUS_M + D.config.SITE_BUFFER_M;
+    let worstRing = Infinity;
+    bubbles.forEach((b) => field.ctx.sites.forEach((site) => {
+        const d = haversine(b.lat, b.lng, site.lat, site.lng) - b.radiusM - siteRingM;
+        if (d < worstRing) worstRing = d;
+    }));
+    check('no bubble touches a site protection radius',
+        worstRing >= -1, 'closest bubble edge is ' + worstRing.toFixed(0) + ' m outside the ' + siteRingM + ' m ring');
+
+    // marginea bulei față de masca roșie (dreptunghiurile celulelor excluse)
+    const halfCellM = field.cellM / 2;
+    let worstMask = Infinity;
+    bubbles.forEach((b) => field.excluded.forEach((e) => {
+        const dx = Math.max(0, Math.abs(b.x - e.x) - halfCellM);
+        const dy = Math.max(0, Math.abs(b.y - e.y) - halfCellM);
+        const d = Math.sqrt(dx * dx + dy * dy) - b.radiusM;
+        if (d < worstMask) worstMask = d;
+    }));
+    check('no bubble overlaps the red exclusion mask',
+        worstMask >= -1, 'closest bubble edge is ' + worstMask.toFixed(0) + ' m outside the mask');
+
+    console.log('  · ' + bubbles.length + ' bubbles (cap ' + bubbleCap + ') din ' + st.scored +
+        ' celule scorate · raze ' + Math.min(...bubbles.map((b) => b.radiusM)) + '–' +
+        Math.max(...bubbles.map((b) => b.radiusM)) + ' m · cel mai mic spațiu liber între bule ' +
+        minEdge.toFixed(0) + ' m · față de razele siturilor ' + worstRing.toFixed(0) + ' m');
+    check('each selected bubble is drawn once, with its own radius',
+        bubbles.length === st.bubbles &&
+        groupLayers.some((g) => {
+            const drawn = g.layers.filter((l) => l.kind === 'circle' && l.options.pane === 'pane_archeo' &&
+                l.options.radius !== field.radius && l.options.radius !== 700);
+            return drawn.length === st.bubbles &&
+                drawn.every((l) => bubbles.some((b) => l.options.radius === b.radiusM));
+        }), 'drawn for ' + st.bubbles + ' bubbles');
     check('bubble popups are built lazily',
         groupLayers.some((g) => g.layers.some((l) => l.kind === 'circle' && typeof l.popup === 'function')));
     check('working area circle uses the slider radius',
@@ -504,18 +625,109 @@ console.log('\n[End-to-end pipeline]');
     const hf = sandbox.window._archeoPotentialField();
     check('heat mode active', hf.mode === 'heat' && sandbox.window._archeoPotentialState().mode === 'heat');
     check('heat grid is finer than the bubble grid', hf.cellM <= field.cellM, hf.cellM + ' vs ' + field.cellM);
-    check('a heat layer was created', heatLayers.length > 0);
-    const heat = heatLayers[heatLayers.length - 1];
-    check('one heat point per scored cell', heat.points.length === hf.heatPoints.length &&
-        hf.stats.scored === heat.points.length, heat.points.length + ' / ' + hf.stats.scored);
-    check('heat points carry a normalised score',
-        heat.points.every((p) => Array.isArray(p) && p.length === 3 && p[2] > 0 && p[2] <= 1));
-    check('heat gradient keeps red out of the score ramp',
-        !!heat.options.gradient && Object.keys(heat.options.gradient).length >= 4 &&
-        Object.values(heat.options.gradient).every((c) => !/^#(e0|c0|f00|ff0000)/i.test(c)),
-        JSON.stringify(heat.options.gradient));
-    check('heat blob radius is in pixels and clamped',
-        heat.options.radius >= 10 && heat.options.radius <= 46, heat.options.radius);
+    check('leaflet-heat (alpha blobs) is no longer used', heatLayers.length === 0);
+    const raster = sandbox.window._archeoPotentialHeatRaster();
+    check('a score raster was built for the heatmap',
+        !!raster && raster.cols === hf.grid.cols && raster.rows === hf.grid.rows,
+        raster && raster.cols + 'x' + raster.rows);
+    const painted = [];
+    const colours = new Set();
+    for (let i = 0; i < raster.rgba.length; i += 4) {
+        if (raster.rgba[i + 3] > 0) {
+            painted.push(raster.rgba[i + 3]);
+            colours.add(raster.rgba[i] + ',' + raster.rgba[i + 1] + ',' + raster.rgba[i + 2]);
+        }
+    }
+    check('one painted raster pixel per scored cell', painted.length === hf.stats.scored,
+        painted.length + ' / ' + hf.stats.scored);
+    check('the heat colours are strongly differentiated (not one flat colour)',
+        colours.size > 100, colours.size + ' distinct colours over ' + painted.length + ' cells');
+    check('weak cells are translucent and strong cells saturated',
+        Math.max(...painted) - Math.min(...painted) > 80,
+        'alpha ' + Math.min(...painted) + '..' + Math.max(...painted));
+    check('the score window is stretched over this run (percentiles)',
+        raster.window.count === hf.stats.scored &&
+        raster.window.lo <= raster.window.min + 1e-9 &&
+        raster.window.hi >= Math.min(raster.window.max, raster.window.lo + D.config.HEAT.MIN_WINDOW),
+        JSON.stringify({ lo: raster.window.lo, hi: raster.window.hi, min: raster.window.min, max: raster.window.max }));
+    check('a higher score always maps to a different colour', (() => {
+        const lut = D.buildHeatRamp(D.HEAT_GRADIENT);
+        const rgb = (t) => {
+            const i = Math.round(t * 255) * 4;
+            return [lut[i], lut[i + 1], lut[i + 2]];
+        };
+        // diferență mare de culoare între treptele rampei
+        const steps = [0, 0.25, 0.5, 0.75, 1].map(rgb);
+        for (let i = 1; i < steps.length; i++) {
+            const d = Math.abs(steps[i][0] - steps[i - 1][0]) +
+                Math.abs(steps[i][1] - steps[i - 1][1]) +
+                Math.abs(steps[i][2] - steps[i - 1][2]);
+            if (d < 120) return false;
+        }
+        return true;
+    })());
+    check('heat ramp keeps red out of the score ramp',
+        Object.values(D.HEAT_GRADIENT).every((c) => !/^#(e0|c0|f0|ff)/i.test(c)),
+        JSON.stringify(D.HEAT_GRADIENT));
+
+    const heat = sandbox.window._archeoPotentialHeat();
+    check('a heat canvas layer was created', !!heat && !!heat._canvas && !!heat._srcCanvas);
+    check('the heat canvas lives in the layer heat pane',
+        !!heat._canvas.parentNode && heat._canvas.parentNode.name === 'pane_archeo_heat',
+        heat._canvas.parentNode && heat._canvas.parentNode.name);
+    check('the heat canvas is zoom-animated with the rest of the map',
+        /leaflet-zoom-animated/.test(heat._canvas.className || ''), heat._canvas.className);
+    check('the raster is drawn onto the map canvas',
+        heat._canvas.draws.length > 0, JSON.stringify(heat._canvas.draws.slice(0, 1)));
+
+    // Ancorare geografică: lățimea desenată trebuie să fie exact întinderea
+    // geografică a grilei la ORICE zoom — altfel heatmap-ul „plutește” la zoom.
+    const metersPerPixel = (zoom) => 156543.03392 * Math.cos(46.8 * Math.PI / 180) / Math.pow(2, zoom);
+    const expectedWidthPx = (zoom) => (2 * hf.radius) / metersPerPixel(zoom);
+    const zoomFrames = [];
+    for (const zoom of [10, 13, 16]) {
+        fakeMap._zoom = zoom;
+        fakeMap.fire('zoomend');
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        const frame = heat._lastFrame;
+        zoomFrames.push({ zoom, drawn: frame.w, expected: expectedWidthPx(zoom) });
+    }
+    check('the heat surface stays glued to the geography at every zoom',
+        zoomFrames.every((f) => Math.abs(f.drawn - f.expected) / f.expected < 0.02),
+        zoomFrames.map((f) => 'z' + f.zoom + ': ' + f.drawn.toFixed(0) + 'px/' + f.expected.toFixed(0) + 'px').join(' '));
+    check('zooming redraws the heat surface instead of scaling stale pixels',
+        new Set(zoomFrames.map((f) => Math.round(f.drawn))).size === zoomFrames.length,
+        zoomFrames.map((f) => Math.round(f.drawn)).join(','));
+
+    // La pan, bitmap-ul urmărește centrul hărții (colțul grilei rămâne fix).
+    const frameBefore = { x: heat._lastFrame.x, y: heat._lastFrame.y };
+    fakeMap._center = { lat: 46.82, lng: 23.63 };
+    fakeMap.fire('moveend');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const shift = expectedWidthPx(16) * (0.03 / (2 * hf.radius / 111320 / Math.cos(46.8 * Math.PI / 180)));
+    check('panning moves the heat surface with the map',
+        Math.abs((heat._lastFrame.x - frameBefore.x) + shift) < 0.02 * shift,
+        'dx ' + (heat._lastFrame.x - frameBefore.x).toFixed(0) + ' px, expected ' + (-shift).toFixed(0) + ' px');
+    fakeMap._center = { lat: 46.8, lng: 23.6 };
+    fakeMap._zoom = 13;
+    fakeMap.fire('moveend');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    // zoomanim: transformata de renderer (scalare în jurul ancorei bitmap-ului)
+    const anchorBefore = { x: heat._lastFrame.anchor.x, y: heat._lastFrame.anchor.y };
+    fakeMap.fire('zoomanim', { center: { lat: 46.8, lng: 23.6 }, zoom: 16 });
+    const transform = heat._canvas.style.transform;
+    check('zoom animation applies the renderer transform (scale around the bitmap anchor)',
+        /scale\(8\)/.test(transform) &&
+        transform.indexOf('translate3d(' +
+            Math.round(anchorBefore.x * 8 - fakeMap._getNewPixelOrigin({ lat: 46.8, lng: 23.6 }, 16).x) + 'px,' +
+            Math.round(anchorBefore.y * 8 - fakeMap._getNewPixelOrigin({ lat: 46.8, lng: 23.6 }, 16).y) + 'px,0)') === 0,
+        transform);
+    fakeMap.fire('zoomend');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    check('the settled redraw clears the zoom transform',
+        !/scale\(/.test(heat._canvas.style.transform), heat._canvas.style.transform);
+
     check('excluded areas are painted red (rectangles)',
         groupLayers.some((g) => g.layers.filter((l) => l.kind === 'rectangle').length > 0));
     check('excluded reason split is reported',
@@ -531,10 +743,19 @@ console.log('\n[End-to-end pipeline]');
     // rulare conțin doar aria de lucru, triunghiurile și masca roșie.
     const heatRunLayers = groupLayers.slice(groupsBeforeHeat).reduce((a, g) => a.concat(g.layers), []);
     check('no score bubbles drawn in heat mode',
-        heatRunLayers.filter((l) => l.kind === 'circle' && l.options.radius === hf.bubbleRadiusM).length === 0,
+        heatRunLayers.filter((l) => l.kind === 'circle' && l.options.pane === 'pane_archeo' &&
+            l.options.radius !== 10000).length === 0,
         heatRunLayers.map((l) => l.kind + ':' + l.options.radius).join(','));
     check('heat mode still draws the working area',
         heatRunLayers.some((l) => l.kind === 'circle' && l.options.radius === 10000));
+
+    // Oprirea stratului dezlipește canvas-ul de heatmap din pane.
+    sandbox.window.toggleArcheoPotentialLayer(false);
+    check('turning the layer off detaches the heat canvas',
+        !heat._canvas.parentNode, 'still parented');
+    sandbox.window.toggleArcheoPotentialLayer(true);
+    check('turning the layer back on re-attaches and redraws it',
+        !!heat._canvas.parentNode && heat._canvas.parentNode.name === 'pane_archeo_heat');
 
     /* ── 4. pinul mov + sliderul de rază 1–10 km ── */
     sandbox.window.setArcheoPotentialPinMode(true);
