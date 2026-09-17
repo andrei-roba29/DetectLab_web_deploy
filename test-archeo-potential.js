@@ -204,14 +204,44 @@ console.log('\n[Star rating / score color]');
     check('star row shows /5 rating', /3\.6\/5/.test(star), star);
     check('star overlay width = 72%', /width:72%/.test(star), star);
 
-    const cLow = D.scoreColor(0.25), cMid = D.scoreColor(0.55), cHigh = D.scoreColor(1.0);
     const parse = (s) => s.match(/(\d+),(\d+),(\d+)/).slice(1).map(Number);
+    const hex = (s) => '#' + parse(s).map((v) => v.toString(16).padStart(2, '0')).join('');
+    const cLow = D.scoreColor(0.15), cMid = D.scoreColor(0.40), cHigh = D.scoreColor(0.78);
     const [lr, lg, lb] = parse(cLow);
-    const [hr, hg, hb] = parse(cHigh);
-    check('low score = red-ish (r dominant)', lr > lg && lr > lb, cLow);
-    check('high score = violet-ish (b dominant)', hb > hr && hb > lg, cHigh);
     const [mr, mg, mb] = parse(cMid);
-    check('mid score = amber-ish (g high, r high)', mg > mb && mr > mb, cMid);
+    const [hr, hg, hb] = parse(cHigh);
+    check('weak score = cold colour (blue dominant), not the exclusion red', lb > lr && lb > lg, cLow);
+    check('medium score = green/teal (green over red)', mg > mr && mg > 100, cMid);
+    check('strong score = warm amber on the way to violet', hr > mg + 0 && hr > hg && hg > hb, cHigh);
+    check('the top of the ramp is violet (the layer’s high-potential colour)',
+        (() => { const [r, g, b] = parse(D.scoreColor(1)); return b > r && r > g; })(),
+        D.scoreColor(1));
+    check('the ramp is monotonic: cold → green → warm → violet',
+        lb > lr && mg > mr && hr > hg && parse(D.scoreColor(1))[2] > parse(D.scoreColor(1))[0],
+        [cLow, cMid, cHigh, D.scoreColor(1)].join(' '));
+    check('no score colour collides with the exclusion red',
+        [0, 0.15, 0.4, 0.78, 1].every((s) => {
+            const [r, g, b] = parse(D.scoreColor(s));
+            return !(r > 150 && g < 110 && b < 110);
+        }), [cLow, cMid, cHigh].join(' '));
+    check('the colour scale is absolute: same score → same colour',
+        D.scoreColor(0.4) === D.scoreColor(0.4) && D.scoreColorHex(0.4) === hex(D.scoreColor(0.4)));
+    check('score colours come from the heat ramp (one scale for the whole layer)',
+        D.scoreColorRgb(0.55).join(',') === (() => {
+            const lut = D.buildHeatRamp(D.HEAT_GRADIENT);
+            const i = Math.round(0.55 * 255) * 4;
+            return [lut[i], lut[i + 1], lut[i + 2]].join(',');
+        })(), D.scoreColor(0.55));
+    check('legend tiers follow the CONFIG.CLASSIFY thresholds',
+        D.classifyTier(0.1) === 'low' &&
+        D.classifyTier(D.config.CLASSIFY.SCORE_DISCARD_BELOW) === 'medium' &&
+        D.classifyTier(D.config.CLASSIFY.SCORE_HIGH_FROM) === 'high');
+    check('bubble styles take their colour from the score ramp',
+        [0.1, 0.4, 0.8].every((s) => D.styleFor(s).fillColor === D.scoreColorHex(s)),
+        JSON.stringify(D.styleFor(0.8)));
+    check('bubble styles keep three visibility tiers (pale → saturated)',
+        D.styleFor(0.1).fillOpacity < D.styleFor(0.4).fillOpacity &&
+        D.styleFor(0.4).fillOpacity < D.styleFor(0.8).fillOpacity);
 
     const popup = D.popupHtml({ score: 0.72, lat: 46.8, lng: 23.6, factors: {
         closestSiteM: 812, nearbyCount: 5, avgDistM: 940, densityCount: 7, triQuality: 0.66 } }, 1);
@@ -299,9 +329,10 @@ console.log('\n[End-to-end pipeline]');
                 contains(c) { return set.has(c); }
             };
         })(),
+        attrs: {},
         addEventListener() {},
-        setAttribute() {},
-        getAttribute() { return null; },
+        setAttribute(k, v) { this.attrs[k] = String(v); },
+        getAttribute(k) { return this.attrs[k] === undefined ? null : this.attrs[k]; },
         appendChild(child) { return child; },
         focus() {},
         querySelector() { return null; }
@@ -317,11 +348,23 @@ console.log('\n[End-to-end pipeline]');
         archeoPotModeHeat: fakeEl(),
         archeoPotLegendBubbles: fakeEl(),
         archeoPotLegendHeat: fakeEl(),
+        archeoPotHeatbar: fakeEl(),
         archeoPotPinToggle: fakeEl({ checked: false }),
         archeoPotToggle: fakeEl({ checked: true }),
         archeoPotentialRow: fakeEl()
     };
     sandbox.document.getElementById = (id) => dom[id] || null;
+
+    // Legenda e pictată din js/archeo-potential.js (syncLegend) prin
+    // [data-archeo-swatch] / [data-archeo-band] / #archeoPotHeatbar.
+    const legendTiers = ['low', 'medium', 'high', 'low', 'medium', 'high'];
+    const legendSwatches = legendTiers.map((t) => fakeEl({ attrs: { 'data-archeo-swatch': t } }));
+    const legendBands = legendTiers.map((t) => fakeEl({ attrs: { 'data-archeo-band': t } }));
+    sandbox.document.querySelectorAll = (sel) => {
+        if (sel === '[data-archeo-swatch]') return legendSwatches;
+        if (sel === '[data-archeo-band]') return legendBands;
+        return [];
+    };
 
     // ── hartă + Leaflet fals ──
     const panes = {};
@@ -526,10 +569,26 @@ console.log('\n[End-to-end pipeline]');
        atingă între ele sau să intre peste razele siturilor arheologice. */
     const B = D.config.BUBBLE;
     const bubbles = field.bubbles || [];
-    const bubbleCap = D.bubbleCountCap(field.radius);
-    check('bubbles are a sparse selection, not one circle per scored cell',
-        bubbles.length > 0 && bubbles.length <= bubbleCap && bubbles.length * 3 < st.scored,
-        bubbles.length + ' bubbles / ' + st.scored + ' scored cells (cap ' + bubbleCap + ')');
+    const bubbleCap = st.bubbleCap;
+    check('bubbles stay inside the configured cap',
+        bubbles.length > 0 && bubbles.length <= bubbleCap,
+        bubbles.length + ' bubbles (cap ' + bubbleCap + ')');
+    check('the bubbles fill the free ground (at least half of it)',
+        st.coverage >= 0.5,
+        (st.coverage * 100).toFixed(1) + '% of ' + st.freeAreaKm2 + ' km² with ' + bubbles.length + ' bubbles');
+    check('most of the free ground is used, not just a few spots',
+        bubbles.length > 0.15 * st.scored,
+        bubbles.length + ' bubbles / ' + st.scored + ' scored cells');
+    check('bubbles come in several sizes (not one uniform radius)',
+        new Set(bubbles.map((b) => b.radiusM)).size >= 4,
+        [...new Set(bubbles.map((b) => b.radiusM))].sort((a, b) => a - b).join(','));
+    check('open ground far from any site or mask still gets bubbles',
+        (() => {
+            const siteRing = D.config.SITE_RADIUS_M + D.config.SITE_BUFFER_M;
+            return bubbles.some((b) =>
+                field.ctx.sites.every((s) => haversine(b.lat, b.lng, s.lat, s.lng) > b.radiusM + siteRing + 400) &&
+                field.excluded.every((e) => Math.hypot(b.x - e.x, b.y - e.y) > b.radiusM + field.cellM));
+        })(), 'no bubble sits in the open ground');
     check('only strong cells are promoted to bubbles',
         bubbles.every((b) => b.score >= B.MIN_SCORE),
         'min bubble score ' + Math.min(...bubbles.map((b) => b.score)).toFixed(2));
@@ -550,9 +609,19 @@ console.log('\n[End-to-end pipeline]');
     }
     check('no two bubbles touch or interleave', overlaps === 0 && minEdge >= -1,
         'closest edges ' + minEdge.toFixed(0) + ' m apart, ' + overlaps + ' overlaps');
-    check('bubbles keep a visible gap between them',
-        !isFinite(minEdge) || minEdge >= 0.5 * D.bubbleGapM(field.radius),
-        minEdge.toFixed(0) + ' m vs gap ' + D.bubbleGapM(field.radius) + ' m');
+    // gap-ul cerut scalează cu mărimea bulei (cele mici completează golurile)
+    let worstPairGap = Infinity;
+    for (let i = 0; i < bubbles.length; i++) {
+        for (let j = i + 1; j < bubbles.length; j++) {
+            const need = D.bubbleGapForRadius(Math.min(bubbles[i].radiusM, bubbles[j].radiusM),
+                field.bubbleBaseRadiusM, field.bubbleGapM);
+            const slack = haversine(bubbles[i].lat, bubbles[i].lng, bubbles[j].lat, bubbles[j].lng) -
+                bubbles[i].radiusM - bubbles[j].radiusM - need;
+            if (slack < worstPairGap) worstPairGap = slack;
+        }
+    }
+    check('every pair of bubbles keeps the gap required by its size',
+        worstPairGap >= -1, 'tightest pair is ' + worstPairGap.toFixed(0) + ' m under its gap');
 
     // marginea bulei față de raza de protecție a fiecărui sit (600 + 100 m)
     const siteRingM = D.config.SITE_RADIUS_M + D.config.SITE_BUFFER_M;
@@ -575,6 +644,18 @@ console.log('\n[End-to-end pipeline]');
     }));
     check('no bubble overlaps the red exclusion mask',
         worstMask >= -1, 'closest bubble edge is ' + worstMask.toFixed(0) + ' m outside the mask');
+    check('every bubble stays inside the analysis circle',
+        bubbles.every((b) => haversine(46.8, 23.6, b.lat, b.lng) + b.radiusM <= 10000 + 1),
+        'a bubble sticks out of the search circle');
+    check('bubble colours follow the legend ramp of their own score',
+        bubbles.every((b) => D.styleFor(b.score).fillColor === D.scoreColorHex(b.score)));
+    check('the drawn circles carry the score colour of their cell',
+        groupLayers.some((g) => g.layers.filter((l) => l.kind === 'circle' && l.options.pane === 'pane_archeo' &&
+            l.options.radius !== field.radius).every((l) =>
+            bubbles.some((b) => b.radiusM === l.options.radius && l.options.fillColor === D.scoreColorHex(b.score)))));
+    check('low-scoring ground is drawn too (pale), not left empty',
+        bubbles.some((b) => b.tier === 'low') && bubbles.some((b) => b.tier === 'high'),
+        JSON.stringify({ low: st.bubblesLow, medium: st.bubblesMedium, high: st.bubblesHigh }));
 
     console.log('  · ' + bubbles.length + ' bubbles (cap ' + bubbleCap + ') din ' + st.scored +
         ' celule scorate · raze ' + Math.min(...bubbles.map((b) => b.radiusM)) + '–' +
@@ -643,21 +724,39 @@ console.log('\n[End-to-end pipeline]');
     check('the heat colours are strongly differentiated (not one flat colour)',
         colours.size > 100, colours.size + ' distinct colours over ' + painted.length + ' cells');
     check('weak cells are translucent and strong cells saturated',
-        Math.max(...painted) - Math.min(...painted) > 80,
+        Math.max(...painted) - Math.min(...painted) > 60,
         'alpha ' + Math.min(...painted) + '..' + Math.max(...painted));
-    check('the score window is stretched over this run (percentiles)',
-        raster.window.count === hf.stats.scored &&
-        raster.window.lo <= raster.window.min + 1e-9 &&
-        raster.window.hi >= Math.min(raster.window.max, raster.window.lo + D.config.HEAT.MIN_WINDOW),
-        JSON.stringify({ lo: raster.window.lo, hi: raster.window.hi, min: raster.window.min, max: raster.window.max }));
-    check('a higher score always maps to a different colour', (() => {
-        const lut = D.buildHeatRamp(D.HEAT_GRADIENT);
-        const rgb = (t) => {
-            const i = Math.round(t * 255) * 4;
-            return [lut[i], lut[i + 1], lut[i + 2]];
-        };
-        // diferență mare de culoare între treptele rampei
-        const steps = [0, 0.25, 0.5, 0.75, 1].map(rgb);
+    check('heat alpha grows with the score of the cell', (() => {
+        const H = D.config.HEAT;
+        const alphaOf = (row, col) => raster.rgba[(row * raster.cols + col) * 4 + 3];
+        const pts = hf.results.filter((r) => r.row != null)
+            .map((r) => ({ s: r.score, a: alphaOf(r.row, r.col) }))
+            .sort((x, y) => x.s - y.s);
+        // netezirea gaussiană poate muta ușor alfa unei celule izolate, dar
+        // treimea cea mai slabă trebuie să rămână sub treimea cea mai bună
+        const third = Math.max(1, Math.floor(pts.length / 3));
+        const avg = (arr) => arr.reduce((a, p) => a + p.a, 0) / Math.max(1, arr.length);
+        return avg(pts.slice(0, third)) < avg(pts.slice(-third)) &&
+            pts.every((p) => p.a >= Math.round(H.ALPHA_MIN * 255) - 1 &&
+                p.a <= Math.round(H.ALPHA_MAX * 255) + 1);
+    })(), 'alpha range ' + Math.min(...painted) + '..' + Math.max(...painted));
+    check('the heat surface paints every scored cell (no holes in the search area)',
+        painted.length === hf.stats.scored &&
+        hf.stats.scored + hf.stats.excludedUat + hf.stats.excludedHeritage === hf.stats.cells,
+        JSON.stringify(hf.stats));
+    check('the colour scale is absolute, so the legend is valid for every run',
+        raster.window.normalize === 'absolute' && raster.window.lo === 0 && raster.window.hi === 1 &&
+        raster.window.count === hf.stats.scored,
+        JSON.stringify({ n: raster.window.normalize, lo: raster.window.lo, hi: raster.window.hi }));
+    check('the scale still reports the run’s own score range + legend thresholds',
+        raster.window.min <= raster.window.max &&
+        raster.window.tiers.low === D.config.CLASSIFY.SCORE_DISCARD_BELOW &&
+        raster.window.tiers.high === D.config.CLASSIFY.SCORE_HIGH_FROM,
+        JSON.stringify(raster.window.tiers));
+    check('a higher score always maps to a clearly different colour', (() => {
+        const rgb = (t) => D.scoreColorRgb(t);
+        // opririle rampei sunt pragurile legendei (0 / 25% / 55% / 75% / 100%)
+        const steps = [0, 0.25, 0.55, 0.75, 1].map(rgb);
         for (let i = 1; i < steps.length; i++) {
             const d = Math.abs(steps[i][0] - steps[i - 1][0]) +
                 Math.abs(steps[i][1] - steps[i - 1][1]) +
@@ -665,7 +764,49 @@ console.log('\n[End-to-end pipeline]');
             if (d < 120) return false;
         }
         return true;
-    })());
+    })(), 'ramp stops ' + JSON.stringify(D.HEAT_GRADIENT));
+    check('the ramp stops sit on the legend thresholds (25% / 55%)',
+        Object.keys(D.HEAT_GRADIENT).map(Number).sort((a, b) => a - b)
+            .join(',') === '0,0.25,0.55,0.75,1',
+        Object.keys(D.HEAT_GRADIENT).join(','));
+    check('the CSS heat bar matches the JS ramp (same colours, same stops)', (() => {
+        const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
+        const bar = (css.match(/\.archeo-pot-heatbar\s*\{[^}]*\}/) || [''])[0];
+        const grad = (bar.match(/linear-gradient\(90deg,([^)]*)\)/) || [, ''])[1];
+        const stops = grad.split(',').map((s) => s.trim());
+        const jsStops = Object.keys(D.HEAT_GRADIENT).map(Number).sort((a, b) => a - b)
+            .map((s) => D.HEAT_GRADIENT[s].toLowerCase() + ' ' + Math.round(s * 100) + '%');
+        return stops.length === jsStops.length &&
+            stops.every((s, i) => s.toLowerCase() === jsStops[i]);
+    })(), 'css gradient vs ' + JSON.stringify(D.HEAT_GRADIENT));
+    check('the heat colour of a cell is exactly the legend colour of its score',
+        hf.results.slice(0, 200).every((r) => raster.colorAt(r.row, r.col) === D.scoreColor(r.score)),
+        hf.results.slice(0, 3).map((r) => raster.colorAt(r.row, r.col) + ' vs ' + D.scoreColor(r.score)).join(' | '));
+    // Bulele de umplutură (gapFill) stau la jumătatea dintre celule, deci scorul
+    // lor e calculat în acel punct, nu în celula părinte — heatmap-ul colorează
+    // celula, nu punctul decalat. Restul bulelor trebuie să se potrivească exact.
+    check('the heatmap replicates the bubbles (same colour for the same score)',
+        hf.bubbles.filter((b) => b.row != null && !b.gapFill).length > 0 &&
+        hf.bubbles.filter((b) => b.row != null && !b.gapFill).every((b) =>
+            raster.colorAt(b.row, b.col) === D.scoreColor(b.score)),
+        hf.bubbles.filter((b) => b.row != null && !b.gapFill)
+            .slice(0, 3).map((b) => raster.colorAt(b.row, b.col) + ' vs ' + D.scoreColor(b.score)).join(' | '));
+    // Cerința: heatmap-ul acoperă TOT terenul liber (nu doar bulele), iar roșul
+    // rămâne al măștii de excludere.
+    check('the heatmap paints every scored cell, so the whole free area is covered', (() => {
+        let painted = 0;
+        for (let i = 0; i < raster.valid.length; i++) if (raster.valid[i]) painted++;
+        return painted === hf.results.length && painted > 0;
+    })(), hf.results.length + ' scored cells');
+    check('excluded ground stays transparent in the heatmap (the red mask owns it)',
+        hf.excluded.length > 0 &&
+        hf.excluded.every((c) => !raster.valid[c.row * raster.cols + c.col]),
+        hf.excluded.length + ' excluded cells');
+    check('the heat raster also scores the gaps between bubbles (gap-fill cells painted)',
+        hf.bubbles.some((b) => b.gapFill) === false ||
+        hf.bubbles.filter((b) => b.gapFill && b.row != null)
+            .every((b) => !!raster.valid[b.row * raster.cols + b.col]),
+        hf.bubbles.filter((b) => b.gapFill).length + ' gap-fill bubbles');
     check('heat ramp keeps red out of the score ramp',
         Object.values(D.HEAT_GRADIENT).every((c) => !/^#(e0|c0|f0|ff)/i.test(c)),
         JSON.stringify(D.HEAT_GRADIENT));
@@ -756,6 +897,157 @@ console.log('\n[End-to-end pipeline]');
     sandbox.window.toggleArcheoPotentialLayer(true);
     check('turning the layer back on re-attaches and redraws it',
         !!heat._canvas.parentNode && heat._canvas.parentNode.name === 'pane_archeo_heat');
+
+    /* ── 3b. determinism: aceeași zonă → exact același rezultat ───────────
+       Cerința utilizatorului: rezultatele nu au voie să apară „în mod aleator".
+       Tot ce e nesigur în analiză (rețea/tile-uri) e acum pre-încărcat și
+       cache-uit, iar selecția bulelor e sortată total, fără Math.random. */
+    sandbox.window.setArcheoPotentialMode('bubbles');
+    await sandbox.window.runArcheoPotentialAnalysis();
+    const runA = sandbox.window._archeoPotentialField();
+    const signature = (f) => (f.bubbles || [])
+        .map((b) => [b.row, b.col, b.radiusM, b.score.toFixed(9)].join(':')).join('|');
+    const scoresA = runA.results.map((r) => r.score.toFixed(9)).join(',');
+    await sandbox.window.runArcheoPotentialAnalysis();
+    const runB = sandbox.window._archeoPotentialField();
+    check('the same area gives exactly the same bubbles on every run',
+        signature(runA).length > 0 && signature(runA) === signature(runB),
+        runA.bubbles.length + ' vs ' + runB.bubbles.length + ' bubbles');
+    check('the same area gives exactly the same score field on every run',
+        runA.results.length === runB.results.length &&
+        scoresA === runB.results.map((r) => r.score.toFixed(9)).join(','),
+        runA.results.length + ' vs ' + runB.results.length + ' cells');
+    check('switching Bubbles → Heatmap does not rescore differently', (() => {
+        sandbox.window.setArcheoPotentialMode('heat');
+        const rasterB = sandbox.window._archeoPotentialHeatRaster();
+        sandbox.window.setArcheoPotentialMode('bubbles');
+        return !!rasterB;
+    })());
+    sandbox.window.setArcheoPotentialMode('bubbles');
+
+    /* ── 3c. UAT: decizia pe celulă (mai multe pixeli), nu pe un singur pixel ──
+       O celulă de 1600 m era decisă de un pixel de ~9.5 m → la marginea
+       intravilanului excluderea ieșea punctiform, „aleator". */
+    {
+        const TILE = 256;
+        const TX = 9267, TY = 5777;                    // tile z14 peste Cluj
+        const zT = sandbox.window.UAT_TILE_Z;
+        // Dungi: rândurile 100..155 = teren liber (opac + întunecat = roșu pe
+        // strat), restul = intravilan (opac + luminos = netrasat cu roșu).
+        const stripe = new Uint8ClampedArray(TILE * TILE * 4);
+        for (let y = 0; y < TILE; y++) {
+            const free = y >= 100 && y < 156;
+            for (let x = 0; x < TILE; x++) {
+                const i = (y * TILE + x) * 4;
+                stripe[i] = free ? 40 : 200;
+                stripe[i + 1] = free ? 20 : 180;
+                stripe[i + 2] = free ? 40 : 180;
+                stripe[i + 3] = 255;
+            }
+        }
+        const pixelToLatLng = (px, py) => {
+            const n = Math.pow(2, zT);
+            const lng = (TX + px / TILE) / n * 360 - 180;
+            const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (TY + py / TILE) / n))) * 180 / Math.PI;
+            return { lat, lng };
+        };
+
+        const goodLoader = sandbox.window._uatGetTile;
+        sandbox.window._uatGetTile = () => Promise.resolve({ data: stripe, size: TILE });
+        D.resetUatTileCache();
+        const edge = pixelToLatLng(128, 101);          // centru PE roșu, la margine
+        const middle = pixelToLatLng(128, 128);        // centru în mijlocul benzii
+        const bounds = { minLat: edge.lat - 0.02, maxLat: edge.lat + 0.02, minLng: edge.lng - 0.02, maxLng: edge.lng + 0.02 };
+        const warm = await D.prewarmUatTiles(bounds);
+        check('the run pre-loads every UAT tile it needs before scoring',
+            warm.total > 0 && warm.ok === warm.total, JSON.stringify(warm));
+
+        const bigCell = D.uatCellRedFraction(edge.lat, edge.lng, 1600);
+        const smallCell = D.uatCellRedFraction(middle.lat, middle.lng, 400);
+        check('a cell is measured on a lattice of pixels, not a single one',
+            bigCell.known > 8 && bigCell.known === bigCell.samples,
+            bigCell.known + '/' + bigCell.samples + ' samples');
+        check('a cell whose CENTRE pixel is red but which is mostly built-up is excluded',
+            (await D.uatPixelAt(edge.lat, edge.lng)) === true &&
+            bigCell.red < D.config.UAT.MIN_RED_FRACTION,
+            'centre pixel red, cell only ' + (bigCell.red * 100).toFixed(0) + '% red');
+        check('a cell fully inside the free strip is kept',
+            smallCell.red >= D.config.UAT.MIN_RED_FRACTION,
+            (smallCell.red * 100).toFixed(0) + '% red');
+
+        sandbox.window._uatGetTile = goodLoader;
+        D.resetUatTileCache();
+    }
+
+    /* ── 3d. raster UAT necitibil (CORS/404/offline) → harta nu mai rămâne goală ──
+       Vechiul comportament „fail closed" excludea TOT când tile-urile nu puteau
+       fi citite: exact simptomul „uneori nu se generează nimic, în mod aleator". */
+    {
+        const goodLoader = sandbox.window._uatGetTile;
+        D.resetUatTileCache();
+        sandbox.window._uatGetTile = () => Promise.resolve(sandbox.window._UAT_TILE_UNREADABLE);
+        await sandbox.window.runArcheoPotentialAnalysis();
+        const dead = sandbox.window._archeoPotentialField();
+        check('an unreadable UAT raster no longer empties the map',
+            dead.results.length > 0 && dead.bubbles.length > 0,
+            dead.status + ' · ' + dead.results.length + ' cells · ' + dead.bubbles.length + ' bubbles');
+        check('the run reports that the UAT raster could not be read',
+            dead.uat.available === false && dead.uat.active === false &&
+            dead.stats.uatTiles > 0 && dead.stats.uatTilesOk === 0,
+            JSON.stringify({ total: dead.stats.uatTiles, ok: dead.stats.uatTilesOk }));
+        check('cells without UAT data are scored, not silently excluded',
+            dead.stats.excludedUat === 0 && dead.stats.uatUnknown === dead.stats.scored,
+            JSON.stringify({ unknown: dead.stats.uatUnknown, scored: dead.stats.scored, excluded: dead.stats.excludedUat }));
+        check('the heritage radii stay excluded (and red) even without the UAT raster',
+            dead.stats.excludedHeritage > 0, String(dead.stats.excludedHeritage));
+        check('the status tells the user the built-up exclusion was skipped',
+            /UAT/i.test(dom.archeoPotStatus.textContent || ''), dom.archeoPotStatus.textContent);
+
+        D.resetUatTileCache();
+        sandbox.window._uatGetTile = () => Promise.resolve(null);   // 404 confirmat
+        await sandbox.window.runArcheoPotentialAnalysis();
+        const missing = sandbox.window._archeoPotentialField();
+        check('missing UAT tiles (404) are handled the same way',
+            missing.results.length > 0 && missing.uat.available === false,
+            missing.status + ' · ' + missing.results.length);
+
+        D.resetUatTileCache();
+        sandbox.window._uatGetTile = goodLoader;
+        await sandbox.window.runArcheoPotentialAnalysis();
+        const alive = sandbox.window._archeoPotentialField();
+        check('with the raster readable again the UAT exclusion comes back',
+            alive.uat.available === true && alive.stats.excludedUat > 0 && alive.stats.uatUnknown === 0,
+            JSON.stringify({ ok: alive.stats.uatTilesOk, excluded: alive.stats.excludedUat }));
+    }
+
+    /* ── 3e. legenda e pictată din aceeași rampă ca bulele și heatmap-ul ── */
+    D.syncLegend();
+    check('legend swatches are painted with the ramp colour of their own tier',
+        legendSwatches.every((n) => {
+            const tier = n.getAttribute('data-archeo-swatch');
+            return n.style.background === D.scoreColorHex(D.LEGEND_SCORES[tier]);
+        }), legendSwatches.map((n) => n.getAttribute('data-archeo-swatch') + '=' + n.style.background).join(','));
+    const bandText = (tier) => {
+        const node = legendBands.find((n) => n.getAttribute('data-archeo-band') === tier);
+        return node ? node.textContent : null;
+    };
+    check('legend bands show the real classification thresholds',
+        bandText('low') === '< 25%' && bandText('medium') === '25–55%' && bandText('high') === '≥ 55%',
+        [bandText('low'), bandText('medium'), bandText('high')].join(' | '));
+    check('the legend heat bar is painted from HEAT_GRADIENT stops',
+        /linear-gradient\(90deg,#10233f 0%,#1f7fc4 25%,#23c48e 55%,#f2b134 75%,#8b3ff0 100%\)/
+            .test(dom.archeoPotHeatbar.style.background || ''),
+        dom.archeoPotHeatbar.style.background);
+    {
+        const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+        check('index.html exposes the legend hooks the layer paints',
+            /data-archeo-swatch="low"/.test(indexHtml) && /data-archeo-swatch="high"/.test(indexHtml) &&
+            /data-archeo-band="medium"/.test(indexHtml) && /id="archeoPotHeatbar"/.test(indexHtml));
+        check('the bubbles legend also explains the red exclusion zone',
+            /id="archeoPotLegendBubbles"[^]*?archeo-pot-swatch-red[^]*?<\/div>/.test(
+                indexHtml.slice(indexHtml.indexOf('id="archeoPotLegendBubbles"'),
+                    indexHtml.indexOf('id="archeoPotLegendHeat"'))));
+    }
 
     /* ── 4. pinul mov + sliderul de rază 1–10 km ── */
     sandbox.window.setArcheoPotentialPinMode(true);

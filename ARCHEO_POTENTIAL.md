@@ -20,7 +20,8 @@ Premium map analysis layer for DetectLab.
 | `css/styles.css` | `.archeo-pot-*` (row, pin, mode buttons, legend, heat bar), `.layer-action-dock*`, `[data-kind="distance"]` mirror colours. |
 | `js/translations.js` | RO/EN labels for the new UI. |
 | `sw.js` | Pre-cache list + cache version bump for the new scripts. |
-| `test-archeo-potential.js` | Node test harness (pure logic + field pipeline + bubble separation + heat canvas with stubs). Run with `node test-archeo-potential.js`. |
+| `test-archeo-potential.js` | Node test harness (pure logic + field pipeline + UAT sampling/fail-open + determinism + bubble packing/coverage + heat raster + legend + zoom/pan + pin/radius). Run with `node test-archeo-potential.js`. |
+| `bench-archeo-coverage.js` | Coverage benchmark on a synthetic scenario (4 site clusters + striped UAT). `node bench-archeo-coverage.js [radiusKm] [lat] [lng] [jsonOverrides] [uatMode]` with `uatMode` = `ok` \| `unreadable` \| `missing`. |
 | `test-vertical-opacity-control.js` | Covers the distance mirror + action dock. Run with `node test-vertical-opacity-control.js`. |
 
 ---
@@ -30,18 +31,20 @@ Premium map analysis layer for DetectLab.
 Every candidate circle is **clickable**. Clicking opens a small popup with:
 
 - **Classification + raw score %** (`High Potential — 72%`).
-- **5-star rating** — the score (0–1) is converted to `score × 5 / 5` stars with
-  partial fill (e.g. `0.72 → 3.6/5`). The stars' color comes from the score's
-  heat scale: **red** (low) → **amber** (medium) → **violet** (high), so the
-  color itself also encodes the score.
+- **5-star rating** — the score (0–1) is converted to `score × 5` stars with
+  partial fill (e.g. `0.72 → 3.6/5`). The stars' colour comes from the layer's
+  one score ramp: cold navy (0) → blue (0.25) → green (0.55) → amber (0.75) →
+  violet (1.0), so the colour itself also encodes the score. **Red is never a
+  score colour** — it is reserved for the exclusion mask.
 - **Distance to the closest known site** (always ≥ 700 m by the mandatory
   distance filter — the exact value is shown, e.g. `812 m`).
 - Full scoring breakdown: nearby site count, average distance, local density,
   triangle quality, and coordinates.
 
-Internally the color mapping lives in `scoreColor()` and the star markup in
-`starRatingHtml()` (both exposed on `_archeoPotentialDebug`); the heat-scale
-stops are defined in `SCORE_COLOR_STOPS`.
+Internally the colour mapping lives in `scoreColor()` / `scoreColorHex()` /
+`scoreColorRgb()` and the star markup in `starRatingHtml()` (all exposed on
+`_archeoPotentialDebug`); the ramp stops are `HEAT_GRADIENT`, which the bubbles,
+the heatmap and the legend all read from.
 
 ---
 
@@ -59,13 +62,21 @@ stops are defined in `SCORE_COLOR_STOPS`.
    run a **Delaunay triangulation** (Bowyer–Watson) over the site coordinates.
    Triangles are bucketed in a uniform index (`TRI_INDEX_CELL_M`) so any point
    finds its containing triangle in O(1).
-5. **Tile the whole circle with a regular grid** (`buildFieldCells`) — cell size
-   adapts to the radius (`gridCellM`, capped by `FIELD.BUBBLE_MAX_CELLS` /
-   `FIELD.HEAT_MAX_CELLS` so phones stay responsive).
-6. Score **every cell** (`scoreCandidate` + `triScoreAt`) after the mandatory
+5. **Tile the whole circle with a regular grid** (`buildFieldCells`) — one grid
+   for both modes, cell size adapts to the radius (`gridCellM`: 120 m baseline,
+   grown until the circle holds ≤ `FIELD.MAX_CELLS` 9000 cells → 125 m at 1–4 km,
+   175 m at 10 km).
+6. **Pre-load every UAT tile the grid needs** (`prewarmUatTiles`, bounded
+   concurrency `UAT.CONCURRENCY` 6, per-tile timeout + one retry). Scoring is
+   synchronous afterwards, so a cell is never decided by a tile that had not
+   arrived yet — this is what removed the "sometimes nothing is generated"
+   behaviour. The first 30 % of the progress bar is this phase
+   (`running_tiles`).
+7. Score **every cell** (`scoreCandidate` + `triScoreAt`) after the mandatory
    exclusion checks; excluded cells are recorded with a reason (`uat`,
    `heritage`) instead of being dropped silently.
-7. Render the field in the selected output mode (bubbles / heatmap) plus the red
+8. **Pack the bubbles** (`selectBubbles`) or **build the heat raster**
+   (`buildHeatRaster`) from that same field, then render it plus the red
    exclusion mask.
 
 > `window.computeArcheoPotential(centerLat, centerLng, radiusM, opts)` still
@@ -87,42 +98,71 @@ computed with.
 | | **Bubbles** | **Heatmap** |
 |---|---|---|
 | Geometry | a **sparse selection** of the best cells (`selectBubbles`), one `L.circle` each, with **its own radius** | a **score raster** (1 px per grid cell) drawn on a canvas anchored to the geography |
-| Grid | `FIELD.BUBBLE_CELL_M` 250 m, ≤ `BUBBLE_MAX_CELLS` 2200 | `FIELD.HEAT_CELL_M` 120 m, ≤ `HEAT_MAX_CELLS` 9000 |
-| Score encoding | three purple tiers (`STYLE.low/medium/high`) + popup with star rating | `HEAT_GRADIENT` ramp (`#10233f → #1f7fc4 → #23c48e → #f2b134 → #8b3ff0`) **plus** alpha growing with the score |
+| Grid | the shared grid (`gridCellM`, ≤ `FIELD.MAX_CELLS` 9000 cells) | the same grid — one raster pixel per cell |
+| Score encoding | disc radius = how much free ground fits there; colour = `scoreColor(score)` (same ramp as the heatmap) + popup with star rating | `HEAT_GRADIENT` ramp (`#10233f → #1f7fc4 → #23c48e → #f2b134 → #8b3ff0`) on an **absolute** 0..1 scale **plus** alpha growing with the score |
 | Pane | `pane_archeo` (z 660) | `pane_archeo_heat` (z 656) |
 
 **Every point is considered**: `stats.scored + stats.excludedUat +
 stats.excludedHeritage === stats.cells`.
 
-### Bubbles — the "sweet spot"
+### Bubbles — packing the free ground
 
-Drawing one bubble per scored cell made the map unreadable: up to ~2200
-overlapping circles that also covered the heritage radii. Bubbles are now a
-selection (`CONFIG.BUBBLE`), and a cell only becomes a bubble when its **whole
-disc** fits:
+The bubbles are not "the best N cells": they are a **packing** of the free
+ground. A cell becomes a bubble only when its **whole disc** fits, and the
+selection keeps adding smaller discs until the area is as full as the geometry
+allows (`CONFIG.BUBBLE`):
 
-- **score ≥ `BUBBLE.MIN_SCORE`** (0.30) — weak cells stay in the heatmap;
-- **≥ `MASK_CLEARANCE_M`** (90 m) of free ground to the red mask, measured
-  exactly: distance to the 700 m heritage rings, to the site polygons and to
-  the UAT built-up rectangles (point→box distance, boxes are cell-sized);
-- **≥ `GAP_M`** between any two bubbles, so they never touch or interleave;
-- radius = `min(bubbleBaseRadiusM, clearance − MASK_CLEARANCE_M)`, and a cell
-  whose radius would drop below `RADIUS_FLOOR_M` is not drawn at all.
+1. **clearance per cell**, measured once (`measureClearance`) — exact distance
+   to the nearest red thing: the heritage rings (`SITE_RADIUS_M` +
+   `SITE_BUFFER_M` = 700 m), the site-boundary polygons and the UAT built-up
+   rectangles (point→box distance over a uniform grid index of the excluded
+   cells);
+2. **total ordering** — cells are sorted by score, then by `row`/`col`. There is
+   no `Math.random()` and no iteration-order dependence anywhere in the layer,
+   so the same area gives **bit-for-bit the same bubbles and scores on every
+   run** (asserted by the test harness);
+3. **size tiers, large → small** — `TIERS` `[1, 0.66, 0.44, 0.28]` ×
+   `bubbleBaseRadiusM(radius)`; each cell takes the largest disc its clearance
+   allows (`radius = min(tierR, clearance − MASK_CLEARANCE_M)`, clearance 25 m),
+   a tier is used down to `TIER_FILL` (72 %) of its radius, and a disc that
+   would fall below `RADIUS_FLOOR_M` (35 m) is not drawn. Gaps shrink with the
+   tier (`bubbleGapForRadius`, floor `GAP_MIN_M` 15 m) so small bubbles pack
+   tighter than big ones;
+4. **a filler tier sized from the grid** — `radius = (cellM − GAP_MIN_M) / 2`, so
+   two neighbouring cells can each host a bubble. This removed the big holes the
+   "best cells only" selection used to leave;
+5. **gap-fill lattice** (`gapFillCandidates`) — a second set of centres offset by
+   half a cell, tried only while coverage is under `COVERAGE_TARGET` (0.82) and
+   the cap is not reached. Those bubbles carry `gapFill: true`; they are the
+   "small free spaces between bubbles" the heatmap mirrors;
+6. **caps** — `bubbleCountCap` = max(`PER_KM2` 4.5 × km², the number of typical
+   discs needed to reach the coverage target), clamped to `MIN_BUBBLES` 26 …
+   `MAX_BUBBLES` 1400.
 
-Size and count scale with the slider radius, so 1 km and 10 km analyses look
-equally airy:
+Conflicts are checked **edge to edge** (`r₁ + r₂ + gap`) through a uniform grid
+index, so no two bubbles ever overlap or interleave, none overlaps a heritage
+radius and none touches the UAT mask.
 
 | | 1 km | 4 km | 10 km |
 |---|---|---|---|
-| base radius | 150 m | 266 m | 420 m |
-| gap | 88 m | 164 m | 260 m |
-| bubble cap (`PER_KM2` 0.22, `MIN_BUBBLES` 10, `MAX_BUBBLES` 140) | 10 | 11 | 69 |
+| grid cell | 125 m | 125 m | 175 m |
+| base radius (`bubbleScale`, floor 0.34) | 150 m | 266 m | 420 m |
+| gap at full size | 24 m | 44 m | 70 m |
+| bubble cap | 40 | 376 | 1400 |
 
-Selection is greedy by score (highest first) with a real pairwise distance
-check, using a uniform grid index. If the area is so fragmented by the
-intravilan that fewer than 4 bubbles fit at the preferred size, one relaxed
-pass runs (`RADIUS_FLOOR_M`, 60 % of the gaps) — otherwise the map would come
-back empty.
+Measured on the synthetic scenario (`node bench-archeo-coverage.js`, 4 site
+clusters + half-tile UAT stripes):
+
+| radius | scored cells | bubbles | free ground covered |
+|---|---|---|---|
+| 1 km (centre of a cluster) | 44 | 8 (cap 40) | 4.7 % of 0.69 km² |
+| 4 km | 1 320 | 328 (14 gap-fill) | **51.8 %** of 20.63 km² |
+| 10 km | 5 400 | 1276 (6 gap-fill) | **68.1 %** of 165.38 km² |
+
+The 1 km row is **geometry-limited, not a selection failure**: eight clustered
+sites put 156 of the 208 cells inside a 700 m heritage ring, and every
+remaining free cell sits within 70 m of the red mask, so no disc larger than
+~42 m fits. The heatmap is the mode that covers that ground.
 
 ### Heatmap — a real score surface
 
@@ -136,16 +176,21 @@ The layer now builds its own surface (`buildHeatRaster`):
 
 1. every scored cell writes its score into a `cols × rows` grid
    (`field.grid`, cells carry `row`/`col`);
-2. scores are **normalised over the run's own 2nd–98th percentile**
-   (`heatScoreWindow`) — if that window is narrower than `HEAT.MIN_WINDOW`
-   (0.12) it is expanded around the median, so a narrow score band still shows
-   contrast instead of a flat colour;
+2. scores go through `heatScoreWindow`, which with the default
+   `HEAT.NORMALIZE = 'absolute'` is simply **0..1** — a colour always means the
+   same score in every run, which is what makes the legend truthful. (The old
+   percentile stretching made the same ground change colour between runs and
+   contradicted the legend; it is still available as `'percentile'`, with
+   `LOW/HIGH_PERCENTILE` and the `MIN_WINDOW` 0.12 expansion for narrow score
+   bands.) Gap-fill cells are scored too, so the spaces between bubbles are
+   filled with the same triangulated logic;
 3. a separable gaussian blur (`HEAT.SMOOTH_SIGMA_CELLS` = 1 cell) smooths
    **between scored cells only** — excluded cells stay transparent, so the red
    mask is not painted over;
 4. each cell is coloured through the 256-entry ramp LUT (`buildHeatRamp`) and
-   given an alpha between `HEAT.ALPHA_MIN` (0.46) and `HEAT.ALPHA_MAX` (0.97)
-   — weak zones read as faint, strong zones as saturated;
+   given an alpha between `HEAT.ALPHA_MIN` (0.52) and `HEAT.ALPHA_MAX` (0.97)
+   with `ALPHA_GAMMA` 0.6 — weak zones read as faint, strong zones as
+   saturated, and the whole free area is opaque enough to look covered;
 5. the small raster is drawn scaled between the **geographic** corners of the
    grid, on a canvas positioned with the same contract as the Patrimoniu
    canvases in `map-app.js`: `containerPointToLayerPoint([0,0])` +
@@ -198,12 +243,28 @@ mode, the mirror and the dock.
 
 ## Mandatory filters (all must pass)
 
-1. **Inside the UAT "red zone"** — the candidate's pixel on the UAT raster
-   (Cloudflare R2 tiles, zoom 14, read through the app's existing
-   `window._uatGetTile` cache) must be **opaque** (drawn red = inside a UAT
-   polygon). Transparent pixels (non-red) are discarded. Missing/unreadable
-   tiles **fail closed** (candidate discarded), matching the policy the rest
-   of the app uses for its UAT checks.
+1. **Inside the UAT "red zone"** — the candidate must sit on ground the UAT
+   raster (Cloudflare R2 tiles, zoom 14) paints red, i.e. **opaque + dark**
+   pixels (`uatIsRedPixel`, the same convention as `map-app.js` and
+   `archeo-report.js`). Transparent or light pixels = intravilan/built-up →
+   discarded.
+   - **The verdict is per cell, not per pixel.** `uatCellRedFraction` samples a
+     k×k lattice across the cell's own box (`SAMPLE_STEP_M` 50 m, at most
+     `MAX_SAMPLES_PER_AXIS` 8 per axis) and keeps the cell while
+     ≥ `MIN_RED_FRACTION` (0.5) of the readable samples are red. A 175 m cell
+     used to be decided by one ~9.5 m pixel, so exclusion looked speckled and
+     arbitrary at the intravilan border.
+   - **Tiles are pre-loaded before scoring** (step 6 of the workflow), each with
+     a timeout (`TILE_TIMEOUT_MS` 9 s), one retry through the layer's own image
+     loader, and a per-tile state cache (`ok` / `missing` / `unreadable` /
+     `timeout`) that expires failures after `FAILURE_TTL_MS` (60 s). Cached tiles
+     are stored as a compact **red mask** (1 byte/pixel, 64 kB instead of 256 kB)
+     and the cache is FIFO-bounded (`MAX_CACHED_TILES` 600).
+   - **Unreadable raster → fail open** (`FAIL_OPEN_WHEN_UNREADABLE` true): if no
+     tile could be decoded (CORS, offline, 404 storm) the built-up exclusion is
+     *skipped* and reported in the status line (`uat_unavailable` /
+     `uat_partial`), instead of silently emptying the map. The heritage radii
+     stay excluded and stay red either way.
 2. **Distance from existing sites** — every known site has a protection radius
    (`SITE_RADIUS_M` = 600 m, the same value as the app's heritage circles).
    A candidate must be at least `SITE_RADIUS_M + SITE_BUFFER_M` (600 + 100 m)
@@ -246,14 +307,29 @@ Classification thresholds in `CONFIG.CLASSIFY`:
 ```js
 // from the browser console
 ARCH_POTENTIAL_CONFIG.SEARCH_RADIUS_M = 15000;          // 15 km working area
-ARCH_POTENTIAL_CONFIG.SITE_RADIUS_M = 300;              // smaller site radii
+ARCH_POTENTIAL_CONFIG.SITE_RADIUS_M = 300;              // smaller heritage rings
 ARCH_POTENTIAL_CONFIG.CLASSIFY.SCORE_HIGH_FROM = 0.6;   // stricter High class
 ARCH_POTENTIAL_CONFIG.SCORING.W_TRIANGLE = 0.35;        // boost triangle weight
 ARCH_POTENTIAL_CONFIG.SHOW_TRIANGULATION = true;        // debug: draw triangles
-ARCH_POTENTIAL_CONFIG.BUBBLE.PER_KM2 = 0.35;            // more bubbles per km²
+
 ARCH_POTENTIAL_CONFIG.BUBBLE.RADIUS_M = 520;            // bigger bubbles at 10 km
-ARCH_POTENTIAL_CONFIG.HEAT.MIN_WINDOW = 0.2;            // even stronger heat contrast
+ARCH_POTENTIAL_CONFIG.BUBBLE.GAP_M = 40;                // tighter packing
+ARCH_POTENTIAL_CONFIG.BUBBLE.TIERS = [1, 0.7, 0.5];     // fewer size steps
+ARCH_POTENTIAL_CONFIG.BUBBLE.COVERAGE_TARGET = 0.9;     // push the gap-fill pass
+ARCH_POTENTIAL_CONFIG.BUBBLE.MAX_BUBBLES = 2000;        // raise the cap
+ARCH_POTENTIAL_CONFIG.FIELD.CELL_M = 90;                // finer grid (slower)
+
+ARCH_POTENTIAL_CONFIG.HEAT.NORMALIZE = 'percentile';    // stretch per run instead
+ARCH_POTENTIAL_CONFIG.HEAT.ALPHA_MAX = 1;               // fully opaque surface
+ARCH_POTENTIAL_CONFIG.UAT.MIN_RED_FRACTION = 0.35;      // stricter intravilan test
+ARCH_POTENTIAL_CONFIG.UAT.FAIL_OPEN_WHEN_UNREADABLE = false;  // old fail-closed policy
 ```
+
+Legend consistency: `CONFIG.CLASSIFY` thresholds (0.25 / 0.55) drive both the
+bubble colours and the ramp stops (`HEAT_GRADIENT` at 0 / 0.25 / 0.55 / 0.75 /
+1.0), and `syncLegend()` repaints the swatches, the percentage bands and the
+heat bar from those very values — so changing a threshold updates the legend
+with it.
 
 ---
 
@@ -262,17 +338,21 @@ ARCH_POTENTIAL_CONFIG.HEAT.MIN_WINDOW = 0.2;            // even stronger heat co
 - **Global grid spatial index** (R-tree-style culling) is built lazily once
   over all loaded heritage features and cached; per-run queries only touch
   the cells overlapped by the 10 km circle.
-- **UAT tile reads** reuse the app's per-tile promise cache, so a 10 km run
-  performs at most a few hundred tile fetches regardless of candidate count.
-- The analysis runs in **async chunks** (`FIELD.CHUNK_SIZE` = 120 cells per
+- **UAT tile reads** go through the app's loader first (with its own promise
+  cache) and are stored per tile as a 1-byte-per-pixel red mask, FIFO-bounded to
+  600 tiles — a 10 km run is ~156 tiles ≈ 10 MB instead of ~40 MB of RGBA, and
+  repeated runs in the same area read nothing new.
+- The analysis runs in **async chunks** (`FIELD.CHUNK_SIZE` = 400 cells per
   batch for the field, 30 seeds per batch for the legacy pipeline), yielding to
   the UI between batches so the map stays responsive; progress is reported
-  through `opts.onProgress` into the status line.
+  through `opts.onProgress` into the status line (0–30 % tile pre-load, 30–100 %
+  scoring).
 - **Grid caps keep phones alive**: `gridCellM()` grows the cell size until the
-  circle holds at most `BUBBLE_MAX_CELLS` (2200) / `HEAT_MAX_CELLS` (9000)
-  cells, so a 10 km run costs the same as a 3 km run.
-- Bubble **popups are built lazily** (`bindPopup(fn)`), and there are only a
-  few dozen bubbles to bind in the first place (`CONFIG.BUBBLE`).
+  circle holds at most `FIELD.MAX_CELLS` (9000) cells, so a 10 km run costs the
+  same as a 3 km run.
+- Bubble **popups are built lazily** (`bindPopup(fn)`) and the circles are plain
+  `L.circle`s in one layer group, so even the 1400-bubble cap stays cheap;
+  `selectBubbles` itself is O(cells × tiers) with grid-indexed conflict checks.
 - The heat surface is a **tiny raster** (≤ ~115 × 115 px) drawn with a single
   `drawImage` per settled view — no per-cell DOM, no per-zoom recomputation of
   the scores.
@@ -298,8 +378,12 @@ setArcheoPotentialPinMode(true)    // arm the purple pin (map clicks place it)
 _archeoPotSetPoint(46.77, 23.59)   // drop the pin from the console
 setArcheoPotentialRadiusKm(4)      // move the radius slider (1–10)
 computeArcheoPotentialField(lat, lng, radiusM, { mode: 'heat' })  // field without rendering
-_archeoPotentialDebug.config       // live config object (incl. CONFIG.FIELD / BUBBLE / HEAT)
-_archeoPotentialResetCache()       // force the global site index rebuild
+_archeoPotentialDebug.config       // live config object (incl. CONFIG.UAT / FIELD / BUBBLE / HEAT)
+_archeoPotentialResetCache()       // force the global site index rebuild + reset the UAT tile cache
+_archeoPotentialDebug.prewarmUatTiles(bounds)      // { total, ok, missing, unreadable, timeout }
+_archeoPotentialDebug.uatCellRedFraction(lat,lng,m)// { red, samples, known } for one cell
+_archeoPotentialDebug.syncLegend()                 // repaint swatches / bands / heat bar
+_archeoPotentialDebug.LEGEND_SCORES                // the score each legend row stands for
 ```
 
 The console logs one summary line per run, e.g.:

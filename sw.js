@@ -65,7 +65,7 @@
 //   reported with several dense layers open at once (LIDAR + „Imagini
 //   satelitare anii 60'" + historical maps + APM) when zooming abruptly.
 //   See MAP_LAYER_PERFORMANCE.md.
-const CACHE_NAME = 'detectlab-v101-pwa-panel-flush';
+const CACHE_NAME = 'detectlab-v102-archeo-coverage';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -394,7 +394,16 @@ const PRECACHE_URLS = [
   // PWA layers window flush to the screen bottom; live-location / profile
   // stay on the right (hidden while the panel is open, never teleported left).
   'css/styles.css?v=20260917-pwa-panel-flush',
-  'js/map-app.js?v=20260917-pwa-panel-flush'
+  'js/map-app.js?v=20260917-pwa-panel-flush',
+  // „Zone cu potențial arheologic": bulele umplu terenul liber (împachetare pe
+  // trepte de mărime + rețea de umplutură), heatmap-ul colorează fiecare celulă
+  // liberă pe o scară absolută comună cu legenda, iar excluderea UAT se decide
+  // pe celulă (probe multiple) după ce tile-urile sunt pre-încărcate — cu
+  // fail-open când rasterul nu poate fi citit. Vezi ARCHEO_POTENTIAL.md.
+  'js/archeo-potential.js?v=20260917-archeo-coverage',
+  'js/map-app.js?v=20260917-archeo-coverage',
+  'js/translations.js?v=20260917-archeo-coverage',
+  'css/styles.css?v=20260917-archeo-coverage'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

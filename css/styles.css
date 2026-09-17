@@ -5637,11 +5637,29 @@
         .archeo-pot-heatbar {
             width:96px; height:9px; border-radius:5px; flex-shrink:0;
             border:1px solid rgba(184,216,240,.22);
-            /* aceeași rampă ca HEAT_GRADIENT din js/archeo-potential.js:
-               indigo închis (cel mai slab) → albastru → verde → chihlimbar →
-               violet (cel mai bun). Roșul e rezervat zonelor excluse
-               (UAT / rază patrimoniu), ca legenda să nu fie ambiguă. */
-            background:linear-gradient(90deg,#10233f,#1f7fc4,#23c48e,#f2b134,#8b3ff0);
+            /* Aceeași rampă ca HEAT_GRADIENT din js/archeo-potential.js, cu
+               opririle aliniate pe pragurile de clasificare: 25% = trecerea
+               Low → Medium, 55% = trecerea Medium → High. Scala e ABSOLUTĂ
+               (culoarea = scorul celulei), deci legenda e valabilă pentru
+               orice rulare și pentru ambele moduri (bule / heatmap). Roșul e
+               rezervat zonelor excluse (intravilan UAT / rază patrimoniu). */
+            background:linear-gradient(90deg,#10233f 0%,#1f7fc4 25%,#23c48e 55%,#f2b134 75%,#8b3ff0 100%);
+        }
+        /* Bulele legendei: culoarea e pictată din JS (syncLegend) cu exact
+           culoarea rampei pentru scorul de referință al treptei. */
+        .archeo-pot-dot {
+            width:11px; height:11px; border-radius:50%; flex-shrink:0; display:inline-block;
+            background:#1f7fc4; box-shadow:0 0 0 1px rgba(16,6,28,.65);
+        }
+        .archeo-pot-band { font-size:.6rem; color:rgba(245,240,235,.45); font-variant-numeric:tabular-nums; }
+        .archeo-pot-legend-scale { flex-wrap:wrap; gap:9px; }
+        .archeo-pot-chip {
+            display:inline-flex; align-items:center; gap:4px;
+            font-size:.64rem; color:rgba(245,240,235,.62);
+        }
+        .archeo-pot-chip i {
+            width:9px; height:9px; border-radius:2px; flex-shrink:0;
+            display:inline-block; background:#1f7fc4;
         }
         .archeo-pot-heatlabels {
             display:flex; justify-content:space-between; gap:6px;

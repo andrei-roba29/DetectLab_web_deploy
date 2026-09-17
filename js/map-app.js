@@ -356,6 +356,12 @@
             // contează cum se numește, doar cum arată) — vezi mai jos, la logica pentru
             // "clădiri dispărute", unde folosim explicit polul opus.
             var UAT_TILE_URL = 'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/UAT/{z}/{x}/{y}.png';
+            // Expus pentru straturile de analiză care citesc aceleași tile-uri ca
+            // pixeli (js/archeo-potential.js pre-încarcă rasterul pentru zona
+            // analizată, cu timeout + retry, în loc să depindă de un singur pixel
+            // din cache-ul aplicației). Rămâne aceeași sursă, același TMS y-flip.
+            window.UAT_TILE_URL = UAT_TILE_URL;
+            window.UAT_TILE_Y_FOR_URL = function (y, z) { return Math.pow(2, z) - 1 - y; };
             // Reglabil live din consolă, fără redeploy: window.UAT_TILE_Z.
             // CONFIRMAT (2026-07, test live consolă): nivelul nativ real la care există
             // tile-urile UAT/Buildings pe R2 e 14, NU 15. La z=15, toate cererile dădeau
