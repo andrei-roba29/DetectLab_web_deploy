@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260916-pwa-panel-offline-exit">
+    <link rel="stylesheet" href="css/styles.css?v=20260917-pwa-panel-flush">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -138,38 +138,45 @@
         body.is-pwa .map-wrapper,
         body.is-pwa #detectlab-map {
             height: 100% !important;
+            min-height: 100% !important;
             border: none !important;
             border-radius: 0 !important;
             box-shadow: none !important;
         }
 
-        /* ── Transparency panel: full usable height in PWA ──
-           The panel is anchored top→bottom of the (already full-viewport)
-           map frame, so the window really goes all the way down instead of
-           stopping at the old hardcoded 560px cap — the PWA only keeps the
-           bottom safe-area inset so the home indicator never covers a row.
-           There is no bottom padding either: the strip of panel background
-           under the last row was dead space. */
+        /* ── Transparency panel: flush to every screen edge in PWA ──
+           position:fixed so a leftover 560px map-frame cannot crop the window.
+           bottom:0 (not the safe-area inset) so there is no navy gap under it.
+           Square corners so the rounded bottom-left no longer looks cropped.
+           z-index above #pwa-br-stack so live-location / profile stay behind
+           the panel instead of jumping onto the left map buttons. */
         body.is-pwa .transp-panel {
+            position: fixed !important;
             top: 0 !important;
-            bottom: env(safe-area-inset-bottom, 0px) !important;
+            right: 0 !important;
+            bottom: 0 !important;
             height: auto !important;
             max-height: none !important;
             padding-bottom: 0 !important;
+            border-radius: 0 !important;
+            z-index: 2100 !important;
         }
 
-        /* The layers window reaches the bottom of the screen, so while it is open
-           the floating bottom-right stack (live location + account) moves to the
-           opposite corner instead of covering the last rows' switches. */
+        /* Hide the stack in place while the layers window is open. Moving it
+           to the left used to land live-location + profile on top of compass /
+           Detect / nearby — that teleport is the bug, not the fix. */
         body.is-pwa.transp-panel-open #pwa-br-stack {
-            right: auto;
-            left: max(10px, env(safe-area-inset-left, 0px));
+            visibility: hidden;
+            pointer-events: none;
+            opacity: 0;
         }
 
-        /* ── Transparency arrow tab: vertically centred in the unobstructed
-           portion of the map (the same visual position it had before the map
-           began painting behind the bottom safe area). */
+        /* ── Transparency arrow tab: vertically centred, pinned to the
+           viewport so it travels with the fixed panel. */
         body.is-pwa .transp-arrow-tab {
+            position: fixed !important;
+            right: 0 !important;
+            z-index: 2101 !important;
             top: calc(50% - var(--pwa-bottom-controls-half-clearance, 22px)) !important;
             transform: translateY(-50%) !important;
         }
@@ -3632,7 +3639,7 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260917-tile-perf"></script>
+    <script src="js/map-app.js?v=20260917-pwa-panel-flush"></script>
     <script src="js/offline-maps.js?v=20260916-pwa-panel-offline-exit"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20260916-pwa-panel-offline-exit"></script>

@@ -6,18 +6,16 @@
 //   website that is exactly the height of the map frame, so nothing looked wrong
 //   — but the installed PWA paints the map edge to edge (100dvh), and 560px on a
 //   ~900px phone is "the window stops after the lower half of the screen".
-//   The PWA override that did exist (`body.is-pwa .transp-panel`, in a <style>
-//   block of index.html) recomputed 100% of the frame minus a bottom clearance,
-//   which an installed app with an older cached index.html never picked up at all.
-// · The panel also padded its own background below the last row (22px of dark
-//   blue), which in the tall PWA layout is pure dead space.
-// · Stretching the panel to the bottom puts the floating PWA stack (live location
-//   + account) over the panel's bottom-right corner, where every row keeps its
-//   switch — so the stack has to step aside while the window is open.
+// · A later PWA override stopped the panel at `env(safe-area-inset-bottom)`,
+//   which left a navy strip of padding under the window and made it look cropped.
+// · Stretching the panel to the bottom put the floating PWA stack (live location
+//   + account) over the last rows, so a previous fix *moved the stack to the
+//   left*. That landed those two buttons on top of compass / Detect / nearby —
+//   the grave teleport bug. The stack must stay where it is (hidden in place).
 //
-// The fix anchors the panel top→bottom of its container instead of giving it a
-// length, so the geometry can no longer depend on a percentage resolving (or on
-// which markup version the service worker served).
+// The fix pins the panel with position:fixed to the true viewport edges
+// (bottom: 0, no padding, no radius crop) and hides #pwa-br-stack without
+// changing its left/right.
 //
 // Run: node test-pwa-layer-panel.js
 
@@ -49,10 +47,14 @@ assert(!/height:\s*560px/.test(panel), 'the old 560px cap must be gone');
 assert(/padding:\s*22px 16px 0/.test(panel),
     'the bottom padding (the dark blue strip under the last row) must be removed');
 
-/* 2. The PWA override must not reintroduce a length or a clearance gap. */
+/* 2. The PWA override pins the window to the true bottom — no safe-area gap. */
 const pwa = ruleOf(html.replace(/\n\s*/g, ' '), 'body.is-pwa .transp-panel');
-assert(/bottom:\s*env\(safe-area-inset-bottom/.test(pwa),
-    'in the installed app the panel stops at the safe-area inset, not 44px above the bottom');
+assert(/position:\s*fixed\s*!important/.test(pwa),
+    'the PWA panel is fixed to the viewport so a 560px map-frame cannot crop it');
+assert(/bottom:\s*0\s*!important/.test(pwa),
+    'in the installed app the panel reaches the true bottom, not a safe-area gap');
+assert(!/bottom:\s*env\(safe-area-inset-bottom/.test(pwa),
+    'the leftover safe-area inset under the window is the padding the user still saw');
 assert(/height:\s*auto\s*!important/.test(pwa) && /max-height:\s*none\s*!important/.test(pwa),
     'the PWA rule keeps the anchor-driven height instead of a computed one');
 assert(/padding-bottom:\s*0\s*!important/.test(pwa),
@@ -64,7 +66,7 @@ assert(!/100% - var\(--pwa-bottom-controls-clearance/.test(pwa),
 const full = ruleOf(css, '.map-frame.is-fullscreen .transp-panel');
 assert(/bottom:\s*0/.test(full), 'browser fullscreen still pins the window to the bottom');
 
-/* 4. The floating PWA stack steps aside while the window is open. */
+/* 4. The floating PWA stack stays put (hidden in place) while the window is open. */
 assert(/function markTranspPanelOpen\(on\)/.test(mapApp),
     'one helper owns the open state so every path stays in sync');
 assert(/classList\.toggle\('transp-panel-open', transpPanelOpen\)/.test(mapApp),
@@ -72,12 +74,14 @@ assert(/classList\.toggle\('transp-panel-open', transpPanelOpen\)/.test(mapApp),
 const openClose = /if \(!panel\.contains\(e\.target\) && !tab\.contains\(e\.target\)\)\s*\{\s*markTranspPanelOpen\(false\);/.test(mapApp);
 assert(openClose, 'the click-outside close must go through the same helper');
 const stack = ruleOf(html.replace(/\n\s*/g, ' '), 'body.is-pwa.transp-panel-open #pwa-br-stack');
-assert(/left:\s*max\(10px/.test(stack) && /right:\s*auto/.test(stack),
-    'with the panel open the bottom-right stack moves to the left edge so it never covers a layer switch');
+assert(/visibility:\s*hidden/.test(stack),
+    'with the panel open the stack is hidden in place, not moved');
+assert(!/left:\s*max\(10px/.test(stack) && !/right:\s*auto/.test(stack),
+    'the stack must NOT teleport to the left over compass / Detect / nearby');
 
 /* 5. Installed PWAs must actually receive it. */
 const cacheName = (read('sw.js').match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1];
-assert(Number(cacheName) >= 98, 'the SW cache must be bumped (got v' + cacheName + ')');
+assert(Number(cacheName) >= 101, 'the SW cache must be bumped (got v' + cacheName + ')');
 ['css/styles.css', 'js/map-app.js'].forEach(function (file) {
     const tag = (html.match(new RegExp('(?:src|href)="(' + file + '\\?v=[^"]+)"')) || [])[1];
     assert(tag, file + ' must be cache-busted on the page');
@@ -85,6 +89,6 @@ assert(Number(cacheName) >= 98, 'the SW cache must be bumped (got v' + cacheName
 });
 
 console.log('✓ the layers window is anchored top→bottom (no 560px cap, no bottom padding)');
-console.log('✓ the PWA keeps only the safe-area inset and moves the floating stack aside');
+console.log('✓ the PWA panel is flush to the screen bottom and hides the stack in place');
 console.log('✓ the fullscreen geometry and the service-worker rollout are intact');
 console.log('OK — the layers window reaches the bottom of the screen in the installed PWA.');
