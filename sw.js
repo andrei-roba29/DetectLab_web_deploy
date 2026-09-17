@@ -58,7 +58,14 @@
 //     circles, and the analysis layers never drop their pin under the finger
 //     while a ring is being drawn — plus a centred ✕ at the bottom that leaves
 //     an active offline map.
-const CACHE_NAME = 'detectlab-v99-doc-tabs';
+// v100: tile performance governor — js/tile-perf.js (loaded right after Leaflet)
+//   applies gesture-safe defaults to every tile layer, merges the tile work of a
+//   fast zoom into one update per layer, prunes the old zoom levels harder and
+//   watches the page's decoded-tile budget; it is what stops the crash/reload
+//   reported with several dense layers open at once (LIDAR + „Imagini
+//   satelitare anii 60'" + historical maps + APM) when zooming abruptly.
+//   See MAP_LAYER_PERFORMANCE.md.
+const CACHE_NAME = 'detectlab-v100-tile-perf';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -374,7 +381,16 @@ const PRECACHE_URLS = [
   'js/archeo-potential.js?v=20260916-pwa-panel-offline-exit',
   'js/lidar-scanner.js?v=20260916-pwa-panel-offline-exit',
   'js/archeo-report.js?v=20260916-pwa-panel-offline-exit',
-  'js/tutorial.js?v=20260916-pwa-panel-offline-exit'
+  'js/tutorial.js?v=20260916-pwa-panel-offline-exit',
+  // Guvernorul global de tile-uri: oprește explozia de tile-uri (și crash-ul
+  // paginii) când sunt deschise simultan mai multe straturi dense — LIDAR,
+  // „Imagini satelitare anii 60'", hărți istorice, APM — și se face un gest
+  // brusc de zoom. Se încarcă imediat după Leaflet, înaintea map-app.js.
+  // Vezi MAP_LAYER_PERFORMANCE.md.
+  'js/tile-perf.js',
+  'js/tile-perf.js?v=20260917-tile-perf',
+  'js/translations.js?v=20260917-tile-perf',
+  'js/map-app.js?v=20260917-tile-perf'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

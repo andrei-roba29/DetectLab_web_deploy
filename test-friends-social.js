@@ -1498,9 +1498,10 @@ function partThree() {
 
     assert(sw.indexOf("'js/friends.js?v=20260915-social'") !== -1, 'the PWA must precache js/friends.js');
     // CACHE_NAME is re-bumped by every release (the visibility prompt bumped
-    // it to v87), so assert it is at least the social one (v86) rather than
-    // pinning a version that is already stale.
-    assert(/const CACHE_NAME = 'detectlab-v(8[6-9]|9\d)-/.test(sw), 'the service worker cache must be bumped');
+    // it to v87, the tile governor to v100), so assert it is at least the
+    // social one (v86) rather than pinning a version that is already stale.
+    const friendsCache = Number((sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1] || 0);
+    assert(friendsCache >= 86, 'the service worker cache must be bumped (got: ' + friendsCache + ')');
     ok('nav button (desktop + PWA), RO/EN labels, script order and PWA precache are in place');
 
     const migrations = fs.readdirSync(path.join(__dirname, 'supabase/migrations'))
