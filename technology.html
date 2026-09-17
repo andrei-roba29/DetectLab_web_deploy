@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Technology — the DetectLab modules: APM 2.0, Library of Babel, LiDAR, Archaeological Report</title>
+  <meta name="description" content="What powers DetectLab: the APM 2.0 archaeological prediction model, the Library of Babel (8 open sources plus the epoch profile with percentages), archaeological potential zones (site triangulation), the LIDAR Scanner (AI detections filtered in the database) and the archaeological report.">
+  <meta name="robots" content="index, follow">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="The technology behind DetectLab">
+  <meta property="og:description" content="APM 2.0, the Library of Babel, archaeological potential zones, the LIDAR Scanner and the archaeological report — what they are, which data they use and how to read the results.">
+  <link rel="canonical" href="technology.html">
+  <link rel="alternate" hreflang="ro" href="tehnologie.html">
+  <link rel="alternate" hreflang="en" href="technology.html">
+  <link rel="alternate" hreflang="x-default" href="tehnologie.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/documentation.css?v=20260917-doc-tabs">
+</head>
+<body>
+  <nav class="doc-nav" aria-label="Documentation navigation">
+    <a class="doc-logo" href="index.html"><i aria-hidden="true"></i><span>DetectLab</span></a>
+    <div class="doc-tabs" role="tablist" aria-label="Sections">
+      <a class="doc-tab active" href="technology.html" role="tab" aria-selected="true" aria-current="page">Technology</a>
+      <a class="doc-tab" href="process.html" role="tab" aria-selected="false">Process</a>
+    </div>
+    <span class="doc-nav-spacer"></span>
+    <div class="doc-nav-actions">
+      <a class="doc-back" href="index.html">← Back to the map</a>
+      <a href="tehnologie.html" hreflang="ro" lang="ro">RO</a>
+      <a class="active" href="technology.html" aria-current="page">EN</a>
+    </div>
+  </nav>
+
+  <header class="doc-hero">
+    <p class="doc-eyebrow">DetectLab documentation</p>
+    <h1>The technology behind DetectLab</h1>
+    <p class="doc-lead">Five modules work together: the <strong>APM 2.0</strong> archaeological prediction model, the multi-source agent <strong>Library of Babel</strong>, the <strong>archaeological potential zones</strong>, the <strong>LIDAR Scanner</strong> — built on a machine-learning process — and the <strong>archaeological report</strong>. This page explains what each one is, which data it uses and how to read its output.</p>
+    <div class="doc-hero-meta">
+      <span class="doc-chip">5 modules</span>
+      <span class="doc-chip">8 open sources</span>
+      <span class="doc-chip">786 validated LiDAR objectives</span>
+      <span class="doc-chip">APM score 1–5</span>
+      <span class="doc-chip">RO / EN</span>
+    </div>
+  </header>
+
+  <main class="doc-layout">
+    <aside class="doc-toc" aria-label="Contents">
+      <strong>Contents</strong>
+      <a href="#architecture">1. Platform architecture</a>
+      <a href="#apm">2. APM 2.0</a>
+      <a href="#babel">3. Library of Babel</a>
+      <a href="#babel-sources" class="sub">3.1 The 8 sources</a>
+      <a href="#babel-epochs" class="sub">3.2 The epoch profile, with percentages</a>
+      <a href="#potential">4. Archaeological potential zones</a>
+      <a href="#lidar">5. LIDAR Scanner</a>
+      <a href="#report">6. The archaeological report</a>
+      <a href="#sources">7. Sources, verification and limits</a>
+      <a href="#process-link">8. Next step: the Process</a>
+    </aside>
+
+    <article class="doc-article">
+      <section class="doc-intro">
+        <p>DetectLab is not a map of “treasure spots”. It is a <strong>spatial analysis system</strong> that overlays environmental data, heritage registers, documentary corpora and LiDAR-derived models, then scores them. Every result shown has a reason: an environmental factor, a distance to known sites, a LiDAR detection or a documentary mention.</p>
+        <p>This page describes the <em>instruments</em>. The <a href="process.html">Process</a> page describes the <em>workflow</em> — how they connect, in which order, with which thresholds, and what you get at the end.</p>
+      </section>
+
+      <section class="doc-section" id="architecture">
+        <h2>1. Platform architecture</h2>
+        <p>Each module can be used on its own, but the value appears when the results are overlaid. The archaeological potential zones, for instance, feed the archaeological report; objectives validated by the LIDAR Scanner can automatically raise a report location's score; the Library of Babel tells you <em>which epochs</em> are documented in that locality.</p>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>The five DetectLab modules</caption>
+            <thead>
+              <tr><th>Module</th><th>What it is based on</th><th>What it produces</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>APM 2.0</strong><br><small>Archaeological Prediction Model</small></td>
+                <td>Terrain (DEM), hydrography, geology and soils, the built-up (UAT) mask, weights calibrated in QGIS</td>
+                <td>A <strong>1–5</strong> score raster, published as a layer over the satellite imagery</td>
+              </tr>
+              <tr>
+                <td><strong>Library of Babel</strong></td>
+                <td>8 open sources queried in parallel, straight from the browser</td>
+                <td>A corpus of finds and documents with per-source provenance, plus the <strong>epoch profile, with percentages</strong>, in the header</td>
+              </tr>
+              <tr>
+                <td><strong>Archaeological potential zones</strong></td>
+                <td>Triangulation of the known sites (Delaunay) and the distances between them and the analysed point</td>
+                <td>Potential bubbles and a heat map, plus a red mask of the excluded areas</td>
+              </tr>
+              <tr>
+                <td><strong>LIDAR Scanner</strong></td>
+                <td>Detections produced by a <strong>machine-learning</strong> model on LiDAR-derived rasters, then filtered in the DetectLab database</td>
+                <td>Validated objectives by category (tumulus, fort, fortification, burgus, rampart, dwelling…), inside the chosen radius</td>
+              </tr>
+              <tr>
+                <td><strong>Archaeological report</strong></td>
+                <td>APM 2.0 + potential zones + LIDAR Scanner (+ a bonus for Roman roads)</td>
+                <td><strong>3 ranked locations</strong> in 5 km², placed in their epoch, with a downloadable PDF (RO/EN)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="doc-note">Every module <strong>fails closed</strong>: if a source cannot be read (APM tile unavailable, heritage API down, LIDAR CSV unreachable) the analysis stops or explicitly reports the missing data — it never invents a result.</p>
+      </section>
+
+      <section class="doc-section" id="apm">
+        <h2>2. APM 2.0 — the archaeological prediction model</h2>
+        <p>The APM (Archaeological Prediction Model) is <strong>a probability raster</strong>: for every patch of land, the model computes how likely that area is to have been settled or used in the past. It does not verify what is buried there — it measures how well the terrain matches the known patterns of old settlements.</p>
+
+        <h3>What the model reads</h3>
+        <ul>
+          <li><strong>Terrain:</strong> elevation, slope, aspect, position on the hillside (terraces, promontories, sheltered valleys).</li>
+          <li><strong>Hydrography:</strong> distance to rivers, springs and wetlands — water explains most site locations.</li>
+          <li><strong>Geology and soils:</strong> fertility, substrate stability, mineral and building resources.</li>
+          <li><strong>Built-up mask (UAT):</strong> separates open land from built-up areas, so the model does not “predict” inside yards and streets.</li>
+        </ul>
+
+        <h3>The score and its legend classes</h3>
+        <p>The layers are combined with weights in QGIS, and the result is published as raster tiles over the satellite imagery. The legend colours match the classes the other modules use:</p>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>APM 2.0 score classes</caption>
+            <thead><tr><th>Score</th><th>Colour</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td class="doc-num">5.0</td><td>blue</td><td>very high potential</td></tr>
+              <tr><td class="doc-num">4.5</td><td>green</td><td>high potential</td></tr>
+              <tr><td class="doc-num">4.0</td><td>yellow</td><td>above-average potential</td></tr>
+              <tr><td class="doc-num">3.0</td><td>khaki</td><td>average potential — <em>below the report threshold</em></td></tr>
+              <tr><td class="doc-num">2.0</td><td>magenta</td><td>low potential</td></tr>
+              <tr><td class="doc-num">1.0</td><td>red</td><td>no identified potential</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The archaeological report accepts only classes <strong>5 / 4.5 / 4</strong> (above average); classes 3 / 2 / 1 are rejected automatically. A point can still be accepted without a good APM class when it is <em>annotated</em> by the LIDAR Scanner — see section 6.</p>
+        <p class="doc-note"><strong>How to read it correctly:</strong> the colour describes the <em>terrain</em>, not an object. A blue area means “the conditions here resemble the known settlements best”, not “there is a site here”.</p>
+      </section>
+
+      <section class="doc-section" id="babel">
+        <h2>3. Library of Babel — the documentary corpus of a locality</h2>
+        <p>The Library of Babel is a <strong>multi-source search agent</strong>. You type a locality or a site (for example <em>Sarmizegetusa</em>, <em>Apulum</em>, <em>Grădiștea Muncelului</em>) and the agent queries 8 open sources at once, aggregates the results, removes duplicates and renders them with per-source provenance. The search runs <strong>directly in the browser</strong>, in Romanian and English.</p>
+        <p>Before querying the sources, the name is resolved against the OpenStreetMap gazetteer: the agent picks up the <strong>canonical name</strong> (with diacritics), the <strong>county</strong> and the <strong>coordinates</strong>, and the text sources receive the name as an exact phrase — otherwise an engine searching for “Miluani” would return “Miljan Miljanić”.</p>
+
+        <h3 id="babel-sources">3.1 The 8 sources</h3>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>The sources queried in parallel</caption>
+            <thead><tr><th>#</th><th>Source</th><th>What it brings</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td class="doc-num">1</td><td><strong>Wikipedia</strong> (ro + en)</td><td>encyclopaedic articles</td><td>both languages, de-duplicated between them</td></tr>
+              <tr><td class="doc-num">2</td><td><strong>Wikidata</strong></td><td>structured entities, often with coordinates</td><td>SPARQL query</td></tr>
+              <tr><td class="doc-num">3</td><td><strong>OpenStreetMap</strong> (Nominatim)</td><td>the locality, its type, county and coordinates</td><td>max. 1 request/second, enforced client-side</td></tr>
+              <tr><td class="doc-num">4</td><td><strong>Wikimedia Commons</strong></td><td>photographs, maps, digitised documents</td><td>licence and author shown</td></tr>
+              <tr><td class="doc-num">5</td><td><strong>DBpedia</strong></td><td>semantic resources derived from Wikipedia</td><td>short descriptions, categories</td></tr>
+              <tr><td class="doc-num">6</td><td><strong>Archive.org</strong></td><td>documents, books, digitised collections</td><td>mediatype shown on the card</td></tr>
+              <tr><td class="doc-num">7</td><td><strong>Europeana</strong></td><td>cultural heritage objects</td><td>needs a free API key (optional)</td></tr>
+              <tr><td class="doc-num">8</td><td><strong>CIMEC / RAN</strong><br><small>National Archaeological Repertory</small></td><td>site records and the sites around the locality</td><td>spatial search over 10 km, the distance printed on each card, link to <code>ran.cimec.ro</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>When the same finding appears in several sources (“Ulpia Traiana Sarmizegetusa” in Wikipedia, Wikidata and DBpedia, say), it becomes <strong>a single card</strong> with badges for every contributing source and a relevance score that favours findings confirmed by multiple sources. The statistics show how many duplicates were removed and how many results were rejected as irrelevant.</p>
+        <p class="doc-note">If one source does not answer, the others carry on: each source has a status chip naming the failure (timeout / HTTP / network / missing API key). Zero results always come with alternative-search suggestions, and an ambiguous locality (several OSM matches) is shown as a list of variants instead of being silently picked.</p>
+
+        <h3 id="babel-epochs">3.2 The header: the locality's epoch profile, with percentages</h3>
+        <p>The results header is not just a title. For every locality it summarises <strong>the epochs identified in that locality's corpus, with percentages</strong>: what share of the classified findings belongs to each epoch. You can see at a glance what kind of place it is — predominantly Roman, medieval, or with a prehistoric presence.</p>
+        <div class="doc-epochs" role="group" aria-label="Example epoch profile">
+          <span class="doc-epochs-title">Illustrative example — the epoch profile in the header</span>
+          <div class="doc-epoch"><span class="doc-epoch-name">Roman</span><span class="doc-epoch-bar"><span style="width:38%"></span></span><span class="doc-epoch-pct">38%</span></div>
+          <div class="doc-epoch"><span class="doc-epoch-name">Medieval</span><span class="doc-epoch-bar"><span style="width:24%"></span></span><span class="doc-epoch-pct">24%</span></div>
+          <div class="doc-epoch"><span class="doc-epoch-name">Iron Age</span><span class="doc-epoch-bar"><span style="width:18%"></span></span><span class="doc-epoch-pct">18%</span></div>
+          <div class="doc-epoch"><span class="doc-epoch-name">Dacian</span><span class="doc-epoch-bar"><span style="width:12%"></span></span><span class="doc-epoch-pct">12%</span></div>
+          <div class="doc-epoch"><span class="doc-epoch-name">Bronze Age</span><span class="doc-epoch-bar"><span style="width:8%"></span></span><span class="doc-epoch-pct">8%</span></div>
+        </div>
+        <p>The percentages are computed over the <strong>already de-duplicated corpus</strong> of the search, from the total number of epoch attributions: a finding mentioning two epochs — Dacian and Roman, say — contributes to both, and the printed percentages always add up to 100%. Every value doubles as a filter: press “Roman 38%” and only the Roman findings remain in the list. The chronological strip below the header keeps the absolute number of results per epoch, in chronological order.</p>
+
+        <h4>Automatic epoch classification</h4>
+        <p>Classification is automatic, by keywords in the title and description of each finding, diacritics-insensitive, across <strong>8 epochs</strong>: Prehistory, Bronze Age, Iron Age, Dacian, Roman, Migration period, Medieval, Modern.</p>
+        <ul>
+          <li><strong>Roman</strong> detection relies on a genuine archaeological lexicon — <em>castrum</em>, <em>legion</em>, <em>oil lamp</em>, <em>burgus</em>, <em>villa</em>, <em>thermae</em>, <em>amphitheatre</em>, <em>colonia</em>, <em>Ulpia</em>, <em>Trajan</em>, “Roman empire”, “Roman Dacia”. The bare words <em>român / română / români</em> (Romanian) do <strong>not</strong> trigger the Roman epoch, and “Romania” is never confused with Rome.</li>
+          <li>Findings that cannot be placed in any epoch (<em>unspecified period</em>) are dropped from the results, so every card shown carries an epoch. The exceptions are the locality itself (OSM) and the CIMEC/RAN records, which are archaeological by definition.</li>
+          <li>The classification is declared automatic: always check the original source — the link is on every card.</li>
+        </ul>
+        <p class="doc-note"><strong>The relevance guard:</strong> after aggregation, a result must either mention the locality (diacritics-insensitive) or lie within 30 km of it. The RAN sites around the locality appear with their computed distance (e.g. <code>~2.0 km</code>) and a direct link to the site record.</p>
+
+        <h4>Export and persistence</h4>
+        <p>Filtered results can be exported as <strong>JSON</strong> and <strong>CSV</strong> (with a BOM, Excel-safe) as <code>detectlab-babel-&lt;locality&gt;.{json,csv}</code>. Results are cached for 30 minutes per language and query, with a force-refresh button.</p>
+      </section>
+
+      <section class="doc-section" id="potential">
+        <h2>4. Archaeological potential zones — triangulating the nearby sites</h2>
+        <p>This module uses no artificial intelligence and invents no sites. It starts from a simple observation: <strong>known sites are not randomly distributed</strong>. Old settlements sit at certain distances from each other, on certain landforms, at certain distances from water. If the analysed area shows a “gap” in that network, surrounded by known sites at comparable distances, then that spot is a statistical candidate for an undiscovered site.</p>
+
+        <h3>How it is computed</h3>
+        <ol>
+          <li>The point on the map (pin) or the map centre is taken, with the chosen radius (<strong>1–10 km</strong>).</li>
+          <li>Every known site is loaded from the heritage layers already available (RAN sites, tumuli, site boundaries).</li>
+          <li>The area is projected to metres and a <strong>Delaunay triangulation</strong> (Bowyer–Watson) is run over the site coordinates. The resulting triangles are spatially indexed, so any point finds its containing triangle instantly.</li>
+          <li>The surface is tiled with a regular grid, and every cell is scored on four factors with fixed weights.</li>
+          <li>Excluded cells (built-up land, too close to a known site, inside a protected perimeter) are tracked separately and drawn <strong>red</strong> — red means “protected/excluded”, not “interesting”.</li>
+        </ol>
+
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>Score factors (0–1) and their weights</caption>
+            <thead><tr><th>Factor</th><th>How it is computed</th><th>Weight</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Nearby sites</strong></td><td>how many sites lie within 1.5 km, normalised by 6</td><td class="doc-num">0.30</td></tr>
+              <tr><td><strong>Average distance</strong></td><td>mean distance to the 5 nearest sites, referenced to 3 km</td><td class="doc-num">0.25</td></tr>
+              <tr><td><strong>Triangulation</strong></td><td>quality of the triangle containing the point (equilateral = 1, sliver → 0) × a centroid-proximity bonus</td><td class="doc-num">0.25</td></tr>
+              <tr><td><strong>Density</strong></td><td>how many sites lie within 3 km, normalised by 8</td><td class="doc-num">0.20</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Classification: <strong>below 0.25</strong> → the candidate is dropped; <strong>0.25–0.55</strong> → medium potential; <strong>above 0.55</strong> → high potential. Thresholds and weights are configurable in the browser, without a redeploy.</p>
+
+        <h3>Mandatory exclusion rules</h3>
+        <ul>
+          <li><strong>Built-up land:</strong> the candidate must fall on open land according to the UAT mask; the archaeological report additionally requires at least <strong>500 m</strong> from any built-up pixel.</li>
+          <li><strong>Site protection:</strong> at least <strong>600 m + 100 m buffer</strong> (700 m) from any known site point. Polygon sites are sampled along their perimeter every 400 m, so an elongated site cannot be “walked around” by measuring its centre only.</li>
+          <li><strong>Inside perimeters:</strong> no candidate may fall inside a site boundary polygon.</li>
+        </ul>
+
+        <h3>What you see on the map</h3>
+        <ul>
+          <li><strong>Bubbles:</strong> a selection of the best cells, each with its own radius, drawn only where there is enough free ground — never overlapping the protection rings.</li>
+          <li><strong>Heat map:</strong> the score surface, normalised over the run's own 2nd–98th percentile, so strong zones stand out even when all scores are close.</li>
+          <li><strong>Click a candidate</strong> for a pop-up with its classification and score percentage, a 5-star rating (the stars' colour follows the score), the <strong>distance to the closest known site</strong> (always ≥ 700 m) and the full score breakdown.</li>
+        </ul>
+        <p class="doc-note">The output is a <strong>statistical probability</strong> derived from the distribution of already-known sites — not a detection. That is exactly why its most useful role is alongside the other modules, inside the archaeological report.</p>
+      </section>
+
+      <section class="doc-section" id="lidar">
+        <h2>5. LIDAR Scanner — from the AI detection to the validated objective</h2>
+        <p>LiDAR is an airborne laser scan: billions of points measure the ground surface, including under forest. From the point cloud, terrain models (DTM/DSM) and hillshade representations are built, in which man-made shapes — earthen banks, terraces, pits, mounds — become visible.</p>
+
+        <h3>Stage 1 — the machine-learning model</h3>
+        <p>Over those rasters we ran a <strong>machine-learning process</strong>: a model trained to recognise relief shapes with a man-made appearance, applied systematically across the covered territory. The output was <em>very large</em>: tens of thousands of raw detections spread across the covered area. At this stage a detection is only a geometric hypothesis — the model does not know what is there, only that the shape breaks the pattern.</p>
+
+        <h3>Stage 2 — filtering in the database</h3>
+        <p>Raw detections never reach the map directly. They were imported into the DetectLab database and put through a filtering and clean-up process precisely so that the final output contains <strong>the most precise objectives possible</strong>:</p>
+        <ol>
+          <li><strong>De-duplication</strong> — the same shape detected several times (overlapping analysis windows, different confidence thresholds) becomes a single point.</li>
+          <li><strong>Geometric validation</strong> — minimum size, coherent shape, plausible orientation and aspect ratio for a man-made feature.</li>
+          <li><strong>False-positive removal</strong> — forestry roads, modern agricultural terraces, ponds, railway embankments, windthrow mounds, recent trenches, point-cloud processing artefacts.</li>
+          <li><strong>Grouping</strong> — adjacent detections describing the same complex are merged into one objective instead of being left as dozens of isolated points.</li>
+          <li><strong>Categorisation</strong> — every surviving objective gets a type (tumulus, fortification, fort, burgus, rampart, dwelling, trench) or stays marked as an <em>unknown anomaly</em>: a real shape that cannot be classified.</li>
+          <li><strong>Verification and consolidation</strong> — confirmed objectives stay in the database with exact coordinates, ready for spatial queries.</li>
+        </ol>
+
+        <div class="doc-kv">
+          <div><span>Validated objectives</span><b>786</b></div>
+          <div><span>Fortifications</span><b>277</b></div>
+          <div><span>Tumuli</span><b>196</b></div>
+          <div><span>Unknown anomalies</span><b>165</b></div>
+          <div><span>Forts</span><b>59</b></div>
+          <div><span>Dwellings</span><b>51</b></div>
+          <div><span>Ramparts</span><b>23</b></div>
+          <div><span>Burgus</span><b>11</b></div>
+          <div><span>Trenches</span><b>4</b></div>
+        </div>
+
+        <h3>How the scanner is used</h3>
+        <ul>
+          <li>Pick a point on the map and a radius between <strong>10 and 50 km</strong>, then run the scan.</li>
+          <li>Objectives inside the radius are drawn as rings, each with a <strong>permanent category tag</strong> and its coordinates in the pop-up — useful in the field.</li>
+          <li>Objectives falling inside, or within <strong>600 m</strong> of, a known heritage site are not returned: those areas are already documented and legally protected, and overlapping them would only add noise.</li>
+          <li>A result can be <strong>annotated</strong>. The annotation is used by the archaeological report as a score factor and as an exception to the APM filter.</li>
+        </ul>
+        <p class="doc-note"><em>Unknown anomaly</em> does not mean “worthless”. It means the shape exists in the data, passed the filters, but does not match any known type with certainty — so it stays in the database as a research lead, with the same coordinate precision.</p>
+      </section>
+
+      <section class="doc-section" id="report">
+        <h2>6. The archaeological report — fusing the factors and placing results in their epoch</h2>
+        <p>The archaeological report is the module that combines everything described above. You pick a point on the map and press <em>Run</em>: <strong>5 km²</strong> around the point are analysed and the output is a set of <strong>3 ranked locations</strong>, drawn as orange polygons, plus a <strong>downloadable PDF</strong> explaining each result.</p>
+
+        <h3>The score: the previous factors, weighted</h3>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>The final score formula</caption>
+            <thead><tr><th>Factor</th><th>Weight</th><th>Detail</th></tr></thead>
+            <tbody>
+              <tr><td><strong>APM 2.0</strong></td><td class="doc-num">0.40</td><td>the legend class under the point: 5 → 1.00; 4.5 → 0.85; 4 → 0.62</td></tr>
+              <tr><td><strong>Potential zones</strong></td><td class="doc-num">0.30</td><td>the score of the bubble containing the point; within 1.5 km of a bubble, half its value</td></tr>
+              <tr><td><strong>LIDAR Scanner</strong></td><td class="doc-num">0.30</td><td>decays linearly with the distance to the nearest validated objective (600 m reference)</td></tr>
+              <tr><td><em>LiDAR annotation bonus</em></td><td class="doc-num">+0.45</td><td>an annotated point (≤ 60 m from a scanner result) passes the APM filter automatically</td></tr>
+              <tr><td><em>Roman road bonus</em></td><td class="doc-num">≤ +0.12</td><td>bonus only, within 1.5 km of a mapped Roman road; absence never lowers the score</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Final classification: <strong>high ≥ 0.75</strong>, <strong>medium ≥ 0.50</strong>, otherwise low. Results are ordered with LiDAR-annotated points first, then by score, and must be at least <strong>350 m</strong> apart.</p>
+
+        <h3>Mandatory filters (a candidate must pass all of them)</h3>
+        <ol>
+          <li><strong>UAT:</strong> the point must be on open land (the opaque red zone of the built-up raster) and at least <strong>500 m</strong> from any built-up area.</li>
+          <li><strong>Known sites:</strong> at least 700 m from any site point; polygon sites are sampled along their perimeter, as in the potential module.</li>
+          <li><strong>APM 2.0:</strong> only classes 5 / 4.5 / 4 are accepted.</li>
+          <li><strong>Exception:</strong> a point annotated in the LIDAR Scanner is returned automatically, with its APM component marked unknown.</li>
+        </ol>
+
+        <h3>Placing the resulting locations in their epoch</h3>
+        <p>For each of the 3 locations, the report estimates the <strong>epoch</strong> from the 3 nearest known sites, by an inverse-distance vote: the closest site weighs the most. The estimate always comes with:</p>
+        <ul>
+          <li>the <strong>raw dating text</strong> from the database — “<em>sec. II-III p.Chr.</em>”, “<em>Hallstatt settlement</em>”, “<em>auxiliary military fort</em>”;</li>
+          <li>the names and distances of the 5 nearest sites, linked to their RAN/CIMEC record;</li>
+          <li>a <strong>†</strong> marker whenever the dating was derived from the site name rather than a dating field — so you know exactly how firm the information is.</li>
+        </ul>
+        <p>The RAN century notation is parsed: <code>sec. II-III p.Chr.</code>, <code>secolul al IV-lea</code>, <code>sec. XII-XIII</code>, <code>sec. II-I î.Chr.</code>, <code>mileniul I î.Chr.</code> are mapped onto the same epoch scale the other modules use (Palaeolithic → Modern). “Undetermined” appears only when a record genuinely says nothing.</p>
+
+        <h3>The PDF</h3>
+        <p>The document is generated locally, with no external libraries: cover → method → one score page per result → a sites and epochs page → figures → sources. The figures are not decoration: the APM potential polygons are drawn <strong>from the classified grid of the analysis itself</strong>, so they cannot contradict the score. The document language is chosen separately (RO / EN), regardless of the interface language, and diacritics render correctly because the pages are painted on a canvas and embedded as images.</p>
+        <p class="doc-note doc-warn"><strong>When data is missing, the report does not guess:</strong> if the APM tiles cannot be read, every point is rejected, the result is 0 and the PDF button stays hidden, with the reason shown in the status line.</p>
+      </section>
+
+      <section class="doc-section" id="sources">
+        <h2>7. Sources, verification and limits</h2>
+        <h3>Where the data comes from</h3>
+        <p>The open and institutional sources used by the modules: OpenStreetMap (gazetteer and toponymy), Wikipedia (ro/en), Wikidata, Wikimedia Commons, DBpedia, Archive.org, Europeana, the <strong>CIMEC / RAN</strong> register for site records, environmental data derived from terrain models, hydrography and geology, plus the validated LiDAR objective database. Every card in the Library of Babel links straight to its source.</p>
+        <h3>What DetectLab does not do</h3>
+        <ul>
+          <li>It does not invent RAN codes, LMI codes, cultures or site coordinates: where information is missing it stays explicitly missing.</li>
+          <li>It does not transfer information between same-named localities — homonyms are treated as different entities.</li>
+          <li>It guarantees no find: scores are probabilities and field leads, not confirmations.</li>
+        </ul>
+        <h3>Legal compliance</h3>
+        <p>DetectLab is a research instrument. Metal detecting in Romania is regulated by <strong>Government Ordinance no. 43/2000</strong>: owning a detector requires a permit, accessing land requires the owner's consent, and archaeological sites and recorded heritage zones have a special regime. Accidental archaeological finds must be reported within <strong>72 hours</strong> and the objects handed over according to the law. Practical, step-by-step details in the <a href="useful-information.html">Useful information</a> guide.</p>
+      </section>
+
+      <section class="doc-section" id="process-link">
+        <h2>8. Next step: the Process</h2>
+        <p>You now know <em>what</em> DetectLab uses. The <a href="process.html">Process</a> page shows <em>how</em> it all connects, in 9 steps: from choosing the area and collecting the data, through QGIS modelling, APM scoring, the Library of Babel epoch profile, site triangulation and the journey from an AI detection to a validated LiDAR objective, all the way to the archaeological report and the epoch of every resulting location.</p>
+        <a class="doc-cta" href="process.html">See the Process, step by step →</a>
+      </section>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <p>DetectLab — <a href="index.html">interactive map</a> · <a href="process.html">Process</a> · <a href="useful-information.html">Useful information</a></p>
+    <p>© 2026 DetectLab. A research instrument, not a guarantee of a find.</p>
+  </footer>
+</body>
+</html>

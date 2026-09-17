@@ -58,7 +58,7 @@
 //     circles, and the analysis layers never drop their pin under the finger
 //     while a ring is being drawn — plus a centred ✕ at the bottom that leaves
 //     an active offline map.
-const CACHE_NAME = 'detectlab-v98-pwa-panel-offline-exit';
+const CACHE_NAME = 'detectlab-v99-doc-tabs';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -129,6 +129,7 @@ const PRECACHE_URLS = [
   'css/library-of-babel.css?v=20260831-babel-multisource',
   'css/library-of-babel.css?v=20260902-babel-osm-nearby',
   'css/library-of-babel.css?v=20260902-babel-safe-area',
+  'css/library-of-babel.css?v=20260917-babel-epochs',
   'js/library-of-babel.js?v=20260815',
   'js/library-of-babel.js?v=20260819',
   'js/library-of-babel.js?v=20260827-historical-dossier',
@@ -137,6 +138,7 @@ const PRECACHE_URLS = [
   'js/library-of-babel.js?v=20260902-babel-osm-nearby',
   'js/library-of-babel.js?v=20260831-babel-cimec',
   'js/library-of-babel.js?v=20260831-babel-periods-lexicon',
+  'js/library-of-babel.js?v=20260917-babel-epochs',
   'js/vertical-opacity-control.js',
   'js/vertical-opacity-control.js?v=20260812',
   'js/auth.js?v=20260812-vertical-opacity',
@@ -167,6 +169,15 @@ const PRECACHE_URLS = [
   'css/checkout.css?v=20260814-promo',
   'css/styles.css?v=20260814-promo',
   'checkout.html',
+  // Documentation tabs: the “Tehnologie / Technology” and “Proces / Process”
+  // pages moved off the homepage into their own RO/EN page pair. Precached so
+  // they also open offline from the installed PWA.
+  'tehnologie.html',
+  'technology.html',
+  'proces.html',
+  'process.html',
+  'css/documentation.css',
+  'css/documentation.css?v=20260917-doc-tabs',
   'images/pwa-icon-192.png',
   'images/pwa-icon-512.png',
   // Archeological Report premium layer: self-contained PDF writer + report +

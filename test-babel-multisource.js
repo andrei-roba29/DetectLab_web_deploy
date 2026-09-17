@@ -187,6 +187,15 @@ function loadEngine() {
     assert.ok(/<span>Epoca fierului<\/span>/.test(html), 'Iron Age period tag present');
     assert.ok(/babel-timeline/.test(html), 'the timeline strip is rendered');
 
+    /* ── header epoch profile: the locality summarised with percentages ── */
+    const epochBlock = html.match(/<div class="babel-epochs">[\s\S]*?<\/div><\/div>/);
+    assert.ok(epochBlock, 'the header carries the epoch profile of the locality');
+    const epochPcts = [...epochBlock[0].matchAll(/<b>(\d+)%<\/b>/g)].map((m) => Number(m[1]));
+    assert.ok(epochPcts.length >= 3, `the profile lists every classified epoch (got: ${epochPcts.join(', ')})`);
+    assert.strictEqual(epochPcts.reduce((a, b) => a + b, 0), 100, 'the epoch percentages always add up to 100 (largest-remainder rounding)');
+    assert.ok(/data-period="roman"/.test(epochBlock[0]), 'each epoch share is a clickable period filter');
+    assert.ok(/babel-epochs-label/.test(epochBlock[0] && html), 'the profile is labelled in the results header');
+
     /* ── LOCaȚIE AMBIGUĂ: both OSM matches offered as refinements ── */
     assert.ok(/LOCAȚIE AMBIGUĂ/.test(html), 'ambiguity banner shown for 2 OSM matches');
     assert.ok(/data-query="Sarmizegetusa Regia"/.test(html) && /data-query="Sarmizegetusa"/.test(html), 'each OSM match offers a refined search');

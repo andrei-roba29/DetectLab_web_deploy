@@ -97,6 +97,7 @@
             p_dacian: 'Dacic', p_roman: 'Roman', p_migration: 'Epoca migrațiilor',
             p_medieval: 'Medieval', p_modern: 'Modern', p_unspecified: 'Nespecificată',
             timeline: 'Cronologie', timelineNote: 'clasificare automată',
+            epochProfile: 'Epoci', epochProfileNote: 'din încadrările pe epoci ale corpusului',
             mapView: 'Locații pe hartă',
             ambiguousTitle: 'LOCAȚIE AMBIGUĂ',
             ambiguousHelp: 'OpenStreetMap a găsit mai multe potriviri pentru acest nume. Alege una pentru a rafina căutarea:',
@@ -149,6 +150,7 @@
             p_dacian: 'Dacian', p_roman: 'Roman', p_migration: 'Migration period',
             p_medieval: 'Medieval', p_modern: 'Modern', p_unspecified: 'Unspecified',
             timeline: 'Timeline', timelineNote: 'automatic classification',
+            epochProfile: 'Epochs', epochProfileNote: 'of the corpus epoch attributions',
             mapView: 'Locations on map',
             ambiguousTitle: 'AMBIGUOUS LOCATION',
             ambiguousHelp: 'OpenStreetMap found several matches for this name. Pick one to refine the search:',
@@ -1154,13 +1156,54 @@
             (loc.judet ? ' · ' + esc(t('countyAbbr')) + ' ' + esc(loc.judet) : '') +
             (isFinite(loc.lat) && isFinite(loc.lon) ? ' · ' + esc(Number(loc.lat).toFixed(4)) + ', ' + esc(Number(loc.lon).toFixed(4)) : '') +
             ' <small>(' + esc(t('localityVia')) + ')</small></p>' : '';
+
+        /* ── Epoch profile of the locality (header summary with percentages) ──
+           Every finding already carries its automatically classified periods
+           (`r.periods`), so the header summarises the de-duplicated corpus as
+           the SHARE of each epoch — a locality then reads at a glance as
+           Roman, medieval or prehistoric. A finding may mention several epochs
+           (a Dacian site reoccupied in Roman times belongs to both), so the
+           denominator is the total number of epoch attributions, not the
+           number of cards: the printed percentages always add up to 100 %.
+           Findings with no period at all are only the OSM/RAN exceptions and
+           never enter the 100 %. Each share is a button that filters the list
+           by that epoch — exactly like the timeline strip below. */
+        var counts = {}, classified = 0, tags = 0;
+        (lastAgg || []).forEach(function (r) {
+            r.periods.forEach(function (p) { counts[p] = (counts[p] || 0) + 1; });
+            tags += r.periods.length;
+            if (r.periods.length) classified += 1; else counts.unspecified = (counts.unspecified || 0) + 1;
+        });
+        var epochLine = '';
+        if (classified > 0 && tags > 0) {
+            var shares = [];
+            PERIOD_ORDER.forEach(function (p) {
+                if (!counts[p]) return;
+                var exact = counts[p] / tags * 100;
+                shares.push({ period: p, count: counts[p], pct: Math.floor(exact), frac: exact - Math.floor(exact) });
+            });
+            var used = shares.reduce(function (a, x) { return a + x.pct; }, 0);
+            shares.slice().sort(function (a, b) { return b.frac - a.frac; })
+                .slice(0, Math.max(0, 100 - used))
+                .forEach(function (x) { x.pct += 1; });
+            epochLine = '<div class="babel-epochs"><span class="babel-epochs-label">' + esc(t('epochProfile')) +
+                ' <small>(' + esc(t('epochProfileNote')) + ')</small></span><div class="babel-epochs-strip">' +
+                shares.map(function (x) {
+                    return '<button type="button" data-period="' + x.period + '"' +
+                        (uiFilters.period === x.period ? ' class="is-active"' : '') +
+                        ' style="--babel-share:' + x.pct + '%"' +
+                        ' title="' + esc(t('p_' + x.period)) + ' · ' + x.count + ' ' + esc(t('results')) + '">' +
+                        '<span>' + esc(t('p_' + x.period)) + '</span><b>' + x.pct + '%</b></button>';
+                }).join('') + '</div></div>';
+        }
+
         var html =
             '<header class="babel-results-head"><div><span>DETECTLAB · MULTI-SOURCE SEARCH</span>' +
             '<h2>„' + esc(q) + '”</h2>' + locLine +
             '<p><b>' + total + '</b> ' + esc(t('results')) + ' · <b>' + active + '/8</b> ' + esc(t('activeSources')) +
             (s.duplicatesRemoved > 0 ? ' · <b>' + s.duplicatesRemoved + '</b> ' + esc(t('duplicates')) : '') +
             (s.irrelevantRemoved > 0 ? ' · <b>' + s.irrelevantRemoved + '</b> ' + esc(t('irrelevant')) : '') +
-            ' · ' + (s.durationMs / 1000).toFixed(1) + ' ' + esc(t('seconds')) + '</p></div>' +
+            ' · ' + (s.durationMs / 1000).toFixed(1) + ' ' + esc(t('seconds')) + '</p>' + epochLine + '</div>' +
             '<button type="button" id="babelNew">' + esc(t('newSearch')) + '</button></header>';
 
         /* live per-source chips (clickable → filter by source) */
@@ -1192,9 +1235,8 @@
             html += '<div class="babel-empty"><p>' + esc(t('noResults')) + ' „' + esc(q) + '”.</p><p>' + esc(t('noResultsHelp')) + '</p>' +
                 '<div class="babel-suggest"><b>' + esc(t('suggestions')) + ':</b> ' + variants.map(function (v) { return '<button type="button" class="babel-pick" data-query="' + esc(v) + '">' + esc(v) + '</button>'; }).join('') + '</div></div>';
         } else {
-            /* timeline of periods (automatic classification, clickable filter) */
-            var counts = {};
-            (lastAgg || []).forEach(function (r) { r.periods.forEach(function (p) { counts[p] = (counts[p] || 0) + 1; }); var u = r.periods.length === 0; if (u) counts.unspecified = (counts.unspecified || 0) + 1; });
+            /* timeline of periods (automatic classification, clickable filter) —
+               absolute counts, while the header shows the same corpus as % */
             var tl = PERIOD_ORDER.filter(function (p) { return counts[p]; }).map(function (p) {
                 return '<button type="button" data-period="' + p + '"' + (uiFilters.period === p ? ' class="is-active"' : '') + '><span>' + esc(t('p_' + p)) + '</span><b>' + counts[p] + '</b></button>';
             }).join('');
@@ -1246,7 +1288,8 @@
                 renderResults();
             };
         });
-        Array.prototype.forEach.call(document.querySelectorAll('.babel-timeline-strip button'), function (btn) {
+        /* both the header epoch percentages and the timeline strip filter by period */
+        Array.prototype.forEach.call(document.querySelectorAll('.babel-timeline-strip button, .babel-epochs button'), function (btn) {
             btn.onclick = function () {
                 var p = btn.getAttribute('data-period');
                 uiFilters.period = (uiFilters.period === p) ? 'all' : p;

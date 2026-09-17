@@ -144,6 +144,14 @@ licence/artist (Commons), data provider (Europeana), mediatype (Archive.org).
 
 ## Extensions already included
 
+* **Epoch profile in the results header** — the header summarises the
+  de-duplicated corpus of the locality as **percentages per epoch**
+  (`babel-epochs`), so a place reads at a glance as Roman, medieval or
+  prehistoric. The denominator is the total number of epoch attributions (a
+  finding may mention several epochs — a Dacian site reoccupied in Roman times
+  belongs to both), the shares use largest-remainder rounding so they always
+  add up to 100 %, and each share is a button that filters the list by that
+  period. Labels: `epochProfile` / `epochProfileNote` in both dictionaries.
 * **Timeline strip** — periods in chronological order with counts; clicking a
   period filters the list.
 * **Leaflet mini-map** — every geolocated finding (OSM + Wikidata
@@ -157,8 +165,10 @@ licence/artist (Commons), data provider (Europeana), mediatype (Archive.org).
 | Path | Role |
 | --- | --- |
 | `js/library-of-babel.js` | the agent: 8 source adapters, aggregation, rendering, filters, exports |
-| `css/library-of-babel.css` | panel row, modal chrome, chips, timeline, cards, toolbar |
+| `css/library-of-babel.css` | panel row, modal chrome, chips, epoch profile, timeline, cards, toolbar |
 | `index.html` | modal shell + panel row (crown names the 8 sources) |
+| `tehnologie.html` / `technology.html` | public documentation tab describing the 8 sources, the epoch profile and the other DetectLab modules (RO/EN) |
+| `proces.html` / `process.html` | public documentation tab: the workflow step by step, including the Babel epoch profile step (RO/EN) |
 | `sw.js` | cache `detectlab-v59-babel-multisource` + precached assets |
 | `test-babel-i18n.js` | ro/en dictionary parity + agent-spec contract |
 | `test-babel-multisource.js` | full render with realistic fixtures for all 8 APIs: aggregation, dedup, provenance, periods, filters, exports |

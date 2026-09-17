@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tehnologie — modulele DetectLab: APM 2.0, Biblioteca Babel, LiDAR, Raport arheologic</title>
+  <meta name="description" content="Ce stă în spatele DetectLab: modelul de predicție arheologică APM 2.0, Biblioteca din Babel (8 surse deschise și profilul epocilor cu procente), zonele cu potențial arheologic (triangularea siturilor), LIDAR Scanner (detecție AI filtrată în baza de date) și raportul arheologic.">
+  <meta name="robots" content="index, follow">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Tehnologia din spatele DetectLab">
+  <meta property="og:description" content="APM 2.0, Biblioteca din Babel, zone cu potențial arheologic, LIDAR Scanner și raportul arheologic — ce sunt, pe ce date se bazează și cum se citesc rezultatele.">
+  <link rel="canonical" href="tehnologie.html">
+  <link rel="alternate" hreflang="ro" href="tehnologie.html">
+  <link rel="alternate" hreflang="en" href="technology.html">
+  <link rel="alternate" hreflang="x-default" href="tehnologie.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/documentation.css?v=20260917-doc-tabs">
+</head>
+<body>
+  <nav class="doc-nav" aria-label="Navigare documentație">
+    <a class="doc-logo" href="index.html"><i aria-hidden="true"></i><span>DetectLab</span></a>
+    <div class="doc-tabs" role="tablist" aria-label="Secțiuni">
+      <a class="doc-tab active" href="tehnologie.html" role="tab" aria-selected="true" aria-current="page">Tehnologie</a>
+      <a class="doc-tab" href="proces.html" role="tab" aria-selected="false">Proces</a>
+    </div>
+    <span class="doc-nav-spacer"></span>
+    <div class="doc-nav-actions">
+      <a class="doc-back" href="index.html">← Înapoi la hartă</a>
+      <a class="active" href="tehnologie.html" aria-current="page">RO</a>
+      <a href="technology.html" hreflang="en" lang="en">EN</a>
+    </div>
+  </nav>
+
+  <header class="doc-hero">
+    <p class="doc-eyebrow">Documentație DetectLab</p>
+    <h1>Tehnologia din spatele DetectLab</h1>
+    <p class="doc-lead">Cinci module lucrează împreună: modelul de predicție arheologică <strong>APM 2.0</strong>, agentul multi-sursă <strong>Biblioteca din Babel</strong>, <strong>zonele cu potențial arheologic</strong>, <strong>LIDAR Scanner</strong> — bazat pe un proces de machine learning — și <strong>raportul arheologic</strong>. Aici explicăm ce este fiecare, pe ce date se bazează și cum se citește rezultatul.</p>
+    <div class="doc-hero-meta">
+      <span class="doc-chip">5 module</span>
+      <span class="doc-chip">8 surse deschise</span>
+      <span class="doc-chip">786 obiective LiDAR validate</span>
+      <span class="doc-chip">scor APM 1–5</span>
+      <span class="doc-chip">RO / EN</span>
+    </div>
+  </header>
+
+  <main class="doc-layout">
+    <aside class="doc-toc" aria-label="Cuprins">
+      <strong>Cuprins</strong>
+      <a href="#architecture">1. Arhitectura platformei</a>
+      <a href="#apm">2. APM 2.0</a>
+      <a href="#babel">3. Biblioteca din Babel</a>
+      <a href="#babel-surse" class="sub">3.1 Cele 8 surse</a>
+      <a href="#babel-epoci" class="sub">3.2 Profilul epocilor, cu procente</a>
+      <a href="#potential">4. Zone cu potențial arheologic</a>
+      <a href="#lidar">5. LIDAR Scanner</a>
+      <a href="#report">6. Raportul arheologic</a>
+      <a href="#sources">7. Surse, verificare și limite</a>
+      <a href="#process-link">8. Pasul următor: Procesul</a>
+    </aside>
+
+    <article class="doc-article">
+      <section class="doc-intro">
+        <p>DetectLab nu este o hartă cu „locuri cu comori”. Este un <strong>sistem de analiză spațială</strong> care suprapune date de mediu, registre de patrimoniu, corpusuri documentare și modele derivate din LiDAR, apoi le punctează. Fiecare rezultat afișat are un motiv: un factor de mediu, o distanță față de situri cunoscute, o detecție LiDAR sau o mențiune documentară.</p>
+        <p>Această pagină descrie <em>instrumentele</em>. Pagina <a href="proces.html">Proces</a> descrie <em>fluxul de lucru</em> — cum se leagă ele, în ce ordine, cu ce praguri și ce primești la final.</p>
+      </section>
+
+      <section class="doc-section" id="architecture">
+        <h2>1. Arhitectura platformei</h2>
+        <p>Fiecare modul poate fi folosit separat, dar valoarea apare când rezultatele se suprapun. Zonele cu potențial arheologic, de exemplu, hrănesc raportul arheologic; obiectivele validate de LIDAR Scanner pot ridica automat scorul unei locații din raport; Biblioteca din Babel spune <em>ce epoci</em> sunt documentate în localitatea respectivă.</p>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>Cele cinci module DetectLab</caption>
+            <thead>
+              <tr><th>Modul</th><th>Pe ce se bazează</th><th>Ce produce</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>APM 2.0</strong><br><small>Model de Predicție Arheologică</small></td>
+                <td>Relief (DEM), rețea hidrografică, geologie și pedologie, masca de intravilan (UAT), ponderi calibrate în QGIS</td>
+                <td>Raster de scor <strong>1–5</strong>, publicat ca strat peste imaginea satelit</td>
+              </tr>
+              <tr>
+                <td><strong>Biblioteca din Babel</strong></td>
+                <td>8 surse deschise interogate în paralel, direct din browser</td>
+                <td>Corpus de descoperiri și documente, cu proveniență pe fiecare sursă și <strong>profilul epocilor, cu procente</strong>, în antet</td>
+              </tr>
+              <tr>
+                <td><strong>Zone cu potențial arheologic</strong></td>
+                <td>Triangularea siturilor cunoscute (Delaunay) și distanțele dintre ele și punctul analizat</td>
+                <td>Bule de potențial și hartă de căldură, plus mască roșie a zonelor excluse</td>
+              </tr>
+              <tr>
+                <td><strong>LIDAR Scanner</strong></td>
+                <td>Detecții generate de un model de <strong>machine learning</strong> pe rastruri derivate din LiDAR, filtrate apoi în baza de date DetectLab</td>
+                <td>Obiective validate, pe categorii (tumul, castru, fortificație, burgus, val, locuință…), în raza aleasă</td>
+              </tr>
+              <tr>
+                <td><strong>Raport arheologic</strong></td>
+                <td>APM 2.0 + zone cu potențial + LIDAR Scanner (+ bonus pentru drumurile romane)</td>
+                <td><strong>3 locații clasate</strong> în 5 km², cu încadrare în epocă și PDF descărcabil (RO/EN)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="doc-note">Toate modulele funcționează <strong>„fail closed”</strong>: dacă o sursă nu poate fi citită (tile APM indisponibil, API de patrimoniu căzut, CSV LiDAR inaccesibil), analiza se oprește sau raportează explicit lipsa datelor — nu inventează niciodată un rezultat.</p>
+      </section>
+
+      <section class="doc-section" id="apm">
+        <h2>2. APM 2.0 — modelul de predicție arheologică</h2>
+        <p>APM (Archaeological Prediction Model) este <strong>un raster de probabilitate</strong>: pentru fiecare suprafață de teren, modelul calculează cât de probabil este ca acea zonă să fi fost locuită sau utilizată în trecut. Nu verifică ce este îngropat acolo — ci cât de bine se potrivește terenul cu tiparele cunoscute ale așezărilor vechi.</p>
+
+        <h3>Ce citește modelul</h3>
+        <ul>
+          <li><strong>Relief:</strong> altitudine, pantă, expunere, poziția în versant (terase, promontorii, văi adăpostite).</li>
+          <li><strong>Hidrografie:</strong> distanța până la râuri, izvoare și zone umede — apa este factorul care explică majoritatea amplasărilor.</li>
+          <li><strong>Geologie și sol:</strong> fertilitate, stabilitatea substratului, resurse minerale și de construcție.</li>
+          <li><strong>Masca de intravilan (UAT):</strong> separă terenul liber de zonele construite, astfel încât modelul să nu „prezică” în curți și pe străzi.</li>
+        </ul>
+
+        <h3>Scorul și clasele de legendă</h3>
+        <p>Straturile sunt combinate ponderat în QGIS, iar rezultatul este publicat ca tile-uri raster peste imaginea satelit. Culorile din legendă corespund claselor folosite și de celelalte module:</p>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>Clasele de scor APM 2.0</caption>
+            <thead><tr><th>Scor</th><th>Culoare</th><th>Interpretare</th></tr></thead>
+            <tbody>
+              <tr><td class="doc-num">5.0</td><td>albastru</td><td>potențial foarte ridicat</td></tr>
+              <tr><td class="doc-num">4.5</td><td>verde</td><td>potențial ridicat</td></tr>
+              <tr><td class="doc-num">4.0</td><td>galben</td><td>potențial peste medie</td></tr>
+              <tr><td class="doc-num">3.0</td><td>khaki</td><td>potențial mediu — <em>sub pragul raportului</em></td></tr>
+              <tr><td class="doc-num">2.0</td><td>magenta</td><td>potențial scăzut</td></tr>
+              <tr><td class="doc-num">1.0</td><td>roșu</td><td>fără potențial identificat</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Raportul arheologic acceptă doar clasele <strong>5 / 4.5 / 4</strong> (peste medie); clasele 3 / 2 / 1 sunt respinse automat. Un punct poate fi acceptat și fără clasă APM bună dacă este <em>adnotat</em> de LIDAR Scanner — vezi secțiunea 6.</p>
+        <p class="doc-note"><strong>Cum se citește corect:</strong> culoarea descrie <em>terenul</em>, nu obiectul. O zonă albastră spune „aici condițiile seamănă cel mai mult cu cele ale așezărilor cunoscute”, nu „aici este un sit”.</p>
+      </section>
+
+      <section class="doc-section" id="babel">
+        <h2>3. Biblioteca din Babel — corpusul documentar al localității</h2>
+        <p>Biblioteca din Babel este un <strong>agent de căutare multi-sursă</strong>. Scrii o localitate sau un sit (de exemplu <em>Sarmizegetusa</em>, <em>Apulum</em>, <em>Grădiștea Muncelului</em>), iar agentul interoghează simultan 8 surse deschise, agregă rezultatele, elimină duplicatele și le afișează cu proveniență pe fiecare sursă. Căutarea rulează <strong>direct din browser</strong>, în română și engleză.</p>
+        <p>Înainte de a interoga sursele, numele este rezolvat în gazetteerul OpenStreetMap: agentul preia <strong>numele canonic</strong> (cu diacritice), <strong>județul</strong> și <strong>coordonatele</strong>, iar sursele text primesc numele ca expresie exactă — altfel un motor căuta „Miluani” și returna „Miljan Miljanić”.</p>
+
+        <h3 id="babel-surse">3.1 Cele 8 surse</h3>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>Sursele interogate în paralel</caption>
+            <thead><tr><th>#</th><th>Sursă</th><th>Ce aduce</th><th>Observații</th></tr></thead>
+            <tbody>
+              <tr><td class="doc-num">1</td><td><strong>Wikipedia</strong> (ro + en)</td><td>articole enciclopedice</td><td>ambele limbi, deduplicate între ele</td></tr>
+              <tr><td class="doc-num">2</td><td><strong>Wikidata</strong></td><td>entități structurate, adesea cu coordonate</td><td>interogare SPARQL</td></tr>
+              <tr><td class="doc-num">3</td><td><strong>OpenStreetMap</strong> (Nominatim)</td><td>localitatea, tipul ei, județul, coordonate</td><td>max. 1 cerere/secundă, impusă de client</td></tr>
+              <tr><td class="doc-num">4</td><td><strong>Wikimedia Commons</strong></td><td>fotografii, hărți, documente digitale</td><td>licență și autor afișate</td></tr>
+              <tr><td class="doc-num">5</td><td><strong>DBpedia</strong></td><td>resurse semantice derivate din Wikipedia</td><td>descrieri scurte, categorii</td></tr>
+              <tr><td class="doc-num">6</td><td><strong>Archive.org</strong></td><td>documente, cărți, colecții digitalizate</td><td>mediatype afișat pe card</td></tr>
+              <tr><td class="doc-num">7</td><td><strong>Europeana</strong></td><td>obiecte de patrimoniu cultural</td><td>necesită o cheie API gratuită (opțională)</td></tr>
+              <tr><td class="doc-num">8</td><td><strong>CIMEC / RAN</strong><br><small>Repertoriul Arheologic Național</small></td><td>fișe de sit și siturile din jurul localității</td><td>căutare spațială pe 10 km, distanța afișată pe fiecare card, link la <code>ran.cimec.ro</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Când aceeași descoperire apare în mai multe surse (de exemplu „Ulpia Traiana Sarmizegetusa” în Wikipedia, Wikidata și DBpedia), ea devine <strong>un singur card</strong>, cu badge-uri pentru fiecare sursă contribuitoare și un scor de relevanță care favorizează rezultatele confirmate de mai multe surse. Statisticile afișează câte duplicate au fost eliminate și câte rezultate au fost respinse ca irelevante.</p>
+        <p class="doc-note">Dacă o sursă nu răspunde, celelalte continuă: fiecare sursă are un chip de stare care arată eroarea (timeout / HTTP / rețea / lipsește cheia API). Un total de 0 rezultate vine întotdeauna cu sugestii de căutări alternative, iar o localitate ambiguă (mai multe potriviri OSM) este afișată ca listă de variante, nu aleasă tacit.</p>
+
+        <h3 id="babel-epoci">3.2 Antetul: profilul epocilor localității, cu procente</h3>
+        <p>Antetul rezultatelor nu este doar un titlu. Pentru fiecare localitate, el sintetizează <strong>epocile identificate în corpusul localității, cu procente</strong>: ce pondere din descoperirile clasificate aparține fiecărei epoci. Așa vezi dintr-o privire „ce fel de localitate” este: una cu dominantă romană, una medievală sau una cu prezență preistorică.</p>
+        <div class="doc-epochs" role="group" aria-label="Exemplu de profil al epocilor">
+          <span class="doc-epochs-title">Exemplu ilustrativ — profilul epocilor, în antet</span>
+          <div class="doc-epoch"><span class="doc-epoch-name">Roman</span><span class="doc-epoch-bar"><span style="width:38%"></span></span><span class="doc-epoch-pct">38%</span></div>
+          <div class="doc-epoch"><span class="doc-epoch-name">Evul Mediu</span><span class="doc-epoch-bar"><span style="width:24%"></span></span><span class="doc-epoch-pct">24%</span></div>
+          <div class="doc-epoch"><span class="doc-epoch-name">Epoca fierului</span><span class="doc-epoch-bar"><span style="width:18%"></span></span><span class="doc-epoch-pct">18%</span></div>
+          <div class="doc-epoch"><span class="doc-epoch-name">Dacic</span><span class="doc-epoch-bar"><span style="width:12%"></span></span><span class="doc-epoch-pct">12%</span></div>
+          <div class="doc-epoch"><span class="doc-epoch-name">Epoca bronzului</span><span class="doc-epoch-bar"><span style="width:8%"></span></span><span class="doc-epoch-pct">8%</span></div>
+        </div>
+        <p>Procentele se calculează pe <strong>corpusul deja deduplicat</strong> al căutării, din totalul încadrărilor pe epoci: o descoperire care menționează două epoci — de exemplu dacică și romană — contribuie la ambele, iar procentele afișate însumează întotdeauna 100 %. Fiecare valoare este și un filtru: apeși pe „Roman 38%” și rămân în listă doar descoperirile romane. Banda cronologică de sub antet păstrează numărul absolut de rezultate per epocă, în ordine cronologică.</p>
+
+        <h4>Clasificarea automată pe epoci</h4>
+        <p>Încadrarea se face automat, prin cuvinte-cheie din titlul și descrierea fiecărei descoperiri, cu diacritice insensibile, pe <strong>8 epoci</strong>: Preistorie, Epoca bronzului, Epoca fierului, Dacic, Roman, Epoca migrațiilor, Medieval, Modern.</p>
+        <ul>
+          <li>Detecția epocii <strong>romane</strong> se bazează pe un lexicon arheologic real — <em>castru</em>, <em>legiune</em>, <em>opaiț</em>, <em>burgus</em>, <em>villa</em>, <em>terme</em>, <em>amfiteatru</em>, <em>colonia</em>, <em>Ulpia</em>, <em>Traian</em>, „imperiul roman”, „Dacia romană”. Cuvintele simple <em>român / română / români</em> <strong>nu</strong> declanșează epoca romană, iar „România” nu este confundată cu Roma.</li>
+          <li>Descoperirile care nu pot fi încadrate în nicio epocă (<em>perioadă nespecificată</em>) sunt eliminate din rezultate, ca fiecare card afișat să aibă o epocă. Fac excepție localitatea însăși (OSM) și fișele CIMEC/RAN, care sunt arheologice prin definiție.</li>
+          <li>Clasificarea este declarată explicit ca automată: verifică întotdeauna sursa originală, linkul este pe fiecare card.</li>
+        </ul>
+        <p class="doc-note"><strong>Garda de relevanță:</strong> după agregare, un rezultat trebuie fie să menționeze localitatea (inclusiv fără diacritice), fie să se afle la mai puțin de 30 km de ea. Siturile RAN din jurul localității apar cu distanța calculată (de exemplu <code>~2.0 km</code>) și cu link direct la fișa de sit.</p>
+
+        <h4>Export și persistență</h4>
+        <p>Rezultatele filtrate se pot exporta ca <strong>JSON</strong> și <strong>CSV</strong> (cu BOM, sigur pentru Excel), ca <code>detectlab-babel-&lt;localitate&gt;.{json,csv}</code>. Rezultatele sunt memorate 30 de minute per limbă și interogare, cu un buton de reîmprospătare forțată.</p>
+      </section>
+
+      <section class="doc-section" id="potential">
+        <h2>4. Zone cu potențial arheologic — triangularea siturilor apropiate</h2>
+        <p>Acest modul nu folosește inteligență artificială și nu inventează situri. Pornește de la o observație simplă: <strong>siturile cunoscute nu sunt distribuite întâmplător</strong>. Așezările vechi stau la anumite distanțe unele de altele, pe anumite forme de relief, la anumite distanțe de apă. Dacă în zona analizată există un „gol” în această rețea, înconjurat de situri cunoscute aflate la distanțe comparabile, atunci acel loc este un candidat statistic pentru un sit nedescoperit încă.</p>
+
+        <h3>Cum se calculează</h3>
+        <ol>
+          <li>Se ia punctul de pe hartă (pin) sau centrul hărții și raza aleasă (<strong>1–10 km</strong>).</li>
+          <li>Se încarcă toate siturile cunoscute din straturile de patrimoniu deja disponibile (situri RAN, tumuli, contururi de sit).</li>
+          <li>Zona este proiectată în metri, iar peste coordonatele siturilor se rulează o <strong>triangulare Delaunay</strong> (Bowyer–Watson). Triunghiurile rezultate sunt indexate spațial, astfel încât orice punct își găsește instantaneu triunghiul care îl conține.</li>
+          <li>Suprafața este împărțită într-o grilă regulată, iar fiecare celulă este punctată după patru factori, cu ponderi fixe.</li>
+          <li>Celulele excluse (intravilan, prea aproape de un sit cunoscut, în interiorul unui perimetru protejat) sunt marcate separat și desenate <strong>roșu</strong> — roșul înseamnă „protejat/exclus”, nu „interesant”.</li>
+        </ol>
+
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>Factorii de scor (0–1) și ponderile lor</caption>
+            <thead><tr><th>Factor</th><th>Cum se calculează</th><th>Pondere</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Situri apropiate</strong></td><td>câte situri există în raza de 1,5 km, normalizat la 6</td><td class="doc-num">0,30</td></tr>
+              <tr><td><strong>Distanța medie</strong></td><td>media distanțelor la cele mai apropiate 5 situri, raportată la 3 km</td><td class="doc-num">0,25</td></tr>
+              <tr><td><strong>Triangulare</strong></td><td>calitatea triunghiului care conține punctul (echilateral = 1, „ac de păr” → 0) × bonus de proximitate față de centrul triunghiului</td><td class="doc-num">0,25</td></tr>
+              <tr><td><strong>Densitate</strong></td><td>câte situri există în raza de 3 km, normalizat la 8</td><td class="doc-num">0,20</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Clasificarea rezultată: <strong>sub 0,25</strong> → candidatul este eliminat; <strong>0,25–0,55</strong> → potențial mediu; <strong>peste 0,55</strong> → potențial ridicat. Pragurile și ponderile sunt configurabile în browser, fără redeploy.</p>
+
+        <h3>Condiții obligatorii de excludere</h3>
+        <ul>
+          <li><strong>Intravilan:</strong> candidatul trebuie să cadă pe teren liber conform măștii UAT; în raportul arheologic se cere suplimentar o distanță de minimum <strong>500 m</strong> față de orice pixel construit.</li>
+          <li><strong>Protecția siturilor:</strong> minimum <strong>600 m + 100 m tampon</strong> (700 m) față de orice punct de sit cunoscut. Siturile poligonale sunt eșantionate pe perimetru din 400 în 400 de metri, astfel încât un sit alungit să nu poată fi „ocolit” măsurând doar centrul.</li>
+          <li><strong>Interiorul perimetrelor:</strong> niciun candidat nu poate cădea în interiorul unui perimetru de sit.</li>
+        </ul>
+
+        <h3>Ce vezi pe hartă</h3>
+        <ul>
+          <li><strong>Bule:</strong> selecția celor mai bune celule, fiecare cu raza ei, desenate doar acolo unde există spațiu liber suficient — fără suprapuneri peste razele de protecție.</li>
+          <li><strong>Hartă de căldură:</strong> suprafața de scor, normalizată pe percentila 2–98% a analizei, ca zonele puternice să iasă în evidență chiar și atunci când toate scorurile sunt apropiate.</li>
+          <li><strong>Pop-up la click</strong> pe un candidat: clasificarea și scorul în procente, rating cu 5 stele (culoarea stelelor = nivelul scorului), <strong>distanța până la cel mai apropiat sit cunoscut</strong> (întotdeauna ≥ 700 m) și descompunerea completă a scorului.</li>
+        </ul>
+        <p class="doc-note">Rezultatul este o <strong>probabilitate statistică</strong>, derivată din distribuția siturilor deja cunoscute — nu o detectare. Tocmai de aceea cea mai utilă întrebuințare a ei este combinarea cu celelalte module, în raportul arheologic.</p>
+      </section>
+
+      <section class="doc-section" id="lidar">
+        <h2>5. LIDAR Scanner — de la detecția AI la obiectivul validat</h2>
+        <p>LiDAR este o scanare laser aeriană: miliarde de puncte măsoare suprafața terenului, inclusiv sub pădure. Din norul de puncte se construiesc modele ale reliefului (DTM/DSM) și reprezentări de tip <em>hillshade</em>, în care formele de origine umană — valuri de pământ, terase, gropi, movile — devin vizibile.</p>
+
+        <h3>Etapa 1 — modelul de machine learning</h3>
+        <p>Peste aceste rastruri am rulat un <strong>proces de machine learning</strong>: un model antrenat să recunoască forme de relief cu aspect antropic, aplicat sistematic pe teritoriul acoperit. Rezultatul a fost <em>foarte mare ca volum</em>: zeci de mii de detectări brute, distribuite pe tot teritoriul acoperit. La această etapă, o detecție este doar o ipoteză geometrică — modelul nu știe ce este acolo, doar că forma „iese din tipar”.</p>
+
+        <h3>Etapa 2 — filtrarea în baza de date</h3>
+        <p>Detecțiile brute nu ajung niciodată direct pe hartă. Ele au fost importate în baza de date DetectLab și supuse unui proces de filtrare și curățare, tocmai pentru ca rezultatul final să conțină <strong>obiective cât mai precise</strong>:</p>
+        <ol>
+          <li><strong>Deduplicare</strong> — aceeași formă detectată de mai multe ori (ferestre de analiză suprapuse, praguri diferite de încredere) rămâne un singur punct.</li>
+          <li><strong>Validare geometrică</strong> — dimensiuni minime, formă coerentă, orientare și raport laturi plauzibile pentru un element antropic.</li>
+          <li><strong>Eliminarea fals-pozitivelor</strong> — drumuri forestiere, terase agricole moderne, iazuri, taluzuri de cale ferată, movile de vânturătură, tranșee recente, artefacte de prelucrare a norului de puncte.</li>
+          <li><strong>Grupare</strong> — detecțiile alipite, care descriu același ansamblu, sunt unite într-un singur obiectiv, nu lăsate ca zeci de puncte izolate.</li>
+          <li><strong>Încadrare pe categorii</strong> — fiecare obiectiv păstrat primește un tip (tumul, fortificație, castru, burgus, val, locuință, tranșee) sau rămâne marcat ca <em>anomalie necunoscută</em>, adică formă reală, dar neîncadrabilă.</li>
+          <li><strong>Verificare și consolidare</strong> — obiectivele confirmate rămân în baza de date cu coordonate exacte, gata de interogare spațială.</li>
+        </ol>
+
+        <div class="doc-kv">
+          <div><span>Obiective validate</span><b>786</b></div>
+          <div><span>Fortificații</span><b>277</b></div>
+          <div><span>Tumuli</span><b>196</b></div>
+          <div><span>Anomalii necunoscute</span><b>165</b></div>
+          <div><span>Castre</span><b>59</b></div>
+          <div><span>Locuințe</span><b>51</b></div>
+          <div><span>Valuri de apărare</span><b>23</b></div>
+          <div><span>Burgus</span><b>11</b></div>
+          <div><span>Tranșee</span><b>4</b></div>
+        </div>
+
+        <h3>Cum se folosește scannerul</h3>
+        <ul>
+          <li>Alegi un punct pe hartă și o rază între <strong>10 și 50 km</strong>, apoi rulezi scanarea.</li>
+          <li>Obiectivele din rază sunt desenate ca inele, fiecare cu <strong>eticheta permanentă a categoriei</strong> și cu coordonatele în pop-up — utile pe teren.</li>
+          <li>Obiectivele care cad în interiorul sau la mai puțin de <strong>600 m</strong> de un sit de patrimoniu cunoscut nu sunt returnate: acele zone sunt deja documentate și protejate legal, iar suprapunerea ar produce doar zgomot.</li>
+          <li>Un rezultat poate fi <strong>adnotat</strong>. Adnotarea este folosită de raportul arheologic ca factor de scor și ca excepție de la filtrul APM.</li>
+        </ul>
+        <p class="doc-note"><em>Anomalie necunoscută</em> nu înseamnă „fără valoare”. Înseamnă că forma există în date, a trecut filtrările, dar nu se potrivește cu niciun tip cunoscut în mod sigur — deci rămâne în bază ca pistă de cercetare, cu același grad de precizie a coordonatelor.</p>
+      </section>
+
+      <section class="doc-section" id="report">
+        <h2>6. Raportul arheologic — fuziunea factorilor și încadrarea în epocă</h2>
+        <p>Raportul arheologic este modulul care combină tot ce este descris mai sus. Alegi un punct pe hartă și apeși <em>Rulează</em>: sunt analizate <strong>5 km²</strong> în jurul punctului, iar rezultatul este un set de <strong>3 locații clasate</strong>, desenate ca poligoane portocalii, plus un <strong>PDF descărcabil</strong> care explică fiecare rezultat.</p>
+
+        <h3>Scorul: factorii precedenți, ponderați</h3>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <caption>Formula scorului final</caption>
+            <thead><tr><th>Factor</th><th>Pondere</th><th>Detaliu</th></tr></thead>
+            <tbody>
+              <tr><td><strong>APM 2.0</strong></td><td class="doc-num">0,40</td><td>clasa de culoare de sub punct: 5 → 1,00; 4,5 → 0,85; 4 → 0,62</td></tr>
+              <tr><td><strong>Zone cu potențial</strong></td><td class="doc-num">0,30</td><td>scorul bulei în care se află punctul; la până la 1,5 km de o bulă, jumătate din valoarea ei</td></tr>
+              <tr><td><strong>LIDAR Scanner</strong></td><td class="doc-num">0,30</td><td>scade liniar cu distanța până la cel mai apropiat obiectiv validat (referință 600 m)</td></tr>
+              <tr><td><em>Bonus adnotare LiDAR</em></td><td class="doc-num">+0,45</td><td>un punct adnotat (≤ 60 m de un rezultat al scannerului) trece automat de filtrul APM</td></tr>
+              <tr><td><em>Bonus drum roman</em></td><td class="doc-num">≤ +0,12</td><td>doar în plus, la mai puțin de 1,5 km de un drum roman cartografiat; absența nu scade scorul</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Clasificarea finală: <strong>ridicat ≥ 0,75</strong>, <strong>mediu ≥ 0,50</strong>, altfel scăzut. Rezultatele sunt ordonate cu punctele adnotate LiDAR primele, apoi după scor, și trebuie să fie la minimum <strong>350 m</strong> unele de altele.</p>
+
+        <h3>Filtre obligatorii (toate trebuie trecute)</h3>
+        <ol>
+          <li><strong>UAT:</strong> punctul trebuie să fie pe teren liber (zona roșie a rasterului de intravilan) și la minimum <strong>500 m</strong> de orice zonă construită.</li>
+          <li><strong>Situri cunoscute:</strong> minimum 700 m față de orice punct de sit, iar pentru siturile poligonale perimetrul este eșantionat, ca la modulul de potențial.</li>
+          <li><strong>APM 2.0:</strong> doar clasele 5 / 4,5 / 4 sunt acceptate.</li>
+          <li><strong>Excepție:</strong> un punct adnotat în LIDAR Scanner este returnat automat, cu componenta APM marcată ca necunoscută.</li>
+        </ol>
+
+        <h3>Încadrarea în epocă a locațiilor rezultate</h3>
+        <p>Pentru fiecare dintre cele 3 locații, raportul estimează <strong>epoca</strong> pornind de la cele mai apropiate 3 situri cunoscute, printr-un vot invers proporțional cu distanța: situl cel mai apropiat cântărește cel mai mult. Estimarea este însoțită întotdeauna de:</p>
+        <ul>
+          <li><strong>textul original de datare</strong> din baza de date — „<em>sec. II-III p.Chr.</em>”, „<em>Așezare hallstattiană</em>”, „<em>castru militar auxiliar</em>”;</li>
+          <li>numele și distanța celor mai apropiați 5 situri, cu link la fișa RAN/CIMEC;</li>
+          <li>marcajul <strong>†</strong> atunci când datarea a fost dedusă din numele sitului, nu dintr-un câmp de datare — ca să știi exact cât de fermă este informația.</li>
+        </ul>
+        <p>Notația pe secole din registrele RAN este interpretată: <code>sec. II-III p.Chr.</code>, <code>secolul al IV-lea</code>, <code>sec. XII-XIII</code>, <code>sec. II-I î.Chr.</code>, <code>mileniul I î.Chr.</code> sunt mapate pe scara de epoci folosită și de celelalte module (Paleolitic → Modern). „Nedeterminat” apare doar atunci când înregistrarea nu spune efectiv nimic.</p>
+
+        <h3>PDF-ul</h3>
+        <p>Documentul este generat local, fără biblioteci externe: copertă → metodă → câte o pagină de scor pentru fiecare rezultat → pagină de situri și epoci → figuri → surse. Figurile nu sunt decorațiuni: poligoanele de potențial APM sunt desenate <strong>din grila clasificată a analizei</strong>, deci nu pot contrazice scorul. Limba documentului se alege separat (RO / EN), indiferent de limba interfeței, iar diacriticele sunt redate corect pentru că paginile sunt pictate pe canvas și incluse ca imagini.</p>
+        <p class="doc-note doc-warn"><strong>Când datele lipsesc, raportul nu ghicește:</strong> dacă tile-urile APM nu pot fi citite, toate punctele sunt respinse, rezultatul este 0 și butonul de PDF rămâne ascuns, cu motivul afișat în linia de stare.</p>
+      </section>
+
+      <section class="doc-section" id="sources">
+        <h2>7. Surse, verificare și limite</h2>
+        <h3>De unde vin datele</h3>
+        <p>Sursele deschise și instituționale folosite de module: OpenStreetMap (gazetteer și toponimie), Wikipedia (ro/en), Wikidata, Wikimedia Commons, DBpedia, Archive.org, Europeana, registrul <strong>CIMEC / RAN</strong> pentru fișele de sit, date de mediu derivate din modele de relief, rețea hidrografică și geologie, plus baza de obiective validată din LiDAR. Fiecare card din Biblioteca din Babel are link direct la sursa lui.</p>
+        <h3>Ce nu face DetectLab</h3>
+        <ul>
+          <li>Nu inventează coduri RAN, coduri LMI, culturi sau coordonate de sit: acolo unde informația lipsește, rămâne explicit lipsă.</li>
+          <li>Nu transferă informație între localități cu nume identice — omonimele sunt tratate ca entități diferite.</li>
+          <li>Nu garantează nicio descoperire: scorurile sunt probabilități și indicii de teren, nu confirmări.</li>
+        </ul>
+        <h3>Conformare legală</h3>
+        <p>DetectLab este un instrument de cercetare. Utilizarea unui detector de metale în România este reglementată de <strong>OG nr. 43/2000</strong>: deținerea necesită autorizație, accesul pe teren necesită acordul proprietarului, iar siturile arheologice și zonele de patrimoniu reperat au regim special. Descoperirile arheologice întâmplătoare se anunță în cel mult <strong>72 de ore</strong>, iar bunurile se predau conform legii. Detalii practice, pas cu pas, în ghidul <a href="informatii-utile.html">Informații utile</a>.</p>
+      </section>
+
+      <section class="doc-section" id="process-link">
+        <h2>8. Pasul următor: Procesul</h2>
+        <p>Acum știi <em>ce</em> folosește DetectLab. Pagina <a href="proces.html">Proces</a> arată <em>cum</em> se leagă totul, în 9 pași: de la alegerea zonei și colectarea datelor, la modelarea în QGIS, scorarea APM, profilul epocilor din Biblioteca Babel, triangularea siturilor, trecerea de la detecția AI la obiectivul LiDAR validat și, la final, raportul arheologic cu încadrarea în epocă a fiecărei locații.</p>
+        <a class="doc-cta" href="proces.html">Vezi Procesul, pas cu pas →</a>
+      </section>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <p>DetectLab — <a href="index.html">harta interactivă</a> · <a href="proces.html">Proces</a> · <a href="informatii-utile.html">Informații utile</a></p>
+    <p>© 2026 DetectLab. Instrument de cercetare, nu o garanție a unei descoperiri.</p>
+  </footer>
+</body>
+</html>
