@@ -65,7 +65,7 @@
 //   reported with several dense layers open at once (LIDAR + „Imagini
 //   satelitare anii 60'" + historical maps + APM) when zooming abruptly.
 //   See MAP_LAYER_PERFORMANCE.md.
-const CACHE_NAME = 'detectlab-v100-tile-perf';
+const CACHE_NAME = 'detectlab-v101-pwa-panel-flush';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -390,7 +390,11 @@ const PRECACHE_URLS = [
   'js/tile-perf.js',
   'js/tile-perf.js?v=20260917-tile-perf',
   'js/translations.js?v=20260917-tile-perf',
-  'js/map-app.js?v=20260917-tile-perf'
+  'js/map-app.js?v=20260917-tile-perf',
+  // PWA layers window flush to the screen bottom; live-location / profile
+  // stay on the right (hidden while the panel is open, never teleported left).
+  'css/styles.css?v=20260917-pwa-panel-flush',
+  'js/map-app.js?v=20260917-pwa-panel-flush'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──
