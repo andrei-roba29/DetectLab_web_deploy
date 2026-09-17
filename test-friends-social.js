@@ -1103,7 +1103,8 @@ async function partOne() {
     assert(friends.data.some(f => f.user_id === USERS.ana.id), 'Ana must appear in Mihai\'s friend list too');
     ok('a request can be sent once, shows up in "Cereri", and accepting makes both sides friends');
 
-    // The friends tab must render a chat button per friend.
+    // The friends tab must render a chat button per friend; the search bar and
+    // the county filter live in their own „Caută prieteni” tab now.
     server.as(USERS.ana.id);
     sandbox._authUser = () => USERS.ana;
     await api.refresh(false);
@@ -1113,10 +1114,14 @@ async function partOne() {
     const friendsTab = dom.document.getElementById('frTabFriends');
     assert(friendsTab.innerHTML.indexOf('data-action="chat"') !== -1, 'the friends list must render a chat button');
     assert(friendsTab.innerHTML.indexOf(USERS.mihai.id) !== -1, 'the accepted friend must be listed');
-    assert(friendsTab.innerHTML.indexOf('frSearchInput') !== -1, 'the search bar must be rendered');
-    assert(friendsTab.innerHTML.indexOf('frCountySelect') !== -1, 'the county filter must be rendered');
-    assert(friendsTab.innerHTML.indexOf('Adaugă prieteni') !== -1 || friendsTab.innerHTML.indexOf('fr-picker') !== -1 || true, 'picker placeholder');
-    ok('the Friends panel renders the search bar, the county filter and a 💬 button per friend');
+    assert(friendsTab.innerHTML.indexOf('frSearchInput') === -1, 'the search bar must live in its own tab, not in the friend list');
+    await sandbox.openFriends('search');
+    await flush(10);
+    const searchTab = dom.document.getElementById('frTabSearch');
+    assert(searchTab.innerHTML.indexOf('frSearchInput') !== -1, 'the search tab must render the search bar');
+    assert(searchTab.innerHTML.indexOf('frCountySelect') !== -1, 'the search tab must render the county filter');
+    assert(friendsTab.innerHTML.indexOf('data-action="chat"') !== -1, 'the friends tab keeps rendering a chat button after the switch');
+    ok('the panel splits „Caută prieteni” (search bar + county filter) from „Prietenii tăi” (list + a 💬 button per friend)');
 
     /* ── Private chat ── */
     const direct = await server.rpc('start_direct_conversation', { _other_user: USERS.mihai.id });

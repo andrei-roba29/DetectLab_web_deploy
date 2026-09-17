@@ -2,8 +2,9 @@
 
 DetectLab becomes social: a **Prieteni / Friends** entry sits in the user menu
 right under **Evenimente** and **Gestionează Contul** (desktop *and* the PWA
-bottom bar) and opens a panel with three tabs — friends, friend requests and
-chats. Friends can talk 1:1 or in group threads with an **admin**, and any chat
+bottom bar) and opens a panel with four tabs — **search friends** („Caută
+prieteni”), **your friends** („Prietenii tăi”), friend requests and chats.
+Friends can talk 1:1 or in group threads with an **admin**, and any chat
 can turn into an **event**: the create-event form also gained an
 **„Adaugă prieteni” / “Add friends”** box whose ticked friends receive a real
 participation request they can **accept or decline**. The same social layer now
@@ -22,13 +23,13 @@ storage bill.
 
 | File | Purpose |
 |---|---|
-| `js/friends.js` | The whole social UI + client logic: panel, search, requests, private/group chat, media compression, per-account mirror, badges, the social buttons inside the detectorist map pins (`relationFor()` / `detectorActionsHtml()` / `decorateDetectorPopup()` / `paintDetectorSlots()`), and the `window.DetectLabFriends` API used by the events and map modules (`searchUsers()` / `getSearchResults()` for the add-friends search). |
+| `js/friends.js` | The whole social UI + client logic: panel (four tabs: „Caută prieteni”, „Prietenii tăi”, Cereri, Chat-uri), search, requests, private/group chat, media compression, per-account mirror, badges, the social buttons inside the detectorist map pins (`relationFor()` / `detectorActionsHtml()` / `decorateDetectorPopup()` / `paintDetectorSlots()`), and the `window.DetectLabFriends` API used by the events and map modules (`searchUsers()` / `getSearchResults()` for the add-friends search). |
 | `js/events.js` | „Adaugă prieteni” box in the create-event form, quota-aware deadline/creation checks, `friend_event_invite` notification modal, attendance-quota guard on accept. |
 | `js/map-app.js` | The nearby-detectorist pins: `detectorSocialSlotHtml()` puts an empty social slot (account id + name) into every live/offline popup and `map.on('popupopen')` hands the popup to `DetectLabFriends.decorateDetectorPopup()`; `searchNearbyDetectors()` starts only live location, and `_presenceVisible()` is the one rule that decides whether a presence row says *visible to others*. |
 | `css/styles.css` | `.detector-social-actions` / `.detector-social-btn` — the friend-request / accept / message buttons inside the popup card (next to `.detector-nearby-marker` / `.detector-offline-marker`). |
 | `index.html` | „Prieteni / Friends” menu entry (desktop `#userMenu` + PWA `#pwaUserDropdown`) and the `<script>` include (after `events.js`). |
 | `js/translations.js` | `nav_friends` → *Prieteni* / *Friends*. |
-| `sw.js` | `js/friends.js`, `js/map-app.js` and `css/styles.css` pre-cached + cache bumped (currently `detectlab-v98-pwa-panel-offline-exit`) so installed PWAs pick the new popup buttons up. |
+| `sw.js` | `js/friends.js`, `js/map-app.js` and `css/styles.css` pre-cached + cache bumped (currently `detectlab-v103-friends-tabs`) so installed PWAs pick the new popup buttons, the split „Caută prieteni” / „Prietenii tăi” tabs and the chat safe-area padding up. |
 | `supabase/migrations/20260915000000_social_limits_and_directory.sql` | `app_limits` (every quota), `normalise_county()`, `user_social_profiles` (searchable directory), `search_social_users()`, `list_social_counties()`. |
 | `supabase/migrations/20260915010000_social_friends.sql` | `friend_requests`, `friendships` + send / cancel / respond / remove functions, `list_my_friends()`, `list_my_friend_requests()`, `get_social_counters()`. |
 | `supabase/migrations/20260915020000_social_conversations.sql` | `conversations`, `conversation_members`, `conversation_messages` (RLS = members only, Realtime), direct/group functions, admin powers, `send_conversation_message()` with every limit, `cleanup_social_messages()` + pg_cron job. |
@@ -50,7 +51,7 @@ storage bill.
   messages** (`get_social_counters()`), refreshed every 20 s and on
   `detectlab:authchange`.
 
-### 2. Tab „Prieteni”
+### 2. Tab „Caută prieteni” (search friends)
 
 * **Search bar** — **unified** partial matching (`search_social_users()`): one
   query is folded (case + Romanian/Hungarian diacritics) and matched as a
@@ -60,13 +61,10 @@ storage bill.
   be found in at least one column. Plus a **county (județ) filter** dropdown
   built from `list_social_counties()` and the counties of existing friends.
   County matching is diacritic- and label-insensitive: *Județul Cluj*, *cluj*,
- *CLUJ COUNTY* and *Jud. Cluj* are the same county (`public.normalise_county`,
+  *CLUJ COUNTY* and *Jud. Cluj* are the same county (`public.normalise_county`,
   mirrored by `normaliseCounty()` in JS, same rule as `js/last-location.js`).
 * Every result shows what you may do with it: **＋ Adaugă**, **Anulează
   cererea**, **Acceptă** or **💬 Chat**.
-* The friend list shows name, county and a masked e-mail, with a **💬 Chat**
-  button per friend (and **✕** to unfriend — which closes the private thread).
-* **👥 Grup nou** opens the group creation sheet.
 
 How the search box behaves (`scheduleSearch()` in `js/friends.js`):
 
@@ -85,7 +83,18 @@ How the search box behaves (`scheduleSearch()` in `js/friends.js`):
 * whatever the server answers is not silently swallowed: a failed search prints
   the reason in the results area (`state.search.error`).
 
-### 3. Tab „Cereri” (friend requests)
+### 3. Tab „Prietenii tăi” (your friends)
+
+* The friend list shows name, county and a masked e-mail, with a **💬 Chat**
+  button per friend (and **✕** to unfriend — which closes the private thread).
+* **👥 Grup nou** opens the group creation sheet.
+* An **empty list is not a dead end**: a **🔍 Caută prieteni** button jumps
+  straight to the search tab.
+* On phones the four tabs of the panel snap into a **2×2 grid**
+  (`@media (max-width:520px)`), so „Caută prieteni”, „Prietenii tăi”, „Cereri”
+  and „Chat-uri” all stay thumb-sized.
+
+### 4. Tab „Cereri” (friend requests)
 
 * **Primite** → *Acceptă* / *Refuză*. Accepting writes one `friendships` row and
   the person immediately appears in the friends list **with the chat button**.
@@ -93,7 +102,7 @@ How the search box behaves (`scheduleSearch()` in `js/friends.js`):
 * Only one pending request per pair in either direction (partial unique index),
   never a request to yourself, never a duplicate of an existing friendship.
 
-### 4. Tab „Chat-uri”
+### 5. Tab „Chat-uri”
 
 * One card per conversation: title (group) or the friend's name (private), last
   message preview, unread count, member count, `closed` marker.
@@ -105,7 +114,12 @@ How the search box behaves (`scheduleSearch()` in `js/friends.js`):
 * Chat view: day separators, own/other bubbles, sender names in groups, images
   and videos inline, 📎 attach, live updates through Supabase Realtime with a
   6 s polling fallback (mobile webviews suspend websockets), and a **⋯** sheet
-  with members, rename, remove member, leave and delete.
+  with members, rename, remove member, leave and delete. In the installed PWA
+  the chat header sits **below the phone status bar** — `html.is-pwa
+  .fr-chat-panel` gets `padding-top:calc(16px + max(32px,
+  env(safe-area-inset-top, 0px)))` plus an opaque `#060D1D` inset (the same
+  rule as the event chat), so ← / ⋯ / 📅 stay tappable under the translucent
+  system bar.
 * **📅 Creează eveniment** inside a chat:
   * private chat → an event with **that friend**;
   * group chat → an event with **every member of the group** (friends only).
@@ -113,7 +127,7 @@ How the search box behaves (`scheduleSearch()` in `js/friends.js`):
   editable coordinates (map centre by default, since there is no pin behind a
   chat). After saving, the chat itself receives a summary message.
 
-### 5. „Adaugă prieteni / Add friends” in the create-event form
+### 6. „Adaugă prieteni / Add friends” in the create-event form
 
 A box in the same modal lists **all friends** (filterable), pre-ticked with
 whoever the chat passed in. On save, `invite_friends_to_event()` writes for each
@@ -131,7 +145,7 @@ Inviting is restricted to the **event creator**, to **existing friends**, and
 reports per person: `invited`, `already_pending`, `already_attending`,
 `not_friend`, `event_full`, `invite_limit`.
 
-### 6. Location live / offline a detectoriștilor pe hartă
+### 7. Location live / offline a detectoriștilor pe hartă
 
 A tap on **any** detectorist pin in „Vezi alți detectoriști în zonă" — the orange
 live pin *and* the black/white offline bubble — opens the usual info card plus
@@ -342,7 +356,8 @@ the migration rules, and asserts:
    county / city / id, multi-word AND) and the county filter (incl. *Județul
    Cluj* normalisation, and never returning the caller);
 3. one request per pair, requests tab, accept → both sides become friends;
-4. the friends tab renders the search bar, the county filter and a 💬 button;
+4. the panel splits „Caută prieteni” (search bar + county filter) from
+   „Prietenii tăi” (friend list + a 💬 button per friend);
 5. message length, attachment size and the per-thread cap (oldest dropped
    first);
 6. attachments are rejected over the cap and downscaled under it;

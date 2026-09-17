@@ -64,13 +64,16 @@ check('every targeted id exists in the shipped UI', missing.length === 0, 'missi
 });
 
 /* ── 5. Friends slide mechanics ────────────────────────────────────────── */
-check('the friends slide opens the real panel on the friends tab',
-    /window\.openFriends\('friends'\)/.test(TUT_SRC));
+check('the friends slide opens the real panel on the search tab',
+    /window\.openFriends\('search'\)/.test(TUT_SRC));
 check('the guide only ever closes a panel it opened itself',
     /else if \(!open && state\.openedFriends\)/.test(TUT_SRC) &&
     /window\._closeFriendsPanel\(\)/.test(TUT_SRC));
-check('an already-open panel is switched to the friends tab, not rebuilt blindly',
-    /#friendsManagerPanel \.fr-tab\[data-tab="friends"\]/.test(TUT_SRC));
+check('an already-open panel is switched to the search tab, not rebuilt blindly',
+    /#friendsManagerPanel \.fr-tab\[data-tab="search"\]/.test(TUT_SRC));
+check('the friends slide points at both new tabs (search bar + friend list)',
+    TUT_SRC.indexOf('data-tab="friends"') !== -1 &&
+    TUT_SRC.indexOf('sel: \'#frSearchInput\'') !== -1);
 check('signed-out visitors get an explanatory note, never the auth modal',
     /step\.requiresAuth && !signedIn\(\)/.test(TUT_SRC) &&
     /tr\(step\.authNote\)/.test(TUT_SRC) &&

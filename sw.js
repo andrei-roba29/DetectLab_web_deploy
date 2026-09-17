@@ -65,7 +65,13 @@
 //   reported with several dense layers open at once (LIDAR + „Imagini
 //   satelitare anii 60'" + historical maps + APM) when zooming abruptly.
 //   See MAP_LAYER_PERFORMANCE.md.
-const CACHE_NAME = 'detectlab-v102-archeo-coverage';
+// v103: friends panel — the unified search and the friend list each get their
+//   own tab („Caută prieteni” / „Prietenii tăi”; the empty friend list carries
+//   a button straight to the search), and the chat view with a friend clears
+//   the phone status bar in the installed PWA (safe-area top padding, same
+//   rule as the event chat) so ← / ⋯ / 📅 stay tappable. The map guide
+//   (js/tutorial.js) opens the search tab and points at the new tabs.
+const CACHE_NAME = 'detectlab-v103-friends-tabs';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -403,7 +409,14 @@ const PRECACHE_URLS = [
   'js/archeo-potential.js?v=20260917-archeo-coverage',
   'js/map-app.js?v=20260917-archeo-coverage',
   'js/translations.js?v=20260917-archeo-coverage',
-  'css/styles.css?v=20260917-archeo-coverage'
+  'css/styles.css?v=20260917-archeo-coverage',
+  // „Prieteni”: căutarea de detectoriști și lista de prieteni au acum taburi
+  // separate („Caută prieteni” / „Prietenii tăi”), iar chat-ul cu un prieten
+  // primește padding de safe-area în PWA — bara de stare a telefonului nu mai
+  // acoperă butoanele ← / ⋯ / 📅. Ghidul (?-ul hărții) deschide tabul de
+  // căutare și arată ambele taburi noi.
+  'js/friends.js?v=20260917-friends-tabs',
+  'js/tutorial.js?v=20260917-friends-tabs'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──
