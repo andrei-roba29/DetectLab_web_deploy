@@ -74,7 +74,7 @@
 // v105: fluid zoom — shorter settle window, covering tiles until the new
 //   zoom is active, keepBuffer 1/2, dark map background so empty tiles no
 //   longer flash white. See MAP_LAYER_PERFORMANCE.md.
-const CACHE_NAME = 'detectlab-v105-tile-fluid';
+const CACHE_NAME = 'detectlab-v106-gmaps-directions';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -440,7 +440,19 @@ const PRECACHE_URLS = [
   // pinch/wheel. Dark map background hides Leaflet's #ddd through empty tiles.
   'js/tile-perf.js?v=20260917-tile-fluid',
   'js/map-app.js?v=20260917-tile-fluid',
-  'css/styles.css?v=20260917-tile-fluid'
+  'css/styles.css?v=20260917-tile-fluid',
+  // „🧭 Traseu Google Maps” în popup-uri: fiecare punct LIDAR Scanner, candidat
+  // din Raportul arheologic, bule cu potențial arheologic, pin salvat și
+  // evenimente primește un buton de direcție. Destinația e ÎNTOTDEAUNA centrul
+  // cercului/pinului (nu marginea), indiferent cât de mare e raza — vezi
+  // js/google-maps-directions.js.
+  'js/google-maps-directions.js?v=20260917-gmaps-directions',
+  'js/events.js?v=20260917-gmaps-directions',
+  'js/map-app.js?v=20260917-gmaps-directions',
+  'js/archeo-potential.js?v=20260917-gmaps-directions',
+  'js/lidar-scanner.js?v=20260917-gmaps-directions',
+  'js/archeo-report.js?v=20260917-gmaps-directions',
+  'css/styles.css?v=20260917-gmaps-directions'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

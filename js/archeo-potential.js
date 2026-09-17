@@ -2294,7 +2294,16 @@
             tr('nearby') + ': ' + factors.nearbyCount + ' &nbsp;·&nbsp; ' +
             tr('avg_dist') + ': ' + factors.avgDistM + ' m<br>' +
             tr('density') + ': ' + factors.densityCount + ' &nbsp;·&nbsp; ' +
-            tr('tri_quality') + ': ' + Number(factors.triQuality || 0).toFixed(2) + '</div></div>';
+            tr('tri_quality') + ': ' + Number(factors.triQuality || 0).toFixed(2) + '</div>' +
+            // Traseu Google Maps: destinația e centrul bulei (c.lat/c.lng) —
+            // pentru raze mari (până la 10 km) traseul duce exact în mijlocul zonei.
+            (function () {
+                var dir = (typeof window !== 'undefined' && window.DetectLabDirections && window.DetectLabDirections.buttonHtml)
+                    ? window.DetectLabDirections.buttonHtml(c.lat, c.lng)
+                    : '';
+                return dir ? '<div style="margin-top:6px">' + dir + '</div>' : '';
+            })() +
+            '</div>';
     }
 
     // Conținutul popup-ului ca funcție — Leaflet îl apelează doar la deschidere.

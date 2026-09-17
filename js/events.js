@@ -1620,6 +1620,15 @@
             '<div style="font-size: 0.72rem; color: ' + color + '; font-weight: 600; margin-bottom: 4px;">📅 ' + dateStr + '</div>' +
             '<div style="font-size: 0.7rem; color: rgba(245,240,235,0.6); margin-bottom: 8px;">👤 Creator: ' + escapeHtml(ev.creator_name || 'User') + (ev.max_attendees ? ' | Max: ' + ev.max_attendees : '') + '</div>';
 
+        // Traseu Google Maps: destinația e chiar coordonata evenimentului
+        // (centrul pinului de pe hartă), nu un punct de pe marginea lui.
+        if (window.DetectLabDirections && window.DetectLabDirections.buttonHtml) {
+            var gmapsDirectionsBtn = window.DetectLabDirections.buttonHtml(ev.latitude, ev.longitude);
+            if (gmapsDirectionsBtn) {
+                html += '<div style="margin-bottom: 8px;">' + gmapsDirectionsBtn + '</div>';
+            }
+        }
+
         if (isCreator) {
             html += '<button type="button" onclick="window._manageEvent(\'' + ev.id + '\')" style="width: 100%; background: #6B3FA0; border: none; border-radius: 4px; color: #fff; font-size: 0.75rem; padding: 6px; cursor: pointer; font-weight: 600;">Gestionează Evenimentul / Manage Event</button>';
         } else if (user) {

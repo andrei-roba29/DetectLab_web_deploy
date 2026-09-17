@@ -2384,6 +2384,14 @@
                         '</div>' +
                         '<div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">' +
                         '<button type="button" class="pin-create-event-btn" data-pin-id="' + pinId + '" data-lat="' + lat + '" data-lng="' + lng + '" data-title="' + title + '" style="width:100%; background:rgba(107,63,160,0.35); border:1px solid rgba(196,160,240,0.6); border-radius:4px; color:#c4a0f0; font-size:0.75rem; font-family:\'Outfit\',sans-serif; padding:5px 0; cursor:pointer; font-weight:600;">📅 Create Event from this Pin</button>' +
+                        (function () {
+                            // Traseu Google Maps: destinația e chiar coordonata
+                            // pinului — pinurile nu au rază, centrul e pinul însuși.
+                            var dir = (window.DetectLabDirections && window.DetectLabDirections.buttonHtml)
+                                ? window.DetectLabDirections.buttonHtml(lat, lng)
+                                : '';
+                            return dir ? dir : '';
+                        })() +
                         '<button type="button" class="delete-pin-btn pin-delete-btn coord-popup-delete" data-pin-id="' + pinId + '" style="width:100%; background:rgba(232,80,42,0.25); border:1px solid rgba(232,80,42,0.5); border-radius:4px; color:#FFB09F; font-size:0.72rem; font-family:\'Outfit\',sans-serif; padding:4px 0; cursor:pointer; font-weight:500;">🗑️ Șterge pinul / Delete Pin</button>' +
                         '</div>';
 

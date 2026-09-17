@@ -1783,7 +1783,16 @@
             '📍 ' + res.lat.toFixed(5) + ', ' + res.lng.toFixed(5) +
             (nearest ? '<br>' + esc(tr('arch_report_closest_site')) + ': ' + esc(nearest.name) + ' · ' + fmtM(nearest.distanceM) : '') +
             '<br>' + esc(tr('arch_report_popup_hint')) +
-            '</div></div>';
+            '</div>' +
+            // Traseu Google Maps: destinația e centrul inelului (res.lat/res.lng),
+            // indiferent de raza desenată — nu un punct de pe circumferință.
+            (function () {
+                var dir = (typeof window !== 'undefined' && window.DetectLabDirections && window.DetectLabDirections.buttonHtml)
+                    ? window.DetectLabDirections.buttonHtml(res.lat, res.lng)
+                    : '';
+                return dir ? '<div style="margin-top:6px">' + dir + '</div>' : '';
+            })() +
+            '</div>';
     }
 
     function pctComp(v) {

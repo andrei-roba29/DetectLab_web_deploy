@@ -360,7 +360,13 @@
         var resultOptions = assignPane({radius:100,color:'#8cff66',weight:2,dashArray:'3 6',fillColor:'#39ff14',fillOpacity:.11,opacity:.98,interactive:true}, PANE_CIRCLES);
         var circle=L.circle([p.lat,p.lng],resultOptions);
         circle.bindTooltip('<span class="lidar-result-tag"><b>Category / Categoria</b><br>'+esc(p.category)+'</span>',assignPane({permanent:true,direction:'top',offset:RESULT_LABEL_OFFSET,className:'lidar-result-tooltip'}, PANE_TAGS));
-        circle.bindPopup('<strong>'+esc(p.category)+'</strong>'+(p.name?'<br>'+esc(p.name):'')+'<br><small>'+p.lat.toFixed(5)+', '+p.lng.toFixed(5)+'</small>'); return circle;
+        // Traseu Google Maps: destinația e ÎNTOTDEAUNA centrul inelului de
+        // rezultat (p.lat/p.lng), nu marginea lui — cererea „în cadrul
+        // razelor mai mari, traseul va fi către centrul lor”.
+        var gmapsBtn = (window.DetectLabDirections && window.DetectLabDirections.buttonHtml)
+            ? window.DetectLabDirections.buttonHtml(p.lat, p.lng)
+            : '';
+        circle.bindPopup('<strong>'+esc(p.category)+'</strong>'+(p.name?'<br>'+esc(p.name):'')+'<br><small>'+p.lat.toFixed(5)+', '+p.lng.toFixed(5)+'</small>'+(gmapsBtn?'<div style="margin-top:4px">'+gmapsBtn+'</div>':'')); return circle;
     }
     function setStatus(s) { var e=document.getElementById('lidarScannerStatus'); if(e)e.textContent=s; }
     function updateRunButtonVisibility(show) {
