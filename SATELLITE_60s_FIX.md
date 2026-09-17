@@ -255,7 +255,7 @@ same nine verified layer names, same footprints, same z8/z12 gating. Only
 2. `updateWhenIdle: true` — set explicitly rather than inherited from the
    user-agent sniff, so "Desktop site" mode no longer opts phones into
    per-frame pan updates.
-3. `keepBuffer: 0` on touch / low-memory devices (desktop keeps Leaflet's `2`).
+3. `keepBuffer: 1` on touch / low-memory devices (desktop keeps Leaflet's `2`).
    Detection (`_sat60IsLowPowerDevice`) combines `L.Browser.mobile`, a coarse
    pointer plus touch points (survives UA spoofing), and
    `navigator.deviceMemory <= 4`. Override with

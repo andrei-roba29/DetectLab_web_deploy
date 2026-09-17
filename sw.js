@@ -71,7 +71,10 @@
 //   the phone status bar in the installed PWA (safe-area top padding, same
 //   rule as the event chat) so ← / ⋯ / 📅 stay tappable. The map guide
 //   (js/tutorial.js) opens the search tab and points at the new tabs.
-const CACHE_NAME = 'detectlab-v104-vertical-slim-glass';
+// v105: fluid zoom — shorter settle window, covering tiles until the new
+//   zoom is active, keepBuffer 1/2, dark map background so empty tiles no
+//   longer flash white. See MAP_LAYER_PERFORMANCE.md.
+const CACHE_NAME = 'detectlab-v105-tile-fluid';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -431,7 +434,13 @@ const PRECACHE_URLS = [
   // caractere, restul „…”) și procentul vizibil doar cât timp se modifică
   // opacitatea.
   'css/styles.css?v=20260917-vertical-slim-glass',
-  'js/vertical-opacity-control.js?v=20260917-vertical-slim-glass'
+  'js/vertical-opacity-control.js?v=20260917-vertical-slim-glass',
+  // Fluid zoom: load the new zoom sooner and keep covering tiles until the
+  // incoming ones are active, without restoring per-frame _update during
+  // pinch/wheel. Dark map background hides Leaflet's #ddd through empty tiles.
+  'js/tile-perf.js?v=20260917-tile-fluid',
+  'js/map-app.js?v=20260917-tile-fluid',
+  'css/styles.css?v=20260917-tile-fluid'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

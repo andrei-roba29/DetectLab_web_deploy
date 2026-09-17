@@ -36,19 +36,22 @@
      1. Gesture-safe defaults for every L.TileLayer / L.GridLayer:
         updateWhenZooming = false  (zoom frames are pure CSS transforms),
         updateWhenIdle    = true on low-power devices,
-        keepBuffer        = 0 on low-power devices, 1 on desktop,
+        keepBuffer        = 1 on low-power devices, 2 on desktop,
         updateInterval    = 200–250 ms.
      2. A settle window: tile work requested while a zoom is animating — and
-        for a moment after it ends — is merged into ONE update per layer.
+        for a short moment after it ends — is merged into ONE update per layer.
         Zooming through five levels in a second therefore loads the tiles of
         the LAST level, not of all five. Only layers that still have tiles on
         screen are held back: a first paint, a `viewprereset` wipe (non-animated
         zoom, `redraw()`) and every pan are updated at once, so the governor can
-        never leave the tile pane empty.
-     3. Stricter pruning: 1–2 ancestor levels instead of 5, 1–2 descendant
-        levels instead of 2, plus a hard ceiling on the tiles a layer may
-        keep outside the viewport ("just in case" tiles), so no single layer
-        can fill memory on its own.
+        never leave the tile pane empty. The post-zoom quiet window is short
+        (~50–80 ms) so the new zoom starts loading almost immediately, while
+        still coalescing a rapid wheel burst.
+     3. Stricter pruning than Leaflet (2–3 ancestor levels instead of 5) PLUS
+        a covering-tile handoff: loaded tiles from the previous zoom stay on
+        screen until the incoming ones are `active`, so zoom in/out does not
+        flash the map background. A hard ceiling still caps extras once the
+        new zoom is painted (and always in conservation mode).
      4. A watchdog (every 5 s) that estimates the decoded-tile memory of the
         whole page; above the device budget it switches to CONSERVATION MODE
         (drops the off-screen rings of every layer, keeps only what is on
@@ -109,17 +112,20 @@
         enabled: true,
         lowPower: LOW_POWER,
         // Merge every tile update requested during a zoom animation, and for
-        // this long after it ends, into a single update per layer.
-        quietMs: LOW_POWER ? 260 : 160,
+        // this long after it ends, into a single update per layer. Short enough
+        // that the new zoom starts fetching almost immediately; long enough to
+        // coalesce a rapid wheel burst.
+        quietMs: LOW_POWER ? 80 : 50,
         // Off-screen ring kept around the viewport (Leaflet default: 2).
-        keepBuffer: LOW_POWER ? 0 : 1,
+        keepBuffer: LOW_POWER ? 1 : 2,
         // null = keep Leaflet's own default for desktop (updateWhenIdle false).
         updateWhenIdle: LOW_POWER ? true : null,
         updateWhenZooming: false,
         updateInterval: LOW_POWER ? 250 : 200,
         // Ancestor / descendant zoom levels kept alive per layer
-        // (Leaflet defaults: 5 and 2).
-        retainParentLevels: LOW_POWER ? 1 : 2,
+        // (Leaflet defaults: 5 and 2). Extra parents cover multi-level
+        // zooms (z10 scaled over z14) until the children are active.
+        retainParentLevels: LOW_POWER ? 2 : 3,
         retainChildLevels: LOW_POWER ? 1 : 2,
         // Hard ceiling for tiles kept OUTSIDE the current viewport, per layer.
         // The effective ceiling is at least one full extra level (see below).
@@ -326,9 +332,16 @@
             return this._removeAllTiles();
         }
 
+        var waiting = false;
         for (key in this._tiles) {
             tile = this._tiles[key];
             tile.retain = tile.current;
+            // Incoming zoom tiles are `current` as soon as `_update` queues
+            // them, but they are only `active` once they have loaded (and
+            // faded in, when fadeAnimation is on). Until then the previous
+            // zoom must stay on screen — otherwise the user sees the map
+            // background through a buffer of white/empty tiles.
+            if (tile.current && !tile.active) waiting = true;
         }
 
         var parentLevels = layerOptNumber(this, 'dltilePerfRetainParents', cfgInt('retainParentLevels'));
@@ -347,11 +360,21 @@
             }
         }
 
+        if (waiting) {
+            for (key in this._tiles) {
+                tile = this._tiles[key];
+                if (tile.loaded || tile.active) tile.retain = true;
+            }
+        }
+
         // Hard ceiling for the "just in case" tiles (off-screen ring + retained
         // zoom levels). It is never smaller than one full extra level, so the
         // zoom handoff (previous level scaled over the incoming one) survives.
+        // Skip the cap while the new zoom is still loading, otherwise the
+        // covering tiles we just kept would be dropped. Conservation mode
+        // always applies the cap — crash protection beats a brief flash.
         var cap = layerOptNumber(this, 'dltilePerfMaxRetained', cfgInt('maxRetainedTiles'));
-        if (cap >= 0) {
+        if (cap >= 0 && (!waiting || STATE.conservation)) {
             var extra = [];
             var currentCount = 0;
             for (key in this._tiles) {
@@ -595,7 +618,7 @@
     /* ── 8. Public API ────────────────────────────────────────────────────── */
 
     var api = {
-        version: '20260917-tile-perf',
+        version: '20260917-tile-fluid',
         config: CFG,
         conservationLimits: CONSERVATION,
         isLowPowerDevice: function () { return !!CFG.lowPower; },

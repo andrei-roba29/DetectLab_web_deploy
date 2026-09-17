@@ -49,26 +49,29 @@ patches the defaults before any layer exists:
    `L.tileLayer.wms(...)` and every custom `GridLayer` inherit them; an explicit
    per-layer option always wins):
    `updateWhenZooming: false`, `updateWhenIdle: true` on low-power devices,
-   `keepBuffer: 0` (phone) / `1` (desktop), `updateInterval: 200–250 ms`.
+   `keepBuffer: 1` (phone) / `2` (desktop), `updateInterval: 200–250 ms`.
 2. **One tile update per layer per gesture.** `_update()` called while a zoom is
-   animating, or within a short settle window (`quietMs`: 160 ms desktop /
-   260 ms phone) after the last gesture, is merged: the layers are queued and
-   updated **once**, at the final zoom. Two rules keep that from ever costing a
-   frame: a pan (which is not a zoom) flushes the queue immediately, and a layer
-   with **no tiles on screen** — the first paint after switching it on, or any
-   `viewprereset` wipe (`setView(..., {animate:false})`, `redraw()`) — is also
-   updated immediately. Deferral is only ever applied while there is an older
-   level to keep visible, so the governor can never leave an empty tile pane.
-   No `setView`/`zoomend` ordering assumptions are made: the governor listens to
+   animating, or within a short settle window (`quietMs`: 50 ms desktop /
+   80 ms phone) after the last gesture, is merged: the layers are queued and
+   updated **once**, at the final zoom. The quiet window is short so the new
+   zoom starts fetching almost immediately, while still coalescing a rapid wheel
+   burst. Two rules keep that from ever costing a frame: a pan (which is not a
+   zoom) flushes the queue immediately, and a layer with **no tiles on screen**
+   — the first paint after switching it on, or any `viewprereset` wipe
+   (`setView(..., {animate:false})`, `redraw()`) — is also updated immediately.
+   Deferral is only ever applied while there is an older level to keep visible,
+   so the governor can never leave an empty tile pane. No `setView`/`zoomend`
+   ordering assumptions are made: the governor listens to
    `zoomstart / zoomend / movestart / moveend / move / zoom` and self-heals if a
    `zoomend` never arrives.
-3. **Stricter pruning + a hard ceiling.** Pruning keeps **1–2 ancestor** levels
-   (instead of 5) and **1–2 descendant** levels, and no layer may keep more than
-   `maxRetainedTiles` (24 phone / 64 desktop) tiles *outside* the viewport — at
-   least one full extra level is always allowed, so the zoom handoff (previous
-   level scaled over the incoming one) does not blank out. Nothing is pruned
+3. **Stricter pruning + covering-tile handoff.** Pruning keeps **2–3 ancestor**
+   levels (instead of 5) and **1–2 descendant** levels. Loaded tiles from the
+   previous zoom stay on screen until the incoming ones are `active`, so zoom
+   in/out does not flash the map background (the `#ddd` / white buffer). A hard
+   ceiling (`maxRetainedTiles`: 24 phone / 64 desktop) still caps extras once
+   the new zoom is painted — and always in conservation mode. Nothing is pruned
    while a zoom animation is on screen: the old levels are released right after
-   the deferred update instead, so no blank flash is introduced.
+   the deferred update instead.
 4. **A page watchdog** (every 5 s, never mid-gesture) estimates the decoded-tile
    memory of the whole page. Above the device budget (≈80 MB phone / ≈350 MB
    desktop) the page switches to **conservation mode**: the off-screen rings of
@@ -93,8 +96,9 @@ patches the defaults before any layer exists:
 | File | Change |
 |---|---|
 | `js/translations.js` | `perf_layers_notice` (en + ro) for the conservation-mode notice |
-| `index.html` | `<script src="js/tile-perf.js?v=20260917-tile-perf">` after Leaflet; `map-app.js` / `translations.js` re-versioned |
-| `sw.js` | the new file + the re-versioned URLs added to `PRECACHE_URLS`, and `CACHE_NAME` bumped to `detectlab-v100-tile-perf` so installed PWAs drop the old shell and pick the governor up |
+| `index.html` | `<script src="js/tile-perf.js?v=20260917-tile-fluid">` after Leaflet; `map-app.js` / `styles.css` re-versioned |
+| `sw.js` | the new file + the re-versioned URLs added to `PRECACHE_URLS`, and `CACHE_NAME` bumped to `detectlab-v105-tile-fluid` so installed PWAs drop the old shell and pick the governor up |
+| `css/styles.css` | `#detectlab-map` background `#060E1E` (hides Leaflet's `#ddd` through empty tiles) and 1 px tile overlap |
 | `test-tile-perf.js` | new regression test (see §5) |
 | `bench-tile-perf.js` | optional benchmark, needs `jsdom` (see §5) — not loaded by the site |
 
@@ -170,15 +174,16 @@ screen to protect there, so the repaint must go through at once.
 ## 6. Notes / caveats
 
 - **Visual effect on a phone**: on an *animated* gesture (pinch, wheel, double
-  tap) the previous level stays on screen and is CSS-scaled, so the tiles of the
-  final zoom appear ~0.2–0.3 s after the gesture ends. That is the same trade-off
-  the 60's layer already shipped with; it is what removes the burst that killed
-  the tab. Non-animated zooms (`setView(..., {animate:false})`, `redraw()`,
-  `viewprereset`) are **not** delayed at all: there the old tiles are already
-  gone, so the layer repaints immediately.
-- **`keepBuffer: 0` on phones** means off-screen tiles are dropped immediately
-  while panning; Leaflet's own mobile default (`updateWhenIdle`) already behaves
-  this way. Desktop keeps a 1-tile ring.
+  tap) the previous level stays on screen and is CSS-scaled. The new zoom starts
+  loading ~50–80 ms after the gesture ends (was ~160–260 ms), and covering tiles
+  stay until the incoming ones are `active`. That is the trade-off that removes
+  the burst that killed the tab without the white-tile buffer. Non-animated zooms
+  (`setView(..., {animate:false})`, `redraw()`, `viewprereset`) are **not**
+  delayed at all: there the old tiles are already gone, so the layer repaints
+  immediately.
+- **`keepBuffer: 1` on phones** keeps a one-tile ring so pan/zoom edges stay
+  covered; conservation mode still drops it to 0 under memory pressure. Desktop
+  keeps Leaflet's 2-tile ring.
 - **If a device still reports memory pressure** (`window.DLTilePerf.stats().mb`
   near the budget), the honest fix is fewer simultaneous dense layers: LiDAR
   HD/AR/AB/BH/CS, „Romania 1 m" and the LAKI III sheets overlap, so two or three

@@ -16,8 +16,8 @@
  *   1. gesture-safe defaults (updateWhenZooming false, updateWhenIdle true on
  *      low-power devices, adaptive keepBuffer);
  *   2. one tile update per layer per gesture (settle window after zoomend);
- *   3. stricter pruning (1–2 ancestor levels instead of 5) + a hard ceiling on
- *      the tiles a layer may keep outside the viewport;
+ *   3. stricter pruning (2–3 ancestor levels instead of 5) + covering tiles
+ *      kept until the incoming zoom is active + a hard ceiling on extras;
  *   4. a page watchdog: over the device tile budget → conservation mode +
  *      one-time notice.
  *
@@ -162,7 +162,13 @@ function makeSandbox(opts) {
         }
     };
 
-    function TileLayer() {}
+    function TileLayer() {
+        // Leaflet copies options onto the instance. Sharing the prototype
+        // object would make conservation-mode keepBuffer writes leak across
+        // layers (the second layer would save 0 after the first already
+        // wrote CONSERVATION.keepBuffer onto the shared object).
+        this.options = Object.create(TileLayer.prototype.options);
+    }
     TileLayer.prototype = Object.create(FakeGridLayer.prototype);
     TileLayer.prototype.options = Object.create(FakeGridLayer.prototype.options);
     TileLayer.prototype.constructor = TileLayer;
@@ -270,8 +276,8 @@ check('zoom animations no longer queue tiles frame by frame (desktop)',
     desktop.L.TileLayer.prototype.options.updateWhenZooming === false);
 check('desktop keeps Leaflet\'s own pan behaviour',
     desktop.L.TileLayer.prototype.options.updateWhenIdle === false);
-check('desktop keeps a 1-tile off-screen ring (Leaflet default is 2)',
-    desktop.L.TileLayer.prototype.options.keepBuffer === 1);
+check('desktop keeps Leaflet\'s 2-tile off-screen ring',
+    desktop.L.TileLayer.prototype.options.keepBuffer === 2);
 check('the grid-layer default is patched too (custom layers inherit it)',
     desktop.L.GridLayer.prototype.options.updateWhenZooming === false);
 check('an explicit per-layer option still wins',
@@ -285,8 +291,8 @@ check('an explicit per-layer option still wins',
 const phone = makeSandbox({ lowPower: true });
 check('low-power devices load tiles on gesture end (updateWhenIdle: true)',
     phone.L.TileLayer.prototype.options.updateWhenIdle === true);
-check('low-power devices keep no off-screen ring (keepBuffer: 0)',
-    phone.L.TileLayer.prototype.options.keepBuffer === 0);
+check('low-power devices keep a 1-tile off-screen ring (keepBuffer: 1)',
+    phone.L.TileLayer.prototype.options.keepBuffer === 1);
 
 const auto = makeSandbox({ touch: true, lowMemory: true });
 check('a touch device with little memory is detected without any override',
@@ -438,8 +444,8 @@ check('a touch device with little memory is detected without any override',
         '10:10:13': { coords: { x: 10, y: 10, z: 13 }, current: true, active: false }
     });
     pl._pruneTiles();
-    check('desktop keeps 2 ancestor levels instead of Leaflet\'s 5',
-        pl.parentArgs && pl.parentArgs[3] === 13 - 2, JSON.stringify(pl.parentArgs));
+    check('desktop keeps 3 ancestor levels instead of Leaflet\'s 5',
+        pl.parentArgs && pl.parentArgs[3] === 13 - 3, JSON.stringify(pl.parentArgs));
     check('desktop keeps 2 descendant levels (Leaflet default)',
         pl.childArgs && pl.childArgs[3] === 13 + 2, JSON.stringify(pl.childArgs));
 
@@ -449,8 +455,8 @@ check('a touch device with little memory is detected without any override',
         '10:10:13': { coords: { x: 10, y: 10, z: 13 }, current: true, active: false }
     });
     plpLayer._pruneTiles();
-    check('low-power devices keep only 1 ancestor level',
-        plpLayer.parentArgs && plpLayer.parentArgs[3] === 13 - 1, JSON.stringify(plpLayer.parentArgs));
+    check('low-power devices keep 2 ancestor levels',
+        plpLayer.parentArgs && plpLayer.parentArgs[3] === 13 - 2, JSON.stringify(plpLayer.parentArgs));
     check('low-power devices keep only 1 descendant level',
         plpLayer.childArgs && plpLayer.childArgs[3] === 13 + 1, JSON.stringify(plpLayer.childArgs));
 
@@ -492,6 +498,32 @@ check('a touch device with little memory is detected without any override',
     check('pruning runs again once the gesture settled', gl.removed >= 1);
 
     /* ══════════════════════════════════════════════════════════════════════
+     * 8b. Covering tiles stay until the incoming zoom is active
+     * ══════════════════════════════════════════════════════════════════════ */
+    console.log('\n[8b] Loaded covering tiles stay until current tiles are active');
+
+    const cov = makeSandbox({ lowPower: false });
+    cov.sandbox.window.DLTilePerf.attach(cov.map);
+    const covLayer = cov.makeLayer({
+        '1:1:14': { coords: { x: 1, y: 1, z: 14 }, current: true, active: false },
+        '9:9:13': { coords: { x: 9, y: 9, z: 13 }, current: false, loaded: true },
+        '8:8:12': { coords: { x: 8, y: 8, z: 12 }, current: false, loaded: true }
+    });
+    covLayer._pruneTiles();
+    check('previous-zoom tiles are kept while the new zoom is still loading',
+        covLayer._tiles['9:9:13'] && covLayer._tiles['8:8:12'] && covLayer.removed === undefined,
+        JSON.stringify(Object.keys(covLayer._tiles)));
+    check('the incoming tile itself is not dropped',
+        !!covLayer._tiles['1:1:14']);
+
+    covLayer._tiles['1:1:14'].active = true;
+    covLayer._pruneTiles();
+    check('covering tiles are released once the new zoom is active',
+        !covLayer._tiles['9:9:13'] && !covLayer._tiles['8:8:12'],
+        JSON.stringify(Object.keys(covLayer._tiles)));
+    check('the now-active current tile stays', !!covLayer._tiles['1:1:14']);
+
+    /* ══════════════════════════════════════════════════════════════════════
      * 9. Page budget → conservation mode + one-time notice
      * ══════════════════════════════════════════════════════════════════════ */
     console.log('\n[9] Over the tile budget the page switches to conservation mode');
@@ -530,8 +562,8 @@ check('a touch device with little memory is detected without any override',
     await wait(140);
     check('conservation mode ends when the page is light again',
         perf.inConservationMode() === false);
-    check('the layer options are restored', heavy.options.keepBuffer === 0 &&
-        heavy2.options.keepBuffer === 0);
+    check('the layer options are restored', heavy.options.keepBuffer === 1 &&
+        heavy2.options.keepBuffer === 1);
 
     /* ══════════════════════════════════════════════════════════════════════
      * 10. The governor never changes WHAT is requested
