@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260917-tile-fluid">
+    <link rel="stylesheet" href="css/styles.css?v=20260917-gmaps-directions">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -3638,7 +3638,13 @@
     <!-- Remembers each user's last BROAD location (nearest city/town + county).
          Must load before events.js / map-app.js, which both consume it. -->
     <script src="js/last-location.js?v=20260815-last-location"></script>
-    <script src="js/events.js?v=20260916-no-bottom-bar"></script>
+    <!-- „🧭 Traseu Google Maps” pentru popup-uri: helper comun (fără dependențe)
+         care construiește link-ul de direcții către CENTRUL cercului/pinului
+         (lidar-scanner.js, archeo-report.js, archeo-potential.js, pinurile
+         salvate din map-app.js și evenimentele din events.js). Trebuie încărcat
+         înaintea tuturor celor cinci. -->
+    <script src="js/google-maps-directions.js?v=20260917-gmaps-directions"></script>
+    <script src="js/events.js?v=20260917-gmaps-directions"></script>
     <!-- Social layer: "Prieteni / Friends" panel (search by e-mail · name · id +
          county filter), friend requests, private and group chat with an admin,
          event creation from a chat and the "Adaugă prieteni / Add friends" box
@@ -3655,7 +3661,7 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260917-tile-fluid"></script>
+    <script src="js/map-app.js?v=20260917-gmaps-directions"></script>
     <script src="js/offline-maps.js?v=20260916-pwa-panel-offline-exit"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20260917-vertical-slim-glass"></script>
@@ -3663,15 +3669,15 @@
          „Archeological Potential Sites": heatmap-ul de acolo e propriul raster de
          scoruri ancorat geografic, ca să nu alunece la zoom. -->
     <script src="js/leaflet-heat.js?v=20260916-analysis-dock"></script>
-    <script src="js/archeo-potential.js?v=20260917-archeo-coverage"></script>
+    <script src="js/archeo-potential.js?v=20260917-gmaps-directions"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
-    <script src="js/lidar-scanner.js?v=20260916-pwa-panel-offline-exit"></script>
+    <script src="js/lidar-scanner.js?v=20260917-gmaps-directions"></script>
     <script src="js/library-of-babel.js?v=20260917-babel-epochs"></script>
     <!-- Premium "Archeological Report" / "Raport arheologic": PDF writer →
          PDF layout → the analysis layer itself (this order matters). -->
     <script src="js/pdf-writer.js?v=20260827-arch-report"></script>
     <script src="js/archeo-report-pdf.js?v=20260831-arch-report-v4"></script>
-    <script src="js/archeo-report.js?v=20260916-pwa-panel-offline-exit"></script>
+    <script src="js/archeo-report.js?v=20260917-gmaps-directions"></script>
     <script src="js/tutorial.js?v=20260917-friends-tabs"></script>
 
     <!-- AUTH MODAL -->

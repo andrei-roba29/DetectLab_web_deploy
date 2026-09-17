@@ -7807,3 +7807,57 @@
         transition: none !important;
     }
 }
+
+/* ── GOOGLE MAPS DIRECTIONS BUTTON (popups) ────────────────────────────────
+   Butonul „🧭 Traseu Google Maps / Directions” generat de js/google-maps-
+   directions.js și injectat în popup-urile: punctelor LIDAR Scanner, candidaților
+   Raportului arheologic, bulelor cu potențial arheologic, pinurilor salvate și
+   evenimentelor. Anchor real (target=_blank) — navigația pornește din locația
+   curentă a utilizatorului spre CENTRUL cercului/pinului, oricât de mare ar fi
+   raza acestuia. Verdele e cel Google Maps (#34A853), ca utilizatorul să-l
+   recunoască instant printre acțiunile mov/portocalii ale popup-ului. */
+a.dl-gmaps-directions-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: rgba(52, 168, 83, 0.14);
+    border: 1px solid rgba(52, 168, 83, 0.55);
+    border-radius: 4px;
+    color: #8fdca6;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.35;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+    a.dl-gmaps-directions-btn:hover,
+    a.dl-gmaps-directions-btn:focus-visible {
+        background: rgba(52, 168, 83, 0.30);
+        border-color: rgba(52, 168, 83, 0.85);
+        color: #b8eec8;
+        text-decoration: none;
+    }
+
+    a.dl-gmaps-directions-btn .dl-gmaps-directions-icon {
+        flex: 0 0 auto;
+        font-size: 0.85rem;
+    }
+
+    a.dl-gmaps-directions-btn .dl-gmaps-directions-label {
+        flex: 1 1 auto;
+    }
+
+/* În coloana flex a popup-ului de pin salvat, gap-ul containerului adună
+   deja spațiul — margin-top-ul implicit al butonului ar dubla distanța. */
+.coord-popup-container.pin-popup a.dl-gmaps-directions-btn {
+    margin-top: 0;
+}
