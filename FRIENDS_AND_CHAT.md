@@ -29,7 +29,7 @@ storage bill.
 | `css/styles.css` | `.detector-social-actions` / `.detector-social-btn` — the friend-request / accept / message buttons inside the popup card (next to `.detector-nearby-marker` / `.detector-offline-marker`). |
 | `index.html` | „Prieteni / Friends” menu entry (desktop `#userMenu` + PWA `#pwaUserDropdown`) and the `<script>` include (after `events.js`). |
 | `js/translations.js` | `nav_friends` → *Prieteni* / *Friends*. |
-| `sw.js` | `js/friends.js`, `js/map-app.js` and `css/styles.css` pre-cached + cache bumped (currently `detectlab-v103-friends-tabs`) so installed PWAs pick the new popup buttons, the split „Caută prieteni” / „Prietenii tăi” tabs and the chat safe-area padding up. |
+| `sw.js` | `js/friends.js`, `js/map-app.js` and `css/styles.css` pre-cached + cache bumped (currently `detectlab-v104-pwa-social-fix`) so installed PWAs pick the new popup buttons, the split „Caută prieteni” / „Prietenii tăi” tabs and the chat safe-area padding up. |
 | `supabase/migrations/20260915000000_social_limits_and_directory.sql` | `app_limits` (every quota), `normalise_county()`, `user_social_profiles` (searchable directory), `search_social_users()`, `list_social_counties()`. |
 | `supabase/migrations/20260915010000_social_friends.sql` | `friend_requests`, `friendships` + send / cancel / respond / remove functions, `list_my_friends()`, `list_my_friend_requests()`, `get_social_counters()`. |
 | `supabase/migrations/20260915020000_social_conversations.sql` | `conversations`, `conversation_members`, `conversation_messages` (RLS = members only, Realtime), direct/group functions, admin powers, `send_conversation_message()` with every limit, `cleanup_social_messages()` + pg_cron job. |
@@ -177,7 +177,11 @@ Notes:
   DOM cannot lose it or answer a tap twice; quota refusals arrive as the usual
   codes (`ALREADY_FRIENDS`, `REQUEST_ALREADY_PENDING`,
   `DAILY_REQUEST_LIMIT_REACHED:50`, `ADDRESSEE_FRIEND_LIMIT_REACHED:1000`, …)
-  and are printed inside the popup by `friendlyError()`.
+  and are printed inside the popup by `friendlyError()`. On touch screens the
+  action also runs straight from a capture-phase `touchend` listener (PWA
+  webviews often never synthesise the click): a 20 px swipe guard ignores
+  scrolls/drags, and a 900 ms timestamp dedup swallows the synthetic click
+  when it does arrive, so a tap can neither be lost nor double-fire.
 * Friend lists/requests are refreshed at most once every 15 s while tapping pins
   (`ensureDetectorSocialState()`, which first waits for the session to restore so
   a reload does not briefly look "signed out"), on `detectlab:authchange` and
@@ -228,6 +232,38 @@ in on another device shows the same threads.
   sent as-is but only under the attachment cap.
 * The mirror itself is capped (~3 MB): it keeps the 12 most recent threads and
   trims to the last 25 messages when the budget is exceeded.
+
+---
+
+## Delivery guarantees (PWA report, 2026-09-17)
+
+Two failures were reported from the installed PWA: detectorist pins that could
+not be tapped, and chat messages that looked sent to the sender but never
+reached the friends. Both are fixed, with regression tests pinning the fixes.
+
+**Chat reads are member-checked and newest-first.**
+`loadConversationMessages()` reads through the `SECURITY DEFINER` function
+`get_conversation_messages()` (migration
+`20260917000000_conversation_messages_read.sql`), which enforces membership
+itself and returns the newest page (`order by created_at desc, id desc`, max
+1000, the client asks for 400) — so the thread stays readable even if the
+direct-`SELECT` policies on a project drift, and long threads keep showing
+fresh arrivals instead of stranding on the first page ever written. A direct
+`SELECT` with the same newest-first ordering stays as the fallback for
+projects where the migration was not applied yet; when *both* paths fail the
+chat shows a read-error notice instead of a silently empty thread.
+
+**Every send is verified.** After `send_conversation_message()` answers OK, the
+client re-reads the thread and only reports success when the new row reads back
+from the same place the other members read. A send the server never stored
+keeps the draft in the composer and warns loudly instead of showing „sent”.
+
+**Pin taps survive the PWA.** Live/offline detectorist pins wrap the 32 px
+visual in an invisible 44 px tap pad (`.detector-tap-pad`); the social action
+runs straight from `touchend` (with a 20 px swipe guard and a 900 ms dedup
+against the synthetic click that follows); refresh passes that do not change
+the relationship no longer rebuild the buttons mid-tap; and the popup is never
+auto-panned while the finger is down.
 
 ---
 
@@ -288,6 +324,7 @@ supabase db push          # or paste them into the SQL editor, in filename order
 4. `20260915030000_event_quotas_and_friend_invites.sql`
 5. `20260916010000_social_unified_search.sql`
 6. `20260916020000_social_directory_projection.sql`
+7. `20260917000000_conversation_messages_read.sql`
 
 Notes:
 
@@ -343,8 +380,8 @@ and every existing feature keep working untouched.
 ## Tests
 
 ```bash
-node test-friends-social.js      # 20 checks
-node test-map-friend-actions.js  # 64 checks
+node test-friends-social.js      # 25 checks
+node test-map-friend-actions.js  # 77 checks
 ```
 
 The test loads the **real** `js/friends.js` and `js/events.js` into a `vm`
@@ -377,7 +414,17 @@ the migration rules, and asserts:
     not match, and **browses** the directory when the query is empty;
 17. the directory-projection migration guards its writes (trigger on the right
     columns, INSERT-only for presence, no-op when the row is already complete,
-    `discoverable` never flipped by the mirror) and ships the backfill.
+    `discoverable` never flipped by the mirror) and ships the backfill;
+18. sending through the real composer stores exactly one server-side copy and
+    every send is verified by re-reading the thread;
+19. the friend reads the message on his own account (a second client sandbox),
+    so delivery is real and not sender-side echo;
+20. long threads read newest-first (the latest page survives, the oldest
+    scrolls out, no read-error notice on success);
+21. without the read function the newest-first direct-`SELECT` fallback keeps
+    the chat working;
+22. a send the server answers-but-never-stores is reported as failed: the
+    draft stays in the composer and the user is warned loudly.
 
 `test-map-friend-actions.js` covers the map pins end to end: it runs the real
 `searchNearbyDetectors()` + `addOfflineDetectorBubbles()` against Leaflet stubs
@@ -390,7 +437,16 @@ and asserts both popups carry the slot for the right account (and that the
 tiny fake DOM so that tapping „＋ Adaugă prietenie" produces a genuine
 `send_friend_request` call, „Acceptă cererea" a `respond_friend_request`,
 „Anulează" a `cancel_friend_request` and „Trimite mesaj" the chat flow — while a
-signed-out visitor only gets sent to the sign-in dialog.
+signed-out visitor only gets sent to the sign-in dialog. It also pins the PWA
+tap fixes: both pins wrap the 32 px visual in an invisible 44 px tap pad
+(`.detector-tap-pad`, centred anchor), refresh passes that change nothing must
+not rewrite `innerHTML` (while a real relationship change still repaints), a
+tap acts straight from `touchend` without any click, the synthetic click after
+a tap does not double-fire, and a swipe across the button does not act. The
+wiring part asserts the threaded-read migration ships
+(`get_conversation_messages`: `SECURITY DEFINER`, member-checked,
+newest-first) and that `friends.js` reads through it, sorts chronologically,
+verifies every send and falls back to the newest-first `SELECT`.
 
 The pre-existing event tests still pass unchanged
 (`test-anonymous-events.js`, `test-event-chat-load.js`,

@@ -6286,12 +6286,16 @@
 
                         var name = String(row.full_name || 'Detectorist');
                         var safeName = name.replace(/[<>&"]/g, '');
+                        // The visible bubble stays 32px, but the tappable icon is a
+                        // 44px pad (Apple HIG minimum): 32px targets are too easy
+                        // to miss with a thumb, and a tap that starts off-target
+                        // never opens the popup in the PWA.
                         var icon = L.divIcon({
                             className: '',
-                            html: '<div class="detector-offline-marker" title="' + safeName + ' — offline">' +
-                                nearbyInitials(name) + '</div>',
-                            iconSize: [32, 32],
-                            iconAnchor: [16, 16]
+                            html: '<div class="detector-tap-pad"><div class="detector-offline-marker" title="' + safeName + ' — offline">' +
+                                nearbyInitials(name) + '</div></div>',
+                            iconSize: [44, 44],
+                            iconAnchor: [22, 22]
                         });
                         var where = String(row.label || row.city || row.county || '').replace(/[<>&]/g, '');
                         var seenAt = '';
@@ -6439,7 +6443,9 @@
                             found++;
                             var liveName=String(row.full_name||'Detectorist').replace(/[<>&"]/g,'');
                             var liveEmail=String(row.email||'').replace(/[<>&]/g,'');
-                            var icon=L.divIcon({className:'',html:'<div class="detector-nearby-marker" title="'+liveName+'">'+nearbyInitials(row.full_name)+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
+                            // 44px tap pad around the 32px visual (see the offline
+                            // bubbles above): thumb-sized targets for the PWA.
+                            var icon=L.divIcon({className:'',html:'<div class="detector-tap-pad"><div class="detector-nearby-marker" title="'+liveName+'">'+nearbyInitials(row.full_name)+'</div></div>',iconSize:[44,44],iconAnchor:[22,22]});
                             // zIndexOffset 1100 keeps these pins ABOVE our own live-location
                             // marker (zIndexOffset 1000), so a detectorist standing at ~our
                             // own position is still the one that receives the tap/click.

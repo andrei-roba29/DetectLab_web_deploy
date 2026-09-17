@@ -416,7 +416,15 @@ const PRECACHE_URLS = [
   // acoperă butoanele ← / ⋯ / 📅. Ghidul (?-ul hărții) deschide tabul de
   // căutare și arată ambele taburi noi.
   'js/friends.js?v=20260917-friends-tabs',
-  'js/tutorial.js?v=20260917-friends-tabs'
+  'js/tutorial.js?v=20260917-friends-tabs',
+  // PWA „Social”: pinurile de detectoriști primesc zonă de tap de 44px și
+  // acțiunea pornește direct din touchend (fără click sintetizat); citirea
+  // firelor de chat trece pe get_conversation_messages() (newest-first) cu
+  // verificare după trimitere, iar re-pictările fără schimbare de stare nu
+  // mai distrug butonul din mijlocul tap-ului.
+  'js/friends.js?v=20260917-pwa-social-fix',
+  'js/map-app.js?v=20260917-pwa-social-fix',
+  'css/styles.css?v=20260917-pwa-social-fix'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

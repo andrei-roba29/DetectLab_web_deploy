@@ -90,6 +90,8 @@
         chatMessages: [],
         chatMembers: [],
         chatLoading: false,
+        chatReadError: '',           // last thread-read failure (shown instead of a fake "empty chat")
+        chatReadOk: false,           // true when the open thread was really read from the server
         groupDraft: null,            // { title, selected: {} }
         countersTimer: null,
         chatPollTimer: null,
@@ -913,11 +915,27 @@
         var userId = slot.getAttribute('data-user-id');
         var name = slot.getAttribute('data-user-name') || '';
         var rel = relationFor(userId);
+        var prevState = slot.getAttribute('data-social-state');
         slot.setAttribute('data-social-state', rel.state);
 
         if (rel.state === 'anonymous' || rel.state === 'unknown' || !userId) {
-            slot.innerHTML = '';
+            if (slot.innerHTML) slot.innerHTML = '';
             return false;
+        }
+
+        // Do NOT rebuild the buttons when the relationship did not change.
+        // Every popup open triggers several refresh passes (sync paint, then
+        // one per friends/requests load, then one more when the state settles);
+        // on a fast desktop they all land within milliseconds, but in the PWA
+        // over mobile data they spread across seconds — and every innerHTML
+        // rewrite destroys the button element mid-tap, so the touchend lands on
+        // a detached node, no click is ever synthesised and the tap "does
+        // nothing". Painted buttons stay alive until the state really changes
+        // (request sent / accepted / cancelled) or the slot is still empty.
+        if (prevState === rel.state && slot.querySelector) {
+            try {
+                if (slot.querySelector('.detector-social-row')) return true;
+            } catch (e) {}
         }
 
         slot.innerHTML =
@@ -990,6 +1008,14 @@
         return mapStatePromise;
     }
 
+    // Touch-in-flight tracking (PWA): while a finger is down, the map must not
+    // be panned from underneath it — an autopan that shifts the popup between
+    // touchstart and touchend cancels the tap, so the button "does nothing".
+    // Updated by the capture-phase touchstart/touchend listeners below.
+    var touchDownCount = 0;
+
+    function isTouchDown() { return touchDownCount > 0; }
+
     // Leaflet measures the popup BEFORE 'popupopen' fires — i.e. while the
     // social slot is still empty. Every paint below injects buttons / notes /
     // messages AFTER that measurement, so the popup must re-run its measuring
@@ -1016,11 +1042,20 @@
                 if (!el || typeof el.contains !== 'function' || !el.contains(slot)) return;
             }
             if (p._map && typeof p._updateLayout === 'function' && typeof p._updatePosition === 'function') {
-                if (p._container && p._container.style) p._container.style.visibility = 'hidden';
-                p._updateLayout();
-                p._updatePosition();
-                if (p._container && p._container.style) p._container.style.visibility = '';
-                if (typeof p._adjustPan === 'function') p._adjustPan();
+                var cStyle = p._container && p._container.style;
+                if (cStyle) cStyle.visibility = 'hidden';
+                try {
+                    p._updateLayout();
+                    p._updatePosition();
+                } finally {
+                    // The popup must never be left hidden: an exception between
+                    // the two measuring steps used to strand visibility:hidden
+                    // on the container (an "empty" popup).
+                    if (cStyle) cStyle.visibility = '';
+                }
+                // Never autopan while a finger is down (see touchDownCount):
+                // shifting the popup mid-tap cancels the tap on touch screens.
+                if (!isTouchDown() && typeof p._adjustPan === 'function') p._adjustPan();
                 return;
             }
             if (typeof p.update === 'function') p.update();
@@ -1100,15 +1135,91 @@
     // DOM on each open and the buttons live inside it, so per-button listeners
     // would be lost (and would stack up). Capture phase, because Leaflet stops
     // pointer events on its popups.
-    async function onDetectorSocialAction(e) {
+    //
+    // Touch fast path (PWA): relying on the synthesised click alone is fragile
+    // on phones — any layout shift between touchstart and touchend (a popup
+    // re-measure, an autopan, a late repaint) cancels the synthesis and the tap
+    // "does nothing". So clean taps are handled straight from touchend, and the
+    // click that the webview synthesises afterwards is recognised and ignored
+    // (same button, <900 ms apart) instead of running the action twice.
+    var lastTouchActionAt = 0;
+    var lastTouchActionKey = '';
+    var lastTouchStartPos = null;
+
+    function socialButtonFromEvent(e) {
         var target = e && e.target;
         var btn = target && target.closest ? target.closest('[data-social-action]') : null;
+        return btn;
+    }
+
+    function socialButtonKey(btn) {
+        if (!btn || typeof btn.getAttribute !== 'function') return '';
+        return String(btn.getAttribute('data-social-action') || '') + ':' +
+            String(btn.getAttribute('data-user-id') || '');
+    }
+
+    function stopSocialEvent(e) {
+        if (!e) return;
+        if (e.preventDefault) { try { e.preventDefault(); } catch (_) {} }
+        if (e.stopPropagation) { try { e.stopPropagation(); } catch (_) {} }
+        try { if (window.L && L.DomEvent && L.DomEvent.stop) L.DomEvent.stop(e); } catch (_) {}
+    }
+
+    function onDetectorSocialTouchStart(e) {
+        touchDownCount++;
+        try {
+            var touches = e && e.touches;
+            if (touches && touches.length) {
+                lastTouchStartPos = { x: touches[0].clientX, y: touches[0].clientY };
+            } else {
+                lastTouchStartPos = null;
+            }
+        } catch (_) { lastTouchStartPos = null; }
+    }
+
+    function onDetectorSocialTouchEnd(e) {
+        if (touchDownCount > 0) touchDownCount--;
+        var btn = socialButtonFromEvent(e);
+        if (!btn) { lastTouchStartPos = null; return; }
+
+        // A finger that slid is a scroll/drag on the map, not a tap: only a
+        // touch that starts and ends on (almost) the same spot counts.
+        try {
+            var changed = e && e.changedTouches && e.changedTouches[0];
+            if (changed && lastTouchStartPos) {
+                var dx = changed.clientX - lastTouchStartPos.x;
+                var dy = changed.clientY - lastTouchStartPos.y;
+                if (dx * dx + dy * dy > 20 * 20) { lastTouchStartPos = null; return; }
+            }
+        } catch (_) {}
+        lastTouchStartPos = null;
+
+        lastTouchActionAt = Date.now();
+        lastTouchActionKey = socialButtonKey(btn);
+        // preventDefault() on touchend suppresses the synthetic click / mouse
+        // events in the webviews that honour it; the timestamp guard below is
+        // the backstop for the ones that synthesise anyway.
+        stopSocialEvent(e);
+        return handleDetectorSocialButton(btn, e);
+    }
+
+    async function onDetectorSocialAction(e) {
+        var btn = socialButtonFromEvent(e);
         if (!btn) return;
 
-        if (e.preventDefault) e.preventDefault();
-        if (e.stopPropagation) e.stopPropagation();
-        try { if (window.L && L.DomEvent && L.DomEvent.stop) L.DomEvent.stop(e); } catch (_) {}
+        // Already handled straight from touchend: this is the synthetic click
+        // that followed the tap, not a second tap.
+        if (socialButtonKey(btn) === lastTouchActionKey && lastTouchActionKey &&
+            Date.now() - lastTouchActionAt < 900) {
+            return;
+        }
 
+        stopSocialEvent(e);
+        return handleDetectorSocialButton(btn, e);
+    }
+
+    async function handleDetectorSocialButton(btn, e) {
+        if (!btn) return;
         var action = btn.getAttribute('data-social-action');
         var slot = btn.closest ? btn.closest('.detector-social-actions') : null;
         var userId = btn.getAttribute('data-user-id') || (slot && slot.getAttribute('data-user-id')) || '';
@@ -1180,19 +1291,88 @@
         return { ok: true, conversation: res.data };
     }
 
-    async function loadConversationMessages(convId) {
-        var res = await selectFrom('conversation_messages', function (q) {
-            return q.select('id,conversation_id,sender_id,sender_name,body,media_url,media_type,media_bytes,created_at')
-                .eq('conversation_id', convId)
-                .order('created_at', { ascending: true })
-                .limit(400);
+    var CHAT_READ_COLUMNS = 'id,conversation_id,sender_id,sender_name,body,media_url,media_type,media_bytes,created_at';
+    var CHAT_READ_LIMIT = 400;
+
+    function sortMessagesAsc(rows) {
+        return (rows || []).slice().sort(function (a, b) {
+            var ta = new Date(a.created_at || 0).getTime();
+            var tb = new Date(b.created_at || 0).getTime();
+            if (ta !== tb) return ta - tb;
+            return String(a.id || '').localeCompare(String(b.id || ''));
         });
-        if (res.error || !Array.isArray(res.data)) {
-            return cachedMessages(convId);
+    }
+
+    // Reads the NEWEST CHAT_READ_LIMIT messages of a thread and returns them
+    // oldest-first for rendering.
+    //
+    // Two read paths, in order:
+    //   1) the SECURITY DEFINER function get_conversation_messages() (migration
+    //      20260917000000): it checks the membership itself, so a thread stays
+    //      readable even when the SELECT policies on conversation_messages
+    //      drift on a production project;
+    //   2) a direct SELECT over conversation_messages, for projects where that
+    //      function was not applied yet.
+    //
+    // Both paths read newest-first and the client reverses: the old code read
+    // oldest-first with limit(400), so in any thread past 400 messages the new
+    // arrivals were invisible to everyone except the sender (who saw the local
+    // echo) — "apar ca trimise dar prietenii nu le pot vedea".
+    //
+    // When NEITHER path answers, the per-account mirror is served as before,
+    // but the failure is recorded in state.chatReadError / state.chatReadOk so
+    // the chat shows an honest "could not load" notice instead of pretending
+    // an unreadable thread is an empty one.
+    async function loadConversationMessages(convId) {
+        if (!convId) return [];
+        state.chatReadError = '';
+        state.chatReadOk = false;
+
+        var res = await rpc('get_conversation_messages', { _conversation_id: convId, _limit_n: CHAT_READ_LIMIT });
+        if (!res.error && Array.isArray(res.data)) {
+            state.chatMessages = sortMessagesAsc(res.data);
+            state.chatReadOk = true;
+            cacheMessages(convId, state.chatMessages);
+            return state.chatMessages;
         }
-        state.chatMessages = res.data;
-        cacheMessages(convId, res.data);
-        return res.data;
+
+        var sel = await selectFrom('conversation_messages', function (q) {
+            return q.select(CHAT_READ_COLUMNS)
+                .eq('conversation_id', convId)
+                .order('created_at', { ascending: false })
+                .order('id', { ascending: false })
+                .limit(CHAT_READ_LIMIT);
+        });
+        if (!sel.error && Array.isArray(sel.data)) {
+            state.chatMessages = sortMessagesAsc(sel.data);
+            state.chatReadOk = true;
+            cacheMessages(convId, state.chatMessages);
+            return state.chatMessages;
+        }
+
+        state.chatReadError = friendlyError((sel && sel.error) || (res && res.error) || 'read-failed');
+        return cachedMessages(convId);
+    }
+
+    // Re-reads the thread after a send and confirms the new row is really
+    // there for the OTHER members to read. Returns:
+    //   true  — the message reads back (delivered);
+    //   false — the thread reads back fine but the message is missing (the
+    //           server answered OK without persisting it: never show it);
+    //   null  — the thread could not be re-read at all (offline / old server):
+    //           unverified, keep the previous behaviour instead of inventing a
+    //           failure (a false negative here would make the user retry and
+    //           produce duplicates).
+    async function verifyMessagePersisted(convId, messageId) {
+        if (!convId || !messageId) return null;
+        var fresh;
+        try {
+            fresh = await loadConversationMessages(convId);
+        } catch (e) { return null; }
+        if (!state.chatReadOk) return null;
+        var wanted = String(messageId);
+        var found = (fresh || []).some(function (m) { return m && String(m.id) === wanted; });
+        return found;
     }
 
     async function loadConversationMembers(convId) {
@@ -1248,12 +1428,37 @@
         if (res.error) return { ok: false, message: friendlyError(res.error) };
 
         state.sendTimestamps.push(Date.now());
-        if (res.data) {
-            state.chatMessages.push(res.data);
+        var sentRow = res.data || null;
+        if (sentRow && sentRow.id) {
+            // The RPC answered OK — but "OK" is only trustworthy once the row
+            // reads back from the same place the other members read. Without
+            // this check a server that answers without persisting (or whose
+            // rows nobody else can read) shows the sender a message their
+            // friends will never see.
+            var verified = await verifyMessagePersisted(convId, sentRow.id);
+            if (verified === false) {
+                return {
+                    ok: false,
+                    message: t(
+                        'Mesajul a plecat, dar nu a ajuns în conversație (serverul nu l-a salvat). Încearcă din nou.',
+                        'The message was sent but never landed in the conversation (the server did not store it). Please try again.')
+                };
+            }
+            if (verified === null) {
+                // The thread could not be re-read (offline?): keep the
+                // server's own answer as the local echo, exactly like before.
+                state.chatMessages.push(sentRow);
+                cacheMessages(convId, state.chatMessages);
+            }
+            // verified === true: loadConversationMessages() already refreshed
+            // state.chatMessages (and the mirror) from the server copy, so
+            // there is nothing left to push.
+        } else if (sentRow) {
+            state.chatMessages.push(sentRow);
             cacheMessages(convId, state.chatMessages);
         }
         await markConversationRead(convId);
-        return { ok: true, message: res.data };
+        return { ok: true, message: sentRow };
     }
 
     async function renameConversation(convId, title) {
@@ -2094,12 +2299,25 @@
        CHAT VIEW
     ══════════════════════════════════════════════════════════════════════ */
 
+    // A double-tap on "Trimite mesaj" / "Chat" used to fire two
+    // start_direct_conversation RPCs at once; when both won the "no thread yet"
+    // race the pair ended up with two parallel private threads and each side
+    // could keep writing in a different one. One in-flight open per account.
+    var openChatInFlight = {};
+
     async function openChatWithUser(userId) {
         if (!userId) return;
-        var res = await openDirectConversation(userId);
-        if (!res.ok) { window.alert(res.message); return; }
-        var conv = res.conversation;
-        if (conv && conv.id) openConversationById(conv.id);
+        var key = String(userId);
+        if (openChatInFlight[key]) return;
+        openChatInFlight[key] = true;
+        try {
+            var res = await openDirectConversation(userId);
+            if (!res.ok) { window.alert(res.message); return; }
+            var conv = res.conversation;
+            if (conv && conv.id) await openConversationById(conv.id);
+        } finally {
+            openChatInFlight[key] = false;
+        }
     }
 
     async function openConversationById(convId) {
@@ -2117,6 +2335,8 @@
         state.chat = conv;
         state.chatMessages = cachedMessages(convId);
         state.chatLoading = true;
+        state.chatReadError = '';
+        state.chatReadOk = false;
 
         var existing = document.getElementById('friendChatPanel');
         if (existing) existing.remove();
@@ -2235,18 +2455,38 @@
         }
     }
 
+    // A thread the server could not deliver must never look like a thread with
+    // no messages: that is precisely the "apar ca trimise dar prietenii nu le
+    // pot vedea" report from the other side.
+    function chatReadNoticeHtml() {
+        if (state.chatReadError) {
+            return '<div class="fr-notice">⚠️ ' + escapeHtml(t(
+                'Mesajele nu s-au putut încărca de pe server: ',
+                'Messages could not be loaded from the server: ') + state.chatReadError) + '</div>';
+        }
+        var conv = state.chat;
+        if (!state.chatLoading && conv && conv.last_message_at &&
+            !(state.chatMessages && state.chatMessages.length)) {
+            return '<div class="fr-notice">⚠️ ' + escapeHtml(t(
+                'Conversația are mesaje pe server care nu s-au putut încărca. Verifică conexiunea și redeschide chat-ul.',
+                'This conversation has messages on the server that could not be loaded. Check your connection and reopen the chat.')) + '</div>';
+        }
+        return '';
+    }
+
     function renderChatMessages() {
         var list = document.getElementById('frChatMessages');
         if (!list) return;
         var user = currentUser();
         var msgs = state.chatMessages || [];
+        var noticeHtml = chatReadNoticeHtml();
 
         if (state.chatLoading && !msgs.length) {
-            list.innerHTML = '<div class="fr-empty">' + escapeHtml(t('Se încarcă mesajele…', 'Loading messages…')) + '</div>';
+            list.innerHTML = noticeHtml + '<div class="fr-empty">' + escapeHtml(t('Se încarcă mesajele…', 'Loading messages…')) + '</div>';
             return;
         }
         if (!msgs.length) {
-            list.innerHTML = '<div class="fr-empty">' + escapeHtml(t(
+            list.innerHTML = noticeHtml + '<div class="fr-empty">' + escapeHtml(t(
                 'Niciun mesaj încă. Scrie primul mesaj — conversația se păstrează pe contul tău și pe celelalte dispozitive.',
                 'No messages yet. Say hello — this thread is stored on your account and follows you to other devices.')) + '</div>';
             return;
@@ -2279,7 +2519,7 @@
                 '<div class="fr-msg-time">' + escapeHtml(fmtShortTime(m.created_at)) + '</div>' +
                 '</div>';
         });
-        list.innerHTML = html;
+        list.innerHTML = noticeHtml + html;
         list.scrollTop = list.scrollHeight;
     }
 
@@ -2736,6 +2976,26 @@
         // send message). One delegated capture-phase listener survives every
         // Leaflet popup rebuild and every re-render of the map pins.
         document.addEventListener('click', onDetectorSocialAction, true);
+        // Touch fast path for the same buttons (see onDetectorSocialTouchEnd):
+        // clean taps are honoured straight from touchend so a layout shift can
+        // never cancel them, and swipes are left alone for map pan/scroll.
+        // touchstart stays passive (it only records the finger position and the
+        // touch-in-flight count used to skip mid-tap autopans); touchend must
+        // be non-passive so handled taps can suppress their synthetic click.
+        try {
+            document.addEventListener('touchstart', onDetectorSocialTouchStart, { capture: true, passive: true });
+        } catch (_) {
+            document.addEventListener('touchstart', onDetectorSocialTouchStart, true);
+        }
+        try {
+            document.addEventListener('touchend', onDetectorSocialTouchEnd, { capture: true, passive: false });
+            document.addEventListener('touchcancel', function () {
+                if (touchDownCount > 0) touchDownCount--;
+                lastTouchStartPos = null;
+            }, true);
+        } catch (_) {
+            document.addEventListener('touchend', onDetectorSocialTouchEnd, true);
+        }
         // No MutationObserver here on purpose: both nav entries live in
         // index.html, so ensureBadges() only has to run on boot, on auth
         // changes and before a badge update. Observing the whole body would

@@ -221,6 +221,23 @@ function makeMapSandbox() {
         'live=' + liveMarkers.length + ', offline=' + offlineMarkers.length);
     if (!liveMarkers.length || !offlineMarkers.length) return;
 
+    /* A finger is ~44px wide: both pins wrap the 32px visual in an invisible
+       44px tap pad (.detector-tap-pad) so taps near the pin still open it. */
+    const liveIconOpts = (liveMarkers[0].options.icon || {}).options || {};
+    check('the live pin is a 44px tap pad around the 32px visual',
+        /detector-tap-pad/.test(liveIconOpts.html || '') &&
+        /detector-nearby-marker/.test(liveIconOpts.html || '') &&
+        liveIconOpts.iconSize && liveIconOpts.iconSize[0] === 44 && liveIconOpts.iconSize[1] === 44 &&
+        liveIconOpts.iconAnchor && liveIconOpts.iconAnchor[0] === 22 && liveIconOpts.iconAnchor[1] === 22,
+        JSON.stringify({ size: liveIconOpts.iconSize, anchor: liveIconOpts.iconAnchor }));
+    const offlineIconOpts = (offlineMarkers[0].options.icon || {}).options || {};
+    check('the offline bubble is a 44px tap pad around the 32px visual',
+        /detector-tap-pad/.test(offlineIconOpts.html || '') &&
+        /detector-offline-marker/.test(offlineIconOpts.html || '') &&
+        offlineIconOpts.iconSize && offlineIconOpts.iconSize[0] === 44 && offlineIconOpts.iconSize[1] === 44 &&
+        offlineIconOpts.iconAnchor && offlineIconOpts.iconAnchor[0] === 22 && offlineIconOpts.iconAnchor[1] === 22,
+        JSON.stringify({ size: offlineIconOpts.iconSize, anchor: offlineIconOpts.iconAnchor }));
+
     const liveHtml = liveMarkers[0].popup.html;
     check('live pin popup keeps the name and the e-mail',
         /Ana/.test(liveHtml) && /ana@example\.com/.test(liveHtml), liveHtml);
@@ -625,6 +642,42 @@ async function runIntegrationPart() {
         !/data-social-action/.test(slotSelf.innerHTML), slotSelf.innerHTML);
     check('relationFor() is exposed for assertions', F.detectorRelation('u-friend') === 'friend');
 
+    /* ── Repaint discipline: refreshes that change nothing must NOT rebuild
+       the buttons. Every popup open triggers several refresh passes (sync
+       paint, one per friends/requests load, one when the state settles); in
+       the PWA over mobile data they spread across seconds, and every innerHTML
+       rewrite destroys the button mid-tap — the touchend lands on a detached
+       node, no click is ever synthesised and the tap "does nothing". ── */
+    const slotProbe = dom.makeSlot('u-probe', 'Probe', 'live');
+    F.decorateDetectorPopup(dom.document);
+    await dom.flush();
+    await dom.flush();
+    // The fake DOM never parses innerHTML into children: plant the row node a
+    // real paint would have produced, so the skip-guard can see the slot is
+    // already painted.
+    const probeRow = dom.makeEl('div');
+    probeRow.className = 'detector-social-row';
+    slotProbe.appendChild(probeRow);
+    let probeWrites = 0;
+    let probeHtml = slotProbe.innerHTML;
+    Object.defineProperty(slotProbe, 'innerHTML', {
+        get() { return probeHtml; },
+        set(v) { probeWrites++; probeHtml = v; },
+        configurable: true
+    });
+    F.refreshDetectorPopups();
+    F.refreshDetectorPopups();
+    await dom.flush();
+    check('refresh passes with an unchanged relationship do not rebuild the buttons',
+        probeWrites === 0, 'innerHTML writes=' + probeWrites);
+    // ...but a REAL state change still repaints.
+    sb._server.friends.push({ user_id: 'u-probe', display_name: 'Probe', conversation_id: 'c-probe' });
+    await F.refresh(false);
+    await dom.flush();
+    check('a real relationship change still repaints the slot',
+        probeWrites >= 1 && /data-social-action="message"/.test(slotProbe.innerHTML),
+        'writes=' + probeWrites + ' html=' + slotProbe.innerHTML);
+
     /* ── a Leaflet content re-render between the two paints must not lose the
        button. A popup rebuilds its DOM from its string content, so the paint
        has to look the slot up again inside the popup element instead of writing
@@ -691,6 +744,46 @@ async function runIntegrationPart() {
         JSON.stringify(started));
     check('a failing chat backend surfaces a readable message instead of silence',
         sb._alerts.length >= 1 && /conversați/i.test(sb._alerts[0]), JSON.stringify(sb._alerts));
+
+    /* ── Touch: a tap must act straight from touchend (PWA webviews often
+       never synthesise the click at all), a synthetic click that still comes
+       after the tap must not double-fire, and a swipe across the button must
+       not act. ── */
+    async function touchTap(btn, x0, y0, x1, y1) {
+        for (const fn of (dom.docHandlers.touchstart || [])) {
+            await fn({ target: btn, touches: [{ clientX: x0, clientY: y0 }] });
+        }
+        const results = [];
+        for (const fn of (dom.docHandlers.touchend || [])) {
+            results.push(fn({ target: btn, changedTouches: [{ clientX: x1, clientY: y1 }], preventDefault() {}, stopPropagation() {} }));
+        }
+        await Promise.all(results);
+        await dom.flush();
+        await dom.flush();
+    }
+    check('friends.js listens for touchstart/touchend (capture) alongside the click listener',
+        (dom.docHandlers.touchstart || []).length >= 1 && (dom.docHandlers.touchend || []).length >= 1,
+        'document handlers: ' + Object.keys(dom.docHandlers).join(','));
+
+    const slotTouch = dom.makeSlot('u-touch', 'Touch', 'live');
+    F.decorateDetectorPopup(dom.document);
+    await dom.flush();
+    await touchTap(dom.makeButton(slotTouch, 'add'), 10, 10, 11, 12);
+    const touchSent = sb._rpcCalls.filter(c => c.name === 'send_friend_request' && c.params._addressee_id === 'u-touch');
+    check('a tap acts straight from touchend (no click needed)',
+        touchSent.length === 1, JSON.stringify(sb._rpcCalls));
+    await dom.click(dom.makeButton(slotTouch, 'add'));
+    const touchSentAfterClick = sb._rpcCalls.filter(c => c.name === 'send_friend_request' && c.params._addressee_id === 'u-touch');
+    check('the synthetic click after a tap does not double-fire the action',
+        touchSentAfterClick.length === 1, JSON.stringify(touchSentAfterClick));
+
+    const slotSwipe = dom.makeSlot('u-swipe', 'Swipe', 'live');
+    F.decorateDetectorPopup(dom.document);
+    await dom.flush();
+    await touchTap(dom.makeButton(slotSwipe, 'add'), 10, 10, 120, 130);
+    const swipeSent = sb._rpcCalls.filter(c => c.name === 'send_friend_request' && c.params._addressee_id === 'u-swipe');
+    check('a swipe across the button (touch moved > 20px) does not act',
+        swipeSent.length === 0, JSON.stringify(swipeSent));
 
     /* ── anonymous visitor: the button routes into the auth flow ── */
     const dom2 = makeFakeDom();
@@ -785,6 +878,27 @@ function runWiringPart() {
         (FRIENDS_SRC.match(/paintDetectorSlots\(/g) || []).length >= 3);
     check('a popup opened while the session is still restoring waits for auth',
         /detectorAuthPromise/.test(FRIENDS_SRC) && /_authReadyPromise/.test(FRIENDS_SRC));
+    check('pin taps are handled straight from touchend, with synthetic-click dedup and a swipe guard',
+        /addEventListener\('touchend', onDetectorSocialTouchEnd/.test(FRIENDS_SRC) &&
+        /lastTouchActionKey/.test(FRIENDS_SRC) &&
+        /dx \* dx \+ dy \* dy > 20 \* 20/.test(FRIENDS_SRC));
+    check('refreshes that change nothing skip the button rebuild (the tap target stays alive)',
+        /prevState === rel\.state/.test(FRIENDS_SRC) &&
+        /querySelector\('\.detector-social-row'\)/.test(FRIENDS_SRC));
+    check('the invisible 44px tap pad ships in css/styles.css',
+        /\.detector-tap-pad/.test(fs.readFileSync(path.join(ROOT, 'css/styles.css'), 'utf8')));
+
+    const READ_MIGRATION = fs.readFileSync(path.join(ROOT, 'supabase/migrations/20260917000000_conversation_messages_read.sql'), 'utf8');
+    check('the member-checked newest-first read function is migrated (get_conversation_messages)',
+        /create or replace function public\.get_conversation_messages/i.test(READ_MIGRATION) &&
+        /security definer/i.test(READ_MIGRATION) &&
+        /is_conversation_member/.test(READ_MIGRATION) &&
+        /order by[\s\S]*?created_at desc/i.test(READ_MIGRATION));
+    check('friends.js reads threads through get_conversation_messages, verifies every send and falls back to SELECT',
+        /get_conversation_messages/.test(FRIENDS_SRC) &&
+        /ascending: false/.test(FRIENDS_SRC) &&
+        /function sortMessagesAsc/.test(FRIENDS_SRC) &&
+        /function verifyMessagePersisted/.test(FRIENDS_SRC));
 
     check('the social action styles ship in css/styles.css',
         /\.detector-social-actions/.test(fs.readFileSync(path.join(ROOT, 'css/styles.css'), 'utf8')) &&
