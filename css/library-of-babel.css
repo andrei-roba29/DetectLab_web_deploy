@@ -116,6 +116,22 @@ body.is-pwa .babel-modal{padding-top:calc(22px + env(safe-area-inset-top,0px));p
 .babel-suggest{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:12px;color:#93876f;font-size:.62rem;align-items:center}
 .babel-suggest .babel-pick strong{font-family:Outfit,sans-serif;font-weight:600}
 
+/* ── epoch profile in the results header (percentages per epoch) ──
+   Sits under the locality + statistics lines and shows the share of the
+   de-duplicated corpus that belongs to each automatically classified epoch.
+   The bar under each button is drawn from the inline --babel-share value, so
+   the width always matches the printed percentage. */
+.babel-epochs{margin:9px 0 0;padding:8px 10px;border:1px solid rgba(190,145,76,.18);border-radius:7px;background:rgba(121,77,27,.07)}
+.babel-epochs-label{display:block;margin-bottom:6px;color:#a57942;font:600 .55rem Cinzel,serif;letter-spacing:.1em;text-transform:uppercase}
+.babel-epochs-label small{color:#77705f;font:400 .54rem Outfit,sans-serif;letter-spacing:0;text-transform:none}
+.babel-epochs-strip{display:flex;flex-wrap:wrap;gap:6px}
+.babel-epochs button{position:relative;display:flex;flex-direction:column;gap:1px;min-width:74px;padding:5px 9px 7px;border:1px solid rgba(190,145,76,.22);border-radius:5px;background:none;color:#bda176;cursor:pointer;text-align:left;transition:background .15s,color .15s,border-color .15s}
+.babel-epochs button span{font:600 .55rem Outfit,sans-serif;white-space:nowrap}
+.babel-epochs button b{color:#e0c188;font:600 .74rem Cinzel,serif}
+.babel-epochs button:after{content:"";display:block;margin-top:3px;width:var(--babel-share,0%);max-width:100%;height:2px;border-radius:2px;background:linear-gradient(90deg,#5b3d1e,#c8a05e)}
+.babel-epochs button:hover{background:rgba(211,163,93,.08);color:#ffe0a2}
+.babel-epochs button.is-active{border-color:#d3a35d;background:rgba(211,163,93,.16);color:#ffe0a2}
+
 /* ── timeline strip (automatic period classification) ── */
 .babel-timeline{margin:14px 0 4px;padding:11px 13px;border:1px solid rgba(190,145,76,.2);border-radius:8px;background:linear-gradient(120deg,rgba(121,77,27,.08),rgba(255,255,255,.012))}
 .babel-timeline-label{display:block;margin-bottom:9px;color:#c8a365;font:600 .62rem Cinzel,serif;letter-spacing:.06em}

@@ -2,6 +2,9 @@
         const translations = {
             en: {
                 nav_apm: 'What is APM', nav_map: 'Explore Map', nav_how: 'How it Works', nav_pricing: 'Pricing', nav_useful: 'Useful Information', nav_cta: 'Get Access',
+                // The “Technology” and “Process” tabs now live on their own pages
+                // (technology.html / process.html), not as homepage sections.
+                nav_tech: 'Technology', nav_process: 'Process',
                 hero_badge: 'Archaeology × Artificial Intelligence', hero_tagline: 'Saving History Together',
                 hero_desc: 'An Archaeological Prediction Model that automatically identifies high-potential zones for ancient settlements — using topographic, geological, and hydrographic data collected since the dawn of civilization.',
                 hero_btn1: '🗺 Explore the Map', hero_btn2: 'View Membership Plans', scroll: 'Scroll to discover',
@@ -499,6 +502,9 @@
             },
             ro: {
                 nav_apm: 'Ce este APM', nav_map: 'Explorează Harta', nav_how: 'Cum Funcționează', nav_pricing: 'Prețuri', nav_useful: 'Informații Utile', nav_cta: 'Obține Acces',
+                // Tab-urile „Tehnologie” și „Proces” au acum pagini proprii
+                // (tehnologie.html / proces.html), nu mai sunt secțiuni pe prima pagină.
+                nav_tech: 'Tehnologie', nav_process: 'Proces',
                 hero_badge: 'Arheologie × Inteligență Artificială', hero_tagline: 'Salvăm Istoria Împreună',
                 hero_desc: 'Un Model de Predicție Arheologică care identifică automat zonele cu potențial ridicat pentru așezări antice — folosind date topografice, geologice și hidrografice colectate de la începuturile civilizației.',
                 hero_btn1: '🗺 Explorează Harta', hero_btn2: 'Vezi Planurile de Abonament', scroll: 'Derulează pentru a descoperi',
@@ -1081,6 +1087,20 @@
             // website-only navigation entry pointed at the matching version.
             document.querySelectorAll('[data-useful-info-link]').forEach(el => {
                 el.href = lang === 'en' ? 'useful-information.html' : 'informatii-utile.html';
+                el.hreflang = lang;
+            });
+            // The “Tehnologie / Technology” and “Proces / Process” sections have
+            // their own RO/EN page pair each (tehnologie.html · technology.html
+            // and proces.html · process.html). Any element marked with
+            // data-doc-link="technology|process" gets the URL of the current
+            // language — keeping the anchor (e.g. …#apm) intact.
+            document.querySelectorAll('[data-doc-link]').forEach(el => {
+                const kind = el.getAttribute('data-doc-link');
+                const pages = kind === 'process'
+                    ? { ro: 'proces.html', en: 'process.html' }
+                    : { ro: 'tehnologie.html', en: 'technology.html' };
+                const hash = (el.getAttribute('href') || '').split('#')[1];
+                el.href = pages[lang] + (hash ? '#' + hash : '');
                 el.hreflang = lang;
             });
             syncLanguageSelectors(lang);
