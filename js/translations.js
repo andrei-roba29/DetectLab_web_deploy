@@ -280,7 +280,7 @@
                 archeo_legend_heat_lo: 'Weak',
                 archeo_legend_heat_hi: 'Strong',
                 archeo_legend_excluded: 'UAT / heritage radius',
-                archeo_hint: 'Bubbles = the best spots only, spaced so they never touch each other or a heritage radius. Heatmap = every scored cell, colour = score (stretched over this run). Red = UAT built-up area and heritage protection radii (excluded).',
+                archeo_hint: 'Bubbles fill the free ground: mixed sizes, never touching each other or a heritage radius. The heatmap scores every free cell with the same triangulated logic — colour = score on one absolute scale shared with the bubbles and this legend. Red = UAT built-up area and heritage protection radii, where nothing is ever generated.',
                 archeo_show_label: 'Show results',
                 // ── Premium: Archeological Report / Raport arheologic (js/archeo-report.js) ──
                 layer_arch_report: 'Archeological Report',
@@ -785,7 +785,7 @@
                 archeo_legend_heat_lo: 'Slab',
                 archeo_legend_heat_hi: 'Puternic',
                 archeo_legend_excluded: 'UAT / rază patrimoniu',
-                archeo_hint: 'Bulele = doar cele mai bune puncte, distanțate ca să nu se atingă între ele sau cu vreo rază de protecție. Heatmap = fiecare celulă cu scor, culoarea = scorul (întins pe intervalul rulării). Roșu = intravilan UAT și razele de protecție ale siturilor (excluse).',
+                archeo_hint: 'Bulele umplu terenul liber: mărimi diferite, fără să se atingă între ele sau cu vreo rază de protecție. Heatmap-ul scotează fiecare celulă liberă cu aceeași logică de triangulare — culoarea = scorul, pe o scară absolută comună cu bulele și cu această legendă. Roșu = intravilanul UAT și razele de protecție ale siturilor, unde nu se generează nimic.',
                 archeo_show_label: 'Arată rezultatele',
                 // ── Premium: Archeological Report / Raport arheologic (js/archeo-report.js) ──
                 layer_arch_report: 'Raport arheologic',

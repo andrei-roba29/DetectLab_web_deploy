@@ -114,64 +114,107 @@
         CANDIDATE_MIN_SEPARATION_M: 900, // suppress candidates closer than this (300 m circles won't overlap)
         MAX_CANDIDATES: 80,          // cap the final output for readability
 
+        // UAT raster ("zona roșie" = teren liber, fără clădire actuală) -------
+        // Citirea rasterului e singura parte cu adevărat nesigură a analizei
+        // (rețea + CORS), iar vechea implementare avea două defecte care
+        // produceau rezultatul „aleator" raportat:
+        //   1. o celulă de 120–400 m era decisă de UN SINGUR PIXEL de ~9.5 m →
+        //      la marginea intravilanului excluderea ieșea punctiform/întîmplător;
+        //   2. tile lipsă (404) sau ilizibil (CORS) → FAIL CLOSED pe toată zona
+        //      respectivă → „nu se generează nimic" deși zona e bună.
+        // Acum: tile-urile se pre-încarcă (paralel, cu timeout + retry) înainte
+        // de scorare, fiecare celulă se evaluează pe o rețea de puncte (fracția
+        // de roșu), iar lipsa datelor nu mai golește harta.
+        UAT: {
+            SAMPLE_STEP_M: 50,            // distanța între punctele de probă dintr-o celulă
+            MAX_SAMPLES_PER_AXIS: 8,      // plafon pe axă (8×8 = 64 de probe)
+            MIN_RED_FRACTION: 0.5,        // celula rămâne scorable cât timp ≥ 50%
+                                          // din probele citite sunt roșii (libere)
+            ALPHA_THRESHOLD: 128,         // pragul de opacitate (ca în map-app.js)
+            RED_IS_DARK: true,            // roșu pe hartă = pixel opac + întunecat
+            LUMINANCE_THRESHOLD: 128,
+            TILE_TIMEOUT_MS: 9000,        // o cerere blocată nu mai îngheață analiza
+            RETRIES: 1,                   // încercări suplimentare (loader propriu)
+            CONCURRENCY: 6,               // tile-uri descărcate simultan
+            FAILURE_TTL_MS: 60000,        // un tile eșuat e reîncercat după acest timp
+            FAIL_OPEN_WHEN_UNREADABLE: true, // fără date UAT → nu excludem nimic
+            MAX_CACHED_TILES: 600         // măști „roșu" compacte (65 kB/tile), FIFO
+        },
+
         // Score field --------------------------------------------------------
         // Both display modes read the SAME dense grid of scores covering the
         // whole search circle (no un-scored gaps):
-        //   • bubbles — a SPARSE, non-overlapping selection of the best cells
-        //     (see CONFIG.BUBBLE): readable circles that never touch each other
-        //     and never touch the red exclusion mask;
+        //   • bubbles — every scored cell is a candidate centre; circles are
+        //     packed in several size tiers so the canvas gets as full as
+        //     possible without any two bubbles touching each other, a heritage
+        //     radius or the red UAT mask (see CONFIG.BUBBLE);
         //   • heat    — a true score raster over every scored cell (see
         //     CONFIG.HEAT), plus a red mask for the excluded areas (UAT built-up
         //     + heritage protection radii).
+        // O singură grilă pentru ambele moduri: bulele au nevoie de centre dese
+        // ca să umple golurile mici dintre ele, iar heatmap-ul are nevoie de
+        // fiecare celulă. Comutarea Bule↔Heatmap redesenează același câmp.
         FIELD: {
             MODE: 'bubbles',              // 'bubbles' | 'heat' (UI: Bubbles / Heatmap)
-            BUBBLE_CELL_M: 250,           // baseline cell spacing in bubble mode
-            BUBBLE_MAX_CELLS: 2200,       // grows the cell size on big radii (phones)
-            HEAT_CELL_M: 120,             // baseline cell spacing in heat mode
+            CELL_M: 120,                  // baseline cell spacing (both modes)
+            MAX_CELLS: 9000,              // grows the cell size on big radii (phones)
+            BUBBLE_CELL_M: 120,           // alias vechi (compatibilitate consolă)
+            BUBBLE_MAX_CELLS: 9000,
+            HEAT_CELL_M: 120,             // alias vechi (compatibilitate consolă)
             HEAT_MAX_CELLS: 9000,
             TRI_INDEX_CELL_M: 2500,       // triangle bucket size for point lookups
             OUTSIDE_HULL_TRI_SCORE: 0.15, // cells beyond the site convex hull
             PROGRESS_EVERY: 500,          // cells between status updates
-            CHUNK_SIZE: 120               // cells per async batch
+            CHUNK_SIZE: 400               // cells per async batch
         },
 
-        // Bubble output — the "sweet spot" -----------------------------------
-        // The score grid stays dense (that is what the heatmap reads), but only
-        // a few cells are promoted to visible circles. A bubble is drawn only
-        // when the whole disc fits:
-        //   • ≥ GAP_M away from every other bubble (they never touch),
-        //   • ≥ GAP_M away from the red mask — the 700 m heritage rings, the
-        //     site polygons and the UAT built-up rectangles,
-        //   • score ≥ MIN_SCORE (weak cells stay in the heatmap).
-        // Count and size scale with the slider radius so a 1 km analysis and a
-        // 10 km analysis look equally readable on screen.
+        // Bubble output — „cât mai plin, fără suprapuneri" -------------------
+        // Fiecare celulă scorată e un centru candidat. Bulele se pun în trepte
+        // de mărime (cele mari întâi, apoi cele mici care completează golurile
+        // rămase), iar o bulă e desenată doar când discul ei întreg încapă:
+        //   • la ≥ gapFor(radius) de orice altă bulă (nu se ating/intercalează),
+        //   • la ≥ MASK_CLEARANCE_M de masca roșie (raza de 700 m a siturilor,
+        //     poligoanele de sit și dreptunghiurile de intravilan UAT),
+        //   • integral în interiorul cercului de analiză,
+        //   • cu scor ≥ MIN_SCORE (implicit 0 → toată zona e acoperită, iar
+        //     culoarea bulei spune cât de bun e scorul — vezi HEAT_GRADIENT).
+        // Numărul și dimensiunea scalează cu raza din slider.
         BUBBLE: {
             RADIUS_M: 420,            // bubble radius at the 10 km reference radius
             RADIUS_MIN_M: 150,        // preferred floor for a bubble radius
-            RADIUS_FLOOR_M: 90,       // absolute floor, used only by the relaxed pass
+            RADIUS_FLOOR_M: 35,       // absolute floor (last tier, fills the holes)
             RADIUS_MAX_M: 520,
-            GAP_M: 260,               // clear gap BETWEEN BUBBLES at 10 km
-            GAP_MIN_M: 80,
-            MASK_CLEARANCE_M: 90,     // clear gap between a bubble and the red mask
-            MIN_SCORE: 0.30,          // below this the cell is left to the heatmap
-            PER_KM2: 0.22,            // target bubble density (sweet spot)
-            MIN_BUBBLES: 10,          // floor of the cap for small radii
-            MAX_BUBBLES: 140          // hard cap so the map never gets crowded
+            GAP_M: 70,                // clear gap BETWEEN BUBBLES at 10 km
+            GAP_MIN_M: 15,            // floor of the gap for the smallest bubbles
+            MASK_CLEARANCE_M: 25,     // clear gap between a bubble and the red mask
+            MIN_SCORE: 0,             // weak cells are drawn too (pale colour)
+            TIERS: [1, 0.66, 0.44, 0.28], // size passes: big first, then gap filling
+            TIER_FILL: 0.72,          // a bubble must be ≥ this fraction of its tier
+            PER_KM2: 4.5,             // target bubble density per km² of the circle
+            TYPICAL_RADIUS_FACTOR: 0.45, // raza „medie" folosită ca să calculăm
+                                      // câte bule cere terenul liber real (la raze
+                                      // mici bulele sunt mici, deci trebuie mai multe)
+            MIN_BUBBLES: 26,          // floor of the cap for small radii
+            MAX_BUBBLES: 1400,        // hard cap so phones stay responsive
+            COVERAGE_TARGET: 0.82     // stop gap-filling once the free ground is
+                                      // this covered (aria bulelor / aria liberă)
         },
 
         // Heatmap output ------------------------------------------------------
         // The heat surface is a raster of SCORES (not accumulated alpha), so a
         // colour always means the same thing: the score of that ground. The
-        // score window is stretched over the run's own 2nd..98th percentile so
-        // the weak/strong contrast stays visible even when the raw scores sit
-        // in a narrow band, and alpha also grows with the score.
+        // mapping is ABSOLUTE (NORMALIZE: 'absolute') — the same score has the
+        // same colour in every run, in the bubbles and in the legend, so the
+        // legend is not a relative scale that changes per run.
         HEAT: {
-            OPACITY: 0.80,            // whole-surface opacity over the basemap
-            ALPHA_MIN: 0.46,          // alpha of the weakest cells
+            NORMALIZE: 'absolute',    // 'absolute' | 'percentile' (relativ la rulare)
+            OPACITY: 0.82,            // whole-surface opacity over the basemap
+            ALPHA_MIN: 0.52,          // alpha of the weakest cells
             ALPHA_MAX: 0.97,          // alpha of the strongest cells
+            ALPHA_GAMMA: 0.6,         // alpha = MIN + (MAX-MIN)·t^GAMMA
             SMOOTH_SIGMA_CELLS: 1.0,  // gaussian smoothing, in grid cells
-            LOW_PERCENTILE: 0.02,     // score window lower edge
-            HIGH_PERCENTILE: 0.98,    // score window upper edge
+            LOW_PERCENTILE: 0.02,     // score window lower edge (percentile mode)
+            HIGH_PERCENTILE: 0.98,    // score window upper edge (percentile mode)
             MIN_WINDOW: 0.12          // never compress the window below this span
         },
 
@@ -705,17 +748,58 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-     * 6. UAT "RED ZONE" CHECK (async, raster pixels)
+     * 6. UAT "RED ZONE" CHECK (raster pixels, pre-încărcat + deterministic)
      * ═══════════════════════════════════════════════════════════════════════
-     * Reuses the app's cached tile loader (window._uatGetTile). A candidate is
-     * "inside the red zone" iff the tile pixel under it is OPAQUE (drawn red on
-     * the UAT raster = inside a UAT polygon). Transparent = outside the red
-     * area. Missing/unreadable tiles → null → FAIL CLOSED (discarded). */
+     * CONVENȚIA (identică cu map-app.js): pe stratul UAT, pixelii OPCI și
+     * ÎNTUNECAȚI sunt cei desenați ROȘU și înseamnă teren FĂRĂ clădire actuală
+     * (adică acolo unde are sens să căutăm situri). Pixelii TRANSPARENȚI sunt
+     * intravilanul / zona construită — acolo nu se generează nimic, iar masca
+     * stratului o desenează tot cu roșu (roșu = „exclus" în ambele moduri).
+     *
+     * DE CE NU MAI E „ALEATOR":
+     *   1. Tile-urile necesare unei rulări se descarcă ÎNAINTE de scorare
+     *      (paralel, cu timeout și o reîncercare printr-un loader propriu, ca
+     *      un 404/CORS tranzitoriu să nu mai decidă soarta întregii analize);
+     *   2. pixelii se citesc sincron din cache-ul rulării → aceeași zonă dă
+     *      întotdeauna același rezultat (fără promisiuni care se întrec);
+     *   3. o celulă nu mai e decisă de un singur pixel de ~9.5 m, ci de o
+     *      rețea de probe peste toată cutia ei (fracția de roșu);
+     *   4. când rasterul chiar nu poate fi citit (offline, CORS, fără acoperire)
+     *      nu mai excludem tot — marcăm zona ca „necunoscută" și o scorăm, cu
+     *      mesaj explicit în status. Altfel harta rămânea goală exact în zonele
+     *      bune, fără nicio explicație. */
 
     var UAT_UNREADABLE = window._UAT_TILE_UNREADABLE;
+    // Același URL ca în map-app.js (tile-uri PNG pe Cloudflare R2, schema TMS).
+    var UAT_TILE_URL_FALLBACK = 'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/UAT/{z}/{x}/{y}.png';
+
+    // Cache global de tile-uri decodate: "z/x/y" → { state, mask, size, at }.
+    // state: 'ok' | 'missing' | 'unreadable' | 'timeout'. Eșecurile expiră după
+    // FAILURE_TTL_MS ca o pană de rețea să nu rămână blocată pentru toată
+    // sesiunea; tile-urile citite rămân în cache definitiv.
+    var _uatTileStates = {};
+    var _uatTileOrder = [];   // ordinea FIFO pentru evacuare (cache mărginit)
 
     function uatTileZ() {
         return (window.UAT_TILE_Z !== undefined) ? window.UAT_TILE_Z : 14;
+    }
+
+    function uatCfg() { return CONFIG.UAT || {}; }
+
+    function uatTileUrlTemplate() {
+        if (typeof window.UAT_TILE_URL === 'string' && window.UAT_TILE_URL.indexOf('{z}') !== -1) {
+            return window.UAT_TILE_URL;
+        }
+        var layer = window._uatLayer;
+        if (layer && typeof layer._url === 'string' && layer._url.indexOf('{z}') !== -1) return layer._url;
+        return UAT_TILE_URL_FALLBACK;
+    }
+
+    function uatTileYForUrl(y, z) { return Math.pow(2, z) - 1 - y; }
+
+    function uatTileUrl(z, x, y) {
+        return uatTileUrlTemplate()
+            .replace('{z}', z).replace('{x}', x).replace('{y}', uatTileYForUrl(y, z));
     }
 
     // Same math as map-app.js (UAT raster is generated with gdal2tiles, TMS
@@ -726,10 +810,246 @@
         return (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * Math.pow(2, z);
     }
 
-    // Promise<boolean|null>: true = inside the red UAT area, false = not red,
-    // null = no data / uncertain (callers must fail closed).
+    function uatTileRange(minLat, minLng, maxLat, maxLng, z) {
+        var max = Math.pow(2, z);
+        var x0 = Math.max(0, Math.min(max - 1, Math.floor(uatLngToTileXF(minLng, z))));
+        var x1 = Math.max(0, Math.min(max - 1, Math.floor(uatLngToTileXF(maxLng, z))));
+        var y0 = Math.max(0, Math.min(max - 1, Math.floor(uatLatToTileYF(maxLat, z)))); // lat mare → y mic
+        var y1 = Math.max(0, Math.min(max - 1, Math.floor(uatLatToTileYF(minLat, z))));
+        var out = [];
+        for (var x = x0; x <= x1; x++) {
+            for (var y = y0; y <= y1; y++) out.push({ x: x, y: y });
+        }
+        return out;
+    }
+
+    // Un pixel e „roșu pe hartă" exact ca în map-app.js (_uatIsBuildingPixel):
+    // opac + întunecat. Restul (transparent sau luminos) = intravilan/construit.
+    function uatIsRedPixel(data, idx) {
+        var U = uatCfg();
+        var aThreshold = (typeof U.ALPHA_THRESHOLD === 'number') ? U.ALPHA_THRESHOLD : 128;
+        if (data[idx + 3] <= aThreshold) return false;
+        if (U.RED_IS_DARK === false) return true;
+        var lumThreshold = (typeof U.LUMINANCE_THRESHOLD === 'number') ? U.LUMINANCE_THRESHOLD : 128;
+        return ((data[idx] + data[idx + 1] + data[idx + 2]) / 3) < lumThreshold;
+    }
+
+    // Un tile RGBA are 256 kB; ne trebuie doar „e roșu sau nu" per pixel, adică
+    // 64 kB (1 octet/pixel). La 150+ tile-uri pe o analiză de 10 km înseamnă
+    // ~10 MB în loc de ~40 MB, iar mai multe rulări nu mai umflă memoria.
+    function uatRedMaskFromData(data, size) {
+        size = size || CONFIG.UAT_TILE_SIZE || 256;
+        var mask = new Uint8Array(size * size);
+        for (var i = 0, p = 0; i + 3 < data.length; i += 4, p++) {
+            if (uatIsRedPixel(data, i)) mask[p] = 1;
+        }
+        return { mask: mask, size: size };
+    }
+
+    function uatCachePut(key, rec) {
+        _uatTileStates[key] = rec;
+        if (_uatTileOrder.indexOf(key) < 0) _uatTileOrder.push(key);
+        var max = (typeof uatCfg().MAX_CACHED_TILES === 'number') ? uatCfg().MAX_CACHED_TILES : 600;
+        while (_uatTileOrder.length > max) {
+            var oldest = _uatTileOrder.shift();
+            if (oldest === key) { _uatTileOrder.push(oldest); break; }
+            delete _uatTileStates[oldest];   // va fi recitit la nevoie (ieftin)
+        }
+    }
+
+    // Loader propriu (folosit la retry): nu depinde de cache-ul de promisiuni al
+    // map-app.js, are timeout real și poate ocoli un răspuns HTTP cache-uit fără
+    // header CORS (cache-buster). În Node (teste) nu există Image → 'missing'.
+    function loadUatTileImage(z, x, y, attempt) {
+        var U = uatCfg();
+        var timeoutMs = (typeof U.TILE_TIMEOUT_MS === 'number') ? U.TILE_TIMEOUT_MS : 9000;
+        var url = uatTileUrl(z, x, y);
+        if (attempt > 0) url += (url.indexOf('?') === -1 ? '?' : '&') + '_dlArchRetry=' + attempt;
+        return new Promise(function (resolve) {
+            if (typeof Image === 'undefined') return resolve({ state: 'missing' });
+            var img = new Image();
+            var settled = false;
+            var timer = setTimeout(function () { finish({ state: 'timeout' }); }, timeoutMs);
+            function finish(state) {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                try { img.onload = null; img.onerror = null; } catch (e) {}
+                resolve(state);
+            }
+            try { img.crossOrigin = 'anonymous'; } catch (e) {}
+            img.onload = function () {
+                var w = img.width || CONFIG.UAT_TILE_SIZE || 256;
+                var h = img.height || CONFIG.UAT_TILE_SIZE || 256;
+                var canvas = createCanvasEl(w, h);
+                var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+                if (!ctx || typeof ctx.getImageData !== 'function') return finish({ state: 'unreadable' });
+                try {
+                    ctx.drawImage(img, 0, 0);
+                    var imgData = ctx.getImageData(0, 0, w, h);
+                    finish({ state: 'ok', data: imgData.data, size: w });
+                } catch (e) {
+                    finish({ state: 'unreadable' }); // canvas „tainted" (CORS lipsă)
+                }
+            };
+            img.onerror = function () { finish({ state: 'missing' }); };
+            img.src = url;
+        });
+    }
+
+    // Prima încercare folosește loaderul aplicației (are deja cache-ul lui și
+    // logurile [UAT]); dacă răspunsul e incert/lipsă, reîncercăm singuri.
+    function readUatTile(z, x, y, attempt) {
+        var U = uatCfg();
+        var timeoutMs = (typeof U.TILE_TIMEOUT_MS === 'number') ? U.TILE_TIMEOUT_MS : 9000;
+        attempt = attempt || 0;
+
+        if (attempt === 0 && typeof window._uatGetTile === 'function') {
+            var timedOut = false;
+            var timer = null;
+            var timeout = new Promise(function (resolve) {
+                timer = setTimeout(function () { timedOut = true; resolve({ __timeout: true }); }, timeoutMs);
+            });
+            return Promise.race([
+                Promise.resolve()
+                    .then(function () { return window._uatGetTile(z, x, y); })
+                    .catch(function () { return UAT_UNREADABLE; }),
+                timeout
+            ]).then(function (tile) {
+                clearTimeout(timer);   // altfel rămân 150+ timere vii per analiză
+                if (timedOut || (tile && tile.__timeout)) return { state: 'timeout' };
+                if (tile === null || tile === undefined) return { state: 'missing' };
+                if (tile === UAT_UNREADABLE || !tile.data) return { state: 'unreadable' };
+                return { state: 'ok', data: tile.data, size: tile.size || CONFIG.UAT_TILE_SIZE || 256 };
+            });
+        }
+        return loadUatTileImage(z, x, y, attempt);
+    }
+
+    function uatTileKey(z, x, y) { return z + '/' + x + '/' + y; }
+
+    function resetUatTileCache() {
+        Object.keys(_uatTileStates).forEach(function (k) { delete _uatTileStates[k]; });
+        _uatTileOrder = [];
+    }
+
+    function uatTileCached(z, x, y) {
+        var rec = _uatTileStates[uatTileKey(z, x, y)];
+        if (!rec) return null;
+        if (rec.state === 'ok') return rec;
+        var ttl = (typeof uatCfg().FAILURE_TTL_MS === 'number') ? uatCfg().FAILURE_TTL_MS : 60000;
+        if (Date.now() - rec.at < ttl) return rec;
+        return null; // eșec expirat → poate fi reîncercat
+    }
+
+    // Promise<record> — nu aruncă niciodată; un tile e întotdeauna clasificat.
+    function fetchUatTile(z, x, y) {
+        var max = Math.pow(2, z);
+        if (x < 0 || y < 0 || x >= max || y >= max) return Promise.resolve({ state: 'missing' });
+        var cached = uatTileCached(z, x, y);
+        if (cached) return Promise.resolve(cached);
+        var retries = Math.max(0, (typeof uatCfg().RETRIES === 'number') ? uatCfg().RETRIES : 1);
+
+        function attempt(n) {
+            return readUatTile(z, x, y, n).then(function (rec) {
+                if (rec.state === 'ok' || n >= retries) return rec;
+                return attempt(n + 1);
+            }).catch(function () {
+                return { state: 'unreadable' };
+            });
+        }
+        return attempt(0).then(function (rec) {
+            if (rec.state === 'ok' && rec.data) {
+                var m = uatRedMaskFromData(rec.data, rec.size);
+                rec.mask = m.mask; rec.size = m.size;
+                delete rec.data;
+            }
+            rec.at = Date.now();
+            uatCachePut(uatTileKey(z, x, y), rec);
+            return rec;
+        });
+    }
+
+    // Pre-încărcarea tile-urilor pentru o zonă (paralelism limitat).
+    // @returns Promise<{total, ok, missing, unreadable, timeout, tiles:[...]}>
+    function prewarmUatTiles(bounds, onProgress) {
+        var z = uatTileZ();
+        var tiles = uatTileRange(bounds.minLat, bounds.minLng, bounds.maxLat, bounds.maxLng, z);
+        var U = uatCfg();
+        var concurrency = Math.max(1, (typeof U.CONCURRENCY === 'number') ? U.CONCURRENCY : 6);
+        var summary = { total: tiles.length, ok: 0, missing: 0, unreadable: 0, timeout: 0, tiles: tiles, z: z };
+        if (!tiles.length) return Promise.resolve(summary);
+
+        return new Promise(function (resolve) {
+            var next = 0, done = 0;
+            function worker() {
+                if (next >= tiles.length) return Promise.resolve();
+                var tile = tiles[next++];
+                return fetchUatTile(z, tile.x, tile.y).then(function (rec) {
+                    summary[rec.state] = (summary[rec.state] || 0) + 1;
+                    done++;
+                    if (onProgress) onProgress(done / tiles.length);
+                    return worker();
+                });
+            }
+            var workers = [];
+            for (var i = 0; i < Math.min(concurrency, tiles.length); i++) workers.push(worker());
+            Promise.all(workers).then(function () { resolve(summary); }, function () { resolve(summary); });
+        });
+    }
+
+    // Citire sincronă (după pre-încărcare): null dacă tile-ul nu e disponibil.
+    function uatTileDataSync(z, x, y) {
+        var rec = _uatTileStates[uatTileKey(z, x, y)];
+        return (rec && rec.state === 'ok') ? rec : null;
+    }
+
+    /**
+     * Fracția de „roșu" (teren liber) dintr-o celulă de `cellM` metri.
+     * Probele sunt repartizate pe o rețea k×k în cutia celulei, deci o celulă
+     * mare aflată la marginea intravilanului nu mai e decisă de un singur pixel.
+     * @returns {{red:number, samples:number, known:number}} red ∈ 0..1 (0 dacă
+     *          nicio probă nu a putut fi citită), known = probe cu date.
+     */
+    function uatCellRedFraction(lat, lng, cellM) {
+        var U = uatCfg();
+        var z = uatTileZ();
+        var step = (typeof U.SAMPLE_STEP_M === 'number') ? U.SAMPLE_STEP_M : 50;
+        var maxAxis = (typeof U.MAX_SAMPLES_PER_AXIS === 'number') ? U.MAX_SAMPLES_PER_AXIS : 8;
+        var half = Math.max(0, (cellM || 0)) / 2;
+        var k = Math.max(1, Math.min(maxAxis, Math.ceil((cellM || step) / step)));
+        var kLat = 111320;
+        var kLng = Math.max(1, 111320 * Math.cos(lat * Math.PI / 180));
+        var red = 0, known = 0, samples = 0;
+
+        for (var i = 0; i < k; i++) {
+            var fy = (k === 1) ? 0.5 : i / (k - 1);
+            var sLat = lat + (fy * 2 - 1) * half / kLat;
+            for (var j = 0; j < k; j++) {
+                var fx = (k === 1) ? 0.5 : j / (k - 1);
+                var sLng = lng + (fx * 2 - 1) * half / kLng;
+                samples++;
+                var txF = uatLngToTileXF(sLng, z), tyF = uatLatToTileYF(sLat, z);
+                var tx = Math.floor(txF), ty = Math.floor(tyF);
+                var tile = uatTileDataSync(z, tx, ty);
+                if (!tile) continue;
+                var size = tile.size || CONFIG.UAT_TILE_SIZE || 256;
+                var px = Math.floor((txF - tx) * size);
+                var py = Math.floor((tyF - ty) * size);
+                if (px < 0 || py < 0 || px >= size || py >= size) continue;
+                known++;
+                if (tile.mask[py * size + px]) red++;
+            }
+        }
+        return { red: known > 0 ? red / known : 0, samples: samples, known: known };
+    }
+
+    // Promise<boolean|null>: true = pe zona roșie (teren liber), false =
+    // intravilan/zonă construită, null = fără date (incert).
+    // Rămâne async pentru pipeline-ul vechi de candidați (Raportul arheologic),
+    // care păstrează politica „fail closed" a aplicației pentru acel flux.
     function uatPixelAt(lat, lng) {
-        if (typeof window._uatGetTile !== 'function') {
+        if (typeof window._uatGetTile !== 'function' && typeof Image === 'undefined') {
             return Promise.resolve(null);
         }
         var z = uatTileZ();
@@ -739,14 +1059,13 @@
         var max = Math.pow(2, z);
         if (tx < 0 || ty < 0 || tx >= max || ty >= max) return Promise.resolve(null);
 
-        return window._uatGetTile(z, tx, ty).then(function (tile) {
-            if (tile === null || tile === UAT_UNREADABLE) return null;
+        return fetchUatTile(z, tx, ty).then(function (tile) {
+            if (!tile || tile.state !== 'ok') return null;
             var size = tile.size || CONFIG.UAT_TILE_SIZE;
             var px = Math.floor((txF - tx) * size);
             var py = Math.floor((tyF - ty) * size);
             if (px < 0 || py < 0 || px >= size || py >= size) return null;
-            var idx = (py * size + px) * 4;
-            return tile.data[idx + 3] > 128; // opaque = inside red UAT polygon
+            return tile.mask[py * size + px] === 1;
         });
     }
 
@@ -1008,17 +1327,28 @@
     /**
      * Câmpul dens de scor — sursa ambelor moduri de afișare ale stratului.
      *
+     * Pașii (toți deterministici: aceeași zonă + aceeași rază → același rezultat):
+     *   1. siturile din cerc + poligoanele de sit (index spațial local);
+     *   2. PRE-ÎNCĂRCAREA tile-urilor UAT care acoperă cercul (paralel, cu
+     *      timeout + retry) — singura parte de rețea a analizei;
+     *   3. grila regulată de celule peste tot cercul (o singură grilă pentru
+     *      ambele moduri) + scorarea fiecărei celule: excluderi obligatorii
+     *      (raza siturilor / poligoane / intravilan UAT) → factorii de scor;
+     *   4. împachetarea bulelor (trepte de mărime, fără suprapuneri) și
+     *      fereastra de culori a heatmap-ului.
+     *
      * @param {number} centerLat  centrul analizei (pinul mov sau centrul hărții)
      * @param {number} centerLng
      * @param {number} [radiusM]  raza (default: sliderul 1–10 km)
      * @param {Object} [opts]     mode 'bubbles'|'heat', isCancelled(), onProgress(0..1),
-     *                            chunkSize, skipDataWait
+     *                            chunkSize, skipDataWait, skipUatPrewarm
      * @returns {Promise<{status, mode, cellM, bubbleBaseRadiusM, results, bubbles,
-     *                     excluded, heatPoints, heat, bbox, ctx, stats}>}
-     *          results = TOATE celulele scorate [{lat,lng,x,y,row,col,score,...}]
-     *          bubbles = selecția rară, ne-suprapusă, desenată în modul BULE
+     *                     excluded, heatPoints, heat, uat, bbox, ctx, stats}>}
+     *          results  = TOATE celulele scorate [{lat,lng,x,y,row,col,score,uatRed,...}]
+     *          bubbles  = cercurile împachetate (fără suprapuneri) pentru modul BULE
      *          excluded = [{lat,lng,x,y,row,col,reason:'uat'|'heritage'}]
-     *          heat    = fereastra de normalizare + rama folosite de heatmap
+     *          heat     = fereastra de culori folosită de heatmap + legendă
+     *          uat      = { available, total, ok, failed, unknownCells, minRedFraction }
      */
     function computePotentialField(centerLat, centerLng, radiusM, opts) {
         opts = opts || {};
@@ -1031,7 +1361,12 @@
         var t0 = performance.now();
         var isCancelled = typeof opts.isCancelled === 'function' ? opts.isCancelled : function () { return false; };
         var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
-        var chunkSize = Math.max(1, opts.chunkSize || F.CHUNK_SIZE || 120);
+        var chunkSize = Math.max(1, opts.chunkSize || F.CHUNK_SIZE || 400);
+
+        // Rasterul UAT nu poate fi citit deloc (offline / CORS / fără acoperire)?
+        // Atunci nu mai excludem nimic — altfel întreaga hartă ieșea roșie și
+        // goală, exact simptomul „uneori nu generează nimic, în mod aleator".
+        var failOpen = (uatCfg().FAIL_OPEN_WHEN_UNREADABLE !== false);
 
         return (async function main() {
             if (!opts.skipDataWait) await waitForSiteData();
@@ -1047,8 +1382,11 @@
             ctx.triangles = [];
             ctx.triIndex = null;
 
-            var cellM = gridCellM(radius, mode === 'heat' ? F.HEAT_CELL_M : F.BUBBLE_CELL_M,
-                mode === 'heat' ? F.HEAT_MAX_CELLS : F.BUBBLE_MAX_CELLS);
+            // O SINGURĂ grilă pentru ambele moduri: bulele au nevoie de centre
+            // dese (ca să umple golurile mici dintre cercuri), heatmap-ul are
+            // nevoie de fiecare celulă. Dimensiunea crește automat pe raze mari.
+            var cellM = gridCellM(radius, F.CELL_M || F.HEAT_CELL_M || 120,
+                F.MAX_CELLS || F.HEAT_MAX_CELLS || 9000);
             var grid = buildFieldCells(centerLat, centerLng, radius, cellM, lat0);
 
             var field = {
@@ -1060,12 +1398,19 @@
                 grid: grid, bbox: grid.bbox,
                 results: [], bubbles: [], excluded: [], heatPoints: [],
                 heat: null,
+                uat: {
+                    available: false, active: false, failOpen: failOpen,
+                    total: 0, ok: 0, failed: 0,
+                    unknownCells: 0, minRedFraction: uatMinRedFraction()
+                },
                 ctx: ctx,
                 stats: {
                     sites: ctx.sites.length, cells: grid.cells.length,
-                    scored: 0, excludedUat: 0, excludedHeritage: 0,
+                    scored: 0, excludedUat: 0, excludedHeritage: 0, uatUnknown: 0,
                     high: 0, medium: 0, low: 0,
-                    bubbles: 0, bubblesHigh: 0, bubblesMedium: 0, ms: 0
+                    bubbles: 0, bubblesHigh: 0, bubblesMedium: 0, bubblesLow: 0,
+                    coverage: 0, freeAreaKm2: 0, bubbleAreaKm2: 0,
+                    uatTiles: 0, uatTilesOk: 0, ms: 0
                 }
             };
 
@@ -1075,116 +1420,169 @@
                 return field;
             }
 
-            if (ctx.sites.length < 3) return finish('no_sites');
+            if (!ctx.sites.length) return finish('no_sites');
 
             ctx.siteIndex = createGridIndex(1200, 1200);
             for (var i = 0; i < ctx.sites.length; i++) {
                 ctx.siteIndex.insert(ctx.sites[i].x, ctx.sites[i].y, ctx.sites[i]);
             }
 
-            var points = ctx.sites.map(function (s, idx) {
-                return { x: s.x, y: s.y, lat: s.lat, lng: s.lng, i: idx };
-            });
-            var triangles = delaunayTriangulation(points);
-            ctx.triangles = triangles.map(function (t) {
-                return {
-                    a: { x: t.a.x, y: t.a.y, lat: points[t.a.i].lat, lng: points[t.a.i].lng },
-                    b: { x: t.b.x, y: t.b.y, lat: points[t.b.i].lat, lng: points[t.b.i].lng },
-                    c: { x: t.c.x, y: t.c.y, lat: points[t.c.i].lat, lng: points[t.c.i].lng }
-                };
-            });
-            ctx.triIndex = buildTriangleIndex(triangles, F.TRI_INDEX_CELL_M || 2500);
+            // Triangularea are nevoie de ≥ 3 situri; cu 1–2 situri câmpul se
+            // scorează tot (factorii de distanță/densitate rămân valabili, iar
+            // triunghiurile lipsă contribuie cu baza OUTSIDE_HULL_TRI_SCORE) —
+            // altfel o zonă cu puține situri rămânea complet goală pe hartă.
+            if (ctx.sites.length >= 3) {
+                var points = ctx.sites.map(function (s, idx) {
+                    return { x: s.x, y: s.y, lat: s.lat, lng: s.lng, i: idx };
+                });
+                var triangles = delaunayTriangulation(points);
+                ctx.triangles = triangles.map(function (t) {
+                    return {
+                        a: { x: t.a.x, y: t.a.y, lat: points[t.a.i].lat, lng: points[t.a.i].lng },
+                        b: { x: t.b.x, y: t.b.y, lat: points[t.b.i].lat, lng: points[t.b.i].lng },
+                        c: { x: t.c.x, y: t.c.y, lat: points[t.c.i].lat, lng: points[t.c.i].lng }
+                    };
+                });
+                ctx.triIndex = buildTriangleIndex(triangles, F.TRI_INDEX_CELL_M || 2500);
+            }
+
+            // ── UAT: pre-încărcarea tile-urilor (0–30% din progres) ──────────
+            if (!opts.skipUatPrewarm) {
+                var prewarm = await prewarmUatTiles(grid.bbox, function (ratio) {
+                    if (onProgress) onProgress(0.3 * ratio);
+                });
+                field.uat.total = prewarm.total;
+                field.uat.ok = prewarm.ok || 0;
+                field.uat.failed = prewarm.total - (prewarm.ok || 0);
+                field.uat.available = (prewarm.ok || 0) > 0;
+                field.stats.uatTiles = prewarm.total;
+                field.stats.uatTilesOk = prewarm.ok || 0;
+                if (isCancelled()) return finish('cancelled');
+            } else {
+                field.uat.available = false;
+            }
+            var uatActive = field.uat.available || !failOpen;
+            field.uat.active = uatActive;
 
             var cells = grid.cells;
             var processed = 0;
 
             for (var b = 0; b < cells.length; b += chunkSize) {
                 var batch = cells.slice(b, b + chunkSize);
-                var res = await Promise.all(batch.map(async function (cell) {
+                for (var k = 0; k < batch.length; k++) {
+                    var cell = batch[k];
                     var reason = exclusionReason(cell, ctx);
-                    if (reason) return { cell: cell, excluded: reason };
 
-                    // UAT: celula trebuie să stea pe rasterul roșu (în afara
-                    // intravilanului); tile lipsă/necitibil → eșuăm închis.
-                    var uat = await uatPixelAt(cell.lat, cell.lng);
-                    if (uat !== true) return { cell: cell, excluded: 'uat' };
+                    if (!reason && uatActive) {
+                        // Celula e scorable doar dacă stă pe zona roșie (teren
+                        // fără clădire actuală) — evaluată pe mai multe probe,
+                        // nu pe un singur pixel.
+                        var sample = uatCellRedFraction(cell.lat, cell.lng, cellM);
+                        if (sample.known > 0) {
+                            cell.uatRed = sample.red;
+                            if (sample.red < field.uat.minRedFraction) reason = 'uat';
+                        } else if (failOpen) {
+                            cell.uatRed = null;      // date lipsă → nu excludem
+                            field.stats.uatUnknown++;
+                        } else {
+                            reason = 'uat';
+                        }
+                    } else if (!reason) {
+                        cell.uatRed = null;
+                        field.stats.uatUnknown++;
+                    }
+
+                    if (reason === 'uat' || reason === 'heritage') {
+                        field.excluded.push({
+                            lat: cell.lat, lng: cell.lng, x: cell.x, y: cell.y,
+                            row: cell.row, col: cell.col, reason: reason,
+                            uatRed: cell.uatRed === undefined ? null : cell.uatRed
+                        });
+                        if (reason === 'uat') field.stats.excludedUat++;
+                        else field.stats.excludedHeritage++;
+                        continue;
+                    }
+                    if (reason) continue; // 'outside' — nu apare în grilă
 
                     var tri = triScoreAt(cell.x, cell.y, ctx.triIndex);
                     cell.triScore = tri.triScore;
                     cell.triQuality = tri.triQuality;
-                    return { cell: cell, scored: scoreCandidate(cell, ctx) };
-                }));
-
-                for (var k = 0; k < res.length; k++) {
-                    var item = res[k];
-                    if (item.scored) {
-                        var s = item.scored;
-                        var cls = classify(s.score);
-                        var record = {
-                            lat: s.lat, lng: s.lng, x: s.x, y: s.y,
-                            row: item.cell.row, col: item.cell.col,
-                            score: s.score, factors: s.factors,
-                            classification: cls,
-                            cellM: cellM
-                        };
-                        field.results.push(record);
-                        field.heatPoints.push([s.lat, s.lng, Math.max(0.02, s.score)]);
-                        if (cls === 'high') field.stats.high++;
-                        else if (cls === 'medium') field.stats.medium++;
-                        else field.stats.low++;
-                        field.stats.scored++;
-                    } else if (item.excluded === 'uat') {
-                        field.excluded.push({
-                            lat: item.cell.lat, lng: item.cell.lng,
-                            x: item.cell.x, y: item.cell.y,
-                            row: item.cell.row, col: item.cell.col, reason: 'uat'
-                        });
-                        field.stats.excludedUat++;
-                    } else if (item.excluded === 'heritage') {
-                        field.excluded.push({
-                            lat: item.cell.lat, lng: item.cell.lng,
-                            x: item.cell.x, y: item.cell.y,
-                            row: item.cell.row, col: item.cell.col, reason: 'heritage'
-                        });
-                        field.stats.excludedHeritage++;
-                    }
+                    var s = scoreCandidate(cell, ctx);
+                    var cls = classify(s.score);
+                    field.results.push({
+                        lat: s.lat, lng: s.lng, x: s.x, y: s.y,
+                        row: cell.row, col: cell.col,
+                        score: s.score, factors: s.factors,
+                        classification: cls,
+                        tier: classifyTier(s.score),
+                        uatRed: cell.uatRed === undefined ? null : cell.uatRed,
+                        cellM: cellM
+                    });
+                    field.heatPoints.push([s.lat, s.lng, Math.max(0.02, s.score)]);
+                    if (cls === 'high') field.stats.high++;
+                    else if (cls === 'medium') field.stats.medium++;
+                    else field.stats.low++;
+                    field.stats.scored++;
                 }
 
                 processed += batch.length;
-                if (onProgress) onProgress(Math.min(1, processed / Math.max(1, cells.length)));
+                if (onProgress) onProgress(0.3 + 0.7 * Math.min(1, processed / Math.max(1, cells.length)));
                 await yieldToUI();
                 if (isCancelled()) return finish('cancelled');
             }
 
-            // Bulele = selecția rară, ne-suprapusă a câmpului (modul BULE).
-            // Câmpul scorat rămâne dens: heatmap-ul îl citește integral.
+            field.uat.unknownCells = field.stats.uatUnknown;
+
+            // Bulele = împachetarea celulelor scorate (modul BULE). Câmpul
+            // scorat rămâne dens: heatmap-ul îl citește integral.
             field.bubbles = selectBubbles(field);
             field.stats.bubbles = field.bubbles.length;
             for (var bi = 0; bi < field.bubbles.length; bi++) {
-                if (field.bubbles[bi].classification === 'high') field.stats.bubblesHigh++;
-                else if (field.bubbles[bi].classification === 'medium') field.stats.bubblesMedium++;
+                var tier = field.bubbles[bi].tier || classifyTier(field.bubbles[bi].score);
+                if (tier === 'high') field.stats.bubblesHigh++;
+                else if (tier === 'medium') field.stats.bubblesMedium++;
+                else field.stats.bubblesLow++;
             }
-            // Heatmap: fereastra de normalizare a scorurilor acestei rulări
-            // (calculată mereu, ca legenda/rapoartele să știe scala reală).
+            // Acoperirea: cât din terenul liber (neexclus) e umplut de bule.
+            var freeAreaM2 = field.stats.scored * cellM * cellM;
+            field.stats.freeAreaKm2 = Math.round(freeAreaM2 / 1e6 * 100) / 100;
+            field.stats.bubbleAreaKm2 = Math.round((field.stats.coverage * freeAreaM2) / 1e6 * 100) / 100;
+
+            // Heatmap: scala de culori (absolută, identică cu a bulelor și cu
+            // legenda) + fereastra percentilică păstrată pentru modul relativ.
             field.heat = heatScoreWindow(field.results);
 
-            return finish(field.results.length ? 'ok' : 'no_candidates');
+            if (!field.results.length) return finish('no_candidates');
+            if (ctx.sites.length < 3) return finish('sparse_sites');
+            return finish('ok');
         })();
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-     * 7c. BULE RARE („sweet spot”) + RASTERUL DE SCOR PENTRU HEATMAP
+     * 7c. ÎMPACHETAREA BULELOR + RASTERUL DE SCOR PENTRU HEATMAP
      * ═══════════════════════════════════════════════════════════════════════
-     * DE CE: câmpul de scor rămâne dens (heatmap-ul are nevoie de fiecare
-     * celulă), dar bulele NU mai pavează toată harta — erau prea dese și se
-     * suprapuneau între ele și peste razele siturilor. Aici alegem doar
-     * celulele care au loc să fie desenate ca disc întreg:
-     *   • la cel puțin BUBBLE.GAP_M de orice altă bulă (nu se ating),
-     *   • la cel puțin BUBBLE.MASK_CLEARANCE_M de masca roșie (raza de 700 m a
-     *     siturilor, poligoanele de sit, dreptunghiurile de intravilan UAT),
-     *   • cu scor ≥ BUBBLE.MIN_SCORE (celulele slabe rămân doar în heatmap).
-     * Numărul și dimensiunea scalează cu raza din slider, ca o analiză de 1 km
-     * și una de 10 km să arate la fel de aerisit pe ecran. */
+     * CERINȚA: bule de mărimi diferite care umplu canvas-ul cât mai mult, fără
+     * să se intercaleze/intersecteze între ele, fără să intre peste razele
+     * siturilor (600 + 100 m) sau peste intravilanul UAT — care rămân roșii,
+     * fără niciun rezultat.
+     *
+     * CUM: fiecare celulă scorată e un centru candidat, cu spațiul ei liber
+     * măsurat o singură dată (distanța exactă până la cea mai apropiată
+     * constrângere: sit, poligon de sit, dreptunghi UAT sau marginea cercului de
+     * analiză). Apoi trecem prin TREPTE de mărime — întâi bulele mari, apoi cele
+     * din ce în ce mai mici, care completează golurile rămase între cele mari.
+     * O bulă e pusă doar dacă discul ei întreg încapă: raza = min(raza treptei,
+     * spațiu liber − clearance), cu verificarea reală a distanței față de toate
+     * bulele deja puse (margine la margine, nu centru la centru).
+     *
+     * BUG-URI REPARATE AICI (sursa „golurilor aleatorii"):
+     *   • celulele cu spațiu liber nelimitat (niciun sit și nicio mască în
+     *     apropiere — adică exact zonele deschise, bune) erau ARUNCATE pentru că
+     *     testul era `if (!isFinite(clearance)) continue`; acum Infinity înseamnă
+     *     „fără constrângere" → rază maximă;
+     *   • plafonul de bule (0.22/km² → 69 la 10 km) și pragul MIN_SCORE 0.30
+     *     lăsau cea mai mare parte a zonei goală; acum bulele acoperă terenul
+     *     liber, iar scorul slab e arătat prin culoare pală, nu prin gol. */
 
     // Raza bulelor la raza de analiză dată (referința: 10 km = BUBBLE.RADIUS_M).
     // Scala e √(rază), nu liniară: la 1 km bulele rămân citibile, la 10 km nu
@@ -1201,30 +1599,176 @@
 
     function bubbleGapM(radiusM) {
         var B = CONFIG.BUBBLE;
-        var g = (B.GAP_M || 260) * bubbleScale(radiusM);
-        return Math.round(Math.max(B.GAP_MIN_M || 80, g));
+        var g = (B.GAP_M || 110) * bubbleScale(radiusM);
+        return Math.round(Math.max(B.GAP_MIN_M || 15, g));
     }
 
-    // Câte bule are voie să aibă o rulare (sweet spot-ul de densitate).
-    function bubbleCountCap(radiusM) {
+    // Spațiul liber cerut între două bule scalează cu mărimea lor: bulele mari
+    // păstrează gap-ul complet, cele mici (care completează golurile) au nevoie
+    // de un gap proporțional mai mic, altfel nu mai încap între cele mari.
+    function bubbleGapForRadius(radiusM, baseR, gap) {
         var B = CONFIG.BUBBLE;
-        var areaKm2 = Math.PI * radiusM * radiusM / 1e6;
-        var n = Math.round(areaKm2 * (B.PER_KM2 || 0.22));
-        return Math.max(B.MIN_BUBBLES || 10, Math.min(B.MAX_BUBBLES || 140, n));
+        var floor = (typeof B.GAP_MIN_M === 'number') ? B.GAP_MIN_M : 15;
+        if (!(baseR > 0)) return gap;
+        var scaled = gap * Math.max(0.2, Math.min(1, radiusM / baseR));
+        return Math.max(floor, Math.round(scaled));
     }
 
     /**
-     * Selecția bulelor. Parcurge celulele scorate în ordinea scorului și păstrează
-     * o celulă doar dacă discul ei nu atinge nicio bulă deja aleasă și nicio
-     * parte a măștii roșii (raza de 700 m a siturilor, poligoanele de sit,
-     * dreptunghiurile de intravilan UAT).
+     * Câte bule are voie să aibă o rulare. Plafonul nu mai e doar „X bule pe km²":
+     * la o rază mică bulele sunt mici, deci același teren liber are nevoie de mult
+     * mai multe cercuri ca să fie umplut (vechiul plafon de 69 de bule la 10 km /
+     * 10 la 1 km lăsa harta goală). Când se cunoaște terenul liber real, plafonul
+     * crește cât să acopere ținta de acoperire cu raza medie a treptelor.
+     * Rămâne mărginit de MAX_BUBBLES, ca telefonul să nu se blocheze.
+     */
+    function bubbleCountCap(radiusM, freeAreaM2) {
+        var B = CONFIG.BUBBLE;
+        var areaKm2 = Math.PI * radiusM * radiusM / 1e6;
+        var n = Math.round(areaKm2 * (B.PER_KM2 || 4.5));
+        if (freeAreaM2 > 0) {
+            var floorR = (typeof B.RADIUS_FLOOR_M === 'number') ? B.RADIUS_FLOOR_M : 35;
+            var factor = (typeof B.TYPICAL_RADIUS_FACTOR === 'number') ? B.TYPICAL_RADIUS_FACTOR : 0.45;
+            var target = (typeof B.COVERAGE_TARGET === 'number') ? B.COVERAGE_TARGET : 0.82;
+            var rTypical = Math.max(floorR, bubbleBaseRadiusM(radiusM) * factor);
+            var needed = Math.ceil(freeAreaM2 * target / (Math.PI * rTypical * rTypical));
+            if (needed > n) n = needed;
+        }
+        return Math.max(B.MIN_BUBBLES || 26, Math.min(B.MAX_BUBBLES || 1400, n));
+    }
+
+    // Treapta de culoare/legendă a unui scor: low | medium | high.
+    function classifyTier(score) {
+        var C = CONFIG.CLASSIFY;
+        if (score >= C.SCORE_HIGH_FROM) return 'high';
+        if (score >= C.SCORE_DISCARD_BELOW) return 'medium';
+        return 'low';
+    }
+
+    function uatMinRedFraction() {
+        var U = uatCfg();
+        return (typeof U.MIN_RED_FRACTION === 'number') ? U.MIN_RED_FRACTION : 0.5;
+    }
+
+    /**
+     * Spațiul liber din jurul unui punct = distanța exactă până la cea mai
+     * apropiată constrângere:
+     *   • razele de protecție ale siturilor (SITE_RADIUS_M + SITE_BUFFER_M),
+     *   • dreptunghiurile măștii roșii (celule excluse: intravilan UAT / situri),
+     *   • marginea cercului de analiză (o bulă nu iese din zona scorată).
+     * Infinity = nicio constrângere în apropiere → raza maximă e permisă
+     * (vechiul cod arunca aceste celule, exact zonele deschise și bune).
+     */
+    function measureClearance(field, maskIndex, x, y, reach) {
+        var ctx = field.ctx || {};
+        var cellM = field.cellM;
+        var halfCell = cellM / 2;
+        var siteGuard = (ctx.siteRadius || CONFIG.SITE_RADIUS_M) +
+            (ctx.siteBuffer || CONFIG.SITE_BUFFER_M);
+        var clearance = Infinity;
+        var i;
+
+        if (ctx.siteIndex) {
+            var near = ctx.siteIndex.queryCircle(x, y, reach + siteGuard);
+            for (i = 0; i < near.length; i++) {
+                var sdx = x - near[i].x, sdy = y - near[i].y;
+                var sd = Math.sqrt(sdx * sdx + sdy * sdy) - siteGuard;
+                if (sd < clearance) clearance = sd;
+            }
+        }
+        if (maskIndex) {
+            var masked = maskIndex.queryCircle(x, y, reach + cellM);
+            for (i = 0; i < masked.length; i++) {
+                // distanța de la punct la dreptunghiul [x±halfCell, y±halfCell]
+                var mdx = Math.abs(x - masked[i].x) - halfCell;
+                var mdy = Math.abs(y - masked[i].y) - halfCell;
+                if (mdx < 0) mdx = 0;
+                if (mdy < 0) mdy = 0;
+                var md = Math.sqrt(mdx * mdx + mdy * mdy);
+                if (md < clearance) clearance = md;
+            }
+        }
+        if (ctx.center && field.radius) {
+            var cdx = x - ctx.center.x, cdy = y - ctx.center.y;
+            var toEdge = field.radius - Math.sqrt(cdx * cdx + cdy * cdy);
+            if (toEdge < clearance) clearance = toEdge;
+        }
+        return clearance;
+    }
+
+    /**
+     * Centre suplimentare pentru umplerea golurilor mici dintre bule: aceeași
+     * grilă, decalată cu jumătate de celulă pe ambele axe. Fiecare punct e
+     * evaluat complet (filtre obligatorii + fracția de roșu UAT + aceiași
+     * factori de scor) exact ca o celulă a câmpului, deci bulele de umplutură au
+     * aceleași culori ca heatmap-ul și respectă aceeași legendă.
+     */
+    function gapFillCandidates(field, maskIndex, minScore, maxRadius, maskGap, floorR) {
+        var ctx = field.ctx || {};
+        var cellM = field.cellM;
+        var uat = field.uat || {};
+        var minRed = (typeof uat.minRedFraction === 'number') ? uat.minRedFraction : uatMinRedFraction();
+        var half = cellM / 2;
+        var out = [];
+
+        for (var i = 0; i < field.results.length; i++) {
+            var r = field.results[i];
+            var x = r.x + half, y = r.y + half;
+            var point = { x: x, y: y, row: r.row, col: r.col, gapFill: true };
+            if (exclusionReason(point, ctx)) continue;   // sit / poligon / afară
+
+            var ll = localMetersToLatLng(x, y, field.centerLat);
+            point.lat = ll.lat; point.lng = ll.lng;
+
+            if (uat.active) {
+                var sample = uatCellRedFraction(ll.lat, ll.lng, cellM);
+                if (sample.known > 0) {
+                    if (sample.red < minRed) continue;   // intravilan → rămâne roșu
+                    point.uatRed = sample.red;
+                } else if (!uat.failOpen) {
+                    continue;
+                } else {
+                    point.uatRed = null;
+                }
+            } else {
+                point.uatRed = null;
+            }
+
+            var tri = triScoreAt(x, y, ctx.triIndex);
+            point.triScore = tri.triScore;
+            point.triQuality = tri.triQuality;
+            var s = scoreCandidate(point, ctx);
+            if (s.score < minScore) continue;
+
+            var clearance = measureClearance(field, maskIndex, x, y, maxRadius);
+            var radius = Math.min(maxRadius, Math.floor(clearance - maskGap));
+            if (radius < floorR) continue;
+
+            out.push({
+                cell: {
+                    lat: ll.lat, lng: ll.lng, x: x, y: y,
+                    row: r.row, col: r.col,
+                    score: s.score, factors: s.factors,
+                    classification: classify(s.score),
+                    tier: classifyTier(s.score),
+                    uatRed: point.uatRed, cellM: cellM, gapFill: true
+                },
+                clearance: clearance, radius: radius
+            });
+        }
+        out.sort(function (a, b) {
+            return (b.cell.score - a.cell.score) ||
+                (a.cell.row - b.cell.row) || (a.cell.col - b.cell.col);
+        });
+        return out;
+    }
+
+    /**
+     * Împachetarea bulelor. Deterministă: candidatele sunt sortate după scor
+     * (desc), apoi după rând/coloană, iar treptele de mărime sunt parcurse de la
+     * mare la mic — deci aceeași zonă produce întotdeauna același desen.
      *
-     * Raza fiecărei bule e cea reală: `min(raza de bază, distanța liberă până la
-     * mască − clearance)`. Dacă zona e atât de fragmentată de intravilan încât
-     * nu încap bule la dimensiunea preferată, se reia o dată cu podeaua și
-     * gap-urile relaxate — altfel harta ar rămâne fără nicio bulă.
-     *
-     * @returns {Array<{lat,lng,x,y,row,col,score,factors,classification,radiusM,cellM}>}
+     * @returns {Array<{lat,lng,x,y,row,col,score,factors,classification,tier,radiusM,cellM}>}
      */
     function selectBubbles(field) {
         var B = CONFIG.BUBBLE;
@@ -1232,15 +1776,16 @@
         var cellM = field.cellM;
         var gap = field.bubbleGapM || bubbleGapM(field.radius);
         var baseR = field.bubbleBaseRadiusM || bubbleBaseRadiusM(field.radius);
-        var cap = bubbleCountCap(field.radius);
+        var freeAreaM2 = field.results.length * cellM * cellM;
+        var cap = bubbleCountCap(field.radius, freeAreaM2);
         var minScore = (typeof B.MIN_SCORE === 'number') ? B.MIN_SCORE : 0;
-        var siteGuard = (ctx.siteRadius || CONFIG.SITE_RADIUS_M) +
-            (ctx.siteBuffer || CONFIG.SITE_BUFFER_M);
-        // Masca roșie e desenată exact pe cutia celulei excluse (dreptunghiurile
-        // UAT sunt celule unite pe rânduri), deci distanța liberă până la mască
-        // e distanța exactă punct→dreptunghi, nu cea până la centrul celulei.
-        var halfCell = cellM / 2;
-        var i, s, m;
+        var maskGap = (B.MASK_CLEARANCE_M === undefined) ? 25 : B.MASK_CLEARANCE_M;
+        var floorR = (typeof B.RADIUS_FLOOR_M === 'number') ? B.RADIUS_FLOOR_M : 35;
+        var tiers = (B.TIERS && B.TIERS.length) ? B.TIERS : [1, 0.66, 0.44, 0.28];
+        var tierFill = (typeof B.TIER_FILL === 'number') ? B.TIER_FILL : 0.72;
+        var gapFloor = (typeof B.GAP_MIN_M === 'number') ? B.GAP_MIN_M : 15;
+        var coverageTarget = (typeof B.COVERAGE_TARGET === 'number') ? B.COVERAGE_TARGET : 0.82;
+        var i;
 
         // Index peste celulele excluse (adică peste masca roșie desenată).
         var maskIndex = createGridIndex(Math.max(cellM, 250), Math.max(cellM, 250));
@@ -1253,73 +1798,109 @@
         for (i = 0; i < field.results.length; i++) {
             var r = field.results[i];
             if (r.score < minScore) continue;
-            var clearance = Infinity;
-
-            if (ctx.siteIndex) {
-                var near = ctx.siteIndex.queryCircle(r.x, r.y, baseR + siteGuard);
-                for (s = 0; s < near.length; s++) {
-                    var sdx = r.x - near[s].x, sdy = r.y - near[s].y;
-                    var sd = Math.sqrt(sdx * sdx + sdy * sdy) - siteGuard;
-                    if (sd < clearance) clearance = sd;
-                }
-            }
-            var masked = maskIndex.queryCircle(r.x, r.y, baseR + cellM);
-            for (m = 0; m < masked.length; m++) {
-                // distanța de la punct la dreptunghiul [x±halfCell, y±halfCell]
-                var mdx = Math.abs(r.x - masked[m].x) - halfCell;
-                var mdy = Math.abs(r.y - masked[m].y) - halfCell;
-                if (mdx < 0) mdx = 0;
-                if (mdy < 0) mdy = 0;
-                var md = Math.sqrt(mdx * mdx + mdy * mdy);
-                if (md < clearance) clearance = md;
-            }
-            if (!isFinite(clearance)) continue;
-            cells.push({ cell: r, clearance: clearance });
+            cells.push({
+                cell: r,
+                clearance: measureClearance(field, maskIndex, r.x, r.y, baseR),
+                used: false
+            });
         }
 
-        // 2) greedy, cu verificarea reală a distanței față de bulele deja alese
+        // 2) sortare totală (scor, apoi poziție) → rezultat determinist
         cells.sort(function (a, b) {
             return (b.cell.score - a.cell.score) ||
                 (a.cell.row - b.cell.row) || (a.cell.col - b.cell.col);
         });
 
-        function pass(minR, bubbleGap, maskGap) {
-            var keptIndex = createGridIndex(baseR * 2 + bubbleGap, baseR * 2 + bubbleGap);
-            var kept = [];
-            for (var k = 0; k < cells.length && kept.length < cap; k++) {
-                var radius = Math.min(baseR, Math.floor(cells[k].clearance - maskGap));
-                if (radius < minR) continue;
-                var c = cells[k].cell;
-                var reach = radius + baseR + bubbleGap;
-                var neighbours = keptIndex.queryCircle(c.x, c.y, reach);
-                var ok = true;
-                for (var n = 0; n < neighbours.length; n++) {
-                    var ndx = c.x - neighbours[n].x, ndy = c.y - neighbours[n].y;
-                    var need = radius + neighbours[n].radiusM + bubbleGap;
-                    if (ndx * ndx + ndy * ndy < need * need) { ok = false; break; }
-                }
-                if (!ok) continue;
-                var bubble = {
-                    lat: c.lat, lng: c.lng, x: c.x, y: c.y,
-                    row: c.row, col: c.col,
-                    score: c.score, factors: c.factors,
-                    classification: c.classification,
-                    cellM: cellM, radiusM: radius
-                };
-                kept.push(bubble);
-                keptIndex.insert(bubble.x, bubble.y, bubble);
-            }
-            return kept;
+        var kept = [];
+        var keptIndex = createGridIndex(baseR * 2 + gap, baseR * 2 + gap);
+        var bubbleAreaM2 = 0;
+
+        function coverage() {
+            return freeAreaM2 > 0 ? bubbleAreaM2 / freeAreaM2 : 0;
         }
 
-        var maskGap = B.MASK_CLEARANCE_M === undefined ? 60 : B.MASK_CLEARANCE_M;
-        var bubbles = pass(B.RADIUS_MIN_M || 150, gap, maskGap);
-        // Zonă foarte fragmentată (intravilan dens): mai încercăm o dată, mai mic.
-        if (bubbles.length < Math.min(4, cap)) {
-            var relaxed = pass(B.RADIUS_FLOOR_M || 90, Math.round(gap * 0.6), Math.round(maskGap * 0.6));
-            if (relaxed.length > bubbles.length) bubbles = relaxed;
+        function conflicts(x, y, radius, needGap) {
+            var reach = radius + baseR + needGap;
+            var neighbours = keptIndex.queryCircle(x, y, reach);
+            for (var n = 0; n < neighbours.length; n++) {
+                var ndx = x - neighbours[n].x, ndy = y - neighbours[n].y;
+                // margine la margine: raza nouă + raza vecinului + gap-ul treptei
+                var need = radius + neighbours[n].radiusM + needGap;
+                if (ndx * ndx + ndy * ndy < need * need) return true;
+            }
+            return false;
         }
-        return bubbles;
+
+        function place(c, radius) {
+            var bubble = {
+                lat: c.lat, lng: c.lng, x: c.x, y: c.y,
+                row: c.row, col: c.col,
+                score: c.score, factors: c.factors,
+                classification: c.classification,
+                tier: c.tier || classifyTier(c.score),
+                uatRed: c.uatRed === undefined ? null : c.uatRed,
+                cellM: cellM, radiusM: radius, gapFill: !!c.gapFill
+            };
+            kept.push(bubble);
+            keptIndex.insert(bubble.x, bubble.y, bubble);
+            bubbleAreaM2 += Math.PI * radius * radius;
+            return bubble;
+        }
+
+        // 3) treptele de mărime pe celulele câmpului: mari → mici, iar la final
+        //    treapta „umplere", a cărei rază e aleasă din pasul grilei (cellM) ca
+        //    două celule vecine să poată găzdui fiecare câte o bulă:
+        //    raza = (cellM − gap) / 2. Fără ea, bulele mici se blocau reciproc și
+        //    rămâneau goluri mari (principala sursă a „zonelor goale").
+        var tierRadii = [];
+        for (var t = 0; t < tiers.length; t++) {
+            tierRadii.push({ r: Math.max(floorR, Math.round(baseR * tiers[t])), filler: false });
+        }
+        var fillerR = Math.max(floorR, Math.floor((cellM - gapFloor) / 2));
+        fillerR = Math.min(fillerR, tierRadii[tierRadii.length - 1].r);
+        if (tierRadii[tierRadii.length - 1].r > fillerR) tierRadii.push({ r: fillerR, filler: true });
+        else tierRadii[tierRadii.length - 1].filler = true;
+
+        for (t = 0; t < tierRadii.length && kept.length < cap; t++) {
+            var tierR = tierRadii[t].r;
+            var tierMin = tierRadii[t].filler ? floorR : Math.max(floorR, Math.round(tierR * tierFill));
+            var tierGap = bubbleGapForRadius(tierR, baseR, gap);
+            for (var k = 0; k < cells.length && kept.length < cap; k++) {
+                if (cells[k].used) continue;
+                var radius = Math.min(tierR, Math.floor(cells[k].clearance - maskGap));
+                if (radius < tierMin) continue;
+                var c = cells[k].cell;
+                if (conflicts(c.x, c.y, radius, tierGap)) continue;
+                place(c, radius);
+                cells[k].used = true;
+            }
+        }
+
+        // 4) golurile mici dintre bule: o a doua rețea de centre, decalată cu
+        //    jumătate de celulă. Pornește doar dacă mai e loc (sub ținta de
+        //    acoperire și sub plafon) — altfel zona ar fi deja plină.
+        if (kept.length < cap && coverage() < coverageTarget) {
+            var fillGap = bubbleGapForRadius(fillerR, baseR, gap);
+            var fillers = gapFillCandidates(field, maskIndex, minScore, fillerR, maskGap, floorR);
+            for (var f = 0; f < fillers.length && kept.length < cap; f++) {
+                var fc = fillers[f];
+                if (conflicts(fc.cell.x, fc.cell.y, fc.radius, fillGap)) continue;
+                place(fc.cell, fc.radius);
+            }
+        }
+
+        // 5) acoperirea terenului liber (cerința „cât mai plin"): aria bulelor /
+        //    aria celulelor scorate. O raportează statusul, o verifică testele.
+        if (field.stats) {
+            field.stats.coverage = Math.round(Math.min(1, coverage()) * 1000) / 1000;
+            field.stats.bubbleCap = cap;
+            field.stats.gapFill = 0;
+        }
+        kept.sort(function (a, b) {
+            return (b.score - a.score) || (a.row - b.row) || (a.col - b.col);
+        });
+        for (i = 0; i < kept.length; i++) if (kept[i].gapFill) field.stats.gapFill++;
+        return kept;
     }
 
     /* ── Heatmap: fereastra de normalizare + rampa de culori ────────────────
@@ -1337,6 +1918,22 @@
         return sortedAsc[i0] + (sortedAsc[i1] - sortedAsc[i0]) * (idx - i0);
     }
 
+    function heatNormalizeMode() {
+        var H = CONFIG.HEAT;
+        return (H.NORMALIZE === 'percentile') ? 'percentile' : 'absolute';
+    }
+
+    /**
+     * Scala de culori a rulării.
+     *
+     * IMPLICIT E ABSOLUTĂ (`HEAT.NORMALIZE = 'absolute'`): poziția pe rampă e
+     * chiar scorul celulei, deci o culoare înseamnă întotdeauna același lucru —
+     * în heatmap, pe bule, în popup și în legendă. Fereastra 2..98% veche făcea
+     * scala relativă la fiecare rulare (același teren ieșea „puternic" într-o
+     * zonă și „slab" în alta), iar legenda nu mai corespundea scorurilor.
+     * Modul relativ rămâne disponibil din consolă, cu statistici păstrate:
+     * `ARCH_POTENTIAL_CONFIG.HEAT.NORMALIZE = 'percentile'`.
+     */
     function heatScoreWindow(results) {
         var H = CONFIG.HEAT;
         var loP = (typeof H.LOW_PERCENTILE === 'number') ? H.LOW_PERCENTILE : 0.02;
@@ -1344,11 +1941,21 @@
         var minWindow = (typeof H.MIN_WINDOW === 'number') ? H.MIN_WINDOW : 0.12;
         var scores = [];
         for (var i = 0; i < (results || []).length; i++) scores.push(results[i].score);
-        var win = { lo: 0, hi: 1, min: 0, max: 0, count: scores.length, stretched: false };
+        var win = {
+            normalize: heatNormalizeMode(),
+            lo: 0, hi: 1, min: 0, max: 0, count: scores.length, stretched: false,
+            // pragurile legendei (identice cu CONFIG.CLASSIFY)
+            tiers: { low: CONFIG.CLASSIFY.SCORE_DISCARD_BELOW, high: CONFIG.CLASSIFY.SCORE_HIGH_FROM }
+        };
         if (!scores.length) return win;
         scores.sort(function (a, b) { return a - b; });
         win.min = scores[0];
         win.max = scores[scores.length - 1];
+        if (win.normalize === 'absolute') {
+            win.lo = 0;
+            win.hi = 1;
+            return win;
+        }
         var a = percentile(scores, loP);
         var b = percentile(scores, hiP);
         // Scoruri într-o bandă îngustă → întindem fereastra în jurul medianei,
@@ -1364,9 +1971,10 @@
         return win;
     }
 
-    // Scor brut → 0..1 în fereastra rulării (0 = cel mai slab, 1 = cel mai bun).
+    // Scor brut → poziția pe rampă (0 = cel mai slab, 1 = cel mai bun).
     function heatNormalize(score, win) {
-        if (!win || !(win.hi > win.lo)) return 0.5;
+        if (!win || win.normalize === 'absolute') return clamp01(score);
+        if (!(win.hi > win.lo)) return 0.5;
         var t = (score - win.lo) / (win.hi - win.lo);
         return Math.max(0, Math.min(1, t));
     }
@@ -1456,8 +2064,9 @@
     // Valori normalizate → RGBA. Alfa crește odată cu scorul: zonele slabe sunt
     // translucide (se citesc ca „puțin interesant”), cele bune saturate.
     function colorizeField(values, valid, cols, rows, lut, H) {
-        var aMin = (typeof H.ALPHA_MIN === 'number') ? H.ALPHA_MIN : 0.46;
+        var aMin = (typeof H.ALPHA_MIN === 'number') ? H.ALPHA_MIN : 0.52;
         var aMax = (typeof H.ALPHA_MAX === 'number') ? H.ALPHA_MAX : 0.97;
+        var gamma = (typeof H.ALPHA_GAMMA === 'number') ? H.ALPHA_GAMMA : 0.6;
         var rgba = new Uint8ClampedArray(cols * rows * 4);
         for (var i = 0; i < values.length; i++) {
             if (!valid[i]) continue;
@@ -1466,7 +2075,7 @@
             rgba[i * 4] = lut[li];
             rgba[i * 4 + 1] = lut[li + 1];
             rgba[i * 4 + 2] = lut[li + 2];
-            rgba[i * 4 + 3] = Math.round((aMin + (aMax - aMin) * Math.pow(t, 0.75)) * 255);
+            rgba[i * 4 + 3] = Math.round((aMin + (aMax - aMin) * Math.pow(t, gamma)) * 255);
         }
         return rgba;
     }
@@ -1481,22 +2090,33 @@
         var grid = field.grid;
         var cols = grid.cols, rows = grid.rows;
         var win = field.heat || heatScoreWindow(field.results);
-        var values = new Float32Array(rows * cols);
+        var base = new Float32Array(rows * cols);
         var valid = new Uint8Array(rows * cols);
         for (var i = 0; i < field.results.length; i++) {
             var r = field.results[i];
             if (r.row == null || r.col == null) continue;
             var idx = r.row * cols + r.col;
-            if (idx < 0 || idx >= values.length) continue;
-            values[idx] = heatNormalize(r.score, win);
+            if (idx < 0 || idx >= base.length) continue;
+            base[idx] = heatNormalize(r.score, win);
             valid[idx] = 1;
         }
-        var smooth = smoothField(values, valid, cols, rows, H.SMOOTH_SIGMA_CELLS);
+        // Netezirea se face doar între celulele scorate: zonele excluse (UAT +
+        // razele siturilor) rămân transparente și sunt pictate cu roșu de mască.
+        var smooth = smoothField(base, valid, cols, rows, H.SMOOTH_SIGMA_CELLS);
+        var lut = heatRampLut();
         return {
             cols: cols, rows: rows,
-            values: smooth, valid: valid,
-            rgba: colorizeField(smooth, valid, cols, rows, heatRampLut(), H),
-            window: win, bbox: grid.bbox, cellM: grid.cellM
+            values: smooth, base: base, valid: valid,
+            rgba: colorizeField(smooth, valid, cols, rows, lut, H),
+            window: win, bbox: grid.bbox, cellM: grid.cellM,
+            // Culoarea exactă a unei celule (înainte de netezire) — identică cu
+            // scoreColor(score) și cu bucata corespunzătoare din legendă.
+            colorAt: function (row, col) {
+                var idx = row * cols + col;
+                if (!valid[idx]) return null;
+                var li = Math.round(Math.max(0, Math.min(1, base[idx])) * 255) * 4;
+                return 'rgb(' + lut[li] + ',' + lut[li + 1] + ',' + lut[li + 2] + ')';
+            }
         };
     }
 
@@ -1513,20 +2133,29 @@
     var _currentField = null;    // câmpul complet (debug / teste)
     var _resultsVisible = true;
 
-    // Bulele mici păstrează limbajul vizual mov, dar au trei trepte: scorurile
-    // slabe sunt desenate pal (ca să nu rămână goluri pe hartă, fără a concura
-    // vizual cu zonele bune), cele medii ca înainte, cele ridicate saturat.
-    var STYLE = {
-        low:    { color: '#B388E8', weight: 0.7, opacity: 0.40, fillColor: '#B388E8', fillOpacity: 0.09 },
-        medium: { color: '#B388E8', weight: 1.1, opacity: 0.75, fillColor: '#B388E8', fillOpacity: 0.24 },
-        high:   { color: '#5E2B9E', weight: 1.6, opacity: 0.92, fillColor: '#6B2FA0', fillOpacity: 0.48 }
+    // Treptele de stil ale bulelor: grosimea și opacitatea spun cât de puternică
+    // e zona (pal → saturat), iar CULOAREA vine întotdeauna din scor, prin aceeași
+    // rampă ca a heatmap-ului și ca a legendei (HEAT_GRADIENT). Astfel o culoare
+    // înseamnă același lucru în ambele moduri de afișare.
+    var STYLE_TIERS = {
+        low:    { weight: 0.8, opacity: 0.55, fillOpacity: 0.20 },
+        medium: { weight: 1.2, opacity: 0.80, fillOpacity: 0.36 },
+        high:   { weight: 1.7, opacity: 0.95, fillOpacity: 0.55 }
     };
 
+    // Scorurile de referință ale celor trei bucăți din legendă (punctele din
+    // interiorul fiecărei trepte Low / Medium / High).
+    var LEGEND_SCORES = { low: 0.15, medium: 0.40, high: 0.78 };
+
     function styleFor(score) {
-        var cls = classify(score);
-        if (cls === 'high') return STYLE.high;
-        if (cls === 'medium') return STYLE.medium;
-        return STYLE.low;
+        var tier = classifyTier(score);
+        var t = STYLE_TIERS[tier] || STYLE_TIERS.low;
+        var c = scoreColorHex(score);
+        return {
+            tier: tier,
+            color: c, weight: t.weight, opacity: t.opacity,
+            fillColor: c, fillOpacity: t.fillOpacity
+        };
     }
 
     // Paneele stratului: heatmap sub mască, masca sub bule, bulele sub pin.
@@ -1570,40 +2199,25 @@
         return _bubbleRenderer;
     }
 
-    // ── Score → color (heat scale) ──────────────────────────────────────────
-    // Maps the valid score range [SCORE_DISCARD_BELOW .. 1] onto a
-    // red → amber → violet gradient, matching the layer's purple "high"
-    // visual language (low scores burn red, high scores glow violet).
-    var SCORE_COLOR_STOPS = [
-        { s: 0.25, rgb: [224, 82, 82] },   // #E05252 red (low)
-        { s: 0.55, rgb: [240, 160, 48] },  // #F0A030 amber (medium)
-        { s: 1.00, rgb: [123, 63, 212] }   // #7B3FD4 violet (high)
-    ];
-
-    function scoreColor(score) {
-        var t = Math.max(SCORE_COLOR_STOPS[0].s, Math.min(SCORE_COLOR_STOPS[SCORE_COLOR_STOPS.length - 1].s, score));
-        for (var i = 1; i < SCORE_COLOR_STOPS.length; i++) {
-            if (t <= SCORE_COLOR_STOPS[i].s) {
-                var a = SCORE_COLOR_STOPS[i - 1], b = SCORE_COLOR_STOPS[i];
-                var f = (t - a.s) / (b.s - a.s);
-                var r = Math.round(a.rgb[0] + (b.rgb[0] - a.rgb[0]) * f);
-                var g = Math.round(a.rgb[1] + (b.rgb[1] - a.rgb[1]) * f);
-                var bl = Math.round(a.rgb[2] + (b.rgb[2] - a.rgb[2]) * f);
-                return 'rgb(' + r + ',' + g + ',' + bl + ')';
-            }
-        }
-        return 'rgb(' + SCORE_COLOR_STOPS[SCORE_COLOR_STOPS.length - 1].rgb.join(',') + ')';
-    }
-
+    // ── Score → culoare: O SINGURĂ rampă pentru tot stratul ─────────────────
+    // Bulele, heatmap-ul, popup-ul (stele + procent) și legenda folosesc cu toții
+    // HEAT_GRADIENT aplicat pe scorul ABSOLUT: aceeași nuanță = același scor,
+    // indiferent de rulare sau de modul de afișare. Roșul rămâne rezervat exclusiv
+    // zonelor excluse (intravilan UAT + razele de protecție ale siturilor).
     // Rampa heatmap: indigo închis (cel mai slab) → albastru → verde →
     // chihlimbar → violet (cel mai bun). Cinci trepte de nuanță bine separate,
     // ca diferența dintre o zonă slabă și una bună să sară în ochi. Roșul e
     // rezervat exclusiv zonelor excluse (UAT / patrimoniu), ca legenda să nu
     // fie ambiguă. Aceeași rampă e în .archeo-pot-heatbar (css/styles.css).
+    // Opririle rampei sunt aliniate cu pragurile de clasificare (CONFIG.CLASSIFY),
+    // ca legenda să fie literalmente adevărată: 25% = trecerea Low → Medium
+    // (albastru), 55% = trecerea Medium → High (verde), apoi chihlimbar și violet.
+    // Aceleași procente apar și în .archeo-pot-heatbar (css/styles.css) și în
+    // legenda stratului din index.html.
     var HEAT_GRADIENT = {
         0.00: '#10233f',
         0.25: '#1f7fc4',
-        0.50: '#23c48e',
+        0.55: '#23c48e',
         0.75: '#f2b134',
         1.00: '#8b3ff0'
     };
@@ -1612,6 +2226,28 @@
     function heatRampLut() {
         if (!_heatRampLut) _heatRampLut = buildHeatRamp(HEAT_GRADIENT);
         return _heatRampLut;
+    }
+
+    function scoreColorRgb(score) {
+        var lut = heatRampLut();
+        var i = Math.round(clamp01(score) * 255) * 4;
+        return [lut[i], lut[i + 1], lut[i + 2]];
+    }
+
+    function scoreColorHex(score) {
+        var c = scoreColorRgb(score);
+        var out = '#';
+        for (var i = 0; i < 3; i++) {
+            var h = c[i].toString(16);
+            out += (h.length < 2 ? '0' : '') + h;
+        }
+        return out;
+    }
+
+    // 'rgb(r,g,b)' — folosit în popup (stele, procent, bulă de culoare).
+    function scoreColor(score) {
+        var c = scoreColorRgb(score);
+        return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
     }
 
     // ── 5-star rating ───────────────────────────────────────────────────────
@@ -1632,7 +2268,11 @@
     }
 
     function popupHtml(c, idx) {
-        var cls = classify(c.score) === 'high' ? tr('class_high') : tr('class_medium');
+        // Trei trepte, identice cu legenda: Low (< 25%), Medium (25–55%),
+        // High (≥ 55%) — iar culoarea textului/stelelor e culoarea rampei pentru
+        // scorul exact al celulei (aceeași cu a bulei și cu a heatmap-ului).
+        var tier = classifyTier(c.score);
+        var cls = tier === 'high' ? tr('class_high') : (tier === 'medium' ? tr('class_medium') : tr('class_low'));
         var color = scoreColor(c.score);
         var pct = Math.round(c.score * 100);
         var factors = c.factors || {};
@@ -2148,6 +2788,7 @@
         en: {
             run_btn: 'Detect',
             running_short: 'Analyzing',
+            running_tiles: 'Loading the UAT raster… {p}%',
             running: 'Analyzing the {r} km area…',
             running_pin: 'Analyzing the {r} km area around the purple pin…',
             running_center: 'Analyzing the {r} km area around the map center…',
@@ -2156,8 +2797,11 @@
             done: 'Analysis complete.',
             no_sites: 'Not enough archaeological sites in the area (need at least 3).',
             no_triangles: 'Sites are collinear / too clustered — no valid triangles.',
-            no_candidates: 'No cell passed the filters (UAT red zone / site distances). Try a different area.',
+            no_candidates: 'No cell passed the filters (UAT built-up area / site radii). Try a different area.',
             no_bubbles: 'Every scored cell sits too close to the UAT built-up area or a heritage radius for a whole bubble to fit — switch to Heatmap to read the scores.',
+            sparse_sites: 'Only {n} known site(s) in the area — the scores come from the site distances alone (no triangulation).',
+            uat_unavailable: 'The UAT raster could not be read here ({n} tiles) — the built-up exclusion was skipped, so only the heritage radii stay red.',
+            uat_partial: 'UAT raster missing for {n} tiles ({p}% of the area) — there the built-up exclusion was skipped.',
             error: 'Analysis failed — check the console for details.',
             cancelled: 'Analysis cancelled.',
             candidate: 'Candidate',
@@ -2165,14 +2809,15 @@
             radius: 'radius',
             class_high: 'High Potential',
             class_medium: 'Medium Potential',
+            class_low: 'Low Potential',
             nearby: 'Nearby sites',
             closest_site: 'Closest site',
             avg_dist: 'Avg. distance',
             density: 'Density',
             tri_quality: 'Triangle quality',
             summary: '{n} candidates · {h} High · {m} Medium',
-            summary_field: '{n} bubbles ({h} High · {m} Medium) from {s} scored cells · {x} excluded (red)',
-            summary_heat: '{n} scored cells in the heatmap · {x} excluded (red)',
+            summary_field: '{n} bubbles ({h} High · {m} Medium · {l} Low) covering {c}% of the free ground · {s} scored cells · {x} excluded (red)',
+            summary_heat: '{n} scored cells in the heatmap ({h} High · {m} Medium · {l} Low) · {x} excluded (red)',
             pin_hint: 'Pin mode off — the analysis starts from the map center.',
             pin_armed: 'Tap the map to drop the purple pin, then press “Detect”.',
             pin_set: 'Pin at {lat}, {lng} · radius {r} km — press “Detect”.'
@@ -2180,6 +2825,7 @@
         ro: {
             run_btn: 'Detectează',
             running_short: 'Se analizează',
+            running_tiles: 'Se încarcă rasterul UAT… {p}%',
             running: 'Se analizează raza de {r} km…',
             running_pin: 'Se analizează raza de {r} km din jurul pinului mov…',
             running_center: 'Se analizează raza de {r} km din jurul centrului hărții…',
@@ -2188,8 +2834,11 @@
             done: 'Analiză finalizată.',
             no_sites: 'Nu sunt suficiente situri arheologice în zonă (e nevoie de cel puțin 3).',
             no_triangles: 'Siturile sunt coliniare / prea grupate — fără triunghiuri valide.',
-            no_candidates: 'Nicio celulă nu a trecut filtrele (zona roșie UAT / distanțe față de situri). Încearcă altă zonă.',
+            no_candidates: 'Nicio celulă nu a trecut filtrele (intravilan UAT / razele siturilor). Încearcă altă zonă.',
             no_bubbles: 'Fiecare celulă cu scor e prea aproape de intravilanul UAT sau de o rază de protecție ca să încapă o bulă întreagă — treci pe Heatmap ca să vezi scorurile.',
+            sparse_sites: 'Doar {n} sit(uri) cunoscute în zonă — scorurile vin numai din distanțele față de situri (fără triangulare).',
+            uat_unavailable: 'Rasterul UAT nu a putut fi citit aici ({n} tile-uri) — excluderea intravilanului a fost sărită, deci rămân roșii doar razele siturilor.',
+            uat_partial: 'Rasterul UAT lipsește pentru {n} tile-uri ({p}% din zonă) — acolo excluderea intravilanului a fost sărită.',
             error: 'Analiza a eșuat — vezi consola pentru detalii.',
             cancelled: 'Analiză anulată.',
             candidate: 'Candidat',
@@ -2197,14 +2846,15 @@
             radius: 'rază',
             class_high: 'Potențial Ridicat',
             class_medium: 'Potențial Mediu',
+            class_low: 'Potențial Scăzut',
             nearby: 'Situri apropiate',
             closest_site: 'Situl cel mai apropiat',
             avg_dist: 'Distanță medie',
             density: 'Densitate',
             tri_quality: 'Calitate triunghi',
             summary: '{n} candidați · {h} Ridicat · {m} Mediu',
-            summary_field: '{n} bule ({h} Ridicat · {m} Mediu) din {s} celule cu scor · {x} excluse (roșu)',
-            summary_heat: '{n} celule în heatmap · {x} excluse (roșu)',
+            summary_field: '{n} bule ({h} Ridicat · {m} Mediu · {l} Scăzut) care acoperă {c}% din terenul liber · {s} celule cu scor · {x} excluse (roșu)',
+            summary_heat: '{n} celule în heatmap ({h} Ridicat · {m} Mediu · {l} Scăzut) · {x} excluse (roșu)',
             pin_hint: 'Modul pin e oprit — analiza pornește din centrul hărții.',
             pin_armed: 'Atinge harta ca să pui pinul mov, apoi apasă „Detectează”.',
             pin_set: 'Pin la {lat}, {lng} · rază {r} km — apasă „Detectează”.'
@@ -2243,10 +2893,13 @@
         if (n > 0) {
             var excluded = (stats.excludedUat || 0) + (stats.excludedHeritage || 0);
             // Modul BULE numără bulele desenate, modul HEAT celulele scorate.
+            var coverage = Math.round((stats.coverage || 0) * 100);
             var text = tr(mode === 'heat' ? 'summary_heat' : 'summary_field')
                 .replace('{n}', mode === 'heat' ? n : (stats.bubbles || 0))
                 .replace('{h}', mode === 'heat' ? (stats.high || 0) : (stats.bubblesHigh || 0))
                 .replace('{m}', mode === 'heat' ? (stats.medium || 0) : (stats.bubblesMedium || 0))
+                .replace('{l}', mode === 'heat' ? (stats.low || 0) : (stats.bubblesLow || 0))
+                .replace('{c}', coverage)
                 .replace('{s}', n)
                 .replace('{x}', excluded);
             summaryEl.style.display = '';
@@ -2353,6 +3006,51 @@
         if (label) label.textContent = (km === undefined ? radiusKm() : km) + ' km';
     }
 
+    /**
+     * Legenda e pictată din COD, nu din CSS static: bucățile de culoare folosesc
+     * exact scoreColorHex() pe scorurile de referință ale treptelor, bara de heat
+     * folosește opririle HEAT_GRADIENT, iar pragurile afișate sunt cele din
+     * CONFIG.CLASSIFY. Astfel legenda rămâne adevărată și dacă rampa sau pragurile
+     * sunt schimbate live din consolă.
+     */
+    function syncLegend() {
+        if (typeof document === 'undefined' || !document.querySelectorAll) return;
+        var C = CONFIG.CLASSIFY;
+        var lowPct = Math.round(C.SCORE_DISCARD_BELOW * 100);
+        var highPct = Math.round(C.SCORE_HIGH_FROM * 100);
+        var bands = {
+            low: '< ' + lowPct + '%',
+            medium: lowPct + '\u2013' + highPct + '%',
+            high: '\u2265 ' + highPct + '%'
+        };
+        try {
+            var swatches = document.querySelectorAll('[data-archeo-swatch]');
+            for (var i = 0; i < swatches.length; i++) {
+                var tier = swatches[i].getAttribute('data-archeo-swatch');
+                var score = LEGEND_SCORES[tier];
+                if (score === undefined) continue;
+                var color = scoreColorHex(score);
+                if (swatches[i].style) {
+                    swatches[i].style.background = color;
+                    swatches[i].style.boxShadow = '0 0 0 1px rgba(16,6,28,.65)';
+                    swatches[i].setAttribute('title', tier + ' ' + bands[tier] + ' · ' + color);
+                }
+            }
+            var bandEls = document.querySelectorAll('[data-archeo-band]');
+            for (var b = 0; b < bandEls.length; b++) {
+                var key = bandEls[b].getAttribute('data-archeo-band');
+                if (bands[key] !== undefined) bandEls[b].textContent = bands[key];
+            }
+            var bar = document.getElementById('archeoPotHeatbar');
+            if (bar && bar.style) {
+                var stops = Object.keys(HEAT_GRADIENT).map(Number).sort(function (x, y) { return x - y; });
+                bar.style.background = 'linear-gradient(90deg,' + stops.map(function (s) {
+                    return HEAT_GRADIENT[s] + ' ' + Math.round(s * 100) + '%';
+                }).join(',') + ')';
+            }
+        } catch (e) { /* teste DOM-minimale */ }
+    }
+
     function setOutputMode(mode) {
         _mode = (mode === 'heat') ? 'heat' : 'bubbles';
         CONFIG.FIELD.MODE = _mode;
@@ -2364,6 +3062,7 @@
         var legendHeat = el('archeoPotLegendHeat');
         if (legendBubbles) legendBubbles.style.display = _mode === 'bubbles' ? 'flex' : 'none';
         if (legendHeat) legendHeat.style.display = _mode === 'heat' ? 'flex' : 'none';
+        syncLegend();
         // Comutarea modului redesenează imediat ultima analiză (dacă există).
         if (_currentField) renderField(_currentField);
         return _mode;
@@ -2724,7 +3423,10 @@
                     isCancelled: function () { return myVersion !== _runVersion; },
                     onProgress: function (ratio) {
                         if (myVersion !== _runVersion) return;
-                        setStatus('progress', false, { p: Math.round(ratio * 100) });
+                        // Primele 30% din progres sunt descărcarea tile-urilor UAT
+                        // (singura parte de rețea) — altfel statusul pare blocat.
+                        if (ratio < 0.3) setStatus('running_tiles', false, { p: Math.round(ratio / 0.3 * 100) });
+                        else setStatus('progress', false, { p: Math.round((ratio - 0.3) / 0.7 * 100) });
                     }
                 });
 
@@ -2745,11 +3447,23 @@
                 console.log('[ArcheoPotential] ' + mode + ' · ' +
                     st.sites + ' sites, ' + st.cells + ' cells (' + field.cellM + ' m), ' +
                     st.scored + ' scored, ' + st.excludedUat + ' UAT-excluded, ' +
-                    st.excludedHeritage + ' heritage-excluded (' + st.high + ' high, ' +
-                    st.medium + ' medium, ' + st.low + ' low) — ' + st.ms + ' ms');
+                    st.excludedHeritage + ' heritage-excluded, ' + st.uatUnknown + ' UAT-unknown (' +
+                    st.high + ' high, ' + st.medium + ' medium, ' + st.low + ' low) · ' +
+                    st.bubbles + ' bubbles covering ' + Math.round((st.coverage || 0) * 100) +
+                    '% of ' + st.freeAreaKm2 + ' km² free ground · UAT tiles ' +
+                    st.uatTilesOk + '/' + st.uatTiles + ' — ' + st.ms + ' ms');
 
+                // Rasterul UAT necitit (offline / CORS / fără acoperire) nu mai
+                // golește harta: excluderea de intravilan e sărită și spunem asta.
+                var uatFailed = field.uat && field.uat.total ? field.uat.total - field.uat.ok : 0;
                 if (!field.results.length) setStatus('no_candidates', true);
                 else if (mode !== 'heat' && !field.bubbles.length) setStatus('no_bubbles', true);
+                else if (!field.uat.available) setStatus('uat_unavailable', true, { n: field.uat.total || 0 });
+                else if (uatFailed > 0) setStatus('uat_partial', false, {
+                    n: uatFailed,
+                    p: Math.round(uatFailed / Math.max(1, field.uat.total) * 100)
+                });
+                else if (field.status === 'sparse_sites') setStatus('sparse_sites', false, { n: st.sites });
                 else setStatus('done');
                 setSummary(st, mode);
             } catch (err) {
@@ -2796,6 +3510,7 @@
      * ═══════════════════════════════════════════════════════════════════════ */
 
     function onLangChange() {
+        syncLegend();
         setStatus(_lastStatus.key, _lastStatus.isError, _lastStatus.vars);
         if (_currentField) setSummary(_currentField.stats, outputMode());
         if (!_runInFlight) setRunning(false);
@@ -2893,7 +3608,12 @@
         drawPin(latlng);
         return _pinLatLng;
     };
-    window._archeoPotentialResetCache = function () { _siteIndexCache = null; };
+    // Resetare completă a cache-urilor: indexul de situri + tile-urile UAT
+    // decodate (inclusiv cele eșuate, care altfel ar rămâne blocate FAILURE_TTL_MS).
+    window._archeoPotentialResetCache = function () {
+        _siteIndexCache = null;
+        resetUatTileCache();
+    };
     window._archeoPotentialDebug = {
         config: CONFIG,
         collectSitesInRadius: collectSitesInRadius,
@@ -2905,10 +3625,24 @@
         classify: classify,
         selectSeparated: selectSeparated,
         pointInPolygon: pointInPolygon,
+        createGridIndex: createGridIndex,
         scoreColor: scoreColor,
+        scoreColorHex: scoreColorHex,
+        scoreColorRgb: scoreColorRgb,
+        classifyTier: classifyTier,
+        styleFor: styleFor,
+        LEGEND_SCORES: LEGEND_SCORES,
+        syncLegend: syncLegend,
         starRatingHtml: starRatingHtml,
         popupHtml: popupHtml,
         uatPixelAt: uatPixelAt,
+        uatCellRedFraction: uatCellRedFraction,
+        uatTileRange: uatTileRange,
+        uatIsRedPixel: uatIsRedPixel,
+        fetchUatTile: fetchUatTile,
+        prewarmUatTiles: prewarmUatTiles,
+        resetUatTileCache: resetUatTileCache,
+        _uatTileStates: _uatTileStates,
         computeCandidates: computeCandidates,
         projectToLocalMeters: projectToLocalMeters,
         localMetersToLatLng: localMetersToLatLng,
@@ -2925,11 +3659,15 @@
         uatMaskRectangles: uatMaskRectangles,
         // bule rare (sweet spot) + rasterul de scor pentru heatmap
         selectBubbles: selectBubbles,
+        measureClearance: measureClearance,
+        gapFillCandidates: gapFillCandidates,
         bubbleBaseRadiusM: bubbleBaseRadiusM,
         bubbleGapM: bubbleGapM,
+        bubbleGapForRadius: bubbleGapForRadius,
         bubbleCountCap: bubbleCountCap,
         heatScoreWindow: heatScoreWindow,
         heatNormalize: heatNormalize,
+        heatNormalizeMode: heatNormalizeMode,
         buildHeatRamp: buildHeatRamp,
         buildHeatRaster: buildHeatRaster,
         smoothField: smoothField,

@@ -135,10 +135,18 @@ assert.match(
     /function bubbleBaseRadiusM\(radiusM\) \{/,
     'the bubble base radius is a metre value derived from the analysis radius (no pixel radii)'
 );
+// Bubbles are packed in size tiers (large → small) so they fill the free ground,
+// but every radius is still a METRE value capped by the clearance measured
+// around that cell — never a pixel radius.
 assert.match(
     archeo,
-    /var radius = Math\.min\(baseR, Math\.floor\(cells\[k\]\.clearance - maskGap\)\);/,
+    /var radius = Math\.min\(tierR, Math\.floor\(cells\[k\]\.clearance - maskGap\)\);/,
     'each bubble radius stays in metres, limited by the free ground around it'
+);
+assert.match(
+    archeo,
+    /function bubbleGapForRadius\(radiusM, baseR, gap\) \{/,
+    'the bubble gap is a metre value too (it shrinks with the tier, never in pixels)'
 );
 assert.match(
     archeo,

@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260917-pwa-panel-flush">
+    <link rel="stylesheet" href="css/styles.css?v=20260917-archeo-coverage">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -2784,35 +2784,50 @@
                              altfel setLang() ar suprascrie textul de runtime cu cel static. -->
                         <div id="archeoPotStatus" style="font-size:0.72rem;color:rgba(245,240,235,0.55);margin-top:7px;line-height:1.45">Set the radius (1–10 km) and press the button.</div>
                         <div id="archeoPotSummary" style="display:none;font-size:0.74rem;margin-top:4px;line-height:1.45"></div>
-                        <!-- Legenda e comutată de js/archeo-potential.js în funcție de modul ales. -->
-                        <div class="archeo-pot-legend" id="archeoPotLegendBubbles" style="display:flex;align-items:center;gap:14px;margin-top:9px">
-                            <span style="display:flex;align-items:center;gap:5px;font-size:0.68rem;color:rgba(245,240,235,0.7)">
-                                <span style="width:10px;height:10px;border-radius:50%;background:rgba(179,136,232,0.09);border:1px solid rgba(179,136,232,0.4);display:inline-block;flex-shrink:0"></span>
-                                <span class="t" data-key="archeo_legend_low">Low Potential</span>
-                            </span>
-                            <span style="display:flex;align-items:center;gap:5px;font-size:0.68rem;color:rgba(245,240,235,0.7)">
-                                <span style="width:10px;height:10px;border-radius:50%;background:rgba(179,136,232,0.3);border:1.5px solid #B388E8;display:inline-block;flex-shrink:0"></span>
-                                <span class="t" data-key="archeo_legend_medium">Medium Potential</span>
-                            </span>
-                            <span style="display:flex;align-items:center;gap:5px;font-size:0.68rem;color:rgba(245,240,235,0.7)">
-                                <span style="width:10px;height:10px;border-radius:50%;background:rgba(107,47,160,0.6);border:1.5px solid #5E2B9E;display:inline-block;flex-shrink:0"></span>
-                                <span class="t" data-key="archeo_legend_high">High Potential</span>
-                            </span>
-                        </div>
-                        <div class="archeo-pot-legend archeo-pot-legend-heat" id="archeoPotLegendHeat" style="display:none">
+                        <!-- Legenda e comutată de js/archeo-potential.js în funcție de modul
+                             ales, iar culorile/pragurile sunt pictate tot de el (syncLegend)
+                             din aceeași rampă HEAT_GRADIENT folosită de bule și de heatmap:
+                             o culoare înseamnă întotdeauna același scor. -->
+                        <div class="archeo-pot-legend" id="archeoPotLegendBubbles" style="display:flex;align-items:center;gap:12px;margin-top:9px;flex-wrap:wrap">
                             <span class="archeo-pot-legend-item">
-                                <span class="archeo-pot-heatbar" aria-hidden="true"></span>
-                                <span class="archeo-pot-heatlabels">
-                                    <span class="t" data-key="archeo_legend_heat_lo">Weak</span>
-                                    <span class="t" data-key="archeo_legend_heat_hi">Strong</span>
-                                </span>
+                                <span class="archeo-pot-dot" data-archeo-swatch="low" aria-hidden="true"></span>
+                                <span class="t" data-key="archeo_legend_low">Low Potential</span>
+                                <span class="archeo-pot-band" data-archeo-band="low">&lt; 25%</span>
+                            </span>
+                            <span class="archeo-pot-legend-item">
+                                <span class="archeo-pot-dot" data-archeo-swatch="medium" aria-hidden="true"></span>
+                                <span class="t" data-key="archeo_legend_medium">Medium Potential</span>
+                                <span class="archeo-pot-band" data-archeo-band="medium">25–55%</span>
+                            </span>
+                            <span class="archeo-pot-legend-item">
+                                <span class="archeo-pot-dot" data-archeo-swatch="high" aria-hidden="true"></span>
+                                <span class="t" data-key="archeo_legend_high">High Potential</span>
+                                <span class="archeo-pot-band" data-archeo-band="high">≥ 55%</span>
                             </span>
                             <span class="archeo-pot-legend-item">
                                 <span class="archeo-pot-swatch archeo-pot-swatch-red" aria-hidden="true"></span>
                                 <span class="t" data-key="archeo_legend_excluded">UAT / heritage radius</span>
                             </span>
                         </div>
-                        <div style="font-size:0.66rem;color:rgba(245,240,235,0.38);margin-top:7px;line-height:1.45" class="t" data-key="archeo_hint">Bubbles = the best spots only, spaced so they never touch each other or a heritage radius. Heatmap = every scored cell, colour = score. Red = UAT built-up area and heritage protection radii.</div>
+                        <div class="archeo-pot-legend archeo-pot-legend-heat" id="archeoPotLegendHeat" style="display:none">
+                            <span class="archeo-pot-legend-item">
+                                <span class="archeo-pot-heatbar" id="archeoPotHeatbar" aria-hidden="true"></span>
+                                <span class="archeo-pot-heatlabels">
+                                    <span class="t" data-key="archeo_legend_heat_lo">Weak</span>
+                                    <span class="t" data-key="archeo_legend_heat_hi">Strong</span>
+                                </span>
+                            </span>
+                            <span class="archeo-pot-legend-item archeo-pot-legend-scale">
+                                <span class="archeo-pot-chip"><i data-archeo-swatch="low" aria-hidden="true"></i><span class="t" data-key="archeo_legend_low">Low Potential</span> <span class="archeo-pot-band" data-archeo-band="low">&lt; 25%</span></span>
+                                <span class="archeo-pot-chip"><i data-archeo-swatch="medium" aria-hidden="true"></i><span class="t" data-key="archeo_legend_medium">Medium Potential</span> <span class="archeo-pot-band" data-archeo-band="medium">25–55%</span></span>
+                                <span class="archeo-pot-chip"><i data-archeo-swatch="high" aria-hidden="true"></i><span class="t" data-key="archeo_legend_high">High Potential</span> <span class="archeo-pot-band" data-archeo-band="high">≥ 55%</span></span>
+                            </span>
+                            <span class="archeo-pot-legend-item">
+                                <span class="archeo-pot-swatch archeo-pot-swatch-red" aria-hidden="true"></span>
+                                <span class="t" data-key="archeo_legend_excluded">UAT / heritage radius</span>
+                            </span>
+                        </div>
+                        <div style="font-size:0.66rem;color:rgba(245,240,235,0.38);margin-top:7px;line-height:1.45" class="t" data-key="archeo_hint">Bubbles fill the free ground: mixed sizes, never touching each other or a heritage radius. The heatmap scores every free cell with the same triangulated logic — colour = score on one absolute scale shared with the bubbles and this legend. Red = UAT built-up area and heritage protection radii, where nothing is ever generated.</div>
                     </div>
 
                     <!-- Archeological Report (premium) — "Raport arheologic".
@@ -3597,7 +3612,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260917-tile-perf"></script>
+    <script src="js/translations.js?v=20260917-archeo-coverage"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -3639,13 +3654,15 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260917-pwa-panel-flush"></script>
+    <script src="js/map-app.js?v=20260917-archeo-coverage"></script>
     <script src="js/offline-maps.js?v=20260916-pwa-panel-offline-exit"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20260916-pwa-panel-offline-exit"></script>
-    <!-- Heatmap renderer used by the "Archeological Potential Sites" heat output. -->
+    <!-- leaflet-heat rămâne în shell (pre-cache), dar nu mai e folosit de
+         „Archeological Potential Sites": heatmap-ul de acolo e propriul raster de
+         scoruri ancorat geografic, ca să nu alunece la zoom. -->
     <script src="js/leaflet-heat.js?v=20260916-analysis-dock"></script>
-    <script src="js/archeo-potential.js?v=20260916-pwa-panel-offline-exit"></script>
+    <script src="js/archeo-potential.js?v=20260917-archeo-coverage"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
     <script src="js/lidar-scanner.js?v=20260916-pwa-panel-offline-exit"></script>
     <script src="js/library-of-babel.js?v=20260917-babel-epochs"></script>
