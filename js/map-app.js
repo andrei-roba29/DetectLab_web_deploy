@@ -1249,6 +1249,17 @@
                 zoomAnimationThreshold: 10
             }).fitBounds(APM_BOUNDS);
 
+            // ── GLOBAL TILE GOVERNOR ──
+            // js/tile-perf.js patches every tile layer of the app (LIDAR,
+            // historical maps, APM 2.0, CORONA, basemap…) with gesture-safe
+            // defaults, merges the tile work of a whole gesture into one update
+            // and keeps a page-wide budget on the decoded tiles — the fix for
+            // the crash on sudden zoom with several dense layers open. See
+            // MAP_LAYER_PERFORMANCE.md.
+            if (window.DLTilePerf && window.DLTilePerf.attach) {
+                window.DLTilePerf.attach(map);
+            }
+
             // Keep the map snapped to the valid APM canvas while letting the
             // user zoom out far enough to see it in its entirety: the minimum
             // zoom is the level at which the whole canvas fits inside the
@@ -5510,8 +5521,29 @@
             };
 
             function _buildLidarLeafletLayer(key, cfg) {
+                // ── Gesture-safe tile options for the LIDAR stack ──
+                // LIDAR sub-layers are dense (HD/AR/AB/BH/CS + "Romania 1m" +
+                // "Romania 2–5m" + the four LAKI III sheets) and are routinely
+                // stacked on top of the basemap, CORONA and the historical
+                // maps. With Leaflet's defaults every one of them re-queued
+                // tiles on every frame of a pinch/scroll zoom, which is what
+                // made the page crash on sudden zoom. These options are the
+                // same ones the Sat60 fix uses; js/tile-perf.js applies the
+                // governor to every other tile layer of the app as well.
+                function _lidarPerfOptions(extra) {
+                    var o = extra || {};
+                    if (o.updateWhenZooming === undefined) o.updateWhenZooming = false;
+                    if (o.updateWhenIdle === undefined) o.updateWhenIdle = true;
+                    if (o.keepBuffer === undefined) {
+                        o.keepBuffer = (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : 1;
+                    }
+                    return o;
+                }
+
                 if (cfg.type === 'wms') {
-                    return L.tileLayer.wms(cfg.url, {
+                    return L.tileLayer.wms(cfg.url, _lidarPerfOptions({
                         layers: cfg.wmsLayers,
                         format: 'image/png',
                         transparent: true,
@@ -5520,14 +5552,14 @@
                         pane: 'pane_lidar',
                         attribution: '© LIDAR ' + cfg.label,
                         crs: L.CRS.EPSG3857
-                    });
+                    }));
                 }
 
 
 
                 // WMTS via KVP (evita ORB — Leaflet trimite parametrii in query string)
                 if (cfg.type === 'wms_kvp') {
-                    return L.tileLayer.wms(cfg.url, {
+                    return L.tileLayer.wms(cfg.url, _lidarPerfOptions({
                         service: 'WMTS',
                         version: '1.0.0',
                         request: 'GetTile',
@@ -5546,11 +5578,11 @@
                         tileSize: 256,
                         crs: L.CRS.EPSG3857,
                         className: cfg.className || ''
-                    });
+                    }));
                 }
 
                 // default: xyz tile layer
-                return L.tileLayer(cfg.url, {
+                return L.tileLayer(cfg.url, _lidarPerfOptions({
                     opacity: cfg.opacity,
                     pane: 'pane_lidar',
                     attribution: '© LIDAR ' + cfg.label,
@@ -5560,7 +5592,7 @@
                     tileSize: 256,
                     crossOrigin: true,
                     className: cfg.className || ''
-                });
+                }));
             }
 
             var _lidarGroup = L.layerGroup([], { pane: 'pane_lidar' });
@@ -11880,6 +11912,12 @@
                 function _sat60IsLowPowerDevice() {
                     if (typeof window.SAT60_LOW_POWER_TILES === "boolean") {
                         return window.SAT60_LOW_POWER_TILES;
+                    }
+                    // Single source of truth with the global tile governor
+                    // (js/tile-perf.js): same device class, same limits, applied
+                    // here and to every other tile layer of the app.
+                    if (window.DLTilePerf && typeof window.DLTilePerf.isLowPowerDevice === "function") {
+                        return window.DLTilePerf.isLowPowerDevice();
                     }
                     if (_sat60LowPowerCache !== null) return _sat60LowPowerCache;
                     var lowPower = false;

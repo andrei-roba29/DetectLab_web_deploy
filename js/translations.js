@@ -258,6 +258,10 @@
                 layer_ww1: 'WWI',
                 layer_ww2: 'WWII',
                 layer_satellite60s: "Satellite imagery 60's",
+                /* Shown once when the tile governor switches the page to
+                   conservation mode (too many dense layers open at once —
+                   see js/tile-perf.js and MAP_LAYER_PERFORMANCE.md). */
+                perf_layers_notice: 'Performance mode: too many image layers are open at once. Turn off the ones you do not need to keep the map smooth.',
                 layer_banat: 'Banat - 1769-1772',
                 layer_transylvania1859: 'Harta Transilvaniei 1859',
                 layer_galicia1855: 'Hartă administrativă a Galiției și Lodomeriei – 1855',
@@ -759,6 +763,10 @@
                 layer_ww1: 'WWI',
                 layer_ww2: 'WWII',
                 layer_satellite60s: "Imagini satelitare anii 60'",
+                /* Afișat o singură dată, când guvernorul de tile-uri trece
+                   pagina în modul de conservare (prea multe straturi dense
+                   active simultan — vezi js/tile-perf.js). */
+                perf_layers_notice: 'Mod performanță: sunt prea multe straturi de imagini active simultan. Oprește-le pe cele de care nu ai nevoie, ca harta să rămână fluidă.',
                 layer_banat: 'Banat - 1769-1772',
                 layer_transylvania1859: 'Harta Transilvaniei 1859',
                 layer_galicia1855: 'Hartă administrativă a Galiției și Lodomeriei – 1855',
