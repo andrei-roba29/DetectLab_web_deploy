@@ -380,6 +380,19 @@
         return String(value || '').replace(/\s+/g, ' ').trim();
     }
 
+    /* Numele stratului e scris vertical (de jos în sus) pe laterala stângă a
+       casetei de sticlă: maximum 15 caractere, iar restul devine „…”. Numele
+       complet rămâne în atributul title al etichetei. */
+    var LAYER_TITLE_MAX_CHARS = 15;
+
+    function layerTitleText(name) {
+        var text = compactText(name);
+        if (text.length > LAYER_TITLE_MAX_CHARS) {
+            return text.slice(0, LAYER_TITLE_MAX_CHARS) + '\u2026';
+        }
+        return text;
+    }
+
     function getLayerName(source, owner) {
         /* A translated layer title is preferred, but never mistake the shared
            "Opacity" translation for the layer's actual name. */
@@ -507,11 +520,47 @@
             window.clearTimeout(periodTipTimer);
             periodTipTimer = null;
         }
+        if (valueTipTimer !== null) {
+            window.clearTimeout(valueTipTimer);
+            valueTipTimer = null;
+        }
         periodTipPinned = false;
         if (valueOutput) {
             valueOutput.classList.remove('visible');
             valueOutput.style.top = '';
         }
+    }
+
+    /* ── PERCENTAGE ONLY WHILE CHANGING (opacity mirrors) ──
+       The opacity mirror's value chip is hidden by default and lights up only
+       while the user is actually changing the opacity (drag / keyboard / the
+       panel slider), fading away shortly after the last change. Distance and
+       ISTORIC mirrors keep their chips permanently visible (not percentages). */
+    var VALUE_TIP_HIDE_DELAY = 1100;
+    var valueTipTimer = null;
+
+    function showValueTip() {
+        if (valueTipTimer !== null) {
+            window.clearTimeout(valueTipTimer);
+            valueTipTimer = null;
+        }
+        if (valueOutput) valueOutput.classList.add('visible');
+    }
+
+    function hideValueTip(delay) {
+        if (valueTipTimer !== null) window.clearTimeout(valueTipTimer);
+        valueTipTimer = window.setTimeout(function () {
+            valueTipTimer = null;
+            if (valueOutput) valueOutput.classList.remove('visible');
+        }, typeof delay === 'number' ? delay : VALUE_TIP_HIDE_DELAY);
+    }
+
+    function opacityTipShow() {
+        if (activeSource && sourceKind(activeSource) === 'opacity') showValueTip();
+    }
+
+    function opacityTipHide(delay) {
+        if (activeSource && sourceKind(activeSource) === 'opacity') hideValueTip(delay);
     }
 
     function syncFromSource() {
@@ -595,7 +644,7 @@
         if (activeOwner) activeOwner.classList.add('opacity-layer-selected');
 
         var name = getLayerName(opacitySource, activeOwner);
-        layerLabel.textContent = name;
+        layerLabel.textContent = layerTitleText(name);
         layerLabel.title = name;
         if (captionEl) captionEl.textContent = ''; // no "OPACITY" strip above the mirror
         control.setAttribute('data-kind', 'opacity');
@@ -611,9 +660,13 @@
         syncFromSource();
         control.classList.add('visible', 'pair-shown');
         control.setAttribute('aria-hidden', 'false');
+        /* The current percentage peeks briefly when the mirror opens, then
+           fades — it only stays up while the value is actually changed. */
+        showValueTip();
+        hideValueTip();
 
         if (periodLayerLabel) {
-            periodLayerLabel.textContent = name;
+            periodLayerLabel.textContent = layerTitleText(name);
             periodLayerLabel.title = name;
         }
         if (periodCaptionEl) periodCaptionEl.textContent = sourceCaption(periodSource);
@@ -643,7 +696,7 @@
 
         var kind = sourceKind(source);
         var name = getLayerName(source, activeOwner);
-        layerLabel.textContent = name;
+        layerLabel.textContent = layerTitleText(name);
         layerLabel.title = name;
         if (captionEl) captionEl.textContent = sourceCaption(source);
         control.setAttribute('data-kind', kind);
@@ -660,6 +713,12 @@
         syncFromSource();
         control.classList.add('visible');
         control.setAttribute('aria-hidden', 'false');
+        /* Opacity only: peek the current percentage when the mirror opens,
+           then fade it — it stays up only while the value is changed. */
+        if (kind === 'opacity') {
+            showValueTip();
+            hideValueTip();
+        }
         startProgrammaticSync();
 
         if (source && source.id === 'archeoPotDistance') {
@@ -733,10 +792,10 @@
             selectSource(source, false);
         });
         source.addEventListener('input', function () {
-            if (source === activeSource) syncFromSource();
+            if (source === activeSource) { syncFromSource(); opacityTipShow(); }
         });
         source.addEventListener('change', function () {
-            if (source === activeSource) syncFromSource();
+            if (source === activeSource) { syncFromSource(); opacityTipHide(); }
         });
     }
 
@@ -874,9 +933,11 @@
         verticalSlider.addEventListener('input', function () {
             emitSourceEvent('input');
             if (periodTipPinned || valueOutput.classList.contains('visible')) showPeriodTip();
+            opacityTipShow();
         });
         verticalSlider.addEventListener('change', function () {
             emitSourceEvent('change');
+            opacityTipHide();
         });
 
         /* The paired Satellite period mirror drives the panel's „Istoric”
@@ -902,24 +963,37 @@
         // reveals the century only while hovered, dragged or keyboard-focused.
         verticalSlider.addEventListener('pointerenter', showPeriodTip);
         verticalSlider.addEventListener('pointerleave', function () {
+            /* The opacity chip has its own fade-out timer; pulling it here
+               would kill the brief readable moment after a drag ends. */
+            if (!activeSource || sourceKind(activeSource) !== 'period') return;
             if (!periodTipPinned) hidePeriodTip(0);
         });
         verticalSlider.addEventListener('pointerdown', function () {
+            if (activeSource && sourceKind(activeSource) === 'opacity') showValueTip();
             if (!activeSource || sourceKind(activeSource) !== 'period') return;
             periodTipPinned = true;
             showPeriodTip();
         });
         verticalSlider.addEventListener('pointerup', function () {
+            opacityTipHide();
             if (!periodTipPinned) return;
             periodTipPinned = false;
             hidePeriodTip(PERIOD_TIP_HIDE_DELAY);
         });
         verticalSlider.addEventListener('pointercancel', function () {
+            if (activeSource && sourceKind(activeSource) === 'opacity') hideValueTip(0);
+            if (!activeSource || sourceKind(activeSource) !== 'period') return;
             periodTipPinned = false;
             hidePeriodTip(0);
         });
-        verticalSlider.addEventListener('focus', showPeriodTip);
-        verticalSlider.addEventListener('blur', function () { hidePeriodTip(0); });
+        verticalSlider.addEventListener('focus', function () {
+            showPeriodTip();
+            opacityTipShow();
+        });
+        verticalSlider.addEventListener('blur', function () {
+            if (activeSource && sourceKind(activeSource) === 'period') hidePeriodTip(0);
+            opacityTipHide(200);
+        });
         if (typeof window.addEventListener === 'function') {
             window.addEventListener('resize', function () {
                 if (valueOutput.classList.contains('visible')) positionPeriodTip();
@@ -967,13 +1041,13 @@
                 return;
             }
             var name = getLayerName(activeSource, activeOwner);
-            layerLabel.textContent = name;
+            layerLabel.textContent = layerTitleText(name);
             layerLabel.title = name;
             if (captionEl) captionEl.textContent = sourceCaption(activeSource);
             syncFromSource();
             if (pairActive) {
                 if (periodLayerLabel) {
-                    periodLayerLabel.textContent = name;
+                    periodLayerLabel.textContent = layerTitleText(name);
                     periodLayerLabel.title = name;
                 }
                 var periodSource = document.getElementById('satPeriodSlider');

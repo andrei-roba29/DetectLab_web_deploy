@@ -268,6 +268,15 @@ assert.strictEqual(apm.value, '37', 'vertical value should propagate to source')
 assert.strictEqual(sourceInputs, 1, 'source input event should fire exactly once');
 assert.strictEqual(output.textContent, '37%');
 
+// The percentage is only visible while the opacity is being changed: it peeks
+// while the slider is operated and fades shortly after the last change.
+assert(output.classList.contains('visible'), 'the percentage is up while the slider is operated');
+vertical.dispatchEvent(new Event('change'));
+timeouts.forEach(function (fn, id) { timeouts.delete(id); fn(); });
+assert(!output.classList.contains('visible'), 'the percentage fades shortly after the last change');
+vertical.dispatchEvent(new Event('input'));
+assert(output.classList.contains('visible'), 'touching the slider again brings the percentage back');
+
 // Selecting another source updates selection and uses its fallback name.
 windowMock.DetectLabVerticalOpacity.select('lidarHdOpacitySlider');
 assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), 'lidarHdOpacitySlider');
@@ -287,7 +296,10 @@ windowMock.DetectLabVerticalOpacity.select('battlesPeriodSlider');
 assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), 'battlesPeriodSlider');
 assert(battlesOwner.classList.contains('opacity-layer-selected'), 'battles row should be highlighted');
 assert(!lidarOwner.classList.contains('opacity-layer-selected'), 'previous row highlight should clear');
-assert.strictEqual(label.textContent, 'Battles / Bătălii', 'fallback layer name should be used');
+assert.strictEqual(label.textContent, 'Battles / Bătăl…',
+    'titles longer than 15 characters are truncated with …');
+assert.strictEqual(label.title, 'Battles / Bătălii',
+    'the full layer name survives in the title attribute');
 assert.strictEqual(vertical.min, '-8', 'century range min should mirror the source');
 assert.strictEqual(vertical.max, '20', 'century range max should mirror the source');
 assert.strictEqual(vertical.value, '14');
@@ -390,23 +402,43 @@ assert(!dock.classList.contains('visible'), 'an opacity layer has no action dock
 assert.strictEqual(scanButton.parentElement, distanceOwner, 'its button is back in the panel row');
 close.click();
 
-/* ── the mirrored range carries its layer's colour, and its title sits ABOVE
-      the card (never inside it) ─────────────────────────────────────────── */
+/* ── slim frosted-glass card; the layer title runs bottom-up on the left
+      side of the slider; the percentage shows only while changing ───────── */
 {
     const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-    // One title wrapper per mirror: caption + layer name are lifted out of the
-    // card, so the card itself only holds the range, its value and the close ×.
+    // One title wrapper per mirror: it now hosts the caption chip (floating
+    // above the card) and the layer name (vertical, along the left side).
     assert(/class="vertical-opacity-title"[^>]*id="verticalOpacityTitle"/.test(html) &&
         /class="vertical-opacity-title"[^>]*id="verticalSatPeriodTitle"/.test(html),
-        'each mirror must wrap its title in .vertical-opacity-title');
+        'each mirror must keep its title wrapper');
     const titleRule = /\.vertical-opacity-title\s*\{([^}]*)\}/.exec(stylesCss);
     assert(titleRule, '.vertical-opacity-title must be styled');
-    assert(/position:\s*absolute/.test(titleRule[1]) && /bottom:\s*calc\(100%\s*\+/.test(titleRule[1]),
-        'the title is absolutely placed ABOVE the control, not inside it');
-    // Nothing inside the card may render the title any more.
+    assert(/grid-column:\s*1/.test(titleRule[1]) && /grid-row:\s*1\s*\/\s*-1/.test(titleRule[1]),
+        'the title is the left column of the slim card, next to the slider');
     const layerRule = /\.vertical-opacity-layer\s*\{([^}]*)\}/.exec(stylesCss);
-    assert(layerRule && !/min-height:\s*3\dpx/.test(layerRule[1]),
-        'the layer name no longer reserves a strip inside the card');
+    assert(layerRule, '.vertical-opacity-layer must be styled');
+    assert(/writing-mode:\s*vertical-rl/.test(layerRule[1]) && /rotate\(180deg\)/.test(layerRule[1]),
+        'the layer name is written vertically, bottom to top');
+    // JS keeps the vertical title to 15 characters + „…".
+    const voSrc = fs.readFileSync(path.join(__dirname, 'js', 'vertical-opacity-control.js'), 'utf8');
+    assert(/LAYER_TITLE_MAX_CHARS\s*=\s*15/.test(voSrc),
+        'the vertical layer title caps at 15 characters');
+
+    // The card is narrow frosted glass: semi-transparent fill + blur, no
+    // purple radial gradient left.
+    const controlRule = /\.vertical-opacity-control\s*\{([^}]*)\}/.exec(stylesCss);
+    assert(controlRule, '.vertical-opacity-control must be styled');
+    assert(/width:\s*50px/.test(controlRule[1]), 'the mirror card is narrow (50px, down from 68px)');
+    assert(/backdrop-filter:\s*blur\(/.test(controlRule[1]), 'the card blurs what is behind it');
+    assert(/background:\s*rgba\([^)]*0\.38\)/.test(controlRule[1]) &&
+        !/radial-gradient/.test(controlRule[1]),
+        'semi-transparent background instead of the old purple panel');
+
+    // Percentage visible only while the opacity changes.
+    assert(/\.vertical-opacity-control\[data-kind="opacity"\]\s+\.vertical-opacity-value\s*\{[^}]*visibility\s*:\s*hidden/.test(stylesCss),
+        'the opacity percentage chip starts hidden');
+    assert(/\.vertical-opacity-control\[data-kind="opacity"\]\s+\.vertical-opacity-value\.visible/.test(stylesCss),
+        'the opacity percentage chip has a while-changing visible state');
 
     // Each analysis layer paints its own slider with the colour of the pin and
     // of the radius circle it draws on the map: one rule per layer, carrying the
