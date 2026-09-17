@@ -7615,6 +7615,10 @@
 /* Offline detectorists: last known (broad) location — black & white bubble,
    visually muted so live orange pins keep the visual priority. */
 .detector-offline-marker { border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; background:#111; color:#fff; border:2px solid #fff; font-weight:800; box-shadow:0 2px 8px #0008; filter:grayscale(1); opacity:.82; }
+/* Invisible 44×44 tap pad around the 32px detectorist bubble (the divIcon is
+   44×44 with a centred anchor): the pin looks the same, but a thumb tapping
+   slightly off-centre still lands on the marker in the PWA. */
+.detector-tap-pad { width:44px; height:44px; display:flex; align-items:center; justify-content:center; background:transparent; }
 
 /* Social actions inside a detectorist popup (live pin + offline bubble).
    The slot is EMPTY in the popup markup and filled by js/friends.js when the
@@ -7624,7 +7628,7 @@
 .detector-social-actions { margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(184,216,240,0.18); }
 .detector-social-actions:empty { display: none; }
 .detector-social-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 100%; }
-.detector-social-btn { border: 0; border-radius: 7px; padding: 6px 11px; font-family: 'Outfit', sans-serif; font-size: 0.74rem; font-weight: 700; cursor: pointer; background: #6B3FA0; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detector-social-btn { border: 0; border-radius: 7px; padding: 8px 12px; min-height: 36px; font-family: 'Outfit', sans-serif; font-size: 0.74rem; font-weight: 700; cursor: pointer; background: #6B3FA0; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: manipulation; }
 .detector-social-btn:hover { filter: brightness(1.12); }
 .detector-social-btn:disabled { opacity: 0.55; cursor: default; filter: none; }
 .detector-social-btn.chat { background: #0D2B5E; border: 1px solid rgba(184,216,240,0.35); color: var(--sky,#B8D8F0); }

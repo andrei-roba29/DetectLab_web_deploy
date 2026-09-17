@@ -561,6 +561,13 @@ function createSocialServer(options) {
                 media_type: type, media_bytes: type === 'none' ? 0 : bytes,
                 created_at: new Date(now).toISOString()
             };
+            // Test hook: answer OK without persisting anything, the way a
+            // misbehaving deployment can. The client must notice that the
+            // message never landed instead of showing it as "sent".
+            if (server.failNextSendPersist) {
+                server.failNextSendPersist = false;
+                return { data: row, error: null };
+            }
             server.tables.conversation_messages.push(row);
 
             // Per-thread cap: the oldest messages are dropped first.
@@ -577,6 +584,21 @@ function createSocialServer(options) {
             conv.storage_bytes = after.reduce(function (sum, x) { return sum + (x.media_bytes || 0); }, 0);
             conv.last_message_at = row.created_at;
             return { data: row, error: null };
+        },
+
+        // Mirrors supabase/migrations/20260917000000_conversation_messages_read.sql:
+        // SECURITY DEFINER, membership enforced, newest-first page.
+        get_conversation_messages: function (p) {
+            if (!memberOf(p._conversation_id, me())) return fail('NOT_A_MEMBER');
+            const limit = Math.max(1, Math.min(Number(p._limit_n) || 400, 1000));
+            const rows = server.tables.conversation_messages
+                .filter(function (x) { return x.conversation_id === p._conversation_id; })
+                .sort(function (a, b) {
+                    if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1;
+                    return String(a.id) < String(b.id) ? 1 : -1;
+                })
+                .slice(0, limit);
+            return { data: rows, error: null };
         },
 
         list_my_conversations: function () {
@@ -671,7 +693,7 @@ function createSocialServer(options) {
 
     server.rpc = function (name, params) {
         server.rpcCalls.push(name);
-        if (server.missingFunctions) {
+        if (server.missingFunctions || (server.disabledFunctions && server.disabledFunctions[name])) {
             return Promise.resolve({
                 data: null,
                 error: { code: '42883', message: 'could not find the function public.' + name }
@@ -692,6 +714,7 @@ function createSocialServer(options) {
     // makes (conversation_messages history).
     server.from = function (table) {
         const filters = [];
+        const orders = [];
         let mode = 'select';
         let payload = null;
         let limitN = null;
@@ -703,7 +726,7 @@ function createSocialServer(options) {
             upsert(rows) { mode = 'upsert'; payload = rows; return api; },
             eq(col, val) { filters.push({ col: col, val: val }); return api; },
             in(col, val) { filters.push({ col: col, val: val, op: 'in' }); return api; },
-            order() { return api; },
+            order(col, opts) { orders.push({ col: col, asc: !(opts && opts.ascending === false) }); return api; },
             limit(n) { limitN = n; return api; },
             single() { return api._run(true); },
             then(resolve, reject) { return api._run(false).then(resolve, reject); },
@@ -731,6 +754,16 @@ function createSocialServer(options) {
                         return r[f.col] === f.val;
                     });
                 });
+                if (orders.length) {
+                    out = out.slice().sort(function (a, b) {
+                        for (const o of orders) {
+                            const sa = a[o.col] == null ? '' : String(a[o.col]);
+                            const sbv = b[o.col] == null ? '' : String(b[o.col]);
+                            if (sa !== sbv) return (sa < sbv ? -1 : 1) * (o.asc ? 1 : -1);
+                        }
+                        return 0;
+                    });
+                }
                 if (limitN != null) out = out.slice(0, limitN);
                 if (single) {
                     return Promise.resolve(out[0]
@@ -793,7 +826,13 @@ function createDom() {
             setAttribute(k, v) { attrs[k] = String(v); },
             getAttribute(k) { return Object.prototype.hasOwnProperty.call(attrs, k) ? attrs[k] : null; },
             hasAttribute(k) { return Object.prototype.hasOwnProperty.call(attrs, k); },
-            addEventListener(type, fn) { (handlers[type] = handlers[type] || []).push(fn); },
+            // Like a real DOM, registering the same listener twice for one
+            // event type is a no-op (reopening a chat re-runs the wiring on
+            // the same registry node — it must not stack handlers).
+            addEventListener(type, fn) {
+                const list = (handlers[type] = handlers[type] || []);
+                if (list.indexOf(fn) === -1) list.push(fn);
+            },
             removeEventListener() {},
             async fire(type, ev) {
                 const list = handlers[type] || [];
@@ -1164,6 +1203,108 @@ async function partOne() {
     assert.strictEqual(thread.length, LIMITS.max_messages_per_conversation, 'the thread must stay at the cap');
     assert(thread.every(m => m.body !== 'Salut Mihai! Plecăm sâmbătă?'), 'the oldest messages are trimmed first');
     ok('message length, attachment size and the per-thread cap (oldest first) are enforced');
+
+    /* ── The CLIENT sends through the real UI: open chat → type → tap send.
+       This is the delivery path the bug report is about: the message must be
+       stored server-side (not just echoed to the sender) and every send must
+       be verified by re-reading the thread. ── */
+    // Rapid sequential sends can share a millisecond timestamp; give the
+    // thread distinct increasing stamps so chronological order is defined.
+    server.tables.conversation_messages
+        .filter(function (m) { return m.conversation_id === convId; })
+        .forEach(function (m, idx) { m.created_at = new Date(Date.now() - 10000 + idx).toISOString(); });
+    sandbox._authUser = () => USERS.ana;
+    server.as(USERS.ana.id);
+    await api.openChatWithUser(USERS.mihai.id);
+    await flush(20);
+    const anaHtml = dom.document.getElementById('frChatMessages').innerHTML;
+    assert(anaHtml.indexOf('mesaj 7') !== -1, 'the open thread must render the newest messages (got: ' + anaHtml.slice(0, 200) + ')');
+    assert(anaHtml.indexOf('mesaj 3') !== -1 && anaHtml.indexOf('mesaj 3') < anaHtml.indexOf('mesaj 7'),
+        'messages must render oldest → newest on screen');
+    dom.document.getElementById('frChatInput').value = 'Ne vedem la poartă la 9!';
+    const rpcBefore = server.rpcCalls.length;
+    await dom.document.getElementById('frChatSend').fire('click');
+    await flush(30);
+    assert(server.rpcCalls.slice(rpcBefore).indexOf('get_conversation_messages') !== -1,
+        'every send must be verified by re-reading the thread');
+    const stored = server.tables.conversation_messages.filter(function (m) {
+        return m.conversation_id === convId && m.body === 'Ne vedem la poartă la 9!';
+    });
+    assert.strictEqual(stored.length, 1, 'exactly one copy must be stored server-side');
+    assert.strictEqual(dom.document.getElementById('frChatInput').value, '',
+        'the composer clears only after the send is verified');
+    ok('send through the real composer is stored server-side and verified by re-reading the thread');
+
+    /* ── Mihai reads Ana's message on HIS account: a second client sandbox on
+       the same server. If delivery were sender-side echo, his chat would stay
+       empty. ── */
+    const domB = createDom();
+    const sbB = createSandbox(server, USERS.mihai, domB);
+    runInSandbox(sbB, [{ code: FRIENDS_JS, name: 'js/friends.js (mihai)' }]);
+    server.as(USERS.mihai.id);
+    await sbB.DetectLabFriends.openChatWithUser(USERS.ana.id);
+    await flush(20);
+    const mihaiHtml = domB.document.getElementById('frChatMessages').innerHTML;
+    assert(mihaiHtml.indexOf('Ne vedem la poartă la 9!') !== -1,
+        'Mihai must see Ana\u2019s message in his own chat (got: ' + mihaiHtml.slice(0, 200) + ')');
+    ok('the friend reads the message on his own account — delivery is real, not sender-side echo');
+
+    /* ── Long thread: the read window must be the NEWEST 400. An oldest-first
+       read (order asc + limit 400) would strand every long conversation on the
+       first page ever written. Seed 410 messages past the cap, then re-read. ── */
+    server.as(USERS.ana.id);
+    sandbox._authUser = () => USERS.ana;
+    const seedBase = Date.now();
+    for (let i = 0; i < 410; i++) {
+        server.tables.conversation_messages.push({
+            id: 'seed-' + i, conversation_id: convId, sender_id: USERS.ana.id,
+            sender_name: USERS.ana.name, body: 'seed ' + i,
+            media_url: null, media_type: 'none', media_bytes: 0,
+            created_at: new Date(seedBase + i).toISOString()
+        });
+    }
+    // Age the whole thread past the per-minute rate window so the later sends
+    // in this suite (ghost probe, group chat, mirror) are not rate-limited by
+    // the seed. Chronological order is preserved.
+    server.tables.conversation_messages
+        .filter(function (m) { return m.conversation_id === convId; })
+        .forEach(function (m, idx) { m.created_at = new Date(Date.now() - 180000 + idx).toISOString(); });
+    await api.openChatWithUser(USERS.mihai.id);
+    await flush(20);
+    const longHtml = dom.document.getElementById('frChatMessages').innerHTML;
+    assert(longHtml.indexOf('seed 409') !== -1, 'the newest message of a long thread must be readable');
+    assert(longHtml.indexOf('seed 0') === -1, 'the oldest page must scroll out of the read window');
+    assert(longHtml.indexOf('Ne vedem la poartă la 9!') === -1, 'the window must hold the newest 400, not the first 400');
+    assert(longHtml.indexOf('nu am putut încărca') === -1, 'a successful read must not show a read error');
+    ok('long threads read newest-first: the latest page survives, the oldest scrolls out');
+
+    /* ── Old deployment without the read function: the direct-SELECT fallback
+       must still read newest-first instead of failing silently or returning
+       the oldest page. ── */
+    server.disabledFunctions = { get_conversation_messages: true };
+    await api.openChatWithUser(USERS.mihai.id);
+    await flush(20);
+    const fallbackHtml = dom.document.getElementById('frChatMessages').innerHTML;
+    assert(fallbackHtml.indexOf('seed 409') !== -1, 'the SELECT fallback must also read newest-first');
+    assert(fallbackHtml.indexOf('seed 0') === -1, 'the SELECT fallback must not return the oldest page');
+    assert(fallbackHtml.indexOf('nu am putut încărca') === -1, 'a working fallback must not show a read error');
+    server.disabledFunctions = {};
+    ok('without the read function the newest-first SELECT fallback keeps the chat working');
+
+    /* ── A server that answers OK without storing anything must NOT produce a
+       "sent" message. The verify-after-send must catch it, keep the draft and
+       warn loudly. ── */
+    server.failNextSendPersist = true;
+    const alertsBefore = sandbox._alerts.length;
+    dom.document.getElementById('frChatInput').value = 'ghost?';
+    await dom.document.getElementById('frChatSend').fire('click');
+    await flush(30);
+    assert.strictEqual(dom.document.getElementById('frChatInput').value, 'ghost?',
+        'the composer must keep the text when the send is not confirmed');
+    assert(sandbox._alerts.length > alertsBefore, 'an unconfirmed send must warn loudly instead of showing "sent"');
+    assert(!server.tables.conversation_messages.some(function (m) { return m.body === 'ghost?'; }),
+        'nothing must be stored for the phantom send');
+    ok('a send the server never stored is reported as failed, never as sent');
 
     /* ── Client-side guard rails mirror the DB rules ── */
     sandbox._authUser = () => USERS.ana;
@@ -1557,7 +1698,7 @@ function partThree() {
         await partTwo();
         partThree();
         console.log('\n✅ test-friends-social.js passed (' + passed + ' checks): friends, requests, group chat admin rights,');
-        console.log('   message/attachment/rate/retention limits, per-account storage and the event invite flow.\n');
+        console.log('   newest-first reads, send verification, per-account storage and the event invite flow.\n');
         process.exit(0);
     } catch (e) {
         console.error('\n❌ test-friends-social.js FAILED:');
