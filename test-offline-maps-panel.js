@@ -187,11 +187,19 @@ function makeLayer(options) {
     };
 }
 
+// Every layer the module asks Leaflet to draw is recorded, so a test can prove
+// the drawing flow stays a POLYGON (no dots, no circles around a pin).
+const drawn = [];
+function record(kind, value) {
+    drawn.push({ kind: kind, value: value });
+    return value;
+}
+
 const L = {
-    polyline: function (points, options) { return makeLayer(options); },
-    polygon: function (points, options) { return makeLayer(options); },
-    circleMarker: function (latlng, options) { return makeLayer(options); },
-    marker: function (latlng, options) { return makeLayer(options); },
+    polyline: function (points, options) { return record('polyline', makeLayer(options)); },
+    polygon: function (points, options) { return record('polygon', makeLayer(options)); },
+    circleMarker: function (latlng, options) { return record('circleMarker', makeLayer(options)); },
+    marker: function (latlng, options) { return record('marker', makeLayer(options)); },
     divIcon: function (options) { return options || {}; },
     tileLayer: function (url, options) { return makeLayer(options); },
     latLng: function (lat, lng) { return makeLatLng(lat, lng); },
@@ -333,6 +341,79 @@ assert.equal(panel.querySelector('.offline-zoom-from').textContent, 'from');
 assert.equal(panel.querySelector('.offline-zoom-to').textContent, 'to');
 assert(/Zoom level from/.test(panel.querySelector('#offlineZoomMin').getAttribute('aria-label') || ''));
 lang = 'ro';
+
+/* ── 3. Only the polygon is drawn: no pins, no radius circles ───────────── */
+function freshRing() {
+    if (!state.mode) windowMock.toggleOfflineMaps();      // offline mode on
+    panel.querySelector('.offline-redraw').onclick();     // a clean polygon
+    assert.equal(state.drawState, 'drawing');
+}
+
+drawn.length = 0;
+freshRing();
+tapMap(44.0, 20.0);
+tapMap(44.002, 20.0);
+tapMap(44.002, 20.002);
+assert(!drawn.some(d => d.kind === 'circleMarker'),
+    'drawing an offline area must not paint circleMarkers (the "pin with a radius" look)');
+assert(!drawn.some(d => d.kind === 'marker'),
+    'drawing an offline area must not paint markers either');
+assert(drawn.some(d => d.kind === 'polygon'),
+    'from the third corner on, the preview itself must be the polygon');
+drawn.length = 0;
+panel.querySelector('.offline-finish').onclick();
+assert(!drawn.some(d => d.kind === 'circleMarker' || d.kind === 'marker'),
+    'finishing the polygon must not add handles on top of it');
+
+/* A half-drawn ring owns the map taps: the analysis layers must not drop their
+   pin + radius circle on the same gesture (js/offline-maps.js publishes the
+   flag, lidar-scanner / archeo-potential / archeo-report all read it). */
+assert(sandbox.window._dlOfflineDrawActive === false,
+    'the tap-ownership flag is released once the ring is finished');
+freshRing();
+assert(sandbox.window._dlOfflineDrawActive === true,
+    'the flag is set while a polygon is being drawn');
+for (const file of ['js/lidar-scanner.js', 'js/archeo-potential.js', 'js/archeo-report.js']) {
+    assert(/_dlOfflineDrawActive/.test(read(file)),
+        file + ' must skip its pin-with-radius tap while an offline polygon is drawn');
+}
+windowMock.toggleOfflineMaps();                            // mode off
+assert(sandbox.window._dlOfflineDrawActive === false, 'turning the mode off releases the flag');
+
+/* ── 4. The ✕ that leaves an active offline map ─────────────────────────── */
+const exitBtn = bySelector.get('.map-frame').children[1];
+assert(exitBtn && exitBtn.id === 'offlineMapExit',
+    'the map frame hosts the offline exit button next to the panel');
+assert(!exitBtn.classList.contains('is-visible'),
+    'with no active offline map the ✕ stays hidden');
+documentMock.dispatchEvent({ type: 'detectlab:langchange' });   // re-localise (2d left the DOM in EN)
+assert(/Ieși din harta offline/.test(exitBtn.querySelector('.offline-active-exit-label').textContent),
+    'the ✕ is labelled and titled, not a bare glyph');
+assert(/Ieși din harta offline/.test(exitBtn.getAttribute('title') || ''),
+    'the ✕ carries a spoken name');
+
+state.activeId = 'offline_test';
+state.refreshExitButton();
+assert(exitBtn.classList.contains('is-visible'),
+    'an ACTIVE offline map shows the ✕, centred at the bottom of the screen');
+
+// And it is the way out: local layers off, offline mode off.
+state.mode = true;
+exitBtn.onclick({ stopPropagation() {} });
+assert.equal(state.activeId, null, 'the ✕ deactivates the offline map');
+assert.equal(state.mode, false, 'the ✕ also leaves the offline drawing mode');
+assert(!exitBtn.classList.contains('is-visible'), 'the ✕ hides itself again');
+
+const exitCss = read('css/offline-maps.css');
+assert(!/\.offline-vertex-icon|\.offline-first-vertex|offlineFirstVertexPulse/.test(exitCss),
+    'the pin-with-radius styling (vertex dots, pulsing first corner) must be gone with the logic');
+const exitRule = /\.offline-active-exit\s*\{([^}]*)\}/.exec(exitCss);
+assert(exitRule, 'the ✕ is styled in css/offline-maps.css');
+assert(/left:\s*50%/.test(exitRule[1]) && /translateX\(-50%\)/.test(exitRule[1]),
+    'the ✕ is centred horizontally');
+assert(/bottom:[^;]*var\(--layer-dock-clearance/.test(exitRule[1]),
+    'the ✕ lifts above the bottom-centred action dock instead of overlapping it');
+assert(/\.offline-active-exit\.is-visible/.test(exitCss), 'the ✕ has an explicit visible state');
 
 console.log('✓ offline maps: zoom-level wording, ring closing, size error and panel layout');
 console.log('All offline-maps panel checks passed.');

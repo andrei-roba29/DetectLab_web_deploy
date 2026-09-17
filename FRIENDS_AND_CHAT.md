@@ -22,18 +22,19 @@ storage bill.
 
 | File | Purpose |
 |---|---|
-| `js/friends.js` | The whole social UI + client logic: panel, search, requests, private/group chat, media compression, per-account mirror, badges, the social buttons inside the detectorist map pins (`relationFor()` / `detectorActionsHtml()` / `decorateDetectorPopup()`), and the `window.DetectLabFriends` API used by the events and map modules. |
+| `js/friends.js` | The whole social UI + client logic: panel, search, requests, private/group chat, media compression, per-account mirror, badges, the social buttons inside the detectorist map pins (`relationFor()` / `detectorActionsHtml()` / `decorateDetectorPopup()` / `paintDetectorSlots()`), and the `window.DetectLabFriends` API used by the events and map modules (`searchUsers()` / `getSearchResults()` for the add-friends search). |
 | `js/events.js` | „Adaugă prieteni” box in the create-event form, quota-aware deadline/creation checks, `friend_event_invite` notification modal, attendance-quota guard on accept. |
-| `js/map-app.js` | The nearby-detectorist pins: `detectorSocialSlotHtml()` puts an empty social slot (account id + name) into every live/offline popup and `map.on('popupopen')` hands the popup to `DetectLabFriends.decorateDetectorPopup()`. |
+| `js/map-app.js` | The nearby-detectorist pins: `detectorSocialSlotHtml()` puts an empty social slot (account id + name) into every live/offline popup and `map.on('popupopen')` hands the popup to `DetectLabFriends.decorateDetectorPopup()`; `searchNearbyDetectors()` starts only live location, and `_presenceVisible()` is the one rule that decides whether a presence row says *visible to others*. |
 | `css/styles.css` | `.detector-social-actions` / `.detector-social-btn` — the friend-request / accept / message buttons inside the popup card (next to `.detector-nearby-marker` / `.detector-offline-marker`). |
 | `index.html` | „Prieteni / Friends” menu entry (desktop `#userMenu` + PWA `#pwaUserDropdown`) and the `<script>` include (after `events.js`). |
 | `js/translations.js` | `nav_friends` → *Prieteni* / *Friends*. |
-| `sw.js` | `js/friends.js`, `js/map-app.js` and `css/styles.css` pre-cached + cache bumped (`detectlab-v88-map-social`) so installed PWAs pick the new popup buttons up. |
+| `sw.js` | `js/friends.js`, `js/map-app.js` and `css/styles.css` pre-cached + cache bumped (currently `detectlab-v98-pwa-panel-offline-exit`) so installed PWAs pick the new popup buttons up. |
 | `supabase/migrations/20260915000000_social_limits_and_directory.sql` | `app_limits` (every quota), `normalise_county()`, `user_social_profiles` (searchable directory), `search_social_users()`, `list_social_counties()`. |
 | `supabase/migrations/20260915010000_social_friends.sql` | `friend_requests`, `friendships` + send / cancel / respond / remove functions, `list_my_friends()`, `list_my_friend_requests()`, `get_social_counters()`. |
 | `supabase/migrations/20260915020000_social_conversations.sql` | `conversations`, `conversation_members`, `conversation_messages` (RLS = members only, Realtime), direct/group functions, admin powers, `send_conversation_message()` with every limit, `cleanup_social_messages()` + pg_cron job. |
 | `supabase/migrations/20260915030000_event_quotas_and_friend_invites.sql` | DB triggers for event creation / attendance / deadline / event-chat size, `get_my_event_quota()`, `invite_friends_to_event()`, `cleanup_event_chat_messages()` + pg_cron job. |
 | `supabase/migrations/20260916010000_social_unified_search.sql` | `search_normalise()` (case + diacritic folding) + rewritten `search_social_users()`: unified partial match across name / e-mail / county / city / id, multi-word AND. |
+| `supabase/migrations/20260916020000_social_directory_projection.sql` | `mirror_social_profile()` + triggers that keep `user_social_profiles` fed from `user_last_locations` and `detector_presence` (every account that shares a location becomes searchable without ever opening the panel), a one-time backfill, and a `search_social_users()` that also browses the directory when the query is empty. |
 | `test-friends-social.js` | Node regression test (no jsdom): runs the real `js/friends.js` and `js/events.js` against an in-memory social server. `node test-friends-social.js`. |
 | `test-map-friend-actions.js` | Node regression test (no jsdom) for the map pins: runs the real `searchNearbyDetectors()` / `addOfflineDetectorBubbles()` and the real social module, asserting which button appears per relationship and that it really calls `send_friend_request` / `respond_friend_request`. `node test-map-friend-actions.js`. |
 
@@ -66,6 +67,23 @@ storage bill.
 * The friend list shows name, county and a masked e-mail, with a **💬 Chat**
   button per friend (and **✕** to unfriend — which closes the private thread).
 * **👥 Grup nou** opens the group creation sheet.
+
+How the search box behaves (`scheduleSearch()` in `js/friends.js`):
+
+* typing is **debounced by 300 ms**, so a six-letter name is one query and not
+  six; clearing the box triggers a search immediately;
+* an **empty query is not a dead end** — it browses the directory (newest first,
+  capped), so the tab shows people to add even before you type;
+* the RPC `search_social_users()` is tried first and, if the function is missing
+  or fails (a project where the migrations were not applied yet), the same
+  folding/matching runs **client-side** over `user_social_profiles`
+  (`searchFallbackRows()`), so results never depend on one database function;
+* `user_social_profiles` is **kept full by the database** (triggers mirroring
+  `user_last_locations` and `detector_presence` in migration
+  `20260916020000`) — before that, only accounts that had opened the panel were
+  searchable, which is why searching a real detectorist used to return nothing.
+* whatever the server answers is not silently swallowed: a failed search prints
+  the reason in the results area (`state.search.error`).
 
 ### 3. Tab „Cereri” (friend requests)
 
@@ -147,8 +165,27 @@ Notes:
   `DAILY_REQUEST_LIMIT_REACHED:50`, `ADDRESSEE_FRIEND_LIMIT_REACHED:1000`, …)
   and are printed inside the popup by `friendlyError()`.
 * Friend lists/requests are refreshed at most once every 15 s while tapping pins
-  (`ensureDetectorSocialState()`), on `detectlab:authchange` and whenever the
-  Panel reloads them.
+  (`ensureDetectorSocialState()`, which first waits for the session to restore so
+  a reload does not briefly look "signed out"), on `detectlab:authchange` and
+  whenever the Panel reloads them.
+* The buttons are repainted **in the live popup node**: `updateOpenDetectorPopup()`
+  only re-measures (`_updateLayout()` / `_adjustPan()`) instead of calling
+  `popup.update()`, because Leaflet's `update()` re-assigns the content string and
+  would wipe the buttons that were just painted. `paintDetectorSlots()` re-queries
+  the slots rather than holding on to node references, so a tap after Leaflet has
+  rebuilt the popup still lands on a button that exists.
+* **„Vezi alți detectoriști în zonă” starts live location only.** It never flips
+  your Detect mode on — the two switches stay independent, and being seen does not
+  require detecting:
+
+  * **seen by others** = live location running **and** the „Sunt de acord”
+    consent (`_visibleToOthers`);
+  * the **Detect** switch only decides whether your finds are recorded;
+  * turning Detect **off** no longer hides you — the pin disappears when live
+    location stops or the consent is withdrawn.
+
+  Every publish site in `js/map-app.js` routes through one `_presenceVisible()`
+  helper, so no code path can write a `visible` row that disagrees with that rule.
 
 ---
 
@@ -225,7 +262,7 @@ update public.app_limits
 
 ## Deployment
 
-The four migrations are idempotent and must be applied in order:
+The six migrations are idempotent and must be applied in order:
 
 ```bash
 supabase db push          # or paste them into the SQL editor, in filename order
@@ -235,6 +272,8 @@ supabase db push          # or paste them into the SQL editor, in filename order
 2. `20260915010000_social_friends.sql`
 3. `20260915020000_social_conversations.sql`
 4. `20260915030000_event_quotas_and_friend_invites.sql`
+5. `20260916010000_social_unified_search.sql`
+6. `20260916020000_social_directory_projection.sql`
 
 Notes:
 
@@ -252,6 +291,15 @@ Notes:
 * Profiles are created lazily: `upsert_my_social_profile()` runs when the panel
   opens, filling `display_name` / `email` from the auth user and `county` /
   `city` from `user_last_locations` when the user shared a location.
+* Migration 6 adds the **directory projection**: `mirror_social_profile()` keeps
+  one `user_social_profiles` row per account from the two tables that already
+  have the person (`user_last_locations`, `detector_presence`), and the same
+  function backfills the accounts that exist today. `discoverable` is never
+  touched by the trigger — an account that hid itself stays hidden — and nothing
+  is written when the row is already complete, so a location refresh (which
+  happens every ~30 s) does not churn the directory. Without it,
+  `send_friend_request()` answered `USER_NOT_FOUND` for everybody who had never
+  opened the Friends panel.
 
 **Graceful degradation.** If the migrations are not applied yet, the panel says
 so explicitly (*„Modulul social nu este încă activ pe server: rulează migrațiile
@@ -281,8 +329,8 @@ and every existing feature keep working untouched.
 ## Tests
 
 ```bash
-node test-friends-social.js      # 15 checks
-node test-map-friend-actions.js  # 51 checks
+node test-friends-social.js      # 20 checks
+node test-map-friend-actions.js  # 64 checks
 ```
 
 The test loads the **real** `js/friends.js` and `js/events.js` into a `vm`
@@ -307,10 +355,20 @@ the migration rules, and asserts:
 12. the deadline cap comes from `app_limits`, not a hard-coded year;
 13. a `friend_event_invite` notification shows the event and accepting joins it;
 14. the nav entry, RO/EN labels, script order and PWA pre-cache are in place;
-15. the migrations define the tables, triggers and cleanup jobs.
+15. the migrations define the tables, triggers and cleanup jobs;
+16. the add-friends search really is wired up (debounced input, results list,
+    error line) and the client-side fallback matches name / e-mail / county /
+    city / id the same way the RPC does, returns nothing for a query that does
+    not match, and **browses** the directory when the query is empty;
+17. the directory-projection migration guards its writes (trigger on the right
+    columns, INSERT-only for presence, no-op when the row is already complete,
+    `discoverable` never flipped by the mirror) and ships the backfill.
 
 `test-map-friend-actions.js` covers the map pins end to end: it runs the real
 `searchNearbyDetectors()` + `addOfflineDetectorBubbles()` against Leaflet stubs
+(and asserts that the magnifier only starts live location — it must never call
+`toggleDetection()`), that a repaint does not destroy an already-open popup, and
+that the buttons are re-painted on the node Leaflet actually kept
 and asserts both popups carry the slot for the right account (and that the
 `popupopen` hook calls into `js/friends.js`), renders the real
 `detectorActionsHtml()` for every relationship, and drives the real module in a

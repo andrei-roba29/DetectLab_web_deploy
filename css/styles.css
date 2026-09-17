@@ -3985,15 +3985,23 @@
                 transform: rotate(180deg);
             }
 
-        /* ── TRANSPARENCY PANEL ── */
+        /* ── TRANSPARENCY PANEL ──
+           The window is anchored to the top AND the bottom of its container
+           instead of carrying a hardcoded 560px: on the website the map frame
+           is exactly 560px, so the look is unchanged there, while in the
+           installed PWA (frame = full viewport) the panel now reaches the
+           bottom of the screen instead of stopping at the old 560px cap.
+           No bottom padding: the strip of panel background below the last row
+           was pure dead space in the tall PWA layout. */
         .transp-panel {
             position: absolute;
             right: 0;
             top: 0;
-            height: 560px;
-            max-height: 560px;
+            bottom: 0;
+            height: auto;
+            max-height: none;
             display: block;
-            padding: 22px 16px 22px;
+            padding: 22px 16px 0;
             width: 272px;
             background:
                 radial-gradient(circle at 100% 0%, rgba(107,63,160,0.16), transparent 55%),
@@ -4787,36 +4795,67 @@
             outline: none;
         }
 
+        /* ── SLIDER TITLE: ABOVE THE CONTROL, NEVER INSIDE IT ──
+           Both lines of a mirror's title (the small DISTANȚĂ / RAZĂ / ISTORIC
+           caption and the layer name) are lifted out of the card and centred
+           above it, so the card holds only what you actually touch: the range,
+           its value and the close button. Each line is a chip of its own and
+           collapses when the JS leaves it empty, so an opacity mirror (no
+           caption) shows exactly one line above the slider. */
+        .vertical-opacity-title {
+            position: absolute;
+            bottom: calc(100% + 7px);
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            max-width: min(196px, calc(100vw - 26px));
+            pointer-events: none;
+            text-align: center;
+        }
+
         .vertical-opacity-caption {
-            align-self: flex-start;
-            max-width: calc(100% - 18px);
+            max-width: 100%;
+            padding: 3px 7px;
             overflow: hidden;
-            color: rgba(184,216,240,0.52);
+            color: rgba(184,216,240,0.78);
+            background: rgba(8,20,41,0.86);
+            border: 1px solid rgba(184,216,240,0.2);
+            border-radius: 7px;
             font: 600 0.5rem/1 'Outfit', sans-serif;
             letter-spacing: 0.12em;
             white-space: nowrap;
+            text-overflow: ellipsis;
         }
 
         /* Opacity mirrors no longer carry the word "OPACITY" above the range, so
-           the (empty) caption is dropped together with its 5px flex gap —
-           otherwise the layer name would float away from the top edge. The
-           period mirrors (ISTORIC / PERIOADĂ) keep their caption. */
+           the (empty) caption is dropped entirely. The period and distance
+           mirrors (ISTORIC / PERIOADĂ / RAZĂ) keep theirs. */
         .vertical-opacity-caption:empty {
             display: none;
         }
 
         .vertical-opacity-layer {
-            width: 100%;
-            min-height: 31px;
-            padding-top: 2px;
+            max-width: 100%;
+            padding: 3px 8px;
             display: -webkit-box;
             overflow: hidden;
-            color: rgba(245,240,235,0.9);
+            color: rgba(245,240,235,0.95);
+            background: rgba(8,20,41,0.9);
+            border: 1px solid rgba(184,216,240,0.26);
+            border-radius: 8px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
             font: 600 0.62rem/1.2 'Outfit', sans-serif;
             text-align: center;
             overflow-wrap: anywhere;
             -webkit-box-orient: vertical;
-            -webkit-line-clamp: 3;
+            -webkit-line-clamp: 2;
+        }
+
+        .vertical-opacity-layer:empty {
+            display: none;
         }
 
         .vertical-opacity-slider-wrap {
@@ -4938,47 +4977,91 @@
             transition-delay: 0s;
         }
 
-        /* ── OGLHINDA DE DISTANȚĂ / RAZĂ ──
+        /* ── OGLINDA DE DISTANȚĂ / RAZĂ + CULORILE PE STRAT ──
            Aceeași geometrie ca la opacitate (slider vertical în dreapta, chip
            cu valoarea sub el), dar valoarea e în km și poartă o etichetă
-           (DISTANȚĂ / RAZĂ). Culorile urmează stratul: verde LIDAR Scanner,
-           mov Zone cu potențial arheologic, albastru Raport arheologic —
-           js/vertical-opacity-control.js scrie id-ul sliderului în data-owner. */
+           (DISTANȚĂ / RAZĂ).
+
+           Fiecare strat de analiză își desenează pe hartă pinul și cercul de
+           rază într-o culoare a lui — LIDAR Scanner verde, Zone cu potențial
+           arheologic mov, Raport arheologic albastru. sliderele acelor straturi
+           (atât cele din panou, cât și oglinzile verticale de pe hartă) poartă
+           acum exact aceleași trei culori, ca raza reglată pe slider să arate
+           ca raza desenată pe hartă. js/vertical-opacity-control.js scrie id-ul
+           sliderului în data-owner, iar panoul își ia culoarea din rândul lui. */
+        #lidarScannerRow,
+        .vertical-opacity-control[data-owner="lidarScannerDistance"] {
+            --dl-layer-colour: #8cff66;         /* aceeași nuanță ca linia cercului */
+            --dl-layer-strong: #39ff14;         /* aceeași nuanță ca umplerea / pinul */
+            --dl-layer-soft: rgba(57, 255, 20, 0.14);
+            --dl-layer-edge: rgba(140, 255, 102, 0.46);
+        }
+
+        #archeoPotentialRow,
+        .vertical-opacity-control[data-owner="archeoPotDistance"] {
+            --dl-layer-colour: #a070e8;
+            --dl-layer-strong: #c4a0f0;
+            --dl-layer-soft: rgba(123, 63, 212, 0.18);
+            --dl-layer-edge: rgba(163, 112, 232, 0.5);
+        }
+
+        #archReportRow,
+        .vertical-opacity-control[data-owner="archReportDistance"] {
+            --dl-layer-colour: #66c8ff;
+            --dl-layer-strong: #29b6f6;
+            --dl-layer-soft: rgba(41, 182, 246, 0.15);
+            --dl-layer-edge: rgba(102, 200, 255, 0.46);
+        }
+
+        /* Track: the panel range and its vertical mirror share the ramp. */
+        #lidarScannerRow .transp-slider,
+        #archeoPotentialRow .transp-slider,
+        #archReportRow .transp-slider {
+            background: linear-gradient(90deg, var(--dl-layer-soft), var(--dl-layer-colour));
+        }
+
+        .vertical-opacity-control[data-kind="distance"] .vertical-opacity-slider {
+            background: linear-gradient(90deg, var(--dl-layer-soft), var(--dl-layer-colour));
+        }
+
+        /* Thumbs (Chromium / WebKit and Firefox). */
+        #lidarScannerRow .transp-slider::-webkit-slider-thumb,
+        #archeoPotentialRow .transp-slider::-webkit-slider-thumb,
+        #archReportRow .transp-slider::-webkit-slider-thumb,
+        .vertical-opacity-control[data-kind="distance"] .vertical-opacity-slider::-webkit-slider-thumb {
+            background: var(--dl-layer-strong);
+            border-color: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 0 4px var(--dl-layer-soft), 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        #lidarScannerRow .transp-slider::-webkit-slider-thumb:hover,
+        #archeoPotentialRow .transp-slider::-webkit-slider-thumb:hover,
+        #archReportRow .transp-slider::-webkit-slider-thumb:hover {
+            background: var(--dl-layer-colour);
+            box-shadow: 0 0 0 5px var(--dl-layer-soft), 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        #lidarScannerRow .transp-slider::-moz-range-thumb,
+        #archeoPotentialRow .transp-slider::-moz-range-thumb,
+        #archReportRow .transp-slider::-moz-range-thumb,
+        .vertical-opacity-control[data-kind="distance"] .vertical-opacity-slider::-moz-range-thumb {
+            background: var(--dl-layer-strong);
+            border-color: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 0 4px var(--dl-layer-soft), 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        #lidarScannerRow .transp-slider:focus-visible,
+        #archeoPotentialRow .transp-slider:focus-visible,
+        #archReportRow .transp-slider:focus-visible {
+            box-shadow: 0 0 0 3px var(--dl-layer-soft);
+        }
+
+        /* Value chip under the mirrored range, in the layer colour. */
         .vertical-opacity-control[data-kind="distance"] .vertical-opacity-value {
             min-width: 54px;
-        }
-
-        .vertical-opacity-control[data-owner="lidarScannerDistance"] .vertical-opacity-value {
-            color: #8cff66;
-            background: rgba(57,255,20,0.10);
-            border-color: rgba(140,255,102,0.28);
-        }
-
-        .vertical-opacity-control[data-owner="lidarScannerDistance"] .vertical-opacity-slider::-webkit-slider-thumb {
-            background: #3f9c2a;
-            box-shadow: 0 0 0 5px rgba(57,255,20,0.18), 0 3px 9px rgba(0,0,0,0.55);
-        }
-
-        .vertical-opacity-control[data-owner="archeoPotDistance"] .vertical-opacity-value {
-            color: #c4a0f0;
-            background: rgba(123,63,212,0.14);
-            border-color: rgba(163,112,232,0.34);
-        }
-
-        .vertical-opacity-control[data-owner="archeoPotDistance"] .vertical-opacity-slider::-webkit-slider-thumb {
-            background: #7b3fd4;
-            box-shadow: 0 0 0 5px rgba(123,63,212,0.22), 0 3px 9px rgba(0,0,0,0.55);
-        }
-
-        .vertical-opacity-control[data-owner="archReportDistance"] .vertical-opacity-value {
-            color: #66c8ff;
-            background: rgba(41,182,246,0.12);
-            border-color: rgba(102,200,255,0.3);
-        }
-
-        .vertical-opacity-control[data-owner="archReportDistance"] .vertical-opacity-slider::-webkit-slider-thumb {
-            background: #2f8fc4;
-            box-shadow: 0 0 0 5px rgba(41,182,246,0.2), 0 3px 9px rgba(0,0,0,0.55);
+            color: var(--dl-layer-colour);
+            background: var(--dl-layer-soft);
+            border-color: var(--dl-layer-edge);
         }
 
         /* ── SATELLITE „ISTORIC” PAIR ──
@@ -5125,9 +5208,11 @@
                 display: none;
             }
 
+            /* The title floats above the card, so on a short screen it only
+               gets a single line instead of clipping the slider. */
             .vertical-opacity-layer {
-                min-height: 24px;
-                -webkit-line-clamp: 2;
+                min-height: 0;
+                -webkit-line-clamp: 1;
             }
 
             .vertical-opacity-slider {
@@ -7645,10 +7730,6 @@
     #lidarExpandIcon,
     #romanExpandIcon,
     #histPremiumExpandIcon {
-        transition: none !important;
-    }
-}
-istPremiumExpandIcon {
         transition: none !important;
     }
 }

@@ -162,14 +162,26 @@ function buildHarness(opts) {
         _displayCanvas: { style: { display: opts.heritageOn ? '' : 'none' } },
         _scheduleRedraw: () => { state.redrawn = true; },
         loadSiteCircles: () => { state.loaded = true; },
-        publishDetectorPresence: (la, ln, vis) => { state.lastPresence = vis; }
+        publishDetectorPresence: (la, ln, vis) => { state.lastPresence = vis; },
+        // _presenceVisible() sits next to publishDetectorPresence in
+        // js/map-app.js and is the single rule every publish site uses:
+        // live location + the Da/Nu consent. The detection mode is NOT part of
+        // it any more, which is why turning detection off only hides the user
+        // when their live location stops too (the real _stopLiveLocation below
+        // republishes exactly like map-app.js's stopTracking does).
+        _presenceVisible: () => !!(ctx.window._isLiveLocationActive && ctx.window._isLiveLocationActive() && ctx._visibleToOthers)
     };
 
     ctx.window = ctx;
     ctx.window.togglePatrimoniuLayer = togglePatrimoniuLayer;
     ctx.window._isLiveLocationActive = () => state.liveOn;
     ctx.window._startLiveLocation = () => { state.liveOn = true; state.liveStarts++; };
-    ctx.window._stopLiveLocation = () => { state.liveOn = false; state.liveStops++; };
+    ctx.window._stopLiveLocation = () => {
+        state.liveOn = false; state.liveStops++;
+        // map-app.js's stopTracking() hides the detectorist from the nearby
+        // results the moment the GPS watcher stops.
+        state.lastPresence = false;
+    };
     // Spy for the "visible to other users?" Da/Nu dialog (real implementation
     // lives next to the nearby-detectorists code in map-app.js).
     ctx.window._promptVisibleToOthers = () => { state.promptShown++; };

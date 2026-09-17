@@ -390,4 +390,57 @@ assert(!dock.classList.contains('visible'), 'an opacity layer has no action dock
 assert.strictEqual(scanButton.parentElement, distanceOwner, 'its button is back in the panel row');
 close.click();
 
+/* ── the mirrored range carries its layer's colour, and its title sits ABOVE
+      the card (never inside it) ─────────────────────────────────────────── */
+{
+    const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    // One title wrapper per mirror: caption + layer name are lifted out of the
+    // card, so the card itself only holds the range, its value and the close ×.
+    assert(/class="vertical-opacity-title"[^>]*id="verticalOpacityTitle"/.test(html) &&
+        /class="vertical-opacity-title"[^>]*id="verticalSatPeriodTitle"/.test(html),
+        'each mirror must wrap its title in .vertical-opacity-title');
+    const titleRule = /\.vertical-opacity-title\s*\{([^}]*)\}/.exec(stylesCss);
+    assert(titleRule, '.vertical-opacity-title must be styled');
+    assert(/position:\s*absolute/.test(titleRule[1]) && /bottom:\s*calc\(100%\s*\+/.test(titleRule[1]),
+        'the title is absolutely placed ABOVE the control, not inside it');
+    // Nothing inside the card may render the title any more.
+    const layerRule = /\.vertical-opacity-layer\s*\{([^}]*)\}/.exec(stylesCss);
+    assert(layerRule && !/min-height:\s*3\dpx/.test(layerRule[1]),
+        'the layer name no longer reserves a strip inside the card');
+
+    // Each analysis layer paints its own slider with the colour of the pin and
+    // of the radius circle it draws on the map: one rule per layer, carrying the
+    // palette on BOTH the panel row and its mirror.
+    const rules = (stylesCss.match(/[^{}]+\{[^{}]*\}/g) || []).map(function (rule) {
+        return { selector: rule.split('{')[0].trim(), body: rule.slice(rule.indexOf('{') + 1, rule.lastIndexOf('}')) };
+    });
+    function paletteOf(selectorPart) {
+        const hit = rules.filter(r => r.selector.indexOf(selectorPart) !== -1 && /--dl-layer-colour/.test(r.body))[0];
+        return hit ? hit.body.replace(/\s+/g, ' ') : '';
+    }
+    const palettes = {
+        lidarScannerDistance: ['#8cff66', '#39ff14', '#lidarScannerRow'],
+        archeoPotDistance: ['#a070e8', '#c4a0f0', '#archeoPotentialRow'],
+        archReportDistance: ['#66c8ff', '#29b6f6', '#archReportRow']
+    };
+    Object.keys(palettes).forEach(function (id) {
+        const [colour, strong, rowId] = palettes[id];
+        const rowPalette = paletteOf(rowId);
+        assert(rowPalette.indexOf('--dl-layer-colour: ' + colour) !== -1 &&
+            rowPalette.indexOf('--dl-layer-strong: ' + strong) !== -1,
+            rowId + ' must carry ' + colour + '/' + strong + ' (got: ' + rowPalette.slice(0, 120) + ')');
+        const mirrorPalette = paletteOf('[data-owner="' + id + '"]');
+        assert(mirrorPalette === rowPalette || mirrorPalette.indexOf(colour) !== -1,
+            id + "'s vertical mirror must carry the same colour as its panel range");
+    });
+    // …and the shared rules read those variables, so panel + mirror can not drift.
+    const distanceBlock = stylesCss.split('OGLINDA DE DISTAN')[1].split('SATELLITE ')[0];
+    assert(/linear-gradient\(90deg,\s*var\(--dl-layer-soft\),\s*var\(--dl-layer-colour\)\)/.test(distanceBlock),
+        'the ranges take their track from the per-layer variables, not from a copy-pasted colour');
+    assert(/\.transp-slider/.test(distanceBlock) && /\.vertical-opacity-slider/.test(distanceBlock),
+        'both the panel range and its mirror are painted from those variables');
+    assert(/::-moz-range-thumb/.test(distanceBlock),
+        'Firefox thumbs are coloured too, not only the WebKit ones');
+}
+
 console.log('✅ test-vertical-opacity-control.js passed: layer click, vertical sync, century mirror, filtering and close behavior work.');

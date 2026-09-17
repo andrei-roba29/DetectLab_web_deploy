@@ -379,6 +379,18 @@ test('group rows lose stale highlights both inside and outside coverage', () => 
     });
 });
 
+test('the panel publishes its open state on <body> from one place', () => {
+    // css/index.html move the floating PWA stack out of the way of the
+    // bottom-anchored layers window through body.transp-panel-open; both the
+    // open and the click-outside close must go through the same setter.
+    const setter = /function markTranspPanelOpen\(on\) \{[\s\S]*?\n\s{12}\}/.exec(source);
+    assert(setter, 'one setter owns the panel open state');
+    assert(/classList\.toggle\('transp-panel-open', transpPanelOpen\)/.test(setter[0]),
+        'the setter is the only place that writes body.transp-panel-open');
+    const uses = (source.match(/markTranspPanelOpen\(/g) || []).length;
+    assert(uses >= 3, 'open and the click-outside close both go through the setter (found ' + uses + ')');
+});
+
 test('tab switching and all five direct expand/panel hooks remain functional', () => {
     const h = setup();
     vm.runInContext(section('function switchLayerTab', '// Initialize with'), h.context);
@@ -386,6 +398,10 @@ test('tab switching and all five direct expand/panel hooks remain functional', (
     h.context.switchLayerTab('premium');
     assert.equal(highlighted(h, 'bucovinaRow'), true);
     vm.runInContext('var _expanded = false, _lidarSubExpandedState = false, _histPremiumSubExpanded = false, transpPanelOpen = false;', h.context);
+    // window.toggleTranspPanel is extracted on its own below, and it delegates
+    // every class write to the sibling setter, so that helper has to exist in
+    // the sandbox before the snippet can run.
+    vm.runInContext(section('function markTranspPanelOpen', 'window.toggleTranspPanel'), h.context);
     ['toggleHistSubLayers', 'toggleLidarSubLayers', 'toggleRomanSubLayers', 'toggleHistPremiumSubLayers', 'toggleTranspPanel'].forEach(name => {
         const match = source.match(new RegExp('window\\.' + name + ' = function\\s*\\([^)]*\\)\\s*\\{[\\s\\S]*?\\n\\s*\\};'));
         assert(match, name + ' has a direct implementation');

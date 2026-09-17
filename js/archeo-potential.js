@@ -2455,6 +2455,8 @@
 
     function onMapClick(e) {
         if (!_pinMode || _runInFlight) return;
+        // taps belong to the offline polygon while that is being drawn
+        try { if (window._dlOfflineDrawActive) return; } catch (err) {}
         var latlng = e && e.latlng ? e.latlng : null;
         if (!latlng) return;
         drawPin(latlng);

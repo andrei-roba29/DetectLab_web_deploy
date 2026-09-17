@@ -102,8 +102,8 @@
                     sel: '#btnOfflineMaps',
                     title: { ro: 'Hărți offline', en: 'Offline maps' },
                     desc: {
-                        ro: 'Activează butonul, desenează un poligon de maximum 10 km², alege straturile disponibile, nivelul de zoom și descarcă-le pentru teren fără internet. Închide poligonul atingând primul punct sau „Finalizează”, iar apoi îl poți modifica prin tragerea punctelor.',
-                        en: 'Activate the button, draw a polygon of up to 10 km², choose the available layers and the zoom level, then download them for use without internet. Close the polygon by tapping its first point or pressing “Finish”, and edit it afterwards by dragging its points.'
+                        ro: 'Activează butonul, desenează un poligon de maximum 10 km², alege straturile disponibile, nivelul de zoom și descarcă-le pentru teren fără internet. Închide poligonul atingând primul punct sau apăsând „Finalizează”; dacă nu e mulțumit de formă, alege „Desenează alt poligon”. Cât timp o hartă offline e activă, un ✕ centrat jos o dezactivează.',
+                        en: 'Activate the button, draw a polygon of up to 10 km², choose the available layers and the zoom level, then download them for use without internet. Close the polygon by tapping its first corner or pressing “Finish”; if the shape is not right, press “Draw another polygon”. While an offline map is active, a centred ✕ at the bottom leaves it.'
                     }
                 },
                 {
@@ -158,8 +158,8 @@
                     sel: ['#pwaNearbyBtn', '#nearbyDetectorsBtn'],
                     title: { ro: 'Detectoriști din zonă', en: 'Detectorists nearby' },
                     desc: {
-                        ro: 'Vezi ceilalți detectoriști activi în apropiere (necesită detectare + locație live pornite). În aplicația instalată, butonul cu lupă stă în coloana de iconițe din stânga hărții. Atinge un pin și, din cartonașul lui, poți trimite o cerere de prietenie cu „＋ Adaugă prieten”.',
-                        en: 'See other detectorists active nearby (requires detection + live location switched on). In the installed app, the magnifier button sits in the icon column on the left of the map. Tap a pin and, from its card, you can send a friend request with “＋ Add friend”.'
+                        ro: 'Vezi ceilalți detectoriști activi în apropiere. Lupa pornește doar locația live — nu îți aprinde și comutatorul Detectare; ca să fii și tu de văzut pentru ceilalți, e de ajuns locația live plus răspunsul „Da” la întrebarea de vizibilitate. În aplicația instalată, butonul cu lupă stă în coloana de iconițe din stânga hărții. Atinge un pin și, din cartonașul lui, poți trimite o cerere de prietenie cu „＋ Adaugă prieten”.',
+                        en: 'See other detectorists active nearby. The magnifier starts the live location only — it never switches your Detect mode on; to be visible to the others as well, live location plus the "Yes" answer to the visibility prompt is enough. In the installed app, the magnifier button sits in the icon column on the left of the map. Tap a pin and, from its card, you can send a friend request with "＋ Add friend".'
                     }
                 },
                 {
