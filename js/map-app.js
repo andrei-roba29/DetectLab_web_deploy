@@ -11996,10 +11996,11 @@
                         // of the user-agent (Leaflet's default is the mobile
                         // sniff, which "Desktop site" mode defeats).
                         updateWhenIdle: true,
-                        // Fewer off-screen tiles retained around the viewport
-                        // on phones (9 layers × the tile ring is what filled
-                        // memory); desktop keeps Leaflet's default of 2.
-                        keepBuffer: lowPower ? 0 : 2
+                        // One extra tile around the viewport on phones covers
+                        // the zoom handoff without restoring the 2-tile ring
+                        // that filled memory (9 layers × the ring). Desktop
+                        // keeps Leaflet's default of 2.
+                        keepBuffer: lowPower ? 1 : 2
                     };
                     var layer;
                     if (typeof window.createCoronaWmsLayer === "function") {

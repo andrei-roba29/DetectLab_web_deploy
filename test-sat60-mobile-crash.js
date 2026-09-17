@@ -33,7 +33,7 @@
  *      transforms; tiles load once, at the end of the zoom.
  *   2. updateWhenIdle:true (explicit, not the UA sniff) — pan loads on
  *      moveend, not on every move frame.
- *   3. keepBuffer 0 on touch/low-memory devices (2 on desktop).
+ *   3. keepBuffer 1 on touch/low-memory devices (2 on desktop).
  *   4. Passes/frames that cannot draw in the current view (footprint
  *      off-screen, or min zoom not reached) are detached from the group
  *      after the gesture settles, so they stop holding tiles and levels.
@@ -115,8 +115,8 @@ check('updateWhenIdle is set explicitly, not left to the user-agent sniff',
 console.log('\n[3] Off-screen tile ring is reduced on touch / low-memory devices');
 
 check('keepBuffer is configured per device', /keepBuffer\s*:/.test(sat60));
-check('keepBuffer is 0 on low-power devices',
-    /keepBuffer\s*:\s*lowPower\s*\?\s*0\s*:/.test(sat60));
+check('keepBuffer is 1 on low-power devices',
+    /keepBuffer\s*:\s*lowPower\s*\?\s*1\s*:/.test(sat60));
 check('a low-power device detector exists', /_sat60IsLowPowerDevice/.test(sat60));
 check('detection survives "Desktop site" mode (coarse pointer, not just the UA)',
     /pointer:\s*coarse/.test(sat60) &&

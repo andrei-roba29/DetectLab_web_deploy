@@ -1452,6 +1452,7 @@
         #detectlab-map {
             border-radius: 12px;
             overflow: hidden;
+            background: #060E1E;
         }
 
         /* ── JOSEPHINE MAP + SOURCE TRANSITION ────────────────────────────
@@ -3457,6 +3458,7 @@
 
         #detectlab-map {
             cursor: grab;
+            background: #060E1E;
         }
 
             #detectlab-map:active {
@@ -3465,6 +3467,13 @@
 
             #detectlab-map .leaflet-tile-pane {
                 image-rendering: auto;
+            }
+
+            /* 1px overlap hides sub-pixel hairlines between tiles while
+               the previous zoom is still covering the incoming one. */
+            #detectlab-map img.leaflet-tile {
+                width: 257px !important;
+                height: 257px !important;
             }
 
             #detectlab-map .leaflet-popup-content-wrapper {
