@@ -1048,10 +1048,18 @@ section('End-to-end analysis (runReport)');
         // Sat-base native-zoom fix: only js/archeo-report.js changed, so it gets its
         // own ?v= tag; the PDF builder, translations and styles keep their page tags.
         const Vpdf = '?v=20260831-arch-report-v4';   // archeo-report-pdf.js (unchanged this fix)
-        const Vfix = '?v=20260916-analysis-dock';    // archeo-report.js — current page tag
         const V0 = '?v=20260827-arch-report';        // pdf-writer.js is unchanged this release
-        const Vtr = '?v=20260916-archeo-sweetspot';  // translations.js (current page tag)
-        const Vcss = '?v=20260916-archeo-sweetspot'; // styles.css (current page tag)
+        // The assets this release touched carry the CURRENT page tag. Reading the
+        // tag out of index.html instead of hard-coding it keeps the check honest
+        // (the URL must exist on the page and be pre-cached by the SW) without
+        // pinning a value every release has to chase.
+        function tagOf(file) {
+            const m = html.match(new RegExp('(?:src|href)="(' + file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\?v=[^"]+)"'));
+            return m ? m[1].slice(m[1].indexOf('?v=')) : '\u0000missing';
+        }
+        const Vfix = tagOf('js/archeo-report.js');
+        const Vtr = tagOf('js/translations.js');
+        const Vcss = tagOf('css/styles.css');
         check('js/archeo-report.js is loaded by index.html (this fix)', html.indexOf('src="js/archeo-report.js' + Vfix + '"') !== -1);
         check('js/archeo-report-pdf.js is loaded by index.html', html.indexOf('src="js/archeo-report-pdf.js' + Vpdf + '"') !== -1);
         check('js/translations.js is loaded by index.html', html.indexOf('src="js/translations.js' + Vtr + '"') !== -1);
@@ -1086,9 +1094,15 @@ section('End-to-end analysis (runReport)');
         const unstyled = Array.from(classes).filter(function (c) { return css.indexOf('.' + c) === -1; });
         check('every .arch-report-* class emitted by the JS is styled (' + classes.size + ')',
             unstyled.length === 0, unstyled.join(', '));
-        check('CACHE_NAME was bumped for this release',
-            /const CACHE_NAME = 'detectlab-v97-archeo-potential-sweetspot'/.test(sw),
+        const cacheName = (sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-[^']+'/) || [])[1];
+        check('CACHE_NAME was bumped for this release', Number(cacheName) >= 98,
             (sw.match(/const CACHE_NAME = '[^']+'/) || [])[0]);
+        // the report's own tag must be pre-cached, otherwise an installed PWA
+        // keeps running the previous client and none of this reaches a phone
+        [Vfix, Vtr, Vcss].forEach(function (tag, i) {
+            const file = ['js/archeo-report.js', 'js/translations.js', 'css/styles.css'][i];
+            check('the SW pre-caches ' + file + tag, sw.indexOf("'" + file + tag + "'") !== -1);
+        });
     }
 
     /* ═══════════════ 13. translations (RO + EN) ═══════════════ */

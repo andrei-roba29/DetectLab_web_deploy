@@ -1391,14 +1391,11 @@
                             // even if the user activates detection after live location is already on
                             _detLat = lat;
                             _detLng = lng;
-                            // Publish presence so other detectorists can see this user ONLY if
-                            // BOTH detecting mode AND live location are active AND the user
-                            // answered "Da" to the visibility prompt (_visibleToOthers).
-                            // If any of the three is off, setting visible to false hides
-                            // them from "See other detectorists".
+                            // Publish presence so the other detectorists can see
+                            // this user: live location + the "Da" answer is the
+                            // whole rule (see _presenceVisible).
                             if (typeof publishDetectorPresence === 'function') {
-                                var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
-                                publishDetectorPresence(lat, lng, _det.active && _liveActive && _visibleToOthers);
+                                publishDetectorPresence(lat, lng, _presenceVisible());
                             }
                             if (_det.active) _detCheck(lat, lng);
                         },
@@ -6147,12 +6144,10 @@
                     // Remember the current map view so the user can return to the initial
                     // aspect after the search zooms the map to the found pins.
                     _nearbyPrevView = { center: map.getCenter(), zoom: map.getZoom() };
-                    // Broadcast our current position right away so others can see us ONLY if
-                    // BOTH detecting mode AND live location are active AND the user chose
-                    // "Da" at the visibility prompt.
+                    // Broadcast our current position right away, under the one
+                    // presence rule (live location + the "Da" answer).
                     if(_detLat !== null && typeof publishDetectorPresence === 'function') {
-                        var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
-                        publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive && _visibleToOthers);
+                        publishDetectorPresence(_detLat, _detLng, _presenceVisible());
                     }
                 }
             };
@@ -6169,12 +6164,13 @@
                     var popupEl = e && e.popup && typeof e.popup.getElement === 'function' ? e.popup.getElement() : null;
                     if (!popupEl) return;
                     var F = window.DetectLabFriends;
+                    // decorateDetectorPopup() paints the slot AND re-runs Leaflet's
+                    // measuring step itself. It must not be followed by a
+                    // popup.update() here: these popups hold a string content, so
+                    // update() would assign that string back over the content node
+                    // and erase the button that was just painted — the exact
+                    // "butonul de prietenie apare doar câteodata" behaviour.
                     if (F && typeof F.decorateDetectorPopup === 'function') F.decorateDetectorPopup(popupEl);
-                    // The slot was empty when Leaflet measured the popup; the paint
-                    // above injected the action row, so re-run the layout now —
-                    // otherwise the buttons and the confirmation message overflow
-                    // the frame ("mesajul iese din fereastră").
-                    if (e.popup && typeof e.popup.update === 'function') e.popup.update();
                 } catch (err) {
                     console.warn('[Nearby] social actions on popup failed:', err && err.message ? err.message : err);
                 }
@@ -6294,60 +6290,63 @@
             window.searchNearbyDetectors = async function() {
                 var status=document.getElementById('nearbyStatus'); var user=nearbyUser();
                 if(!user) { status.innerHTML='Trebuie să fii autentificat pentru această funcție.<br><small>You must be logged in to use this feature.</small>'; return; }
-                // ── Auto-enable the Detect switch on "Yes" ──
-                // Only users whose switch is ON can see / be seen by other detectorists,
-                // so confirming the nearby-detectorists prompt must turn the switch ON
-                // unconditionally (previously it only auto-enabled while waiting for a
-                // first GPS fix — i.e. only when _detLat === null — so the switch stayed
-                // OFF for returning users: that's the bug).
-                var autoEnabled = false;
-                if (typeof window.toggleDetection !== 'function') {
-                    status.innerHTML='Activează detectorul (sau partajează locația) pentru a-ți transmite poziția.<br><small>Turn on Detect (or share your location) to broadcast your position.</small>';
+                // ── "Yes" turns on the LIVE LOCATION — and nothing else ──
+                // This flow only needs a position of our own to search around,
+                // so the magnifier starts the live-location GPS watcher. It used
+                // to call toggleDetection(true) as well, which silently switched
+                // on the whole detection mode (heritage radius circles + layer,
+                // proximity alarm, the 10 h auto-off timer and its persisted
+                // switch state) for somebody who only wanted to look around.
+                // Broadcasting to the other detectorists is a live-location
+                // thing (see _presenceVisible), so nothing is lost by leaving
+                // the Detect switch alone.
+                var autoLiveLocation = false;
+                if (!navigator.geolocation) {
+                    status.innerHTML='Browserul tău nu suportă geolocalizarea.<br><small>Your browser does not support geolocation.</small>';
                     return;
                 }
-                if (!_det.active) {
-                    status.innerHTML='Activăm detectorul și locația live…<br><small>Turning on Detect and your live location…</small>';
+                if (typeof window._startLiveLocation !== 'function' ||
+                    typeof window._isLiveLocationActive !== 'function') {
+                    status.innerHTML='Pornește locația live (butonul 🎯 de pe hartă) ca să te poți căuta.<br><small>Start live location (the 🎯 map button) before searching.</small>';
+                    return;
+                }
+                if (!window._isLiveLocationActive()) {
+                    status.innerHTML='Activăm locația live…<br><small>Turning on your live location…</small>';
                     try {
-                        window.toggleDetection(true);
+                        window._startLiveLocation();
                     } catch (err) {
-                        console.warn('[Nearby] auto-enable Detect failed:', err);
+                        console.warn('[Nearby] auto-enable live location failed:', err);
                     }
-                    if (!_det.active) {
-                        // Geolocation unsupported (toggleDetection rolled itself back)
-                        // or another failure — the switch really is still OFF.
-                        status.innerHTML='Nu am putut activa detectorul.<br><small>We could not turn on Detect.</small>';
+                    if (!window._isLiveLocationActive()) {
+                        status.innerHTML='Nu am putut porni locația live.<br><small>We could not turn on live location.</small>';
                         return;
                     }
-                    // Programmatic switch-on: reflect it on every visible switch UI.
-                    if (typeof _syncDetectSwitchUI === 'function') _syncDetectSwitchUI(true);
-                    autoEnabled = true;
+                    autoLiveLocation = true;
+                }
+                // Undo OUR own switch-on when the fix never arrives, so the map
+                // never keeps a GPS watcher the user did not ask for.
+                function revertLiveLocation() {
+                    if (!autoLiveLocation) return;
+                    autoLiveLocation = false;
+                    try {
+                        if (window._isLiveLocationActive() && typeof window._stopLiveLocation === 'function') {
+                            window._stopLiveLocation();
+                        }
+                    } catch (err) { console.warn('[Nearby] revert live location failed:', err); }
                 }
                 if(_detLat === null) {
-                    // No position fix yet — wait for the GPS watcher (started above or
-                    // already running) to deliver the first coordinates, then fall
-                    // through and run the search with the freshly acquired position.
-                    if (!navigator.geolocation) {
-                        if (autoEnabled && _det.active) {
-                            try { window.toggleDetection(false); if (typeof _syncDetectSwitchUI === 'function') _syncDetectSwitchUI(false); } catch (err) {}
-                        }
-                        status.innerHTML='Browserul tău nu suportă geolocalizarea.<br><small>Your browser does not support geolocation.</small>';
-                        return;
-                    }
-                    if (!autoEnabled) {
-                        // Detect is already on but the GPS fix hasn't arrived yet — just wait for it.
+                    // No position fix yet — wait for the live-location watcher
+                    // (started above or already running) to deliver the first
+                    // coordinates, then fall through and run the search.
+                    if (!autoLiveLocation) {
+                        // Live location was already on but no fix yet — just wait.
                         status.innerHTML='Așteptăm semnalul GPS pentru a-ți transmite poziția…<br><small>Waiting for your location to broadcast your position…</small>';
                     }
                     var gotFix = await waitForDetPosition();
                     if (!gotFix) {
-                        // Location permission was denied / unavailable / timed out:
-                        // undo the automatic switch-on so the UI matches reality.
-                        if (autoEnabled && _det.active) {
-                            try {
-                                window.toggleDetection(false);
-                                if (typeof _syncDetectSwitchUI === 'function') _syncDetectSwitchUI(false);
-                            } catch (err) { console.warn('[Nearby] revert Detect failed:', err); }
-                        }
-                        status.innerHTML='Nu am putut activa locația ta. Verifică permisiunile de localizare din browser (sau activează manual Detect) și încearcă din nou.<br><small>We could not turn on your location. Check your browser location permissions (or enable Detect manually) and try again.</small>';
+                        // Location permission denied / unavailable / timed out.
+                        revertLiveLocation();
+                        status.innerHTML='Nu am putut activa locația ta. Verifică permisiunile de localizare din browser (sau pornește manual locația live) și încearcă din nou.<br><small>We could not turn on your location. Check your browser location permissions (or start live location manually) and try again.</small>';
                         return;
                     }
                 }
@@ -6355,10 +6354,8 @@
                 try {
                     // Make sure OUR position is freshly published first, so the other
                     // phone can see us even if its search runs a moment earlier — but only
-                    // if BOTH detecting mode AND live location are active AND the user
-                    // answered "Da" to the visibility prompt.
-                    var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
-                    await publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive && _visibleToOthers);
+                    // while live location is on and the user answered "Da".
+                    await publishDetectorPresence(_detLat, _detLng, _presenceVisible());
 
                     // Try to read with device_id (new schema). If the migration hasn't been
                     // applied yet, fall back to the legacy columns-only query.
@@ -6468,6 +6465,24 @@
                     status.innerHTML = 'Căutarea nu este disponibilă momentan.' + hint + '<br><small>Search unavailable. ' + (msg ? String(msg).slice(0,160) : '') + '</small>';
                 }
             };
+            // ── "May this position be published to the other detectorists?" ──
+            // The rule behind every publishDetectorPresence() call below:
+            //
+            //     live location is running  AND  the user answered "Da"
+            //
+            // It used to also require the detection mode, which forced the
+            // magnifier button to switch the whole detection mode on (heritage
+            // radius alerts, the heritage layer, the 10 h auto-off timer…) just
+            // so a detectorist could look around. Broadcasting a position is a
+            // live-location thing, so the Detect switch is no longer part of it
+            // and stays the user's own business. (window._presenceVisible keeps
+            // the same rule available to other modules and to the tests.)
+            function _presenceVisible() {
+                return !!(typeof window._isLiveLocationActive === 'function' &&
+                    window._isLiveLocationActive() && _visibleToOthers);
+            }
+            window._presenceVisible = _presenceVisible;
+
             async function publishDetectorPresence(lat,lng,visible) {
                 try {
                     var u=nearbyUser();
@@ -6534,11 +6549,25 @@
             });
 
             // ── TRANSPARENCY PANEL ──
+            // The open state is also published on <body>: the panel now stretches to
+            // the bottom of the screen in the installed PWA, and the floating
+            // bottom-right stack (live location + account) has to step aside so it
+            // never sits over the layer switches.
             var transpPanelOpen = false;
-            window.toggleTranspPanel = function () {
-                transpPanelOpen = !transpPanelOpen;
+            // Both the panel element and a body-level flag follow the open state:
+            // the flag is what lets the floating PWA stack move out of the way of
+            // the (now bottom-anchored) window, so no path may set one without the
+            // other — hence one tiny setter used by open AND close.
+            function markTranspPanelOpen(on) {
+                transpPanelOpen = !!on;
                 document.getElementById('transpPanel').classList.toggle('open', transpPanelOpen);
                 document.getElementById('transpTab').classList.toggle('open', transpPanelOpen);
+                if (document.body && document.body.classList) {
+                    document.body.classList.toggle('transp-panel-open', transpPanelOpen);
+                }
+            }
+            window.toggleTranspPanel = function () {
+                markTranspPanelOpen(!transpPanelOpen);
                 if (transpPanelOpen) {
                     setTimeout(function() {
                         if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
@@ -6552,9 +6581,7 @@
                 var panel = document.getElementById('transpPanel');
                 var tab = document.getElementById('transpTab');
                 if (!panel.contains(e.target) && !tab.contains(e.target)) {
-                    transpPanelOpen = false;
-                    panel.classList.remove('open');
-                    tab.classList.remove('open');
+                    markTranspPanelOpen(false);
                 }
             });
 
@@ -6617,8 +6644,14 @@
             // When the user MANUALLY turns ON the Detect switch or the live-location
             // button, a Da/Nu dialog asks whether they also want to be visible to
             // other users on the "See other detectorists" map.  The answer is the
-            // extra gate (_visibleToOthers) applied to every presence publish, on
-            // top of the existing "detection AND live location both ON" rule.
+            // extra gate (_visibleToOthers) applied to every presence publish.
+            //
+            // Being seen is about the position, not about the metal detector: the
+            // rule is "live location is running AND the answer was Da"
+            // (_presenceVisible), and the Detect switch no longer gates it.  The
+            // "Vezi alți detectoriști" search starts live location only — it must
+            // never switch detection on by itself, and switching detection off must
+            // not hide somebody who is still sharing their position.
             //
             // The choice is persisted in localStorage so programmatic re-activations
             // (resume from background, 10-hour-window restore, auto-enable from the
@@ -6652,8 +6685,7 @@
                 // user right away when they chose "Nu".  (If no GPS fix exists yet,
                 // the gated publish happens on the next position tick instead.)
                 if (_detLat !== null && typeof publishDetectorPresence === 'function') {
-                    var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
-                    publishDetectorPresence(_detLat, _detLng, _visibleToOthers && _det.active && _liveActive);
+                    publishDetectorPresence(_detLat, _detLng, _presenceVisible());
                 }
                 if (_visibilityPromptCb) {
                     var cb = _visibilityPromptCb; _visibilityPromptCb = null;
@@ -6740,10 +6772,9 @@
             function _detOnPosition(pos) {
                 _detLat = pos.coords.latitude;
                 _detLng = pos.coords.longitude;
-                // Only visible to others if BOTH detection mode AND live location are
-                // active AND the user answered "Da" to the visibility prompt.
-                var _liveActive = typeof window._isLiveLocationActive === 'function' && window._isLiveLocationActive();
-                publishDetectorPresence(_detLat, _detLng, _det.active && _liveActive && _visibleToOthers);
+                // Visible to others only while live location is on AND the user
+                // answered "Da" — detection mode is not part of the rule.
+                publishDetectorPresence(_detLat, _detLng, _presenceVisible());
                 _detCheck(_detLat, _detLng);
             }
 
@@ -6853,13 +6884,13 @@
 
                     // If live location is already active, we already have coordinates —
                     // fire an immediate check instead of waiting for the next GPS tick.
-                    // Also publish presence right away — but visible ONLY if the user
-                    // answered "Da" to the visibility prompt (_visibleToOthers).  A
-                    // user who never answered (or answered "Nu") stays hidden.
+                    // Presence is re-published under the same single rule (live
+                    // location + "Da"), so turning Detect on never hides anybody who
+                    // is already broadcasting and never shows one who is not.
                     if (_detLat !== null) {
                         _detCheck(_detLat, _detLng);
                         if (typeof publishDetectorPresence === 'function') {
-                            publishDetectorPresence(_detLat, _detLng, _visibleToOthers);
+                            publishDetectorPresence(_detLat, _detLng, _presenceVisible());
                         }
                     }
 
@@ -6896,13 +6927,15 @@
                     }
                     document.getElementById('siteAlert').classList.remove('visible');
                     
-                    // Set visible=false (instead of deleting) so the user immediately
-                    // disappears from "See other detectorists" results.  Using
-                    // publishDetectorPresence avoids a race with the live-location
-                    // GPS watcher which would otherwise re-insert the row on its
-                    // next tick — and also handles the device_id column fallback.
+                    // Re-publish under the presence rule instead of forcing
+                    // visible=false: a detectorist who keeps live location on and
+                    // consented stays visible (only the live-location switch or a
+                    // "Nu" answers hides them now).  Going through
+                    // publishDetectorPresence also avoids a race with the
+                    // live-location GPS watcher, which would otherwise re-insert
+                    // the row on its next tick, and handles the device_id fallback.
                     if (_detLat !== null && typeof publishDetectorPresence === 'function') {
-                        publishDetectorPresence(_detLat, _detLng, false);
+                        publishDetectorPresence(_detLat, _detLng, _presenceVisible());
                     }
                     
                     // ── Hand back everything detection borrowed on the way ON ──

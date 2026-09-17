@@ -107,13 +107,16 @@ function makeMapSandbox() {
         Promise, Date, Math, JSON, Number, String, Array, Object, RegExp,
         isFinite, isNaN, setTimeout, clearTimeout, setInterval, clearInterval,
         // ── state normally owned by the map-app closure ──
-        _det: { active: true },
+        // Detection is deliberately OFF here: pressing the magnifier must find
+        // the neighbours with the live location alone, without switching the
+        // detection mode on (the toggleDetection spy below proves it).
+        _det: { active: false },
         _detLat: 45.7489,
         _detLng: 21.2087,
         _visibleToOthers: true,
         DETECTOR_DEVICE_ID: 'device-me',
         navigator: { geolocation: {} },
-        toggleDetection() {},
+        toggleDetection() {}, /* replaced with a spy below: must never be called */
         _syncDetectSwitchUI() {},
         waitForDetPosition: async function () { return true; },
         publishDetectorPresence: async function () { return true; },
@@ -157,6 +160,16 @@ function makeMapSandbox() {
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     sandbox.nearbyLayer = sandbox.L.layerGroup();
+    // The magnifier starts the LIVE LOCATION only. The stubs below mirror
+    // map-app.js's live-location closure, and _detectionCalls proves the
+    // detection switch is never touched by this flow.
+    sandbox._liveOn = false;
+    sandbox._detectionCalls = [];
+    sandbox.toggleDetection = function (on) { sandbox._detectionCalls.push(on); };
+    sandbox._isLiveLocationActive = function () { return sandbox._liveOn; };
+    sandbox._startLiveLocation = function () { sandbox._liveOn = true; };
+    sandbox._stopLiveLocation = function () { sandbox._liveOn = false; };
+    sandbox._presenceVisible = function () { return !!(sandbox._liveOn && sandbox._visibleToOthers); };
     sandbox.supabaseClient = {
         from() {
             return {
@@ -193,6 +206,12 @@ function makeMapSandbox() {
     );
 
     await sandbox.searchNearbyDetectors();
+
+    check('pressing the magnifier never switches the detection mode on',
+        sandbox._detectionCalls.length === 0,
+        'toggleDetection was called with: ' + JSON.stringify(sandbox._detectionCalls));
+    check('pressing the magnifier does turn the live location on',
+        sandbox._liveOn === true);
 
     const liveMarkers = captured.markers.filter(m => /detector-nearby-marker/.test((m.options.icon || {}).options.html || ''));
     const offlineMarkers = captured.markers.filter(m => /detector-offline-marker/.test((m.options.icon || {}).options.html || ''));
@@ -606,6 +625,34 @@ async function runIntegrationPart() {
         !/data-social-action/.test(slotSelf.innerHTML), slotSelf.innerHTML);
     check('relationFor() is exposed for assertions', F.detectorRelation('u-friend') === 'friend');
 
+    /* ── a Leaflet content re-render between the two paints must not lose the
+       button. A popup rebuilds its DOM from its string content, so the paint
+       has to look the slot up again inside the popup element instead of writing
+       to the node it cached on the way in (that node is detached by then and
+       the user simply sees nothing). ── */
+    function slotIn(parent, userId, name) {
+        const s = dom.makeEl('div');
+        s.className = 'detector-social-actions';
+        s.setAttribute('data-user-id', userId);
+        s.setAttribute('data-user-name', name);
+        s.setAttribute('data-detector-kind', 'live');
+        parent.appendChild(s);
+        return s;
+    }
+    const popupEl = dom.makeEl('div');
+    dom.body.appendChild(popupEl);
+    const paintedSlot = slotIn(popupEl, 'u-late', 'Costel');
+    F.decorateDetectorPopup(popupEl);                 // the instant paint
+    popupEl.children.length = 0;                      // Leaflet re-renders: the
+    const freshSlot = slotIn(popupEl, 'u-late', 'Costel');   // node is replaced
+    paintedSlot.innerHTML = '';
+    await dom.flush();                                // the deferred repaint
+    check('the deferred repaint decorates the CURRENT node of the popup',
+        /data-social-action="add"/.test(freshSlot.innerHTML) && /Adaugă prieten/.test(freshSlot.innerHTML),
+        freshSlot.innerHTML);
+    check('and never writes into the node Leaflet replaced',
+        paintedSlot.innerHTML === '', paintedSlot.innerHTML);
+
     /* ── the click: stranger → friend request ── */
     await dom.click(dom.makeButton(slotStranger, 'add'));
     const sent = sb._rpcCalls.filter(c => c.name === 'send_friend_request');
@@ -661,6 +708,30 @@ async function runIntegrationPart() {
         authOpened === 1 && sb2._rpcCalls.filter(c => c.name === 'send_friend_request').length === 0,
         'openAuth=' + authOpened);
 
+    /* ── a pin tapped while the session is still being RESTORED used to stay
+       empty for the whole visit: relationFor() answered "anonymous" and the
+       deferred repaint never came. It must paint as soon as auth lands. ── */
+    const dom3 = makeFakeDom();
+    const sb3 = makeSocialSandbox(dom3, null);
+    let sessionUser = null;
+    sb3._authUser = () => sessionUser;
+    let resolveAuth = null;
+    sb3._authReadyPromise = new Promise(function (r) { resolveAuth = r; });
+    vm.createContext(sb3);
+    vm.runInContext(FRIENDS_SRC, sb3, { filename: 'js/friends.js (restoring session)' });
+    const bootSlot = dom3.makeSlot('u-stranger', 'Ion', 'live');
+    sb3.DetectLabFriends.decorateDetectorPopup(dom3.document);
+    await dom3.flush();
+    check('nothing is offered while the session is still being restored',
+        !/data-social-action/.test(bootSlot.innerHTML), bootSlot.innerHTML);
+    sessionUser = { id: 'u-me', email: 'me@example.com' };
+    resolveAuth(sessionUser);
+    await dom3.flush();
+    await dom3.flush();
+    check('the popup gets its \"Adaugă prieten\" button as soon as the session lands',
+        /data-social-action="add"/.test(bootSlot.innerHTML) && /Adaugă prieten/.test(bootSlot.innerHTML),
+        bootSlot.innerHTML);
+
     runWiringPart();
 }
 
@@ -693,14 +764,27 @@ function runWiringPart() {
     check('the vendored Leaflet exposes Popup#getElement() for the hook',
         /getElement:function\(\)\{return this\._container\}/.test(LEAFLET_SRC));
     // Leaflet measures the popup while the social slot is still empty; every
-    // paint must re-run the layout or buttons/messages overflow the frame.
-    check('the vendored Leaflet exposes Popup#update() for the re-measure',
+    // paint must re-run the MEASURING step or buttons/messages overflow the
+    // frame. update() itself must never be called on these popups: their
+    // content is a string, and update() re-assigns that string over the content
+    // node — erasing the buttons that were just painted (that race is what made
+    // the friend-request button show up only "câteodata").
+    check('the vendored Leaflet exposes Popup#update() (fallback only)',
         /getElement:function\(\)\{return this\._container\},update:function\(\)\{this\._map&&/.test(LEAFLET_SRC));
-    check('map-app re-runs the Leaflet layout after friends.js paints the slot',
-        /e\.popup\.update\(\)/.test(MAP_SRC));
+    check('the vendored Leaflet measures a popup without touching its content',
+        /_updateLayout:function\(\)\{var t=this\._contentNode,e=t\.style/.test(LEAFLET_SRC) &&
+        /_updatePosition:function\(\)\{var t,e,i;this\._map&&/.test(LEAFLET_SRC));
+    check('map-app hands the popup to friends.js without re-rendering its content',
+        /F\.decorateDetectorPopup\(popupEl\)/.test(MAP_SRC) && !/e\.popup\.update\(\)/.test(MAP_SRC));
     check('friends.js re-measures the open popup after async repaints and feedback messages',
         /function updateOpenDetectorPopup\(slot\)/.test(FRIENDS_SRC) &&
-        (FRIENDS_SRC.match(/updateOpenDetectorPopup\(slot\)/g) || []).length >= 3);
+        /_updateLayout\(\)/.test(FRIENDS_SRC) &&
+        (FRIENDS_SRC.match(/updateOpenDetectorPopup\(/g) || []).length >= 3);
+    check('friends.js looks the slots up again on every paint (a detached node never shows)',
+        /function paintDetectorSlots\(root\)/.test(FRIENDS_SRC) &&
+        (FRIENDS_SRC.match(/paintDetectorSlots\(/g) || []).length >= 3);
+    check('a popup opened while the session is still restoring waits for auth',
+        /detectorAuthPromise/.test(FRIENDS_SRC) && /_authReadyPromise/.test(FRIENDS_SRC));
 
     check('the social action styles ship in css/styles.css',
         /\.detector-social-actions/.test(fs.readFileSync(path.join(ROOT, 'css/styles.css'), 'utf8')) &&

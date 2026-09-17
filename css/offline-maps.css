@@ -168,17 +168,71 @@
 .offline-progress-track span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#6b3fa0,#4fc3f7); transition: width .12s linear; }
 .offline-progress-label { display: block; margin-top: 4px; color: rgba(245,240,235,.58); font-size: .62rem; text-align: right; }
 
-/* Vertex handles are deliberately above the raster layers but below popups. */
-.offline-vertex-icon { background: transparent; border: 0; }
-/* The first corner of a polygon being drawn doubles as the closing handle, so
-   it is painted green and pulses to stand out from the other corners. */
-.offline-first-vertex { animation: offlineFirstVertexPulse 1.6s ease-in-out infinite; filter: drop-shadow(0 0 5px rgba(74,214,109,.95)); }
-@keyframes offlineFirstVertexPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: .5; }
-}
-.offline-vertex-icon span { display: block; width: 14px; height: 14px; margin: 3px; border: 2px solid #fff; border-radius: 50%; background: #e8772a; box-shadow: 0 1px 6px rgba(0,0,0,.6), 0 0 0 2px rgba(232,119,42,.35); }
+/* No vertex handles, no pulsing corner: an offline area is drawn as the polygon
+   it is (see redrawPreview in js/offline-maps.js), so the only map affordance
+   left here is the crosshair cursor of the drawing mode. */
 .offline-drawing { cursor: crosshair !important; }
+
+/* ── Ieșirea din harta offline — ✕ centrat jos ─────────────────────────────
+   Cât timp o hartă salvată e activă, straturile locale acoperă tile-urile
+   online, poligonul acoperă harta, iar panoul din dreapta arată fila
+   „Offline”. Utilizatorul rămânea blocat acolo fără un buton vizabil de
+   ieșire, aşa că pe toată durata activării un ✕ stă centrat jos — același loc
+   în care straturile de analiză își andochează butonul propriu (deci când
+   dock-ul e deschis, ✕-ul urcă deasupra lui, nu se suprapune). */
+.offline-active-exit {
+    position: absolute;
+    left: 50%;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px) + var(--layer-dock-clearance, 0px));
+    z-index: 1002;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 38px;
+    padding: 9px 13px;
+    transform: translateX(-50%) translateY(10px) scale(0.96);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    color: #F5F0EB;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(196,43,43,0.28), transparent 55%),
+        linear-gradient(180deg, rgba(10,25,48,0.94), rgba(6,14,30,0.96));
+    border: 1px solid rgba(255,138,138,0.42);
+    border-radius: 12px;
+    box-shadow: 0 9px 30px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,255,255,0.05);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    font: 600 0.76rem/1 'Outfit', sans-serif;
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s,
+        background 0.2s ease, border-color 0.2s ease;
+}
+
+.offline-active-exit.is-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0) scale(1);
+    transition-delay: 0s;
+}
+
+.offline-active-exit:hover,
+.offline-active-exit:focus-visible {
+    outline: none;
+    color: #fff;
+    background: rgba(196,43,43,0.72);
+    border-color: rgba(255,160,160,0.75);
+}
+
+.offline-active-exit svg { flex-shrink: 0; }
+
+/* Pe un ecran îngust textul incape greu lângă glif — rămâne doar ✕-ul, iar
+   numele acțiunii rămâne în title / aria-label. */
+@media (max-width: 420px) {
+    .offline-active-exit-label { display: none; }
+    .offline-active-exit { padding: 9px 11px; }
+}
 
 /* The SD-card saved-locations category opens this local library. */
 .offline-library {
@@ -240,6 +294,6 @@ body.is-pwa .offline-library {
 
 @media (prefers-reduced-motion: reduce) {
     .offline-map-panel.is-open, .offline-library.is-open { animation: none; }
+    .offline-active-exit { transition: none; }
     .offline-progress-track span { transition: none; }
-    .offline-first-vertex { animation: none; }
 }

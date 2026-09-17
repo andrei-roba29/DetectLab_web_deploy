@@ -487,7 +487,11 @@
         }
         notifyDistanceMirror(on);
     }
-    function onMapClick(e){ if(active&&!scanning)drawSelection(e.latlng); }
+    /* Unghiul de desenare al hărții offline are prioritate: în acel mod un tap
+       nu trebuie să lase și un pin cu cerc de rază pe hartă (vezi
+       js/offline-maps.js → window._dlOfflineDrawActive). */
+    function offlineDrawing(){ try { return !!window._dlOfflineDrawActive; } catch (e) { return false; } }
+    function onMapClick(e){ if(active&&!scanning&&!offlineDrawing())drawSelection(e.latlng); }
     function load() {
         if (pointsPromise) return pointsPromise;
         setStatus('Loading points / Se încarcă punctele…');

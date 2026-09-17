@@ -82,7 +82,7 @@
         counties: [],
         counters: { pending_requests: 0, unread_messages: 0, friends: 0, conversations: 0 },
         quota: null,
-        search: { query: '', county: '', results: [], loading: false, searched: false },
+        search: { query: '', county: '', results: [], loading: false, searched: false, error: '' },
         activeTab: 'friends',
         panelOpen: false,
         chat: null,                  // { id, kind, title, status, my_role, other_user_id, other_user_name }
@@ -598,29 +598,187 @@
 
     /* ── Search ────────────────────────────────────────────────────────── */
 
+    // Same folding rule as public.search_normalise() in
+    // supabase/migrations/20260916010000_social_unified_search.sql (keep both
+    // in sync): lower-case, fold the Romanian diacritics in BOTH the
+    // comma-below and the cedilla spelling plus the Hungarian/European vowels
+    // common in Transylvanian names, collapse spaces.
+    var FOLD_MAP = {
+        'ă': 'a', 'â': 'a', 'á': 'a', 'à': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a',
+        'î': 'i', 'í': 'i', 'ì': 'i', 'ï': 'i',
+        'ș': 's', 'ş': 's', 'ț': 't', 'ţ': 't',
+        'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
+        'ó': 'o', 'ò': 'o', 'ö': 'o', 'õ': 'o', 'ø': 'o',
+        'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
+        'ý': 'y', 'ÿ': 'y', 'ç': 'c', 'ñ': 'n'
+    };
+
+    function searchNormalise(raw) {
+        var s = String(raw == null ? '' : raw).toLowerCase();
+        var out = '';
+        for (var i = 0; i < s.length; i++) {
+            var ch = s.charAt(i);
+            out += Object.prototype.hasOwnProperty.call(FOLD_MAP, ch) ? FOLD_MAP[ch] : ch;
+        }
+        return out.replace(/\s+/g, ' ').trim();
+    }
+
+    function searchTokens(query) {
+        return searchNormalise(query).split(' ').filter(function (t) { return !!t; });
+    }
+
+    // A query word is a match when it appears (as a substring) in at least one
+    // visible column, or prefixes the account id — the database rule, applied
+    // here so a partial query works identically on either side.
+    function matchesTokens(tokens, row) {
+        if (!tokens.length) return true;
+        var haystacks = [
+            searchNormalise(row.display_name),
+            searchNormalise(row.email),
+            searchNormalise(row.county),
+            searchNormalise(row.city)
+        ];
+        var idText = String(row.user_id || '').toLowerCase();
+        return tokens.every(function (tok) {
+            if (idText.indexOf(tok) === 0) return true;
+            for (var i = 0; i < haystacks.length; i++) {
+                if (haystacks[i] && haystacks[i].indexOf(tok) !== -1) return true;
+            }
+            return false;
+        });
+    }
+
+    function relationshipOf(userId) {
+        var rel = relationFor(userId);
+        if (rel.state === 'friend') return { relationship: 'friend', request_id: null };
+        if (rel.state === 'request_sent') return { relationship: 'request_sent', request_id: rel.requestId };
+        if (rel.state === 'request_received') return { relationship: 'request_received', request_id: rel.requestId };
+        return { relationship: 'none', request_id: null };
+    }
+
+    // The directory the search bar reads (public.user_social_profiles) only
+    // holds the accounts that opened the Friends panel at least once, and the
+    // search RPC itself only exists once the social migrations are applied.
+    // Either way the browser used to be told "no results" for EVERY query,
+    // which is what "cautarea nu functioneaza" looked like from the outside.
+    // This reads the two tables the RLS policies already expose to any signed
+    // in detectorist — the directory itself and the broad last-known location
+    // of js/last-location.js — and merges them, so a name typed by a human
+    // still finds the human behind it.
+    async function searchFallbackRows(tokens, county) {
+        var client = sb();
+        if (!client || typeof client.from !== 'function') return [];
+        var SOURCES = [
+            { table: 'user_social_profiles', columns: 'user_id,display_name,email,county,city,discoverable', name: 'display_name' },
+            { table: 'user_last_locations', columns: 'user_id,full_name,email,city,county', name: 'full_name' }
+        ];
+        var me = currentUser();
+        var byId = {};
+        var loaded = false;
+
+        for (var i = 0; i < SOURCES.length; i++) {
+            var source = SOURCES[i];
+            var res = await selectFrom(source.table, function (q) {
+                return q.select(source.columns).limit(600);
+            });
+            if (!res || res.error || !Array.isArray(res.data)) continue;
+            loaded = true;
+            res.data.forEach(function (row) {
+                if (!row || !row.user_id) return;
+                if (me && String(row.user_id) === String(me.id)) return;   // that's us
+                if (row.discoverable === false) return;                     // hidden account
+                var key = String(row.user_id);
+                var found = byId[key] || {
+                    user_id: row.user_id, display_name: '', email: '', county: '', city: '',
+                    relationship: 'none', request_id: null
+                };
+                ['display_name', 'full_name', 'email', 'county', 'city'].forEach(function (field) {
+                    var value = String(row[field] == null ? '' : row[field]).trim();
+                    if (value && !found[field === 'full_name' ? 'display_name' : field]) {
+                        found[field === 'full_name' ? 'display_name' : field] = value;
+                    }
+                });
+                byId[key] = found;
+            });
+        }
+        if (!loaded) return [];
+
+        var rows = Object.keys(byId).map(function (k) { return byId[k]; });
+        rows = rows.filter(function (row) {
+            if (county && normaliseCounty(row.county) !== normaliseCounty(county)) return false;
+            return matchesTokens(tokens, row);
+        });
+        rows.forEach(function (row) { Object.assign(row, relationshipOf(row.user_id)); });
+        rows.sort(function (a, b) {
+            var an = searchNormalise(a.display_name), bn = searchNormalise(b.display_name);
+            if (an === bn) return String(a.email).localeCompare(String(b.email));
+            return an < bn ? -1 : 1;
+        });
+        return rows;
+    }
+
+    var searchTimer = null;
+    var searchSeq = 0;
+
+    // Debounced "as you type": every keystroke used to need the Search button
+    // or Enter, so a half-typed name looked like a broken search.
+    function scheduleSearch(delay) {
+        if (searchTimer !== null) clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+            searchTimer = null;
+            runSearch();
+        }, delay === undefined ? 300 : delay);
+    }
+
     async function runSearch() {
         var user = currentUser();
         if (!user) return [];
+        var seq = ++searchSeq;
+        var input = document.getElementById ? document.getElementById('frSearchInput') : null;
+        if (input && typeof input.value === 'string') state.search.query = input.value;
+        var query = String(state.search.query || '').trim();
+        var county = state.search.county || '';
         state.search.loading = true;
+        state.search.error = '';
         renderSearchResults();
 
+        // My own directory row must exist too: the account that types the
+        // query is the one the county dropdown and the friend request need.
+        await ensureProfile();
+
         var res = await rpc('search_social_users', {
-            _query: state.search.query || '',
-            _county: state.search.county || null,
+            _query: query,
+            _county: county || null,
             _limit_n: 25
         });
 
+        var rows = (!res.error && Array.isArray(res.data)) ? res.data : [];
+        if (seq !== searchSeq) return rows;
+
+        if (!rows.length) {
+            var fallback = await searchFallbackRows(searchTokens(query), county);
+            if (seq !== searchSeq) return rows;
+            if (fallback.length) rows = fallback;
+        }
+
         state.search.loading = false;
         state.search.searched = true;
-
-        if (res.error || !Array.isArray(res.data)) {
-            state.search.results = [];
-            renderSearchResults();
-            return [];
-        }
-        state.search.results = res.data;
+        state.search.results = rows.map(function (row) {
+            return {
+                user_id: row.user_id,
+                display_name: row.display_name || 'Detectorist',
+                email: row.email || '',
+                county: row.county || '',
+                city: row.city || '',
+                relationship: row.relationship || 'none',
+                request_id: row.request_id || null
+            };
+        });
+        // "Nothing found" and "the server could not be asked" are different
+        // stories; the second one used to be swallowed and shown as the first.
+        state.search.error = (res.error && !rows.length) ? friendlyError(res.error) : '';
         renderSearchResults();
-        return res.data;
+        return state.search.results;
     }
 
     /* ── Relationship to another account ───────────────────────────────── */
@@ -707,6 +865,10 @@
     var MAP_STATE_TTL_MS = 15000;
     var mapStateLoadedAt = 0;
     var mapStatePromise = null;
+    // Set while the social state waits for the auth session to be restored
+    // (see ensureDetectorSocialState), so several popups opened in a row share
+    // one wait instead of stacking listeners.
+    var detectorAuthPromise = null;
 
     function detectorActionsHtml(userId, opts) {
         opts = opts || {};
@@ -771,9 +933,14 @@
         catch (e) { return []; }
     }
 
+    // True while a node is still part of the page. Painting into a popup that
+    // the user already closed is harmless but pointless, so every deferred
+    // pass checks first. A non-element root (the document itself, as passed by
+    // the node tests) is always considered live.
     function slotStillInDocument(slot) {
         try {
-            if (!slot || !document.body || typeof document.body.contains !== 'function') return true;
+            if (!slot || slot === document) return true;
+            if (!document.body || typeof document.body.contains !== 'function') return true;
             return document.body.contains(slot);
         } catch (e) { return true; }
     }
@@ -789,7 +956,24 @@
     // does not hit the network every time.
     function ensureDetectorSocialState(force) {
         var user = currentUser();
-        if (!user || !user.id) return Promise.resolve(false);
+        if (!user || !user.id) {
+            // "Not signed in" and "session still being restored" look the same
+            // from here, and the second one used to end the story: the popup
+            // stayed empty for the whole session. So while auth has not settled
+            // yet, wait for it once and load on the other side.
+            if (detectorAuthPromise) return detectorAuthPromise;
+            var ready = (window._authReadyPromise && typeof window._authReadyPromise.then === 'function')
+                ? window._authReadyPromise
+                : new Promise(function (resolve) { setTimeout(resolve, 1200); });
+            detectorAuthPromise = Promise.resolve(ready).then(function () {
+                detectorAuthPromise = null;
+                return ensureDetectorSocialState(force);
+            }, function () {
+                detectorAuthPromise = null;
+                return false;
+            });
+            return detectorAuthPromise;
+        }
         if (!force && mapStateLoadedAt && Date.now() - mapStateLoadedAt < MAP_STATE_TTL_MS) {
             return Promise.resolve(true);
         }
@@ -807,37 +991,84 @@
 
     // Leaflet measures the popup BEFORE 'popupopen' fires — i.e. while the
     // social slot is still empty. Every paint below injects buttons / notes /
-    // messages AFTER that measurement, so the popup must re-run its layout or
-    // the new content overflows the frame ("mesajul iese din fereastră").
-    // update() is public Leaflet API; the containment check makes sure we only
-    // ever resize the popup that actually holds the given slot.
+    // messages AFTER that measurement, so the popup must re-run its measuring
+    // step or the new content overflows the frame ("mesajul iese din
+    // fereastră").
+    //
+    // Popup#update() must NOT be used for that: these popups carry a STRING
+    // content, and update() re-runs _updateContent(), which assigns the
+    // original string back to the content node — throwing away exactly the
+    // buttons that were just painted. That is why the friend-request button
+    // appeared only "câteodata": whoever won the race between the paint and the
+    // re-measure decided what the user saw. Only the measuring steps are
+    // re-run here (layout → position → autopan), which keeps the injected DOM
+    // alive; update() stays as a last-resort fallback for a Leaflet build
+    // without them. The containment check makes sure we ever resize the popup
+    // that actually holds the given slot.
     function updateOpenDetectorPopup(slot) {
         try {
             var m = window._dlMap || window.map;
             var p = m && m._popup;
-            if (!p || typeof p.update !== 'function') return;
+            if (!p) return;
             if (slot && typeof p.getElement === 'function') {
                 var el = p.getElement();
                 if (!el || typeof el.contains !== 'function' || !el.contains(slot)) return;
             }
-            p.update();
+            if (p._map && typeof p._updateLayout === 'function' && typeof p._updatePosition === 'function') {
+                if (p._container && p._container.style) p._container.style.visibility = 'hidden';
+                p._updateLayout();
+                p._updatePosition();
+                if (p._container && p._container.style) p._container.style.visibility = '';
+                if (typeof p._adjustPan === 'function') p._adjustPan();
+                return;
+            }
+            if (typeof p.update === 'function') p.update();
         } catch (e) {}
+    }
+
+    // Repaint every slot inside a popup element. The popup's DOM is re-created
+    // whenever Leaflet re-renders its string content, so the slots are looked
+    // up again on every pass instead of being cached across paints — a cached
+    // node would be painted into a detached element and never show up.
+    function paintDetectorSlots(root) {
+        if (!slotStillInDocument(root)) return 0;
+        var painted = 0;
+        detectorSlots(root).forEach(function (slot) {
+            if (renderDetectorActions(slot)) painted++;
+            updateOpenDetectorPopup(slot);
+        });
+        return painted;
     }
 
     // Called by js/map-app.js on the map's 'popupopen' event with the popup
     // element. Paints the slot from the mirrored state right away (instant, no
-    // flash of a wrong button) and repaints once the fresh lists arrive.
+    // flash of a wrong button) and repaints once the fresh lists arrive. The
+    // second pass looks the slots up AGAIN inside the same popup element: a
+    // Leaflet popup re-creates its content nodes whenever the string content
+    // is re-rendered, and a cached node from the first pass would be painted
+    // into a detached element (invisible) — that was the other half of the
+    // "butonul apare doar câteodata" report.
+    // One listener per session-boot race (see below), never one per popup.
+    var detectorAuthWait = false;
+
     function decorateDetectorPopup(root) {
         var slots = detectorSlots(root);
         if (!slots.length) return 0;
-        slots.forEach(function (slot) { renderDetectorActions(slot); });
+        paintDetectorSlots(root);
         ensureDetectorSocialState().then(function () {
-            slots.forEach(function (slot) {
-                if (!slotStillInDocument(slot)) return;
-                renderDetectorActions(slot);
-                updateOpenDetectorPopup(slot);
-            });
+            paintDetectorSlots(root);
         });
+        // A brand new session (auth still restoring, panel never opened) has
+        // no friend state in memory at all. Repaint once more when it lands so
+        // the popup cannot stay empty forever.
+        if (!currentUser() && !detectorAuthWait) {
+            detectorAuthWait = true;
+            window.addEventListener('detectlab:authchange', function onAuth() {
+                detectorAuthWait = false;
+                try { window.removeEventListener('detectlab:authchange', onAuth); } catch (e) {}
+                paintDetectorSlots(root);
+            });
+        }
         return slots.length;
     }
 
@@ -1418,8 +1649,17 @@
         var list = document.getElementById('frFriendsList');
 
         if (input) {
-            input.addEventListener('input', function () { state.search.query = input.value; });
-            input.addEventListener('keydown', function (e) { if (e.key === 'Enter') runSearch(); });
+            // "as you type" (debounced), plus Enter and the Search button for an
+            // immediate pass. Typing a name and getting nothing back at all is
+            // what made the whole search look dead.
+            input.addEventListener('input', function () {
+                state.search.query = input.value;
+                scheduleSearch();
+            });
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); runSearch(); }
+            });
+            if (!state.search.query && !state.search.results.length) scheduleSearch(0);
         }
         if (county) {
             county.addEventListener('change', function () { state.search.county = county.value; runSearch(); });
@@ -1451,9 +1691,14 @@
         }
         if (!state.search.searched) { el.innerHTML = ''; return; }
         if (!state.search.results.length) {
-            el.innerHTML = '<div class="fr-empty">' + escapeHtml(t(
-                'Niciun rezultat. Verifică ortografia sau alege alt județ.',
-                'No results. Check the spelling or pick another county.')) + '</div>';
+            // "nobody matches" and "the server could not be asked" are two
+            // different stories; the second one used to be swallowed and shown
+            // as the first, so a missing migration looked like an empty town.
+            var why = state.search.error
+                ? t('Căutarea nu a putut ajunge la server: ', 'The search could not reach the server: ') + state.search.error
+                : t('Niciun rezultat. Verifică ortografia sau alege alt județ.',
+                    'No results. Check the spelling or pick another county.');
+            el.innerHTML = '<div class="fr-empty">' + escapeHtml(why) + '</div>';
             return;
         }
         var html = '<div class="fr-section-label" style="margin-top:10px;">' + escapeHtml(t('Rezultate', 'Results')) + '</div>';
@@ -2479,6 +2724,10 @@
         getCounters: function () { return Object.assign({}, state.counters); },
         getEventQuota: loadEventQuota,
         loadFriends: loadFriends,
+        // The search bar, callable so other entry points (the "Adaugă prieteni"
+        // box in events, a future map-pin flow) can reuse the same rule.
+        searchUsers: runSearch,
+        getSearchResults: function () { return state.search.results.slice(); },
         openChatWithUser: openChatWithUser,
         renderFriendPicker: renderFriendPicker,
         readFriendPicker: readFriendPicker,

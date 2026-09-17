@@ -127,6 +127,18 @@ function createSocialServer(options) {
                     updated_at: new Date().toISOString()
                 };
             }),
+            // The broad last-known location of every account: the directory
+            // projection of 20260916020000 mirrors these rows, so the search can
+            // also be tested against accounts that never opened the panel.
+            user_last_locations: Object.keys(USERS).map(function (k) {
+                const u = USERS[k];
+                return {
+                    user_id: u.id, full_name: u.name, email: u.email,
+                    county: u.county, city: u.city || null,
+                    latitude: 46.7, longitude: 23.5, label: u.city || u.county,
+                    updated_at: new Date().toISOString()
+                };
+            }),
             friend_requests: [],
             friendships: [],
             conversations: [],
@@ -994,6 +1006,36 @@ async function partOne() {
     assert(clujIds.indexOf(USERS.ana.id) === -1, 'search must never return the caller');
     ok('search matches e-mail, name and id, and "Județul Cluj" filters to Cluj only');
 
+    /* ── the search BAR (js/friends.js): typing must find people ── */
+    dom.document.getElementById('frSearchInput').value = 'muresan';
+    let barRows = await api.searchUsers();
+    assert(barRows.some(r => r.user_id === USERS.vlad.id),
+        'typing "muresan" must find "Vlad Mureșan" through the search bar');
+    let barHtml = dom.document.getElementById('frSearchResults').innerHTML;
+    assert(/data-search-action="add"/.test(barHtml),
+        'a stranger in the results must offer the "＋ Adaugă" action, got: ' + barHtml.slice(0, 160));
+    ok('the search bar finds a diacritic-free partial name and offers the action button');
+
+    /* ── … also on a deployment where the search RPC is not installed, and for
+          accounts that never opened the Friends panel (no directory row) ── */
+    {
+        const bare = createSocialServer({ missingFunctions: true });
+        bare.as(USERS.ana.id);
+        bare.tables.user_social_profiles = [];      // nobody opened the panel
+        const bareDom = createDom();
+        const bareSb = createSandbox(bare, USERS.ana, bareDom);
+        runInSandbox(bareSb, [{ code: FRIENDS_JS, name: 'js/friends.js (no migrations)' }]);
+        bareDom.document.getElementById('frSearchInput').value = 'ioana';
+        const found = await bareSb.DetectLabFriends.searchUsers();
+        assert(found.some(r => r.user_id === USERS.ioana.id),
+            'without the search RPC the client must still find the account through the tables RLS exposes');
+        bareDom.document.getElementById('frSearchInput').value = '';
+        const browsed = await bareSb.DetectLabFriends.searchUsers();
+        assert(browsed.length === Object.keys(USERS).length - 1,
+            'an empty query must browse the whole directory instead of returning nothing, got ' + browsed.length);
+        ok('the search degrades to the readable tables (and browses on an empty query)');
+    }
+
     /* ── … and the unified rule: diacritics, county/city, multi-word ── */
     async function searchIds(query) {
         const r = await server.rpc('search_social_users', { _query: query, _county: null, _limit_n: 25 });
@@ -1483,6 +1525,24 @@ function partThree() {
         assert(all.indexOf(needle) !== -1, 'migrations must contain: ' + needle);
     });
     ok('migrations define the tables, the quota triggers and the cleanup jobs');
+
+    // The search fix needs its own migration: the directory must be a
+    // projection of what the app already knows, and a blank query must browse
+    // instead of matching the empty substring nowhere.
+    const unified = ['20260916010000_social_unified_search.sql', '20260916020000_social_directory_projection.sql']
+        .map(f => fs.readFileSync(path.join(__dirname, 'supabase/migrations', f), 'utf8')).join('\n');
+    assert(/create or replace function public\.search_normalise/.test(unified),
+        'search_normalise() must fold case and diacritics');
+    assert(/coalesce\(cardinality\(v_tokens\), 0\) = 0/.test(unified),
+        'a blank query must be the "no text filter" branch (an empty array, not [""])');
+    assert(/v_tokens text\[\] := case when v_q = '' then null/.test(unified),
+        'tokens must be built from a NULL query, not from splitting an empty string');
+    assert(/create or replace function public\.mirror_social_profile/.test(unified),
+        'the directory must be mirrored from the tables the app already writes');
+    assert(/create trigger user_last_locations_mirror_social_profile/.test(unified) &&
+           /create trigger detector_presence_mirror_social_profile/.test(unified),
+        'both location tables must keep the searchable directory up to date');
+    ok('the directory is mirrored from user_last_locations / detector_presence and browses on a blank query');
 }
 
 (async function main() {

@@ -2424,6 +2424,8 @@
 
     function onMapClick(e) {
         if (!_state.active || _state.running) return;
+        // taps belong to the offline polygon while that is being drawn
+        try { if (window._dlOfflineDrawActive) return; } catch (err) {}
         _state.point = { lat: e.latlng.lat, lng: e.latlng.lng };
         try { window._dlSearchAreaPin = { lat: e.latlng.lat, lng: e.latlng.lng }; } catch (err) {}
         drawPointMarker(e.latlng);

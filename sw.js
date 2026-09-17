@@ -37,7 +37,28 @@
 // by Universitatea „Ștefan cel Mare” din Suceava, with bukowina1856.eu as the
 // source (ⓘ popup, Leaflet attribution, offline-maps panel). The source domain
 // is rendered as a clickable link inside the ⓘ popup.
-const CACHE_NAME = 'detectlab-v97-archeo-potential-sweetspot';
+// v98: PWA layer panel + analysis sliders + detectorist social fixes —
+//   • the layers window is anchored top→bottom of the map frame (it used to be
+//     capped at 560px, so in the installed PWA it stopped after the lower half
+//     of the screen) and carries no bottom padding any more;
+//   • a mirrored vertical slider shows its layer title ABOVE the card instead of
+//     inside it, and the LIDAR / potential / report ranges take the colour of the
+//     pin + radius circle of their own layer (green / purple / blue);
+//   • the magnifier only starts the live location — it no longer switches the
+//     detection mode on — and being visible to others now depends on live
+//     location + consent alone;
+//   • tapping a detectorist pin always offers the friend action (Leaflet's
+//     popup.update() used to repaint the string content over the buttons, so the
+//     button appeared only when it lost that race);
+//   • the friends search browses the county on an empty query, searches while you
+//     type, reads the tables the RLS already exposes when the search RPC is
+//     missing, and says so when the server could not be reached
+//     (supabase/migrations/20260916020000_social_directory_projection.sql);
+//   • offline areas are drawn as a polygon only — no vertex pins, no radius
+//     circles, and the analysis layers never drop their pin under the finger
+//     while a ring is being drawn — plus a centred ✕ at the bottom that leaves
+//     an active offline map.
+const CACHE_NAME = 'detectlab-v98-pwa-panel-offline-exit';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -324,7 +345,25 @@ const PRECACHE_URLS = [
   //     rulării ca diferența slab↔tare să se vadă clar.
   'js/archeo-potential.js?v=20260916-archeo-sweetspot',
   'css/styles.css?v=20260916-archeo-sweetspot',
-  'js/translations.js?v=20260916-archeo-sweetspot'
+  'js/translations.js?v=20260916-archeo-sweetspot',
+  // Panoul de straturi se întinde acum pe toată înălțimea hărții (fără tăierea
+  // la 560px din PWA) și fără padding jos; titlul oglinzii verticale iese din
+  // card, deasupra lui; sliderele LIDAR / potențial arheologic / raport primesc
+  // culoarea pinului și a razei stratului lor; lupa pornește doar locația live;
+  // căutarea de prieteni caută în timp ce scrii și arată de ce nu a ajuns la
+  // server; harta offline se desenează doar ca poligon și are un ✕ centrat jos
+  // pentru ieșire.
+  'css/styles.css?v=20260916-pwa-panel-offline-exit',
+  'css/offline-maps.css?v=20260916-pwa-panel-offline-exit',
+  'js/translations.js?v=20260916-pwa-panel-offline-exit',
+  'js/friends.js?v=20260916-pwa-panel-offline-exit',
+  'js/map-app.js?v=20260916-pwa-panel-offline-exit',
+  'js/offline-maps.js?v=20260916-pwa-panel-offline-exit',
+  'js/vertical-opacity-control.js?v=20260916-pwa-panel-offline-exit',
+  'js/archeo-potential.js?v=20260916-pwa-panel-offline-exit',
+  'js/lidar-scanner.js?v=20260916-pwa-panel-offline-exit',
+  'js/archeo-report.js?v=20260916-pwa-panel-offline-exit',
+  'js/tutorial.js?v=20260916-pwa-panel-offline-exit'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

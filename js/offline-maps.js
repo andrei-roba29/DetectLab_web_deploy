@@ -28,10 +28,9 @@
         offlineButton: { ro: 'Hărți offline', en: 'Offline maps' },
         drawPrompt: { ro: 'Desenează un poligon', en: 'Draw a polygon' },
         drawHint: { ro: 'Atinge harta pentru colțuri, apoi apasă dublu sau „Finalizează”.', en: 'Tap the map for corners, then double-click or press “Finish”.' },
-        closeHint: { ro: 'Atinge primul punct (marcat cu verde) pentru a închide poligonul.', en: 'Tap the first point (green marker) to close the polygon.' },
+        closeHint: { ro: 'Atinge primul punct atins pentru a închide poligonul.', en: 'Tap the first corner again to close the polygon.' },
+        finished: { ro: 'Zonă selectată. Alege straturile mai jos.', en: 'Area selected. Pick the layers below.' },
         finish: { ro: 'Finalizează poligonul', en: 'Finish polygon' },
-        edit: { ro: 'Modifică poligonul', en: 'Edit polygon' },
-        editing: { ro: 'Trage punctele pentru a modifica poligonul', en: 'Drag the points to modify the polygon' },
         redraw: { ro: 'Desenează alt poligon', en: 'Draw another polygon' },
         clear: { ro: 'Șterge poligonul', en: 'Clear polygon' },
         area: { ro: 'Suprafață', en: 'Area' },
@@ -62,6 +61,7 @@
         activate: { ro: 'Activează harta', en: 'Activate map' },
         active: { ro: 'Harta activă', en: 'Active map' },
         deactivate: { ro: 'Dezactivează', en: 'Deactivate' },
+        exitOffline: { ro: 'Ieși din harta offline', en: 'Exit the offline map' },
         delete: { ro: 'Șterge', en: 'Delete' },
         offlineTab: { ro: 'Offline', en: 'Offline' },
         offlineActive: { ro: 'Straturile din harta offline activă', en: 'Layers from the active offline map' },
@@ -254,9 +254,6 @@
         points: [],
         polygon: null,
         previewLine: null,
-        previewMarkers: [],
-        vertexMarkers: [],
-        editing: false,
         selected: {},
         db: null,
         dbReady: null,
@@ -266,6 +263,7 @@
         activeSources: [],
         hiddenOnlineLayers: [],
         panel: null,
+        exitButton: null,
         library: null,
         libraryOpen: false,
         downloading: false,
@@ -536,7 +534,6 @@
             '<div class="offline-area-line" hidden><span></span><strong></strong></div>' +
             '<div class="offline-draw-actions">' +
                 '<button type="button" class="offline-action offline-finish"></button>' +
-                '<button type="button" class="offline-action offline-edit"></button>' +
                 '<button type="button" class="offline-action offline-redraw"></button>' +
                 '<button type="button" class="offline-action offline-clear"></button>' +
             '</div>' +
@@ -564,12 +561,6 @@
 
         panel.querySelector('.offline-panel-close').onclick = function () { setMode(false); };
         panel.querySelector('.offline-finish').onclick = finishDrawing;
-        panel.querySelector('.offline-edit').onclick = function () {
-            if (!state.polygon) return;
-            state.editing = !state.editing;
-            createVertexMarkers();
-            updatePanel();
-        };
         panel.querySelector('.offline-redraw').onclick = beginDrawing;
         panel.querySelector('.offline-clear').onclick = clearPolygon;
         panel.querySelector('.offline-download-btn').onclick = function () {
@@ -642,7 +633,7 @@
         panel.querySelector('.offline-panel-title strong').textContent = t('offlineTitle');
         renderStatus();
         var hint = state.drawState === 'drawing' ? t('drawHint') :
-            (state.drawState === 'finished' ? t('editing') : t('drawHint'));
+            (state.drawState === 'finished' ? t('finished') : t('drawHint'));
         // Once the ring can be closed, say how: the first corner doubles as the
         // closing handle.
         if (state.drawState === 'drawing' && state.points.length >= 3) hint += ' ' + t('closeHint');
@@ -662,11 +653,9 @@
         areaLine.classList.toggle('is-over', area > MAX_AREA_M2);
 
         var finish = panel.querySelector('.offline-finish');
-        var edit = panel.querySelector('.offline-edit');
         var redraw = panel.querySelector('.offline-redraw');
         var clear = panel.querySelector('.offline-clear');
         finish.textContent = t('finish'); finish.hidden = state.drawState !== 'drawing';
-        edit.textContent = state.editing ? t('editing') : t('edit'); edit.hidden = state.drawState !== 'finished';
         redraw.textContent = t('redraw'); redraw.hidden = state.drawState !== 'finished';
         clear.textContent = t('clear'); clear.hidden = state.points.length === 0;
         panel.querySelector('.offline-download-options').hidden = state.drawState !== 'finished' || area > MAX_AREA_M2;
@@ -708,100 +697,60 @@
     function clearPreview() {
         if (state.previewLine && state.map && state.map.hasLayer(state.previewLine)) state.map.removeLayer(state.previewLine);
         state.previewLine = null;
-        if (state.previewCloseLine && state.map && state.map.hasLayer(state.previewCloseLine)) state.map.removeLayer(state.previewCloseLine);
-        state.previewCloseLine = null;
-        state.previewMarkers.forEach(function (marker) { if (state.map && state.map.hasLayer(marker)) state.map.removeLayer(marker); });
-        state.previewMarkers = [];
-    }
-
-    function removeVertexMarkers() {
-        state.vertexMarkers.forEach(function (marker) { if (state.map && state.map.hasLayer(marker)) state.map.removeLayer(marker); });
-        state.vertexMarkers = [];
     }
 
     function removePolygon() {
         if (state.polygon && state.map && state.map.hasLayer(state.polygon)) state.map.removeLayer(state.polygon);
         state.polygon = null;
-        removeVertexMarkers();
     }
 
+    /* The shape being drawn is shown AS the shape: a dashed outline that fills
+       in as soon as the ring can be closed. No vertex dots, no circles around
+       a pin — the offline area has always been a polygon, and drawing pins on
+       top of it made the flow look like two different tools at once. */
     function redrawPreview() {
         clearPreview();
         if (!state.map || state.points.length === 0) return;
         var over = state.points.length >= 3 && polygonAreaM2(state.points) > MAX_AREA_M2;
         var color = over ? '#c42b2b' : '#E8772A';
-        state.previewLine = L.polyline(state.points, {
-            color: color, weight: 3, dashArray: '7 5', opacity: 0.95, pane: 'offlineDrawPane', interactive: false
-        }).addTo(state.map);
+        var style = {
+            color: color, weight: 2.5, dashArray: '7 5', opacity: 0.95,
+            pane: 'offlineDrawPane', interactive: false
+        };
         if (state.points.length >= 3) {
-            // A faint closing edge shows that the ring ends where it started,
-            // i.e. tapping that first (green) corner finishes the polygon.
-            state.previewCloseLine = L.polyline([state.points[state.points.length - 1], state.points[0]], {
-                color: color, weight: 2, dashArray: '2 8', opacity: 0.85, pane: 'offlineDrawPane', interactive: false
+            state.previewLine = L.polygon(state.points, {
+                color: style.color, weight: style.weight, dashArray: style.dashArray,
+                opacity: style.opacity, fill: true, fillColor: color,
+                fillOpacity: over ? 0.16 : 0.11, pane: style.pane, interactive: false
             }).addTo(state.map);
+        } else {
+            state.previewLine = L.polyline(state.points, style).addTo(state.map);
         }
-        state.points.forEach(function (point, index) {
-            var first = index === 0;
-            var marker = L.circleMarker(point, {
-                radius: first ? 8 : 5,
-                color: '#fff',
-                weight: 2,
-                fillColor: first ? '#4ad66d' : (over ? '#c42b2b' : '#E8772A'),
-                fillOpacity: 1,
-                className: first ? 'offline-first-vertex' : '',
-                pane: 'offlineDrawPane',
-                interactive: false
-            }).addTo(state.map);
-            state.previewMarkers.push(marker);
-        });
     }
 
-    function createVertexMarkers() {
-        removeVertexMarkers();
-        if (!state.polygon || !state.map || !state.editing) return;
-        state.points.forEach(function (point, index) {
-            var marker = L.marker(point, {
-                draggable: true,
-                icon: L.divIcon({ className: 'offline-vertex-icon', html: '<span></span>', iconSize: [20, 20], iconAnchor: [10, 10] }),
-                pane: 'offlineDrawPane',
-                zIndexOffset: 2400,
-                title: currentLang() === 'en' ? 'Drag to edit point ' + (index + 1) : 'Trage pentru a modifica punctul ' + (index + 1)
-            }).addTo(state.map);
-            marker._offlineIndex = index;
-            marker.on('dragstart', function () { marker._offlineBefore = L.latLng(state.points[index]); });
-            marker.on('drag', function (event) {
-                state.points[index] = event.target.getLatLng();
-                state.polygon.setLatLngs(state.points);
-                var area = polygonAreaM2(state.points);
-                if (area <= MAX_AREA_M2) {
-                    state.polygon.setStyle({ color: '#4fc3f7', fillColor: '#4fc3f7' });
-                    clearStatus('tooLarge');
-                    updatePanel();
-                } else {
-                    state.polygon.setStyle({ color: '#c42b2b', fillColor: '#c42b2b' });
-                }
-            });
-            marker.on('dragend', function () {
-                if (polygonAreaM2(state.points) > MAX_AREA_M2) {
-                    state.points[index] = marker._offlineBefore;
-                    marker.setLatLng(marker._offlineBefore);
-                    state.polygon.setLatLngs(state.points);
-                    setStatus(t('tooLarge'), true);
-                }
-                updatePanel();
-            });
-            state.vertexMarkers.push(marker);
-        });
+    /* While an offline polygon is being drawn, the map taps belong to the
+       polygon — and to nothing else. The analysis layers (LIDAR Scanner, Zone
+       cu potențial arheologic, Raport arheologic) each arm a "tap the map to
+       drop a pin + a radius circle" handler, so without this flag a single tap
+       used to produce BOTH a corner of the offline area and a pin with its
+       circle: two tools answering the same gesture at once. Offline areas are
+       polygons, full stop; the flag is what keeps the pin-with-radius logic out
+       of the flow (the three modules read window._dlOfflineDrawActive). */
+    function updateDrawModeFlag() {
+        try {
+            window._dlOfflineDrawActive = !!(state.mode && state.drawState === 'drawing');
+        } catch (e) { /* a sandbox without a window object */ }
     }
 
     function beginDrawing() {
         if (!state.map) return;
         removePolygon(); clearPreview();
-        state.points = []; state.selected = {}; state.editing = false; state.drawState = 'drawing';
+        state.points = []; state.selected = {}; state.drawState = 'drawing';
         state.map.getContainer().classList.add('offline-drawing');
         if (state.map.doubleClickZoom) state.map.doubleClickZoom.disable();
         state.map.on('click', onDrawClick);
         state.map.on('dblclick', onDrawDoubleClick);
+        updateDrawModeFlag();
         clearStatus();
         updatePanel();
     }
@@ -855,8 +804,9 @@
         state.polygon = L.polygon(state.points, {
             color: '#4fc3f7', weight: 2.5, fillColor: '#4fc3f7', fillOpacity: 0.16, pane: 'offlineDrawPane'
         }).addTo(state.map);
-        state.drawState = 'finished'; state.editing = false;
+        state.drawState = 'finished';
         clearStatus();
+        updateDrawModeFlag();
         updatePanel();
     }
 
@@ -866,8 +816,9 @@
         if (state.map.doubleClickZoom) state.map.doubleClickZoom.enable();
         state.map.getContainer().classList.remove('offline-drawing');
         clearPreview(); removePolygon();
-        state.points = []; state.selected = {}; state.drawState = 'idle'; state.editing = false;
+        state.points = []; state.selected = {}; state.drawState = 'idle';
         clearStatus();
+        updateDrawModeFlag();
         updatePanel();
     }
 
@@ -885,12 +836,12 @@
             state.map && state.map.off('click', onDrawClick).off('dblclick', onDrawDoubleClick);
             if (state.map && state.map.doubleClickZoom) state.map.doubleClickZoom.enable();
             if (state.map) state.map.getContainer().classList.remove('offline-drawing');
-            removeVertexMarkers(); state.editing = false;
             // A half-drawn polygon is a temporary gesture. Remove it when the
             // mode is switched off so the next activation starts cleanly.
             if (state.drawState === 'drawing') {
                 clearPreview(); state.points = []; state.drawState = 'idle'; state.selected = {};
             }
+            updateDrawModeFlag();
             // Drops any pending error; the panel falls back to "offline mode off".
             clearStatus();
         }
@@ -993,6 +944,51 @@
         });
     }
 
+    /* ── the ✕ that leaves an active offline map ──
+       A saved area takes the map over: the cached rasters cover the online
+       tiles, the polygon sits on top of everything and the layer panel shows
+       the offline tab. While that is the case, a single ✕ is centred at the
+       bottom of the screen (the same place the analysis layers dock their own
+       button) and deactivates the map: local layers off, polygon off, offline
+       mode off. */
+    function ensureExitButton() {
+        if (state.exitButton) return state.exitButton;
+        var parent = document.querySelector('.map-frame') || document.body;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'offlineMapExit';
+        btn.className = 'offline-active-exit';
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+            '<path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>' +
+            '<span class="offline-active-exit-label"></span>';
+        btn.onclick = function (event) {
+            if (event && event.stopPropagation) event.stopPropagation();
+            exitOfflineMap();
+        };
+        parent.appendChild(btn);
+        state.exitButton = btn;
+        return btn;
+    }
+
+    function updateExitButton() {
+        var btn = ensureExitButton();
+        var visible = !!state.activeId;
+        if (btn.classList) btn.classList.toggle('is-visible', visible);
+        btn.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        var label = btn.querySelector ? btn.querySelector('.offline-active-exit-label') : null;
+        if (label) label.textContent = t('exitOffline');
+        btn.setAttribute('title', t('exitOffline'));
+        btn.setAttribute('aria-label', t('exitOffline'));
+    }
+
+    function exitOfflineMap() {
+        // A half-drawn ring is abandoned first so the next activation is clean.
+        if (state.drawState === 'drawing') clearPolygon();
+        deactivateOfflineMap();
+        setMode(false);
+        renderLibrary();
+    }
+
     function activateOfflineMap(record, silent) {
         if (!state.map || !record) return;
         removeActiveLayers();
@@ -1009,7 +1005,8 @@
             layer.addTo(state.map); state.activeLayers.push(layer); state.activeSources.push(source);
         });
         renderOfflineRows(record);
-        var polygon = record.polygon || [];
+        updateExitButton();
+        var polygon = record.polygon || []
         if (polygon.length >= 3) {
             if (state.polygon && state.map.hasLayer(state.polygon)) state.map.removeLayer(state.polygon);
             state.points = pointArray(polygon);
@@ -1033,7 +1030,9 @@
         try { localStorage.removeItem('detectlab_active_offline_map'); } catch (e) {}
         hideSavedCategory();
         if (state.polygon && state.map && state.map.hasLayer(state.polygon)) state.map.removeLayer(state.polygon);
-        state.polygon = null; state.points = []; state.drawState = 'idle'; state.editing = false; removeVertexMarkers();
+        state.polygon = null; state.points = []; state.drawState = 'idle';
+        updateDrawModeFlag();
+        updateExitButton();
     }
 
     function ensureLibrary() {
@@ -1090,6 +1089,7 @@
         if (wasActive) deactivateOfflineMap();
         cleanRecordTiles(record).then(function () { return deleteRecord(record.id); }).then(function () {
             state.maps = state.maps.filter(function (r) { return r.id !== record.id; }); renderLibrary();
+            updateExitButton();
         });
     }
 
@@ -1196,6 +1196,7 @@
 
     function updateLanguage() {
         if (state.panel) updatePanel();
+        if (state.exitButton) updateExitButton();
         if (state.libraryOpen) renderLibrary();
         var button = document.getElementById('btnOfflineMaps');
         if (button) { button.title = state.mode ? t('offlineModeOff') : t('offlineButton'); button.setAttribute('aria-label', t('offlineButton')); }
@@ -1218,7 +1219,7 @@
     function boot() {
         if (state.map || !window._dlMap || !window.L) { if (!state.map) setTimeout(boot, 150); return; }
         state.map = window._dlMap;
-        createOfflinePane(); makeIconButton(); ensurePanel();
+        createOfflinePane(); makeIconButton(); ensurePanel(); ensureExitButton(); updateExitButton();
         state.map.on('resize', function () { if (state.mode) updatePanel(); });
         state.dbReady = openDb();
         state.dbReady.then(function () { return cleanupExpiredRecords(); }).then(function () { restoreActive(); });
@@ -1235,6 +1236,10 @@
         window.toggleOfflineMaps = function () { setMode(!state.mode); };
         var savedToggle = document.getElementById('switchOfflineMaps');
         if (savedToggle && savedToggle.checked) openLibrary();
+        // Test/debug handle: the ✕ is driven by updateExitButton(), which reads
+        // state.activeId — exposing it lets the node test activate a map without
+        // touching the network.
+        state.refreshExitButton = updateExitButton;
         window._offlineMapsState = state;
         document.addEventListener('detectlab:langchange', updateLanguage);
         window.addEventListener('detectlab:authchange', updatePremiumAvailability);
