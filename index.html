@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260917-archeo-coverage">
+    <link rel="stylesheet" href="css/styles.css?v=20260917-vertical-slim-glass">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -1125,16 +1125,17 @@
                 <!-- Selected-layer opacity control. Clicking any layer card that owns an
                      opacity slider mirrors that slider here, vertically, so the map can
                      remain visible while opacity is adjusted (desktop and installed PWA).
-                     No caption strip above the range: the mirror already shows the layer
-                     name, so the word "OPACITY" was dropped from the top of the slider. -->
+                     The card is a slim semi-transparent frosted-glass box; the layer
+                     name is written vertically (bottom-up) along the slider's left
+                     side — max 15 characters, the rest becomes „…” — and the
+                     percentage is only visible while the opacity is changed. -->
                 <div class="vertical-opacity-control" id="verticalOpacityControl"
                      role="group" aria-label="Selected layer opacity" aria-hidden="true">
                     <button type="button" class="vertical-opacity-close" id="verticalOpacityClose"
                             title="Close opacity control" aria-label="Close opacity control">×</button>
-                    <!-- Title of the mirrored range. It sits OUTSIDE the card,
-                         above it (see .vertical-opacity-title), because the
-                         layer name inside the slider box made the control look
-                         like a panel row that had lost its place on the map. -->
+                    <!-- Title of the mirrored range: the small caption chip (RAZĂ /
+                         DISTANȚĂ / ISTORIC) floats above the card, while the layer
+                         name runs bottom-up along the left side of the slider. -->
                     <span class="vertical-opacity-title" id="verticalOpacityTitle">
                         <span class="vertical-opacity-caption" id="verticalOpacityCaption"></span>
                         <span class="vertical-opacity-layer" id="verticalOpacityLayer">Layer</span>
@@ -3657,7 +3658,7 @@
     <script src="js/map-app.js?v=20260917-pwa-social-fix"></script>
     <script src="js/offline-maps.js?v=20260916-pwa-panel-offline-exit"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
-    <script src="js/vertical-opacity-control.js?v=20260916-pwa-panel-offline-exit"></script>
+    <script src="js/vertical-opacity-control.js?v=20260917-vertical-slim-glass"></script>
     <!-- leaflet-heat rămâne în shell (pre-cache), dar nu mai e folosit de
          „Archeological Potential Sites": heatmap-ul de acolo e propriul raster de
          scoruri ancorat geografic, ca să nu alunece la zoom. -->

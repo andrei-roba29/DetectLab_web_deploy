@@ -71,7 +71,7 @@
 //   the phone status bar in the installed PWA (safe-area top padding, same
 //   rule as the event chat) so ← / ⋯ / 📅 stay tappable. The map guide
 //   (js/tutorial.js) opens the search tab and points at the new tabs.
-const CACHE_NAME = 'detectlab-v103-friends-tabs';
+const CACHE_NAME = 'detectlab-v104-vertical-slim-glass';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -424,7 +424,14 @@ const PRECACHE_URLS = [
   // mai distrug butonul din mijlocul tap-ului.
   'js/friends.js?v=20260917-pwa-social-fix',
   'js/map-app.js?v=20260917-pwa-social-fix',
-  'css/styles.css?v=20260917-pwa-social-fix'
+  'css/styles.css?v=20260917-pwa-social-fix',
+  // Oglinzile verticale de opacitate devin mai înguste: casetă de sticlă
+  // semi-transparentă cu blur (fără fundalul mov), titlul stratului scris
+  // vertical de jos în sus pe laterala stângă a sliderului (max. 15
+  // caractere, restul „…”) și procentul vizibil doar cât timp se modifică
+  // opacitatea.
+  'css/styles.css?v=20260917-vertical-slim-glass',
+  'js/vertical-opacity-control.js?v=20260917-vertical-slim-glass'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

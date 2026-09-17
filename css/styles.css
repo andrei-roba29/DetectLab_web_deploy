@@ -4731,28 +4731,35 @@
         /* ── SELECTED LAYER: VERTICAL OPACITY CONTROL ──
            Every real opacity range in the layer panel is registered by
            vertical-opacity-control.js. The selected range is mirrored here so
-           users can tune it over the map after the full layer panel closes. */
+           users can tune it over the map after the full layer panel closes.
+
+           Slim frosted-glass card (no more purple panel): a semi-transparent
+           fill blurred with backdrop-filter, a narrow column layout — the
+           layer name runs vertically along the LEFT side of the slider,
+           written bottom-up (max 15 characters, the rest becomes „…”), and
+           the percentage chip only appears while the opacity is changed. */
         .vertical-opacity-control {
             position: absolute;
             right: calc(38px + env(safe-area-inset-right, 0px));
             top: 50%;
             z-index: 1000;
-            width: 68px;
+            width: 50px;
             height: 294px;
-            padding: 10px 8px 11px;
-            display: flex;
-            flex-direction: column;
+            padding: 10px 5px 11px;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            grid-template-rows: 1fr auto;
+            column-gap: 2px;
+            row-gap: 5px;
+            justify-items: center;
             align-items: center;
-            gap: 5px;
             color: #F5F0EB;
-            background:
-                radial-gradient(circle at 50% 0%, rgba(107,63,160,0.28), transparent 48%),
-                linear-gradient(180deg, rgba(10,25,48,0.94), rgba(6,14,30,0.96));
-            border: 1px solid rgba(184,216,240,0.28);
+            background: rgba(12,20,38,0.38);
+            border: 1px solid rgba(255,255,255,0.22);
             border-radius: 14px;
-            box-shadow: 0 9px 30px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,255,255,0.05);
-            -webkit-backdrop-filter: blur(14px);
-            backdrop-filter: blur(14px);
+            box-shadow: 0 9px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+            -webkit-backdrop-filter: blur(18px) saturate(150%);
+            backdrop-filter: blur(18px) saturate(150%);
             transform: translateY(-50%) translateX(16px) scale(0.96);
             transform-origin: center right;
             opacity: 0;
@@ -4795,29 +4802,30 @@
             outline: none;
         }
 
-        /* ── SLIDER TITLE: ABOVE THE CONTROL, NEVER INSIDE IT ──
-           Both lines of a mirror's title (the small DISTANȚĂ / RAZĂ / ISTORIC
-           caption and the layer name) are lifted out of the card and centred
-           above it, so the card holds only what you actually touch: the range,
-           its value and the close button. Each line is a chip of its own and
-           collapses when the JS leaves it empty, so an opacity mirror (no
-           caption) shows exactly one line above the slider. */
+        /* ── SLIDER TITLE: VERTICAL, ON THE LEFT SIDE OF THE SLIDER ──
+           The layer name is written bottom-up along the left edge of the slim
+           card (writing-mode vertical + 180° rotation), in a single column of
+           text — js/vertical-opacity-control.js keeps it to 15 characters and
+           replaces the rest with „…” (the full name stays in the title
+           attribute). The small DISTANȚĂ / RAZĂ / ISTORIC caption remains a
+           chip floating above the card and collapses when the JS leaves it
+           empty (opacity mirrors carry no caption). */
         .vertical-opacity-title {
+            grid-column: 1;
+            grid-row: 1 / -1;
+            align-self: center;
+            justify-self: center;
+            max-height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .vertical-opacity-caption {
             position: absolute;
             bottom: calc(100% + 7px);
             left: 50%;
             transform: translateX(-50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 3px;
             max-width: min(196px, calc(100vw - 26px));
-            pointer-events: none;
-            text-align: center;
-        }
-
-        .vertical-opacity-caption {
-            max-width: 100%;
             padding: 3px 7px;
             overflow: hidden;
             color: rgba(184,216,240,0.78);
@@ -4837,21 +4845,18 @@
             display: none;
         }
 
+        /* Layer name: bottom-up vertical text on the card's left side. */
         .vertical-opacity-layer {
-            max-width: 100%;
-            padding: 3px 8px;
-            display: -webkit-box;
+            display: block;
+            max-height: 100%;
             overflow: hidden;
-            color: rgba(245,240,235,0.95);
-            background: rgba(8,20,41,0.9);
-            border: 1px solid rgba(184,216,240,0.26);
-            border-radius: 8px;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
-            font: 600 0.62rem/1.2 'Outfit', sans-serif;
-            text-align: center;
-            overflow-wrap: anywhere;
-            -webkit-box-orient: vertical;
-            -webkit-line-clamp: 2;
+            color: rgba(245,240,235,0.92);
+            font: 600 0.62rem/1.3 'Outfit', sans-serif;
+            letter-spacing: 0.05em;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.55);
+            white-space: nowrap;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
         }
 
         .vertical-opacity-layer:empty {
@@ -4860,8 +4865,10 @@
 
         .vertical-opacity-slider-wrap {
             position: relative;
-            flex: 1 1 auto;
-            width: 34px;
+            grid-column: 2;
+            grid-row: 1;
+            align-self: stretch;
+            width: 22px;
             min-height: 146px;
         }
 
@@ -4875,7 +4882,7 @@
             top: 50%;
             left: 50%;
             width: 168px;
-            height: 6px;
+            height: 5px;
             margin: 0;
             border-radius: 4px;
             background: linear-gradient(90deg, rgba(184,216,240,0.16), rgba(160,112,232,0.82));
@@ -4918,21 +4925,45 @@
         }
 
         .vertical-opacity-slider::-moz-range-track {
-            height: 6px;
+            height: 5px;
             border: 0;
             border-radius: 4px;
             background: linear-gradient(90deg, rgba(184,216,240,0.16), rgba(160,112,232,0.82));
         }
 
         .vertical-opacity-value {
-            min-width: 46px;
-            padding: 3px 4px;
+            grid-column: 1 / -1;
+            grid-row: 2;
+            min-width: 0;
+            max-width: 100%;
+            padding: 2px 4px;
             color: var(--sky);
             background: rgba(184,216,240,0.09);
             border: 1px solid rgba(184,216,240,0.18);
             border-radius: 7px;
-            font: 700 0.72rem/1.2 'Cinzel', serif;
+            font: 700 0.6rem/1.2 'Cinzel', serif;
             text-align: center;
+            white-space: nowrap;
+        }
+
+        /* ── PERCENTAGE ONLY WHILE CHANGING ──
+           The opacity mirror's value chip stays hidden until the user actually
+           changes the opacity (drag / keyboard / the panel slider), then fades
+           away shortly after the last change. js/vertical-opacity-control.js
+           toggles the .visible class. Distance and ISTORIC mirrors keep their
+           chips permanently visible (they are not percentages). */
+        .vertical-opacity-control[data-kind="opacity"] .vertical-opacity-value {
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(3px);
+            transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s linear 0.15s;
+        }
+
+        .vertical-opacity-control[data-kind="opacity"] .vertical-opacity-value.visible {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+            transition-delay: 0s;
         }
 
         /* Period mirrors (e.g. Battles) keep the same compact container as
@@ -5056,9 +5087,12 @@
             box-shadow: 0 0 0 3px var(--dl-layer-soft);
         }
 
-        /* Value chip under the mirrored range, in the layer colour. */
+        /* Value chip under the mirrored range, in the layer colour. The slim
+           glass card is only ~50px wide, so the chip keeps its own background
+           but drops the old minimum width to fit inside it. */
         .vertical-opacity-control[data-kind="distance"] .vertical-opacity-value {
-            min-width: 54px;
+            min-width: 0;
+            padding: 2px 4px;
             color: var(--dl-layer-colour);
             background: var(--dl-layer-soft);
             border-color: var(--dl-layer-edge);
@@ -5075,7 +5109,7 @@
            `.vertical-period-control` has the same specificity (0,1,0) as the
            generic `.vertical-opacity-control` rules, so the responsive overrides
            that appear LATER in this file (notably the @media (max-width:600px)
-           block that narrows the mirror to 62px and moves it to right:34px)
+           block that narrows the mirror to 46px and moves it to right:34px)
            used to win the `right` declaration here as well. Both mirrors then
            landed on the exact same anchor — stacked one on top of the other —
            so on every phone / installed PWA only the period mirror (the last
@@ -5084,12 +5118,12 @@
            of any single-class rule; the mobile block below re-states the
            narrower geometry with the same specificity. */
         .vertical-opacity-control.vertical-period-control {
-            right: calc(38px + 68px + 14px + env(safe-area-inset-right, 0px));
+            right: calc(38px + 50px + 14px + env(safe-area-inset-right, 0px));
         }
 
         .vertical-opacity-control[data-kind="satperiod"] .vertical-opacity-value {
-            font-size: 0.64rem;
-            letter-spacing: 0.03em;
+            font-size: 0.58rem;
+            letter-spacing: 0.02em;
         }
 
         /* Two stop dots on the vertical period track: 2016 at the bottom of
@@ -5175,19 +5209,19 @@
         @media (max-width: 600px) {
             .vertical-opacity-control {
                 right: calc(34px + env(safe-area-inset-right, 0px));
-                width: 62px;
+                width: 46px;
                 height: 262px;
-                padding-left: 6px;
-                padding-right: 6px;
+                padding-left: 5px;
+                padding-right: 5px;
             }
 
-            /* Phones / installed PWA: the mirror is 6px narrower here, so the
+            /* Phones / installed PWA: the mirror is 4px narrower here, so the
                Satellite pair must re-derive its left anchor from THIS width
-               instead of keeping the desktop 68px. Same two-class specificity
+               instead of keeping the desktop 50px. Same two-class specificity
                as the desktop rule above and later in the file → wins, and the
                two mirrors stay side by side instead of overlapping. */
             .vertical-opacity-control.vertical-period-control {
-                right: calc(34px + 62px + 14px + env(safe-area-inset-right, 0px));
+                right: calc(34px + 46px + 14px + env(safe-area-inset-right, 0px));
             }
 
             .vertical-opacity-slider {
@@ -5195,7 +5229,12 @@
             }
 
             .vertical-opacity-layer {
-                font-size: 0.58rem;
+                font-size: 0.55rem;
+            }
+
+            .vertical-opacity-value {
+                padding: 2px 3px;
+                font-size: 0.56rem;
             }
         }
 
@@ -5208,11 +5247,10 @@
                 display: none;
             }
 
-            /* The title floats above the card, so on a short screen it only
-               gets a single line instead of clipping the slider. */
+            /* The title runs vertically along the card's left side, so on a
+               short screen it shrinks instead of clipping the slider. */
             .vertical-opacity-layer {
-                min-height: 0;
-                -webkit-line-clamp: 1;
+                font-size: 0.5rem;
             }
 
             .vertical-opacity-slider {
@@ -5227,6 +5265,11 @@
 
             .vertical-opacity-slider {
                 width: 82px;
+            }
+
+            .vertical-opacity-layer {
+                font-size: 0.44rem;
+                letter-spacing: 0.02em;
             }
         }
 
@@ -5548,7 +5591,7 @@
             bottom: auto;
             top: 50%;
             left: auto;
-            right: calc(38px + 68px + 14px + env(safe-area-inset-right, 0px));
+            right: calc(38px + 50px + 14px + env(safe-area-inset-right, 0px));
             transform: translateY(-50%);
         }
         body.is-pwa.vo-josephine-docked #iosBldSettingsPanel {
@@ -5570,7 +5613,7 @@
                 text-align: right;
             }
             body.vo-josephine-docked #iosBldSettingsPanel {
-                right: calc(34px + 62px + 10px + env(safe-area-inset-right, 0px));
+                right: calc(34px + 46px + 10px + env(safe-area-inset-right, 0px));
                 width: min(280px, calc(100vw - 140px));
             }
         }
