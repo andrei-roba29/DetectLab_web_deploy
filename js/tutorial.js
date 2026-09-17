@@ -209,6 +209,14 @@
                     }
                 },
                 {
+                    sel: '#friendsManagerPanel .fr-tab[data-tab="friends"]',
+                    title: { ro: 'Prietenii tăi', en: 'Your friends' },
+                    desc: {
+                        ro: 'Lista prietenilor tăi, cu butonul de chat pentru fiecare. Căutarea de detectoriști are acum propriul ei tab, „Caută prieteni”.',
+                        en: 'Your friend list, with a chat button for each. Searching for detectorists now has its own tab, “Search friends”.'
+                    }
+                },
+                {
                     sel: '#friendsManagerPanel .fr-tab[data-tab="requests"]',
                     title: { ro: 'Cereri', en: 'Requests' },
                     desc: {
@@ -731,21 +739,23 @@
         return !!document.getElementById('friendsManagerPanel');
     }
 
-    /* Mirrors ensurePanel(): the guide demonstrates on the friends tab, and
-       only ever closes a panel it opened itself. Signed-out visitors never
-       get openFriends() called on them — that would pop the auth modal over
-       the guide; they see the step's authNote instead. */
+    /* Mirrors ensurePanel(): the guide demonstrates on the friends search tab
+       (the search bar the first arrow points at lives there since the panel
+       split „Caută prieteni” / „Prietenii tăi”), and only ever closes a panel
+       it opened itself. Signed-out visitors never get openFriends() called on
+       them — that would pop the auth modal over the guide; they see the
+       step's authNote instead. */
     function ensureFriends(open) {
         if (open && !friendsPanelIsOpen()) {
             if (!signedIn()) return;
             if (typeof window.openFriends === 'function') {
-                window.openFriends('friends');
+                window.openFriends('search');
                 state.openedFriends = true;
                 state.friendsOpening = true;
             }
         } else if (open && friendsPanelIsOpen()) {
             try {
-                var tab = document.querySelector('#friendsManagerPanel .fr-tab[data-tab="friends"]');
+                var tab = document.querySelector('#friendsManagerPanel .fr-tab[data-tab="search"]');
                 if (tab && typeof tab.click === 'function') tab.click();
             } catch (e) { /* keep the guide usable no matter what */ }
         } else if (!open && state.openedFriends) {

@@ -1,8 +1,9 @@
 /* ══════════════════════════════════════════════════════════════════════════
    DetectLab Social — "Prieteni" / "Friends"
    ──────────────────────────────────────────────────────────────────────────
-   • Friends panel (nav → Prieteni, under Events / Manage Account) with three
-     tabs: friends, friend requests and chats.
+   • Friends panel (nav → Prieteni, under Events / Manage Account) with four
+     tabs: search friends („Caută prieteni”), your friends („Prietenii tăi”),
+     friend requests and chats.
    • Unified search: one query matched partially (diacritics folded) against
      display name, e-mail, county, city or the account id prefix, plus a
      county (județ) filter dropdown.
@@ -1485,6 +1486,9 @@
             '.fr-tab{flex:1;min-width:110px;background:rgba(255,255,255,0.05);border:1px solid rgba(184,216,240,0.18);border-radius:8px;color:rgba(245,240,235,0.75);padding:9px 10px;font-size:0.8rem;cursor:pointer;font-weight:600;position:relative;}',
             '.fr-tab.active{background:rgba(107,63,160,0.35);border-color:rgba(196,160,240,0.55);color:#fff;}',
             '.fr-tab .fr-tab-count{opacity:0.75;font-weight:500;font-size:0.72rem;margin-left:4px;}',
+            // Four tabs now (search / friends / requests / chats): on a phone
+            // they snap to a clean 2×2 grid instead of 3+1.
+            '@media (max-width:520px){.fr-tabs .fr-tab{min-width:calc(50% - 8px);}}',
             '.fr-card{background:rgba(10,20,42,0.72);border:1px solid rgba(184,216,240,0.16);border-radius:10px;padding:12px;}',
             '.fr-search-row{display:flex;gap:8px;flex-wrap:wrap;}',
             '.fr-input,.fr-select{background:rgba(255,255,255,0.06);border:1px solid rgba(184,216,240,0.25);border-radius:8px;color:#F5F0EB;padding:9px 10px;font-size:0.82rem;font-family:"Outfit",sans-serif;box-sizing:border-box;}',
@@ -1508,6 +1512,12 @@
             '.fr-notice{font-size:0.76rem;line-height:1.5;padding:10px;border-radius:8px;background:rgba(230,168,23,0.12);border:1px solid rgba(230,168,23,0.4);color:#f0d9a0;}',
             '.fr-limits{font-size:0.7rem;opacity:0.6;line-height:1.5;}',
             '.fr-chat-panel{position:fixed;inset:0;z-index:3600;background:rgba(4,10,22,0.97);display:flex;flex-direction:column;color:#F5F0EB;font-family:"Outfit",sans-serif;}',
+            // Installed PWA only: the translucent phone status bar sits on top
+            // of the chat header and intercepts taps on ← / ⋯ / 📅 (same rule
+            // as #eventChatModal in js/events.js). Extra top padding
+            // (safe-area + a small fixed buffer) pushes those buttons below
+            // the bar; the inset itself is painted #060D1D.
+            'html.is-pwa .fr-chat-panel,body.is-pwa .fr-chat-panel{padding-top:calc(16px + max(32px, env(safe-area-inset-top, 0px)));background:#060D1D;}',
             '.fr-chat-header{background:rgba(6,14,30,0.96);border-bottom:1px solid rgba(184,216,240,0.15);padding:10px 14px;display:flex;align-items:center;gap:10px;flex:0 0 auto;}',
             '.fr-chat-header-main{flex:1;min-width:0;}',
             '.fr-chat-title{font-weight:700;font-size:0.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
@@ -1578,29 +1588,12 @@
         return bits.join(' • ');
     }
 
-    function renderFriendsTab() {
-        var el = document.getElementById('frTabFriends');
+    /* The „Caută prieteni” tab: the unified search (bar + county filter +
+       results) lives here alone, so the friend list gets its own tab and the
+       two lists never scroll past each other. */
+    function renderSearchTab() {
+        var el = document.getElementById('frTabSearch');
         if (!el) return;
-        var L = limits();
-
-        var friendsHtml = '';
-        if (!state.friends.length) {
-            friendsHtml = '<div class="fr-empty">' + escapeHtml(t(
-                'Încă nu ai prieteni. Caută detectoriști după e-mail, nume sau ID și trimite o cerere.',
-                'No friends yet. Search detectorists by e-mail, name or id and send a request.'
-            )) + '</div>';
-        } else {
-            state.friends.forEach(function (f) {
-                friendsHtml += '<div class="fr-person" data-friend="' + escapeHtml(f.user_id) + '">' +
-                    personAvatarHtml(f.user_id, f.display_name) +
-                    '<div class="fr-person-main"><div class="fr-person-name">' + escapeHtml(f.display_name) + '</div>' +
-                    '<div class="fr-person-meta">' + escapeHtml(personMeta(f)) + '</div></div>' +
-                    '<div class="fr-person-actions">' +
-                    '<button type="button" class="fr-btn chat" data-action="chat" data-id="' + escapeHtml(f.user_id) + '">💬 ' + escapeHtml(t('Chat', 'Chat')) + '</button>' +
-                    '<button type="button" class="fr-btn secondary" data-action="remove" data-id="' + escapeHtml(f.user_id) + '" title="' + escapeHtml(t('Șterge prietenul', 'Remove friend')) + '">✕</button>' +
-                    '</div></div>';
-            });
-        }
 
         el.innerHTML =
             '<div class="fr-card">' +
@@ -1616,6 +1609,42 @@
                 '</div>' +
                 '<div id="frSearchResults"></div>' +
             '</div>' +
+            backendNoticeHtml() +
+            limitsHtml();
+
+        bindSearchTab();
+        renderSearchResults();
+    }
+
+    /* The „Prietenii tăi” tab: only the friend list (plus the group shortcut). */
+    function renderFriendsTab() {
+        var el = document.getElementById('frTabFriends');
+        if (!el) return;
+        var L = limits();
+
+        var friendsHtml = '';
+        if (!state.friends.length) {
+            friendsHtml = '<div class="fr-empty">' + escapeHtml(t(
+                'Încă nu ai prieteni. Treci la tabul „Caută prieteni” și trimite-le o cerere.',
+                'No friends yet. Open the "Search friends" tab and send them a request.'
+            )) + '</div>' +
+                '<div style="display:flex;justify-content:center;margin-top:10px;">' +
+                    '<button type="button" class="fr-btn" id="frGoSearchBtn">🔍 ' + escapeHtml(t('Caută prieteni', 'Search friends')) + '</button>' +
+                '</div>';
+        } else {
+            state.friends.forEach(function (f) {
+                friendsHtml += '<div class="fr-person" data-friend="' + escapeHtml(f.user_id) + '">' +
+                    personAvatarHtml(f.user_id, f.display_name) +
+                    '<div class="fr-person-main"><div class="fr-person-name">' + escapeHtml(f.display_name) + '</div>' +
+                    '<div class="fr-person-meta">' + escapeHtml(personMeta(f)) + '</div></div>' +
+                    '<div class="fr-person-actions">' +
+                    '<button type="button" class="fr-btn chat" data-action="chat" data-id="' + escapeHtml(f.user_id) + '">💬 ' + escapeHtml(t('Chat', 'Chat')) + '</button>' +
+                    '<button type="button" class="fr-btn secondary" data-action="remove" data-id="' + escapeHtml(f.user_id) + '" title="' + escapeHtml(t('Șterge prietenul', 'Remove friend')) + '">✕</button>' +
+                    '</div></div>';
+            });
+        }
+
+        el.innerHTML =
             '<div class="fr-card">' +
                 '<div class="fr-header-row">' +
                     '<div class="fr-section-label" style="margin:0;">' + escapeHtml(t('Prietenii tăi', 'Your friends')) +
@@ -1628,7 +1657,6 @@
             limitsHtml();
 
         bindFriendsTab();
-        renderSearchResults();
     }
 
     function countyOptionsHtml() {
@@ -1641,12 +1669,10 @@
         }).join('');
     }
 
-    function bindFriendsTab() {
+    function bindSearchTab() {
         var input = document.getElementById('frSearchInput');
         var county = document.getElementById('frCountySelect');
         var btn = document.getElementById('frSearchBtn');
-        var groupBtn = document.getElementById('frNewGroupBtn');
-        var list = document.getElementById('frFriendsList');
 
         if (input) {
             // "as you type" (debounced), plus Enter and the Search button for an
@@ -1665,7 +1691,16 @@
             county.addEventListener('change', function () { state.search.county = county.value; runSearch(); });
         }
         if (btn) btn.addEventListener('click', function () { runSearch(); });
+    }
+
+    function bindFriendsTab() {
+        var groupBtn = document.getElementById('frNewGroupBtn');
+        var goSearch = document.getElementById('frGoSearchBtn');
+        var list = document.getElementById('frFriendsList');
+
         if (groupBtn) groupBtn.addEventListener('click', function () { openGroupModal(); });
+        // The empty list is not a dead end: one tap over to the search tab.
+        if (goSearch) goSearch.addEventListener('click', function () { switchTab('search'); });
         if (list) {
             list.addEventListener('click', async function (e) {
                 var target = e.target && e.target.closest ? e.target.closest('[data-action]') : null;
@@ -1857,7 +1892,8 @@
     }
 
     function renderCurrentTab() {
-        if (state.activeTab === 'friends') renderFriendsTab();
+        if (state.activeTab === 'search') renderSearchTab();
+        else if (state.activeTab === 'friends') renderFriendsTab();
         else if (state.activeTab === 'requests') renderRequestsTab();
         else renderChatsTab();
         updateTabCounts();
@@ -1889,6 +1925,11 @@
         state.activeTab = tab || 'friends';
         state.panelOpen = true;
 
+        // The tab strip now carries four tabs: the unified search („Caută
+        // prieteni”) got its own tab so the friend list („Prietenii tăi”) is
+        // no longer glued under the search box.
+        var tabVisible = function (name) { return state.activeTab === name ? 'flex' : 'none'; };
+
         var panel = document.createElement('div');
         panel.id = 'friendsManagerPanel';
         panel.innerHTML =
@@ -1899,13 +1940,15 @@
                 '</div>' +
                 '<h2 class="fr-title">👥 ' + escapeHtml(t('Prieteni', 'Friends')) + '</h2>' +
                 '<div class="fr-tabs">' +
-                    '<button type="button" class="fr-tab" data-tab="friends">👤 ' + escapeHtml(t('Prieteni', 'Friends')) + ' <span class="fr-tab-count" id="frTabCountFriends"></span></button>' +
+                    '<button type="button" class="fr-tab" data-tab="search">🔍 ' + escapeHtml(t('Caută prieteni', 'Search friends')) + '</button>' +
+                    '<button type="button" class="fr-tab" data-tab="friends">👤 ' + escapeHtml(t('Prietenii tăi', 'Your friends')) + ' <span class="fr-tab-count" id="frTabCountFriends"></span></button>' +
                     '<button type="button" class="fr-tab" data-tab="requests">🔔 ' + escapeHtml(t('Cereri', 'Requests')) + ' <span class="fr-tab-count" id="frTabCountRequests"></span></button>' +
                     '<button type="button" class="fr-tab" data-tab="chats">💬 ' + escapeHtml(t('Chat-uri', 'Chats')) + ' <span class="fr-tab-count" id="frTabCountChats"></span></button>' +
                 '</div>' +
-                '<div id="frTabFriends" style="display:flex;flex-direction:column;gap:12px;"></div>' +
-                '<div id="frTabRequests" style="display:none;flex-direction:column;gap:12px;"></div>' +
-                '<div id="frTabChats" style="display:none;flex-direction:column;gap:12px;"></div>' +
+                '<div id="frTabSearch" style="display:' + tabVisible('search') + ';flex-direction:column;gap:12px;"></div>' +
+                '<div id="frTabFriends" style="display:' + tabVisible('friends') + ';flex-direction:column;gap:12px;"></div>' +
+                '<div id="frTabRequests" style="display:' + tabVisible('requests') + ';flex-direction:column;gap:12px;"></div>' +
+                '<div id="frTabChats" style="display:' + tabVisible('chats') + ';flex-direction:column;gap:12px;"></div>' +
             '</div>';
         document.body.appendChild(panel);
 
@@ -1926,7 +1969,7 @@
 
     function switchTab(tab) {
         state.activeTab = tab;
-        ['friends', 'requests', 'chats'].forEach(function (name) {
+        ['search', 'friends', 'requests', 'chats'].forEach(function (name) {
             var el = document.getElementById('frTab' + name.charAt(0).toUpperCase() + name.slice(1));
             var btn = document.querySelector('#friendsManagerPanel .fr-tab[data-tab="' + name + '"]');
             if (el) el.style.display = (name === tab) ? 'flex' : 'none';
@@ -2519,7 +2562,7 @@
             if (!rows.length) {
                 list.innerHTML = '<div class="fr-empty">' + escapeHtml(friends.length
                     ? t('Niciun prieten găsit.', 'No friend found.')
-                    : t('Nu ai încă prieteni. Adaugă-i din tabul „Prieteni”.', 'You have no friends yet. Add some from the "Friends" tab.')) + '</div>';
+                    : t('Nu ai încă prieteni. Adaugă-i din tabul „Caută prieteni”.', 'You have no friends yet. Add some from the "Search friends" tab.')) + '</div>';
                 return;
             }
             list.innerHTML = rows.map(function (f) {
