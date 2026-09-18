@@ -2137,7 +2137,9 @@
     var _heatRaster = null;      // rasterul de scoruri al ultimei rulări (debug)
     var _currentResults = null;  // celulele scorate la ultima rulare (API public)
     var _currentField = null;    // câmpul complet (debug / teste)
-    var _resultsVisible = true;
+    // Stratul pornește OPRIT implicit − starea reală e sincronizată din
+    // comutatorul #archeoPotToggle în wireUI() (fără `checked` în HTML → off).
+    var _resultsVisible = false;
 
     // Treptele de stil ale bulelor: grosimea și opacitatea spun cât de puternică
     // e zona (pal → saturat), iar CULOAREA vine întotdeauna din scor, prin aceeași
@@ -2845,7 +2847,12 @@
             summary: '{n} candidates · {h} High · {m} Medium',
             summary_field: '{n} bubbles ({h} High · {m} Medium · {l} Low) covering {c}% of the free ground · {s} scored cells · {x} excluded (red)',
             summary_heat: '{n} scored cells in the heatmap ({h} High · {m} Medium · {l} Low) · {x} excluded (red)',
-            pin_set: 'Pin at {lat}, {lng} · radius {r} km — press “Detect”.'
+            pin_set: 'Pin at {lat}, {lng} · radius {r} km — press “Detect”.',
+            // Titlul + explicația afișate în fereastra de info a stratului
+            // (butonul „i” din panou) — aceleași valori ca layer_archeo_potential /
+            // archeo_hint din translations.js, mutate aici odată cu fereastra.
+            info_title: 'Archeological Potential Sites',
+            info_hint: 'Searches for locations with archaeological potential reported to the marked archaeological sites, based on a triangulation logic — colour = score, on one absolute scale shared with the bubbles and with the legend. Red = the UAT built-up area and the protection radii of the sites, where nothing is generated.'
         },
         ro: {
             run_btn: 'Detectează',
@@ -2880,7 +2887,10 @@
             summary: '{n} candidați · {h} Ridicat · {m} Mediu',
             summary_field: '{n} bule ({h} Ridicat · {m} Mediu · {l} Scăzut) care acoperă {c}% din terenul liber · {s} celule cu scor · {x} excluse (roșu)',
             summary_heat: '{n} celule în heatmap ({h} Ridicat · {m} Mediu · {l} Scăzut) · {x} excluse (roșu)',
-            pin_set: 'Pin la {lat}, {lng} · rază {r} km — apasă „Detectează”.'
+            pin_set: 'Pin la {lat}, {lng} · rază {r} km — apasă „Detectează”.',
+            // Titlul + explicația afișate în fereastra de info a stratului.
+            info_title: 'Zone cu potențial arheologic',
+            info_hint: 'Se cauta locatii cu potential arheologic raportate la siturile arheologice marcate, pe baza unei logici de triangulare — culoarea = scorul, pe o scară absolută comună cu bulele și cu legenda. Roșu = intravilanul UAT și razele de protecție ale siturilor, unde nu se generează nimic.'
         }
     };
 
@@ -3544,6 +3554,14 @@
                 toggleArcheoPotentialLayer(toggle.checked);
             });
         }
+        // Stratul NU mai pornește ON implicit: starea inițială e citită din
+        // comutatorul panoului (fără atributul `checked` în HTML → oprit),
+        // pentru ca rezultatele să apară numai după ce utilizatorul pornește
+        // stratul. Atașarea/detasarea propriu-zisă se face prin
+        // setPinMode/updateRunButtonVisibility de mai jos; nu există încă
+        // straturi de rezultate la cablare, deci nu e nevoie de o parcurgere
+        // completă prin toggleArcheoPotentialLayer.
+        if (toggle) _resultsVisible = !!toggle.checked;
         var slider = el('archeoPotDistance');
         if (slider && !slider.dataset.archeoWired) {
             slider.dataset.archeoWired = '1';
@@ -3583,6 +3601,13 @@
     // Public API (used by index.html handlers + console)
     window.runArcheoPotentialAnalysis = runArcheoPotentialAnalysis;
     window.toggleArcheoPotentialLayer = toggleArcheoPotentialLayer;
+    // Explicația stratului (mutată din bara de sub legendă în fereastra de
+    // info) — textul urmează limba curentă a interfeței la momentul clicului.
+    window.showArcheoPotInfo = function () {
+        if (typeof window.showLayerInfo === 'function') {
+            window.showLayerInfo(tr('info_title'), '© DetectLab 2026 · date RAN CIMEC', tr('info_hint'));
+        }
+    };
     window.setArcheoPotentialMode = setOutputMode;
     window.setArcheoPotentialPinMode = setPinMode;
     window.setArcheoPotentialRadiusKm = setRadiusKm;

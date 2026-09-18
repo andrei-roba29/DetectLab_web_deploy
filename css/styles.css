@@ -7263,6 +7263,17 @@
             margin: 0;
         }
 
+        /* Descriere opțională sub atribuire (ex. „Zone cu potențial arheologic”,
+           a cărei explicație a fost mutată din panou în fereastra de info). */
+        .layer-info-description {
+            font-size: 0.78rem;
+            line-height: 1.55;
+            color: rgba(245, 240, 235, 0.62);
+            margin: 10px 0 0 0;
+            padding-top: 10px;
+            border-top: 1px solid rgba(200, 169, 110, 0.18);
+        }
+
         /* Source links inside a layer attribution (e.g. bukowina1856.eu for the
            maps digitized by Universitatea „Ștefan cel Mare” din Suceava). */
         .layer-info-attribution a {
