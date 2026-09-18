@@ -4,7 +4,7 @@
  * Guards the Satellite layer's "Istoric" period slider:
  *
  *   2016    → geospatial:of_2017_2020  (services.geo-spatial.org /geoserver/geospatial/wms)
- *   Prezent → the existing Esri World Imagery base (window._satLayer)
+ *   2025    → the existing Esri World Imagery base (window._satLayer)
  *
  *   The 2018 orthophoto (clc:of_2018_2020, GeoServer "clc") was removed from
  *   the base layer, so the slider has two stops instead of three.
@@ -14,7 +14,7 @@
  *      NOT a sublayer in the panel; exactly one base period is on the map and
  *      nothing reaches for a 2018 layer any more.
  *   2. The panel Satellite card carries a second slider titled "Istoric" with
- *      two stops (2016 / Prezent); switching shows the matching map.
+ *      two stops (2016 / 2025); switching shows the matching map.
  *   3. The map-side vertical mirrors: opacity AND period both appear together
  *      whenever the Satellite layer is selected, even if only one is touched —
  *      on desktop AND at phone width (≤600px), which is what every installed
@@ -90,13 +90,13 @@ console.log('[3] Panel UI: the "Istoric" slider inside the Satellite card');
     check('period slider exists', !!periodSliderTag);
     check('period slider has exactly two stops (min 0, max 1, step 1)',
         /min="0"/.test(periodSliderTag) && /max="1"/.test(periodSliderTag) && /step="1"/.test(periodSliderTag));
-    check('period slider defaults to Prezent (value 1)', /value="1"/.test(periodSliderTag));
+    check('period slider defaults to 2025 (value 1)', /value="1"/.test(periodSliderTag));
     check('period slider drives setSatPeriod', /oninput="setSatPeriod\(this\.value\)"/.test(periodSliderTag));
     check('period slider is NOT an opacity id (panel auto-discovery stays at 35)',
         !/id="[^"]*Opacity/.test(periodSliderTag));
     check('slider title "Istoric" is translated via data-key',
         /data-key="layer_sat_period_label"/.test(indexHtml));
-    check('last stop "Prezent" is translated via data-key',
+    check('last stop "2025" is translated via data-key',
         /data-key="layer_sat_period_present"/.test(indexHtml));
     check('tick labels row with two stops ships in the card',
         /id="satPeriodTicks"/.test(indexHtml) &&
@@ -225,10 +225,10 @@ console.log('[5] Translations + PWA wiring');
 {
     check('EN translations carry the new keys',
         /layer_sat_period_label:\s*'Historic'/.test(translations) &&
-        /layer_sat_period_present:\s*'Present'/.test(translations));
+        /layer_sat_period_present:\s*'2025'/.test(translations));
     check('RO translations carry the new keys',
         /layer_sat_period_label:\s*'Istoric'/.test(translations) &&
-        /layer_sat_period_present:\s*'Prezent'/.test(translations));
+        /layer_sat_period_present:\s*'2025'/.test(translations));
     check('index.html loads the sat-historic builds',
         // map-app.js keeps getting re-versioned by every later release
         // (the visibility prompt bumped it to ?v=20260915-visibility-prompt),
@@ -358,7 +358,7 @@ const satOpacity = range('satOpacitySlider', 100, '10', '100');
 const satPeriod = range('satPeriodSlider', 1, '0', '1');
 const ticks = new MockElement('div', 'satPeriodTicks', ['sat-period-ticks']);
 const tick2016 = new MockElement('span'); tick2016.textContent = '2016';
-const tickPrezent = new MockElement('span'); tickPrezent.textContent = 'Prezent';
+const tickPrezent = new MockElement('span'); tickPrezent.textContent = '2025';
 ticks.appendChild(tick2016); ticks.appendChild(tickPrezent);
 satOwner.appendChild(satTitle);
 satOwner.appendChild(satOpacity);
@@ -433,8 +433,8 @@ check('selecting the Satellite card also shows the period mirror',
     periodControl.classList.contains('visible'));
 check('the opacity mirror keeps mirroring the opacity range',
     vertical.value === '100' && output.textContent === '100%');
-check('the period mirror starts on Prezent',
-    periodVertical.value === '1' && periodOutput.textContent === 'Prezent');
+check('the period mirror starts on 2025',
+    periodVertical.value === '1' && periodOutput.textContent === '2025');
 check('the period mirror follows the panel range geometry (two stops, no phantom 2018)',
     periodVertical.max === satPeriod.max && periodVertical.max === '1');
 check('the period caption reads ISTORIC in Romanian',
@@ -452,12 +452,12 @@ check('vertical period drag propagates to the panel slider', satPeriod.value ===
 check('the panel slider input event fires exactly once', satPeriodInputs === 1);
 check('the period mirror value shows the year', periodOutput.textContent === '2016');
 
-// Back to the last stop: „Prezent" comes from the translated tick label.
+// Back to the last stop: „2025" comes from the translated tick label.
 periodVertical.value = '1';
 periodVertical.dispatchEvent(new Event('input'));
-check('the last stop renders the translated Prezent on the mirror',
-    periodOutput.textContent === 'Prezent');
-check('the panel slider is back on Prezent too', satPeriod.value === '1');
+check('the last stop renders the translated 2025 on the mirror',
+    periodOutput.textContent === '2025');
+check('the panel slider is back on 2025 too', satPeriod.value === '1');
 
 // Programmatic panel updates (e.g. setSatPeriod) are picked up by the poll.
 satPeriod.value = '0';

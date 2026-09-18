@@ -1214,7 +1214,7 @@
                      one of them is touched — on desktop AND in the installed PWA
                      (the two anchors are kept apart at every breakpoint, see the
                      .vertical-opacity-control.vertical-period-control rule). Drives
-                     #satPeriodSlider (2016 / Prezent) from js/map-app.js. -->
+                     #satPeriodSlider (2016 / 2025) from js/map-app.js. -->
                 <div class="vertical-opacity-control vertical-period-control" id="verticalSatPeriodControl"
                      role="group" aria-label="Satellite imagery period" aria-hidden="true" data-kind="satperiod">
                     <span class="vertical-opacity-title" id="verticalSatPeriodTitle">
@@ -1227,7 +1227,7 @@
                                aria-label="Satellite imagery period" aria-orientation="vertical">
                     </div>
                     <output class="vertical-opacity-value" id="verticalSatPeriodValue"
-                            for="verticalSatPeriodSlider">Prezent</output>
+                            for="verticalSatPeriodSlider">2025</output>
                 </div>
 
                 <!-- Dock centrat în partea de jos a ecranului principal: apare
@@ -1399,13 +1399,13 @@
                                oninput="setSatOpacity(this.value)">
 
                         <!-- „Istoric”: perioada imaginii satelitare. Două poziții —
-                             2016 (ortofotoplan geo-spatial.org, WMS) și Prezent
+                             2016 (ortofotoplan geo-spatial.org, WMS) și 2025
                              (stratul actual Esri). Ortofotoplanul 2018 a fost scos
                              din stratul de bază. Comutarea afișează automat harta
                              perioadei alese. -->
                         <div class="transp-layer-label" style="margin-bottom:6px;margin-top:10px">
                             <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="layer_sat_period_label">Istoric</span>
-                            <span class="pct" id="satPeriodLabel">Prezent</span>
+                            <span class="pct" id="satPeriodLabel">2025</span>
                         </div>
                         <input type="range" class="transp-slider sat-period-slider" id="satPeriodSlider"
                                min="0" max="1" step="1" value="1"
@@ -1413,7 +1413,7 @@
                                aria-label="Satellite imagery period / Perioada imaginii satelitare">
                         <div class="sat-period-ticks" id="satPeriodTicks" aria-hidden="true">
                             <span>2016</span>
-                            <span class="t" data-key="layer_sat_period_present">Prezent</span>
+                            <span class="t" data-key="layer_sat_period_present">2025</span>
                         </div>
                     </div>
 

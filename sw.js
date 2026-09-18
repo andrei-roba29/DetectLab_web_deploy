@@ -25,7 +25,7 @@
 // the answer gates every presence publish so users are only shown to other
 // detectorists after an explicit "Da".
 // v89: Satellite „Istoric” keeps only the 2016 orthophoto (the 2018 layer is
-// removed from the base layer → two stops, 2016 / Prezent) and the two
+// removed from the base layer → two stops, 2016 / 2025) and the two
 // map-side mirrors of the Satellite layer stay side by side in the installed
 // PWA / on phones, where the ≤600px breakpoint used to stack them on the same
 // anchor so only the ISTORIC mirror was visible.
@@ -369,7 +369,7 @@ const PRECACHE_URLS = [
   // Satellite „Istoric” without 2018 + the installed-PWA mirror fix:
   // • the base layer keeps only the 2016 orthophoto (GeoServer „geospatial”)
   //   and the present-day Esri imagery — the 2018 layer (GeoServer „clc”) is
-  //   gone, so the period slider has two stops (2016 / Prezent);
+  //   gone, so the period slider has two stops (2016 / 2025);
   // • the two map-side vertical mirrors (opacity + period) no longer collapse
   //   onto the same anchor inside the ≤600px breakpoint, which is exactly the
   //   width every installed PWA / phone reports — in standalone mode only the

@@ -2793,7 +2793,7 @@
             // ── SATELIT / ISTORIC — ortofotoplan 2016 (geo-spatial.org) ──
             // Stratul „Satelit” are două perioade, comutate din sliderul „Istoric”:
             //   2016    → geospatial:of_2017_2020  (GeoServer „geospatial”)
-            //   Prezent → tile-urile Esri World Imagery de mai sus (stratul actual)
+            //   2025 → tile-urile Esri World Imagery de mai sus (stratul actual)
             // Ortofotoplanul 2018 (clc:of_2018_2020, GeoServer „clc”) a fost scos
             // din stratul de bază — rămâne doar 2016 + imaginea actuală, deci
             // sliderul are două poziții, nu trei.
@@ -2819,7 +2819,7 @@
             window._sat2016Layer = SAT_HIST_PERIODS['2016'];
             window._satHistPeriods = SAT_HIST_PERIODS;
 
-            // Index slider → perioadă. Ultima poziție (1) = „Prezent” (stratul Esri).
+            // Index slider → perioadă. Ultima poziție (1) = „2025” (stratul Esri).
             var SAT_PERIOD_ORDER = ['2016', 'prezent'];
             var SAT_PERIOD_LAST_INDEX = SAT_PERIOD_ORDER.length - 1;
             window._satPeriod = 'prezent';
@@ -2857,11 +2857,11 @@
                 var ticks = document.querySelectorAll('#satPeriodTicks span');
                 var label = document.getElementById('satPeriodLabel');
                 if (label) {
-                    // „Prezent” vine tradus automat prin sistemul .t[data-key]
+                    // „2025” vine tradus automat prin sistemul .t[data-key]
                     // (ultimul tick); anii rămân la fel în ambele limbi.
                     var presentTick = ticks.length ? ticks[ticks.length - 1] : null;
                     label.textContent = (period === 'prezent')
-                        ? ((presentTick && presentTick.textContent.trim()) || 'Prezent')
+                        ? ((presentTick && presentTick.textContent.trim()) || '2025')
                         : period;
                 }
                 for (var i = 0; i < ticks.length; i++) {
@@ -2869,18 +2869,18 @@
                 }
             };
 
-            // Starea inițială: „Prezent” activ (Esri pe hartă, fără tile-uri WMS
+            // Starea inițială: „2025” activ (Esri pe hartă, fără tile-uri WMS
             // descărcate) + tick-ul și eticheta sincronizate.
             window.setSatPeriod(SAT_PERIOD_LAST_INDEX);
 
-            // La schimbarea limbii, eticheta „Prezent” trebuie re-tradusă dacă
+            // La schimbarea limbii, eticheta „2025” trebuie re-tradusă dacă
             // perioada activă e chiar stratul actual.
             document.addEventListener('detectlab:langchange', function () {
                 if (window._satPeriod !== 'prezent') return;
                 var label = document.getElementById('satPeriodLabel');
                 var ticks = document.querySelectorAll('#satPeriodTicks span');
                 var presentTick = ticks.length ? ticks[ticks.length - 1] : null;
-                if (label && presentTick) label.textContent = presentTick.textContent.trim() || 'Prezent';
+                if (label && presentTick) label.textContent = presentTick.textContent.trim() || '2025';
             });
 
             // ── OSM PLACES (ArcGIS FeatureServer Layer 6 — REST query, nu tile) ──
