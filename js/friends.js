@@ -1388,10 +1388,19 @@
     async function markConversationRead(convId) {
         if (!convId) return;
         await rpc('mark_conversation_read', { _conversation_id: convId });
+        // The red dot on the profile button must drop the moment the thread is
+        // read, not 20 s later when the next counter poll lands.
+        var wasUnread = 0;
+        state.conversations.forEach(function (c) {
+            if (c.id === convId) wasUnread = Number(c.unread_count) || 0;
+        });
         state.conversations = state.conversations.map(function (c) {
             return c.id === convId ? Object.assign({}, c, { unread_count: 0 }) : c;
         });
-        writeCache({ conversations: state.conversations });
+        if (wasUnread > 0) {
+            state.counters.unread_messages = Math.max(0, (Number(state.counters.unread_messages) || 0) - wasUnread);
+        }
+        writeCache({ conversations: state.conversations, counters: state.counters });
         updateBadges();
     }
 
@@ -1681,6 +1690,31 @@
         style.textContent = [
             '.event-notif-badge{position:absolute;top:-6px;right:-6px;background:#C42B2B;color:#fff;font-size:0.62rem;font-weight:800;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid rgba(10,20,42,0.95);z-index:5;line-height:1;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.45);}',
             '.event-notif-badge.hidden{display:none !important;}',
+            '.event-notif-badge.pulse{animation:dlBadgePulse 1.4s infinite;}',
+            '@keyframes dlBadgePulse{0%{transform:scale(1);}50%{transform:scale(1.18);}100%{transform:scale(1);}}',
+            // The profile button hosts the shared badge (js/events.js owns the
+            // same two elements); it has to be the positioning context.
+            '#navUser .user-trigger,#pwaUserTrigger{position:relative !important;}',
+            // ── Pop-up notifications: a stack of cards in the top-right corner,
+            //    below the fixed navbar, above every panel (3500/3600) and every
+            //    social modal (4200). pointer-events:none on the stack keeps the
+            //    map clickable between the cards.
+            '#dlNotifyStack{position:fixed;top:calc(84px + env(safe-area-inset-top,0px));right:14px;z-index:4400;display:flex;flex-direction:column;gap:8px;width:min(340px,calc(100vw - 28px));pointer-events:none;}',
+            '.dl-notify{pointer-events:auto;display:flex;gap:10px;align-items:flex-start;background:rgba(10,20,42,0.97);border:1px solid rgba(184,216,240,0.22);border-left:3px solid #C42B2B;border-radius:12px;padding:10px 11px;color:#F5F0EB;font-family:"Outfit",sans-serif;box-shadow:0 12px 32px rgba(0,0,0,0.55);cursor:pointer;animation:dlNotifyIn 0.28s ease;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);}',
+            '.dl-notify:hover{border-color:rgba(196,160,240,0.5);}',
+            '.dl-notify.is-request{border-left-color:#C77DFF;}',
+            '.dl-notify.hide{animation:dlNotifyOut 0.22s ease forwards;}',
+            '.dl-notify-icon{font-size:1.15rem;line-height:1.25;flex:0 0 auto;}',
+            '.dl-notify-main{flex:1;min-width:0;}',
+            '.dl-notify-title{font-size:0.84rem;font-weight:700;line-height:1.3;}',
+            '.dl-notify-body{font-size:0.78rem;line-height:1.4;opacity:0.86;margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}',
+            '.dl-notify-meta{font-size:0.68rem;opacity:0.6;margin-top:4px;}',
+            '.dl-notify-close{background:none;border:none;color:rgba(245,240,235,0.55);font-size:0.78rem;line-height:1;cursor:pointer;padding:2px 3px;flex:0 0 auto;}',
+            '.dl-notify-close:hover{color:#fff;}',
+            '@keyframes dlNotifyIn{from{opacity:0;transform:translateX(22px) scale(0.97);}to{opacity:1;transform:none;}}',
+            '@keyframes dlNotifyOut{to{opacity:0;transform:translateX(22px) scale(0.97);}}',
+            // Phones: the stack spans the width under the (shorter) nav bar.
+            '@media (max-width:720px){#dlNotifyStack{top:calc(62px + env(safe-area-inset-top,0px));right:8px;width:calc(100vw - 16px);}}',
             '#friendsManagerPanel{position:fixed;inset:0;z-index:3500;background:rgba(4,10,22,0.94);backdrop-filter:blur(14px);display:flex;flex-direction:column;padding:16px;overflow-y:auto;color:#F5F0EB;font-family:"Outfit",sans-serif;}',
             'html.is-pwa #friendsManagerPanel,body.is-pwa #friendsManagerPanel{padding-top:calc(16px + max(32px, env(safe-area-inset-top, 0px)));background:#060D1D;}',
             '#friendsManagerPanel .fr-wrap{max-width:640px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:32px;}',
@@ -2841,25 +2875,92 @@
     }
 
     /* ══════════════════════════════════════════════════════════════════════
-       BADGES on the nav entries
+       NOTIFICATIONS — red dot on the profile button + pop-up cards
+       ──────────────────────────────────────────────────────────────────────
+       • The PROFILE BUTTON (desktop pill `#navUser .user-trigger`, PWA trigger
+         `#pwaUserTrigger`) carries ONE red badge holding everything that waits
+         for you: unread event chats (counted by js/events.js) + pending friend
+         requests + unread chat messages (counted here). Both modules write
+         through `DetectLabNotify.setSourceCount(source, n)`, so the two counts
+         ADD UP instead of overwriting each other.
+       • The „Prieteni” menu entries keep their own social-only badge.
+       • A NEW friend request or a NEW chat message also pops a notification
+         card in the top-right corner: tapping it opens exactly what it
+         announces (the „Cereri” tab or that conversation), ✕ dismisses it and
+         it hides by itself after a few seconds (the countdown pauses while the
+         pointer is on it). Cards never fire for something already on screen
+         (the open thread, the open „Cereri” tab), never twice for the same
+         item — the announcement marks live in the per-account mirror
+         (`inboxSeen`) — and a backlog older than a week stays a badge.
     ══════════════════════════════════════════════════════════════════════ */
+
+    // Everything the profile badge is made of, by source. js/events.js feeds
+    // 'events', this file feeds 'social'.
+    var badgeSources = { events: 0, social: 0 };
+
+    var TOAST_MAX_VISIBLE = 3;
+    var TOAST_MS = 9000;
+    var TOAST_STAGGER_MS = 160;
+    // A pop-up is for something that just happened; an older unread backlog is
+    // what the badge is for.
+    var INBOX_BACKLOG_MS = 7 * 24 * 60 * 60 * 1000;
+    var SEEN_MARKS_KEPT = 200;
+
+    var liveToasts = [];
+    var inboxChannel = null;
+    var counterRefreshTimer = null;
+
+    /* ── The red badges ────────────────────────────────────────────────── */
+
+    function badgeTotal() {
+        var total = 0;
+        Object.keys(badgeSources).forEach(function (key) { total += Number(badgeSources[key]) || 0; });
+        return total;
+    }
+
+    function socialTotal() {
+        return (Number(state.counters.pending_requests) || 0) + (Number(state.counters.unread_messages) || 0);
+    }
+
+    // The two hosts that carry the profile badge. `#navUser` is the fallback so
+    // the dot still lands on the pill if the inner button is ever restructured.
+    function profileBadgeSpecs() {
+        var specs = [];
+        try {
+            var navTrigger = document.querySelector('#navUser .user-trigger') || document.getElementById('navUser');
+            if (navTrigger) specs.push({ host: navTrigger, id: 'navUserBadge' });
+            var pwaTrigger = document.getElementById('pwaUserTrigger');
+            if (pwaTrigger) specs.push({ host: pwaTrigger, id: 'pwaUserBadge' });
+        } catch (e) {}
+        return specs;
+    }
+
+    function ensureBadgeOn(host, id) {
+        if (!host || !id) return null;
+        try {
+            var inside = typeof host.querySelector === 'function' ? host.querySelector('#' + id) : null;
+            if (inside) return inside;
+            var existing = document.getElementById(id);
+            if (existing) return existing;      // js/events.js already built it
+            host.style.position = 'relative';
+            var badge = document.createElement('span');
+            badge.id = id;
+            badge.className = 'event-notif-badge hidden';
+            badge.textContent = '0';
+            host.appendChild(badge);
+            return badge;
+        } catch (e) { return null; }
+    }
 
     function ensureBadges() {
         try {
-            var specs = [
+            profileBadgeSpecs().forEach(function (spec) { ensureBadgeOn(spec.host, spec.id); });
+            [
                 { host: '#userMenu button[onclick*="openFriends"]', id: 'navFriendsBadge' },
                 { host: '#pwaUserDropdown button[onclick*="openFriends"]', id: 'pwaFriendsBadge' }
-            ];
-            specs.forEach(function (spec) {
+            ].forEach(function (spec) {
                 var host = document.querySelector(spec.host);
-                if (!host) return;
-                host.style.position = 'relative';
-                if (host.querySelector('#' + spec.id)) return;
-                var badge = document.createElement('span');
-                badge.id = spec.id;
-                badge.className = 'event-notif-badge hidden';
-                badge.textContent = '0';
-                host.appendChild(badge);
+                if (host) ensureBadgeOn(host, spec.id);
             });
         } catch (e) {}
     }
@@ -2870,13 +2971,388 @@
         var n = Number(count) || 0;
         el.textContent = n > 99 ? '99+' : String(n);
         el.classList.toggle('hidden', n <= 0);
+        el.classList.toggle('pulse', n > 0);
+    }
+
+    function renderProfileBadges() {
+        var total = badgeTotal();
+        profileBadgeSpecs().forEach(function (spec) {
+            ensureBadgeOn(spec.host, spec.id);
+            setBadge(spec.id, total);
+        });
+        return total;
+    }
+
+    // The single entry point both modules use for the profile button.
+    function setSourceCount(source, count) {
+        badgeSources[String(source || 'social')] = Math.max(0, Number(count) || 0);
+        return renderProfileBadges();
     }
 
     function updateBadges() {
         ensureBadges();
-        var total = (Number(state.counters.pending_requests) || 0) + (Number(state.counters.unread_messages) || 0);
+        var total = socialTotal();
         setBadge('navFriendsBadge', total);
         setBadge('pwaFriendsBadge', total);
+        setSourceCount('social', total);
+        return total;
+    }
+
+    /* ── The pop-up cards ──────────────────────────────────────────────── */
+
+    function ensureToastStack() {
+        if (typeof document === 'undefined' || !document.body) return null;
+        var stack = document.getElementById('dlNotifyStack');
+        if (!stack) {
+            stack = document.createElement('div');
+            stack.id = 'dlNotifyStack';
+            try {
+                stack.setAttribute('role', 'status');
+                stack.setAttribute('aria-live', 'polite');
+            } catch (e) {}
+            document.body.appendChild(stack);
+        }
+        return stack;
+    }
+
+    function dismissToast(entry, immediate) {
+        if (!entry || entry.gone) return;
+        entry.gone = true;
+        if (entry.timer) { clearTimeout(entry.timer); entry.timer = null; }
+        liveToasts = liveToasts.filter(function (x) { return x !== entry; });
+        var el = entry.el;
+        if (!el) return;
+        var drop = function () { try { if (typeof el.remove === 'function') el.remove(); } catch (e) {} };
+        if (immediate) { drop(); return; }
+        try { el.classList.add('hide'); } catch (e) {}
+        setTimeout(drop, 220);
+    }
+
+    function clearToasts() {
+        liveToasts.slice().forEach(function (entry) { dismissToast(entry, true); });
+    }
+
+    // Background tab / installed PWA: if the permission was ALREADY granted
+    // somewhere else, mirror the card as a system notification. DetectLab never
+    // prompts for it from here.
+    function systemNotify(title, body) {
+        try {
+            if (typeof document === 'undefined' || !document.hidden) return;
+            if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+            var opts = { body: String(body || ''), icon: 'images/pwa-icon-192.png', tag: 'detectlab-social' };
+            var nav = window.navigator;
+            if (nav && nav.serviceWorker && nav.serviceWorker.ready) {
+                nav.serviceWorker.ready.then(function (reg) {
+                    if (reg && typeof reg.showNotification === 'function') reg.showNotification(title || 'DetectLab', opts);
+                }).catch(function () {});
+            } else {
+                new Notification(title || 'DetectLab', opts);
+            }
+        } catch (e) {}
+    }
+
+    function notifyPopup(spec) {
+        var opts = spec || {};
+        if (typeof document === 'undefined') return null;
+        var stack = ensureToastStack();
+        if (!stack) return null;
+        var kind = opts.kind === 'request' ? 'request' : 'message';
+        var key = String(opts.key || (kind + ':' + (opts.id || opts.title || Math.random())));
+        // A realtime frame and the next poll can describe the same message.
+        if (liveToasts.some(function (x) { return x.key === key; })) return null;
+        while (liveToasts.length >= TOAST_MAX_VISIBLE) dismissToast(liveToasts[0], true);
+
+        var el = document.createElement('div');
+        el.className = 'dl-notify is-' + kind;
+        try {
+            el.setAttribute('data-notify-kind', kind);
+            if (opts.id) el.setAttribute('data-notify-id', String(opts.id));
+            el.setAttribute('role', 'button');
+            el.setAttribute('tabindex', '0');
+        } catch (e) {}
+        el.innerHTML =
+            '<div class="dl-notify-icon">' + (opts.icon || (kind === 'request' ? '👤' : '💬')) + '</div>' +
+            '<div class="dl-notify-main">' +
+                '<div class="dl-notify-title">' + escapeHtml(opts.title || '') + '</div>' +
+                (opts.body ? '<div class="dl-notify-body">' + escapeHtml(opts.body) + '</div>' : '') +
+                (opts.meta ? '<div class="dl-notify-meta">' + escapeHtml(opts.meta) + '</div>' : '') +
+            '</div>' +
+            '<button type="button" class="dl-notify-close" aria-label="' + escapeHtml(t('Închide notificarea', 'Dismiss notification')) + '">✕</button>';
+
+        var entry = { key: key, kind: kind, id: opts.id || null, el: el, timer: null, gone: false };
+
+        function open() {
+            dismissToast(entry);
+            if (typeof opts.onClick === 'function') {
+                try { opts.onClick(); } catch (e) { console.warn('[Friends] notification action failed', e); }
+            }
+        }
+        function arm(delay) {
+            if (entry.timer) clearTimeout(entry.timer);
+            entry.timer = setTimeout(function () { dismissToast(entry); }, Math.max(500, Number(delay) || TOAST_MS));
+        }
+        function hold() { if (entry.timer) { clearTimeout(entry.timer); entry.timer = null; } }
+
+        el.addEventListener('click', function (e) {
+            var target = e && e.target;
+            if (target && target.classList && target.classList.contains('dl-notify-close')) { dismissToast(entry); return; }
+            open();
+        });
+        el.addEventListener('keydown', function (e) {
+            if (e && (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape')) {
+                if (e.key === 'Escape') { dismissToast(entry); return; }
+                open();
+            }
+        });
+        el.addEventListener('mouseenter', hold);
+        el.addEventListener('mouseleave', function () { if (!entry.gone) arm(3000); });
+        try { el.addEventListener('touchstart', hold, { passive: true }); } catch (e) { el.addEventListener('touchstart', hold); }
+
+        stack.appendChild(el);
+        liveToasts.push(entry);
+        arm(Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : TOAST_MS);
+        systemNotify(opts.title, opts.body);
+        return entry;
+    }
+
+    function announce(items) {
+        var list = (items || []).filter(Boolean);
+        if (!list.length) return 0;
+        var requests = list.filter(function (i) { return i.kind === 'request'; });
+        var messages = list.filter(function (i) { return i.kind !== 'request'; });
+        // Three friends writing at once become one card, not a wall of cards.
+        if (requests.length > TOAST_MAX_VISIBLE) requests = [aggregateNotice(requests, 'request')];
+        if (messages.length > TOAST_MAX_VISIBLE) messages = [aggregateNotice(messages, 'message')];
+        var specs = requests.concat(messages);
+        specs.forEach(function (spec, index) {
+            if (index === 0) notifyPopup(spec);
+            else setTimeout(function () { notifyPopup(spec); }, index * TOAST_STAGGER_MS);
+        });
+        return specs.length;
+    }
+
+    function aggregateNotice(items, kind) {
+        var names = items.map(function (i) { return i.who; }).filter(Boolean);
+        var preview = names.slice(0, 3).join(', ') + (names.length > 3 ? '…' : '');
+        if (kind === 'request') {
+            return {
+                kind: 'request',
+                key: 'request:bulk',
+                icon: '👤',
+                title: t(items.length + ' cereri de prietenie noi', items.length + ' new friend requests'),
+                body: preview,
+                meta: t('Deschide „Cereri” ca să le accepți sau să le refuzi.', 'Open “Requests” to accept or decline them.'),
+                onClick: function () { openFriends('requests'); }
+            };
+        }
+        return {
+            kind: 'message',
+            key: 'message:bulk',
+            icon: '💬',
+            title: t('Ai ' + items.length + ' mesaje noi', 'You have ' + items.length + ' new messages'),
+            body: preview,
+            meta: t('Deschide „Chat-uri” ca să le citești.', 'Open “Chats” to read them.'),
+            onClick: function () { openFriends('chats'); }
+        };
+    }
+
+    /* ── What arrived since the last look? ─────────────────────────────── */
+
+    function nowIso() { return new Date().toISOString(); }
+
+    function timeOf(value) {
+        var ms = value ? new Date(value).getTime() : NaN;
+        return isNaN(ms) ? 0 : ms;
+    }
+
+    function readInboxSeen() {
+        var cache = readCache();
+        var seen = (cache && cache.inboxSeen) || {};
+        return { requests: seen.requests || {}, messages: seen.messages || {} };
+    }
+
+    function pruneMarks(map) {
+        var keys = Object.keys(map || {});
+        if (keys.length <= SEEN_MARKS_KEPT) return map || {};
+        // Keep the newest marks: every value is the timestamp that produced it.
+        keys.sort(function (a, b) { return timeOf(map[b]) - timeOf(map[a]); });
+        var kept = {};
+        keys.slice(0, SEEN_MARKS_KEPT).forEach(function (k) { kept[k] = map[k]; });
+        return kept;
+    }
+
+    function writeInboxSeen(seen) {
+        writeCache({ inboxSeen: { requests: pruneMarks(seen.requests), messages: pruneMarks(seen.messages) } });
+    }
+
+    function conversationById(convId) {
+        if (!convId) return null;
+        return state.conversations.filter(function (c) { return c && c.id === convId; })[0] || null;
+    }
+
+    function messagePreview(conv, row) {
+        var body = (row && row.body) || (conv && conv.last_message_body) || '';
+        if (String(body).trim()) return String(body);
+        var media = (row && row.media_type) || (conv && conv.last_media_type) || 'none';
+        if (media === 'video') return '🎥 ' + t('video', 'video');
+        if (media && media !== 'none') return '🖼 ' + t('imagine', 'image');
+        return t('Mesaj nou', 'New message');
+    }
+
+    function messageNotice(conv, row) {
+        var convId = (conv && conv.id) || (row && row.conversation_id) || '';
+        var isGroup = !!(conv && conv.kind === 'group');
+        var label = conv ? conversationLabel(conv) : '';
+        var sender = (row && row.sender_name) || (conv && conv.last_sender_name) || '';
+        var who = isGroup ? (label || t('Grup', 'Group')) : (sender || label || t('Detectorist', 'Detectorist'));
+        var when = (row && row.created_at) || (conv && conv.last_message_at) || nowIso();
+        return {
+            kind: 'message',
+            id: convId,
+            key: 'message:' + convId + ':' + timeOf(when),
+            icon: isGroup ? '👥' : '💬',
+            who: who,
+            title: isGroup
+                ? t('Mesaj nou în „' + who + '”', 'New message in “' + who + '”')
+                : t('Mesaj nou de la ' + who, 'New message from ' + who),
+            body: messagePreview(conv, row),
+            meta: (isGroup && sender && sender !== label ? sender + ' • ' : '') + fmtShortTime(when),
+            when: when,
+            onClick: function () { openConversationById(convId); }
+        };
+    }
+
+    function requestNotice(r) {
+        var who = r.other_name || t('Detectorist', 'Detectorist');
+        return {
+            kind: 'request',
+            id: r.id,
+            key: 'request:' + r.id,
+            icon: '👤',
+            who: who,
+            title: t('Cerere de prietenie de la ' + who, 'Friend request from ' + who),
+            body: r.message ? '„' + r.message + '”' : t('Vrea să vă conectați pe DetectLab.', 'Wants to connect with you on DetectLab.'),
+            meta: (r.other_county ? '📍 ' + titleCase(normaliseCounty(r.other_county)) + ' • ' : '') + fmtShortTime(r.created_at),
+            when: r.created_at,
+            onClick: function () { openFriends('requests'); }
+        };
+    }
+
+    // Called after every counter read: announces only what GREW, so a reload
+    // with an old unread backlog stays quiet and the badge does the talking.
+    async function checkInbox(previousCounters) {
+        var user = currentUser();
+        if (!user || !user.id) return 0;
+        var prev = previousCounters || {};
+        var next = state.counters || {};
+        var grewRequests = (Number(next.pending_requests) || 0) > (Number(prev.pending_requests) || 0);
+        var grewMessages = (Number(next.unread_messages) || 0) > (Number(prev.unread_messages) || 0);
+        if (!grewRequests && !grewMessages) return 0;
+
+        var seen = readInboxSeen();
+        var now = Date.now();
+        var items = [];
+        var dirty = false;
+
+        if (grewRequests) {
+            await loadRequests();
+            state.incomingRequests.forEach(function (r) {
+                if (!r || !r.id || seen.requests[r.id]) return;
+                var at = timeOf(r.created_at);
+                seen.requests[r.id] = r.created_at || nowIso();
+                dirty = true;
+                if (at && now - at > INBOX_BACKLOG_MS) return;                 // old backlog → badge only
+                if (state.panelOpen && state.activeTab === 'requests') return; // already on screen
+                items.push(requestNotice(r));
+            });
+        }
+
+        if (grewMessages) {
+            await loadConversations();
+            state.conversations.forEach(function (c) {
+                if (!c || !c.id) return;
+                if ((Number(c.unread_count) || 0) <= 0) return;
+                if (c.last_sender_id && c.last_sender_id === user.id) return;  // my own last message
+                if (state.chat && state.chat.id === c.id) return;              // reading it right now
+                var at = timeOf(c.last_message_at);
+                var mark = timeOf(seen.messages[c.id]);
+                if (mark && at && at <= mark) return;
+                seen.messages[c.id] = c.last_message_at || nowIso();
+                dirty = true;
+                if (at && now - at > INBOX_BACKLOG_MS) return;
+                items.push(messageNotice(c, null));
+            });
+        }
+
+        if (dirty) writeInboxSeen(seen);
+        return announce(items);
+    }
+
+    // Realtime frame for a message that landed in a thread we are NOT looking
+    // at: same dedupe rules as the poll, but instant instead of up to 20 s.
+    async function handleIncomingMessageRow(row) {
+        var user = currentUser();
+        if (!row || !row.conversation_id || !user || !user.id) return false;
+        if (row.sender_id && row.sender_id === user.id) return false;              // sent by me elsewhere
+        if (state.chat && state.chat.id === row.conversation_id) return false;     // already open
+        var seen = readInboxSeen();
+        var at = timeOf(row.created_at) || Date.now();
+        var mark = timeOf(seen.messages[row.conversation_id]);
+        if (mark && at <= mark) return false;
+        seen.messages[row.conversation_id] = row.created_at || nowIso();
+        writeInboxSeen(seen);
+        var conv = conversationById(row.conversation_id);
+        if (!conv) {
+            // A thread this device never loaded (somebody just created the
+            // group): pull the list once, so the card can name the
+            // conversation instead of guessing from the sender — and the
+            // unread counts behind the badge are right straight away.
+            try { await loadConversations(); } catch (e) {}
+            conv = conversationById(row.conversation_id);
+        }
+        announce([messageNotice(conv, row)]);
+        refreshCountersSoon();
+        return true;
+    }
+
+    // The realtime frame beats the 20 s poll, so the badge would lag behind the
+    // pop-up. One debounced counter read keeps the red dot in step.
+    function refreshCountersSoon() {
+        if (counterRefreshTimer) return;
+        counterRefreshTimer = setTimeout(function () {
+            counterRefreshTimer = null;
+            pollCounters();
+        }, 1500);
+    }
+
+    function stopInboxLive() {
+        if (!inboxChannel) return;
+        try {
+            var client = sb();
+            if (client && typeof client.removeChannel === 'function') client.removeChannel(inboxChannel);
+        } catch (e) {}
+        inboxChannel = null;
+    }
+
+    // conversation_messages is in the supabase_realtime publication
+    // (migration 20260915020000) and RLS only ever shows a member their own
+    // threads, so one unfiltered INSERT channel is the whole inbox.
+    function startInboxLive() {
+        stopInboxLive();
+        var user = currentUser();
+        if (!user || !user.id) return;
+        var client = sb();
+        if (!client || typeof client.channel !== 'function') return;
+        try {
+            var channel = client.channel('dl-social-inbox');
+            channel.on('postgres_changes', {
+                event: 'INSERT', schema: 'public', table: 'conversation_messages'
+            }, function (payload) { handleIncomingMessageRow(payload && payload.new); });
+            if (typeof channel.subscribe === 'function') channel.subscribe(function () {});
+            inboxChannel = channel;
+        } catch (e) {
+            console.warn('[Friends] inbox realtime failed', e);
+        }
     }
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -2901,7 +3377,14 @@
         if (!currentUser()) return;
         try {
             maybeCleanupRemote(false);
+            // The counters BEFORE this read are the baseline for the pop-ups:
+            // only an increase means "something arrived while you were here".
+            var previous = {
+                pending_requests: Number(state.counters.pending_requests) || 0,
+                unread_messages: Number(state.counters.unread_messages) || 0
+            };
             await loadCounters();
+            await checkInbox(previous);
             if (state.panelOpen && !state.chat) {
                 // Keep the visible lists honest without stealing focus.
                 await Promise.all([loadRequests(), loadConversations()]);
@@ -2918,6 +3401,8 @@
         state.countersTimer = setInterval(pollCounters, COUNTER_POLL_MS);
     }
 
+    var lastInboxUserId = null;
+
     function onAuthChange() {
         var user = currentUser();
         stopChatLiveUpdates();
@@ -2933,9 +3418,19 @@
             closeFriendsPanel();
             var chat = document.getElementById('friendChatPanel');
             if (chat) chat.remove();
+            stopInboxLive();
+            clearToasts();                       // nobody's cards survive a logout
+            lastInboxUserId = null;
             updateBadges();
             return;
         }
+        // Account switch: the cards of the previous account are not this
+        // person's business, and the announcement marks are per account anyway.
+        if (lastInboxUserId && lastInboxUserId !== user.id) {
+            clearToasts();
+            stopInboxLive();
+        }
+        lastInboxUserId = user.id;
         // Restore this account's mirror instantly (it is keyed by user id, so
         // two accounts on the same device never see each other's threads).
         var cache = readCache();
@@ -2949,6 +3444,7 @@
             if (cache.limits) state.limits = Object.assign({}, DEFAULT_LIMITS, cache.limits);
         }
         updateBadges();
+        startInboxLive();                        // instant pop-ups for new messages
         refreshAll(state.panelOpen);
         pollCounters();
     }
@@ -3040,11 +3536,39 @@
         prepareAttachment: prepareAttachment,
         friendlyError: friendlyError,
         updateBadges: updateBadges,
+        // Inbox notifications: what grew since the last counter read, plus the
+        // realtime fast path for a message that lands in a closed thread.
+        checkInbox: checkInbox,
+        notifyIncomingMessage: handleIncomingMessageRow,
+        pollCounters: pollCounters,
         // Map pins (live + offline detectorists): the popup slot is filled with
         // the action that matches the relationship with that account.
         decorateDetectorPopup: decorateDetectorPopup,
         refreshDetectorPopups: refreshDetectorPopups,
         detectorRelation: function (userId) { return relationFor(userId).state; },
         cleanupRemote: function (force) { return maybeCleanupRemote(force !== false); }
+    };
+
+    /* ── Shared notification surface ─────────────────────────────────────
+       The red badge on the profile button is ONE element fed by TWO modules:
+       js/events.js reports its unread event chats here with
+       `DetectLabNotify.setSourceCount('events', n)` and this file reports
+       pending friend requests + unread messages with 'social'. Whoever writes
+       last can never erase the other's count. `popup()` is the same card the
+       social inbox uses, so any future feature gets the identical pop-up. ── */
+    window.DetectLabNotify = {
+        setSourceCount: setSourceCount,
+        getSourceCount: function (source) { return Number(badgeSources[String(source || '')]) || 0; },
+        getTotal: badgeTotal,
+        ensureBadges: ensureBadges,
+        renderBadges: renderProfileBadges,
+        popup: notifyPopup,
+        dismiss: dismissToast,
+        clear: clearToasts,
+        list: function () {
+            return liveToasts.map(function (entry) {
+                return { key: entry.key, kind: entry.kind, id: entry.id, el: entry.el };
+            });
+        }
     };
 })();

@@ -23,13 +23,13 @@ storage bill.
 
 | File | Purpose |
 |---|---|
-| `js/friends.js` | The whole social UI + client logic: panel (four tabs: „Caută prieteni”, „Prietenii tăi”, Cereri, Chat-uri), search, requests, private/group chat, media compression, per-account mirror, badges, the social buttons inside the detectorist map pins (`relationFor()` / `detectorActionsHtml()` / `decorateDetectorPopup()` / `paintDetectorSlots()`), and the `window.DetectLabFriends` API used by the events and map modules (`searchUsers()` / `getSearchResults()` for the add-friends search). |
-| `js/events.js` | „Adaugă prieteni” box in the create-event form, quota-aware deadline/creation checks, `friend_event_invite` notification modal, attendance-quota guard on accept. |
+| `js/friends.js` | The whole social UI + client logic: panel (four tabs: „Caută prieteni”, „Prietenii tăi”, Cereri, Chat-uri), search, requests, private/group chat, media compression, per-account mirror, badges, **the notification surface `window.DetectLabNotify`** (the red badge on the profile button + the pop-up cards, incl. the realtime inbox channel `dl-social-inbox`), the social buttons inside the detectorist map pins (`relationFor()` / `detectorActionsHtml()` / `decorateDetectorPopup()` / `paintDetectorSlots()`), and the `window.DetectLabFriends` API used by the events and map modules (`searchUsers()` / `getSearchResults()` for the add-friends search). |
+| `js/events.js` | „Adaugă prieteni” box in the create-event form, quota-aware deadline/creation checks, `friend_event_invite` notification modal, attendance-quota guard on accept, and `updateEventBadges()` — which reports its unread event chats to the **shared** profile badge through `DetectLabNotify.setSourceCount('events', n)` (falling back to painting `#navUserBadge` / `#pwaUserBadge` itself when `js/friends.js` is not loaded). |
 | `js/map-app.js` | The nearby-detectorist pins: `detectorSocialSlotHtml()` puts an empty social slot (account id + name) into every live/offline popup and `map.on('popupopen')` hands the popup to `DetectLabFriends.decorateDetectorPopup()`; `searchNearbyDetectors()` starts only live location, and `_presenceVisible()` is the one rule that decides whether a presence row says *visible to others*. |
 | `css/styles.css` | `.detector-social-actions` / `.detector-social-btn` — the friend-request / accept / message buttons inside the popup card (next to `.detector-nearby-marker` / `.detector-offline-marker`). |
 | `index.html` | „Prieteni / Friends” menu entry (desktop `#userMenu` + PWA `#pwaUserDropdown`) and the `<script>` include (after `events.js`). |
 | `js/translations.js` | `nav_friends` → *Prieteni* / *Friends*. |
-| `sw.js` | `js/friends.js`, `js/map-app.js` and `css/styles.css` pre-cached + cache bumped (currently `detectlab-v104-pwa-social-fix`) so installed PWAs pick the new popup buttons, the split „Caută prieteni” / „Prietenii tăi” tabs and the chat safe-area padding up. |
+| `sw.js` | `js/friends.js`, `js/events.js`, `js/map-app.js` and `css/styles.css` pre-cached + cache bumped (currently `detectlab-v110-social-notify`) so installed PWAs pick the profile-button badge, the pop-up notifications, the split „Caută prieteni” / „Prietenii tăi” tabs and the chat safe-area padding up. |
 | `supabase/migrations/20260915000000_social_limits_and_directory.sql` | `app_limits` (every quota), `normalise_county()`, `user_social_profiles` (searchable directory), `search_social_users()`, `list_social_counties()`. |
 | `supabase/migrations/20260915010000_social_friends.sql` | `friend_requests`, `friendships` + send / cancel / respond / remove functions, `list_my_friends()`, `list_my_friend_requests()`, `get_social_counters()`. |
 | `supabase/migrations/20260915020000_social_conversations.sql` | `conversations`, `conversation_members`, `conversation_messages` (RLS = members only, Realtime), direct/group functions, admin powers, `send_conversation_message()` with every limit, `cleanup_social_messages()` + pg_cron job. |
@@ -37,6 +37,7 @@ storage bill.
 | `supabase/migrations/20260916010000_social_unified_search.sql` | `search_normalise()` (case + diacritic folding) + rewritten `search_social_users()`: unified partial match across name / e-mail / county / city / id, multi-word AND. |
 | `supabase/migrations/20260916020000_social_directory_projection.sql` | `mirror_social_profile()` + triggers that keep `user_social_profiles` fed from `user_last_locations` and `detector_presence` (every account that shares a location becomes searchable without ever opening the panel), a one-time backfill, and a `search_social_users()` that also browses the directory when the query is empty. |
 | `test-friends-social.js` | Node regression test (no jsdom): runs the real `js/friends.js` and `js/events.js` against an in-memory social server. `node test-friends-social.js`. |
+| `test-social-notify.js` | Node regression test (no jsdom) for the notifications: runs the real `js/friends.js` (and the badge contract of `js/events.js`) against an in-memory social server with a fake realtime channel, asserting the profile-button badge count, the events + social merge, and exactly when a pop-up does and does not appear. `node test-social-notify.js`. |
 | `test-map-friend-actions.js` | Node regression test (no jsdom) for the map pins: runs the real `searchNearbyDetectors()` / `addOfflineDetectorBubbles()` and the real social module, asserting which button appears per relationship and that it really calls `send_friend_request` / `respond_friend_request`. `node test-map-friend-actions.js`. |
 
 ---
@@ -50,6 +51,59 @@ storage bill.
 * A red badge appears on the entry when there are **pending requests + unread
   messages** (`get_social_counters()`), refreshed every 20 s and on
   `detectlab:authchange`.
+
+### 1.1 The red dot on the profile button + the pop-up notifications
+
+Nothing waits silently: the same counters drive a badge **on the profile button
+itself** and a **pop-up card** the moment something arrives.
+
+* **Where the dot lives** — the desktop pill (`#navUser .user-trigger`, badge
+  `#navUserBadge`) and the PWA trigger (`#pwaUserTrigger`, badge
+  `#pwaUserBadge`), in the top-right corner, red (`#C42B2B`) with the number
+  inside (`99+` when it overflows) and a soft pulse while it is non-zero.
+* **What it counts** — *pending friend requests + unread chat messages*
+  (`get_social_counters()`) **+ unread event chats** (`js/events.js`). Both
+  modules write through `window.DetectLabNotify.setSourceCount(source, n)`
+  (`'social'` / `'events'`), which renders the **sum** into those two elements,
+  so neither module can erase the other's number. The „Prieteni” and
+  „Evenimente” menu entries keep their own single-source badges.
+* **When it drops** — reading a thread calls `mark_conversation_read()` and
+  subtracts that thread's unread from the counter at once (no 20 s wait);
+  accepting/declining a request re-reads the counters; logging out zeroes both
+  sources and hides the dot.
+* **The pop-up** (`#dlNotifyStack`, top-right under the navbar, `z-index:4400`
+  — above the panels at 3500/3600 and the social modals at 4200, and
+  `pointer-events:none` on the stack so the map stays clickable between cards):
+  * **friend request** → 👤 *„Cerere de prietenie de la Elena Dobre”* + her
+    message and county; **tap opens the panel on the „Cereri” tab**.
+  * **message** → 💬 *„Mesaj nou de la Mihai Ionescu”* (or 👥 *„Mesaj nou în
+    „Detectat Cluj””* for a group) + a two-line preview (🖼 / 🎥 for media) and
+    the time; **tap opens that exact conversation** and marks it read.
+  * ✕ dismisses, `Esc` dismisses, the card hides by itself after 9 s and the
+    countdown pauses while the pointer/finger is on it; at most **3 cards** are
+    stacked (the oldest is dropped) and more than 3 arrivals of one kind
+    collapse into a single *„Ai 5 mesaje noi”* / *„5 cereri de prietenie noi”*
+    card that opens the right tab.
+* **How it notices**
+  * *messages*: a permanent Realtime channel `dl-social-inbox` listens for
+    `INSERT` on `conversation_messages` (already in the `supabase_realtime`
+    publication, RLS = members only), so the card is instant; the 20 s counter
+    poll is the fallback for webviews that suspend websockets, and it debounces
+    one extra counter read 1.5 s after a frame so the dot and the card agree.
+    A thread this device never loaded (a group somebody else just created) is
+    fetched once so the card can name the group.
+  * *requests*: `friend_requests` is not in the Realtime publication, so the
+    20 s poll compares `get_social_counters()` with the counters it had before
+    and announces **only what grew**.
+* **What never pops** — your own message (another tab/device), a message in the
+  thread you are already reading, a request while the „Cereri” tab is open, the
+  same item twice (every announcement is marked in the per-account mirror under
+  `inboxSeen`, so a reload is silent while the dot stays), anything older than
+  7 days (a backlog is a badge, not a pop-up), and anything at all after a
+  logout or an account switch (cards are cleared, the channel is removed).
+* **Background tab / installed PWA** — if the notification permission was
+  *already* granted, the same card is mirrored as a system notification while
+  `document.hidden`. DetectLab never prompts for the permission from here.
 
 ### 2. Tab „Caută prieteni” (search friends)
 
@@ -382,7 +436,15 @@ and every existing feature keep working untouched.
 ```bash
 node test-friends-social.js      # 25 checks
 node test-map-friend-actions.js  # 77 checks
+node test-social-notify.js       # 23 checks
 ```
+
+`test-social-notify.js` covers the notification layer: the badge on the profile
+button (desktop + PWA) counts requests + unread messages, `events` and `social`
+add up instead of overwriting each other, reading a thread drops the dot at
+once, a request/message pops a card that opens exactly what it announces, and
+nothing pops for the open thread, your own message, an already-visible
+„Cereri” tab, a replayed reload or a 7-day-old backlog.
 
 The test loads the **real** `js/friends.js` and `js/events.js` into a `vm`
 sandbox with a hand-rolled DOM and an in-memory social server that reproduces

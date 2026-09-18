@@ -96,7 +96,16 @@
 //   tiles). It now stretches between the viewport edges (top:0 + bottom:0),
 //   and delayed passes + a ResizeObserver re-run Leaflet's invalidateSize the
 //   exact frame the container reaches its real size. No control moves.
-const CACHE_NAME = 'detectlab-v109-pwa-no-bottom-strip';
+// v110: social notifications — the red badge moves onto the PROFILE BUTTON and
+//   counts everything at once (unread event chats from js/events.js + pending
+//   friend requests + unread messages from js/friends.js, both writing through
+//   window.DetectLabNotify so neither erases the other), and a new friend
+//   request or a new chat message pops a notification card in the top-right
+//   corner (tap = open that request tab / that thread, ✕ = dismiss, hidden
+//   forever once seen — the marks live in the per-account mirror). Messages
+//   arrive instantly through a realtime inbox channel; requests through the
+//   20 s counter poll. See FRIENDS_AND_CHAT.md.
+const CACHE_NAME = 'detectlab-v110-social-notify';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -491,7 +500,14 @@ const PRECACHE_URLS = [
   // handoff a real cross-fade on every device (CSS-only tile fade, no
   // per-frame JS). See MAP_LAYER_PERFORMANCE.md.
   'js/tile-perf.js?v=20260918-tile-seamless',
-  'css/styles.css?v=20260918-tile-seamless'
+  'css/styles.css?v=20260918-tile-seamless',
+  // Notificări sociale: cerculețul roșu de pe butonul de profil adună tot ce
+  // așteaptă (chat-uri de eveniment necitite + cereri de prietenie + mesaje
+  // necitite), iar o cerere sau un mesaj nou apare ca pop-up în colțul din
+  // dreapta sus. js/events.js și js/friends.js scriu în aceleași două elemente
+  // prin window.DetectLabNotify.
+  'js/events.js?v=20260918-social-notify',
+  'js/friends.js?v=20260918-social-notify'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

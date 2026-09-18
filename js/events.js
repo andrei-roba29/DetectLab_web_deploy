@@ -3640,12 +3640,43 @@
 
     async function updateEventBadges() {
         ensureEventBadges();
+        // The two badges that sit ON THE PROFILE BUTTON (desktop pill +
+        // PWA trigger) are shared with the social layer: js/friends.js feeds
+        // 'social' (pending friend requests + unread chats) into the very same
+        // elements through window.DetectLabNotify, so both counts are summed
+        // there instead of overwriting each other. Every other badge stays
+        // event-only and is painted directly.
+        var PROFILE_BADGE_IDS = ['navUserBadge','pwaUserBadge'];
+        var EVENT_BADGE_IDS = ['navEventsBadge','pwaEventsBadge','calChatsBadge'];
+
+        function paintBadge(id, n) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            var count = Number(n) || 0;
+            if (count > 0) {
+                el.textContent = count > 99 ? '99+' : String(count);
+                el.classList.remove('hidden');
+                el.classList.add('pulse');
+            } else {
+                el.textContent = '0';
+                el.classList.add('hidden');
+                el.classList.remove('pulse');
+            }
+        }
+
+        function paint(count) {
+            var notify = window.DetectLabNotify;
+            if (notify && typeof notify.setSourceCount === 'function') {
+                notify.setSourceCount('events', count);
+            } else {
+                PROFILE_BADGE_IDS.forEach(function(id){ paintBadge(id, count); });
+            }
+            EVENT_BADGE_IDS.forEach(function(id){ paintBadge(id, count); });
+        }
+
         var user = getCurrentUser();
         if (!user || !user.id) {
-            ['navUserBadge','navEventsBadge','pwaUserBadge','pwaEventsBadge','calChatsBadge'].forEach(function(id){
-                var el = document.getElementById(id);
-                if (el) { el.classList.add('hidden'); el.textContent='0'; }
-            });
+            paint(0);
             return 0;
         }
         var unreadChats = [];
@@ -3672,20 +3703,7 @@
             }
         } catch (e) {}
 
-        var ids = ['navUserBadge','navEventsBadge','pwaUserBadge','pwaEventsBadge','calChatsBadge'];
-        ids.forEach(function(id){
-            var el = document.getElementById(id);
-            if (!el) return;
-            if (count>0) {
-                el.textContent = count>99 ? '99+' : String(count);
-                el.classList.remove('hidden');
-                el.classList.add('pulse');
-            } else {
-                el.textContent='0';
-                el.classList.add('hidden');
-                el.classList.remove('pulse');
-            }
-        });
+        paint(count);
         var chatsBtnCount = document.getElementById('calChatsCount');
         if (chatsBtnCount) chatsBtnCount.textContent = count>0 ? '('+count+')' : '';
         return count;
