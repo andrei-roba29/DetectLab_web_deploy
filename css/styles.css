@@ -3469,11 +3469,35 @@
                 image-rendering: auto;
             }
 
-            /* 1px overlap hides sub-pixel hairlines between tiles while
-               the previous zoom is still covering the incoming one. */
+            /* Seam fix ("white grid"). Tiles overlap by 1px so no hairline
+               can open between them — neither at rest, nor while a zoom
+               animation scales the previous zoom level over the incoming one.
+               The blend mode MUST stay `normal` here: Leaflet's default rule
+               `.leaflet-container img.leaflet-tile { mix-blend-mode:
+               plus-lighter }` (a workaround for Chromium bug 600120) ADDS the
+               colours of whatever is underneath a tile instead of covering
+               it, so with the 1px overlap every 256px seam between tiles
+               saturated to white — exactly the white grid that was visible
+               over the basemap. With normal blending the overlapping pixel
+               is simply covered by the neighbouring tile. */
             #detectlab-map img.leaflet-tile {
                 width: 257px !important;
                 height: 257px !important;
+                mix-blend-mode: normal !important;
+            }
+
+            /* Same for canvas tiles (the UAT buildings layer): never blend
+               additively with what is underneath. */
+            #detectlab-map canvas.leaflet-tile {
+                mix-blend-mode: normal !important;
+            }
+
+            /* Keep scaled tiles smooth while the zoom animation runs on
+               every browser: Leaflet's `.leaflet-safari .leaflet-tile` rule
+               uses image-rendering: -webkit-optimize-contrast, which renders
+               the scaling tiles blocky instead of smoothly resampled. */
+            #detectlab-map .leaflet-tile {
+                image-rendering: auto;
             }
 
             #detectlab-map .leaflet-popup-content-wrapper {

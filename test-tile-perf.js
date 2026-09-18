@@ -19,7 +19,10 @@
  *   3. stricter pruning (2–3 ancestor levels instead of 5) + covering tiles
  *      kept until the incoming zoom is active + a hard ceiling on extras;
  *   4. a page watchdog: over the device tile budget → conservation mode +
- *      one-time notice.
+ *      one-time notice;
+ *   5. seamless tiles: the additive blend that lit the 1px seam overlap
+ *      white is cancelled in CSS, and the zoom handoff cross-fades through
+ *      a CSS-only tile fade (no per-frame JS, on every device).
  *
  * Run:  node test-tile-perf.js
  */
@@ -161,6 +164,26 @@ function makeSandbox(opts) {
             for (var k in this._tiles) this._removeTile(k);
         }
     };
+
+    if (opts.tileReady) {
+        // Closer to the real Leaflet: this layer can receive tiles, and its
+        // _tileReady is the one the governor wraps for the CSS fade (§11).
+        FakeGridLayer.prototype._tileCoordsToKey = function (c) {
+            return c.x + ':' + c.y + ':' + c.z;
+        };
+        FakeGridLayer.prototype._noTilesToLoad = function () { return false; };
+        FakeGridLayer.prototype.fire = function () { return this; };
+        // Leaflet 1.9.4's own _tileReady, non-fade branch.
+        FakeGridLayer.prototype._tileReady = function (coords, err, tile) {
+            var t = this._tiles[this._tileCoordsToKey(coords)];
+            if (!t) return;
+            if (err) { this.tileErrors = (this.tileErrors || 0) + 1; }
+            t.loaded = +new Date();
+            t.active = true;
+            this._pruneTiles();
+            this.nativeTileReadyCalls = (this.nativeTileReadyCalls || 0) + 1;
+        };
+    }
 
     function TileLayer() {
         // Leaflet copies options onto the instance. Sharing the prototype
@@ -582,6 +605,72 @@ check('a touch device with little memory is detected without any override',
         /SAT60_LOW_POWER_TILES/.test(tilePerfSrc));
     check('the escape hatches are documented in the file header',
         /DLTilePerf\.stats\(\)/.test(tilePerfSrc) && /DLTilePerf\.sweep\(\)/.test(tilePerfSrc));
+
+    /* ══════════════════════════════════════════════════════════════════════
+     * 11. Seamless tiles: no white grid + a smooth (CSS-only) zoom handoff
+     * ══════════════════════════════════════════════════════════════════════ */
+    console.log('\n[11] Seamless tiles: no white grid, smooth zoom handoff');
+
+    const stylesCss = read('css/styles.css');
+    const imgTileRule = stylesCss.match(/#detectlab-map img\.leaflet-tile\s*\{[^}]*\}/);
+    check('tiles keep the 1px seam overlap',
+        !!imgTileRule &&
+        /width:\s*257px\s*!important/.test(imgTileRule[0]) &&
+        /height:\s*257px\s*!important/.test(imgTileRule[0]),
+        imgTileRule ? imgTileRule[0] : 'rule missing');
+    check('the additive blend that lit the seams white is cancelled',
+        !!imgTileRule &&
+        /mix-blend-mode:\s*normal\s*!important/.test(imgTileRule[0]),
+        imgTileRule ? imgTileRule[0] : 'rule missing');
+    check('canvas tiles never blend additively either',
+        /#detectlab-map canvas\.leaflet-tile\s*\{[^}]*mix-blend-mode:\s*normal\s*!important/.test(stylesCss));
+    check('scaled tiles stay smooth on Safari (no optimize-contrast blockiness)',
+        /#detectlab-map \.leaflet-tile\s*\{[^}]*image-rendering:\s*auto/.test(stylesCss));
+
+    const tpVer = (indexHtml.match(/js\/tile-perf\.js\?v=([0-9a-z-]+)/) || [])[1];
+    check('tile-perf.js is cache-busted in index.html', !!tpVer, String(tpVer));
+    check('sw.js precaches the exact versioned governor URL',
+        !!tpVer && swJs.indexOf("'js/tile-perf.js?v=" + tpVer + "'") !== -1);
+    const cssVer = (indexHtml.match(/css\/styles\.css\?v=([0-9a-z-]+)/) || [])[1];
+    check('styles.css is cache-busted in index.html', !!cssVer, String(cssVer));
+    check('sw.js precaches the exact versioned stylesheet URL',
+        !!cssVer && swJs.indexOf("'css/styles.css?v=" + cssVer + "'") !== -1);
+
+    check('the fade ships as a CSS transition, not a per-frame JS loop',
+        /\.dltile-cssfade \.leaflet-tile\{transition:opacity/.test(tilePerfSrc) &&
+        /map\._fadeAnimated = false/.test(tilePerfSrc));
+
+    // Behaviour: an incoming tile cross-fades over the previous zoom level.
+    // It is announced as loaded at once, but becomes `active` — the flag the
+    // covering-tile handoff (§8b) waits on — only once the fade is over.
+    const fade = makeSandbox({ lowPower: true, tileReady: true });
+    fade.sandbox.window.DLTilePerf.attach(fade.map);
+    const fl = fade.makeLayer({});
+    const fadeTile = { coords: { x: 1, y: 1, z: 13 }, el: { style: {} }, current: true };
+    fl._tiles['1:1:13'] = fadeTile;
+    fl._tileReady({ x: 1, y: 1, z: 13 }, null, fadeTile.el);
+    check('an incoming tile is counted as loaded at once',
+        typeof fadeTile.loaded === 'number');
+    check('...but stays inactive while it fades in (covering tiles stay)',
+        fadeTile.active !== true && fadeTile.el.style.opacity === 0,
+        'active=' + fadeTile.active + ' opacity=' + fadeTile.el.style.opacity);
+    check('Leaflet\'s own fade loop is not used for it',
+        (fl.nativeTileReadyCalls || 0) === 0);
+    check('and the pruner has not run for it yet (covering tiles are safe)',
+        fadeTile.retain === undefined);
+    await wait(450);
+    check('the tile becomes active once the CSS fade is over',
+        fadeTile.active === true);
+    check('...and only then does the pruner release the covering tiles',
+        fadeTile.retain === true && (fl.removed || 0) === 0,
+        'retain=' + fadeTile.retain + ' removed=' + (fl.removed || 0));
+
+    // A failed tile keeps Leaflet's own path — no fade of a broken image.
+    const brokenEl = { style: {} };
+    fl._tiles['2:2:13'] = { coords: { x: 2, y: 2, z: 13 }, el: brokenEl, current: true };
+    fl._tileReady({ x: 2, y: 2, z: 13 }, new Error('404'), brokenEl);
+    check('a failed tile still goes through Leaflet\'s own path',
+        fl._tiles['2:2:13'].active === true && (fl.tileErrors || 0) === 1);
 
     /* ══════════════════════════════════════════════════════════════════════ */
     console.log('\n' + (checks - failures) + '/' + checks + ' checks passed');

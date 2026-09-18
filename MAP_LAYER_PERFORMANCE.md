@@ -1,6 +1,6 @@
 # Multi-layer map performance — the crash on a sudden zoom
 
-**Status: 2026-09-17.** Reported: with several *dense* raster layers open at the
+**Status: 2026-09-18.** Reported: with several *dense* raster layers open at the
 same time — the LIDAR sub-layers (HD, AR, AB, BH, CS, „Romania 2–5 m/pixel",
 „Romania 1 m/pixel agregare", the four LAKI III sheets) and **„Imagini
 satelitare anii 60'"** (CORONA) together with the historical maps, the APM
@@ -78,6 +78,19 @@ patches the defaults before any layer exists:
    all layers are dropped, the retained levels are cut to 1/0, and a one-time
    translated notice suggests closing the layers that are not needed. Below 60 %
    of the budget it goes back to normal limits.
+5. **A CSS-only tile fade for the zoom handoff.** Leaflet's own `fadeAnimation`
+   fades every loaded tile in through `_updateOpacity()` — a
+   `requestAnimationFrame` loop that rewrites the opacity of **all** tiles of
+   the layer for ~200 ms after *each* load, the exact kind of per-frame work
+   this governor exists to remove (which is why phones used to get no fade at
+   all and the new zoom simply popped in). The governor now switches Leaflet's
+   fade machinery off on the governed map and fades every incoming tile with a
+   CSS `opacity` transition instead (§4b of `js/tile-perf.js`): the same
+   smooth cross-fade on every device class, with zero per-frame JS. A tile
+   becomes `active` — the flag item 3's covering-tile handoff waits on — only
+   once its fade has finished, so the previous zoom level stays on screen for
+   the whole cross-fade and zoom in/out reads as one image morphing into the
+   next.
 
 ### 2.2 `js/map-app.js`
 
@@ -98,9 +111,31 @@ patches the defaults before any layer exists:
 | `js/translations.js` | `perf_layers_notice` (en + ro) for the conservation-mode notice |
 | `index.html` | `<script src="js/tile-perf.js?v=20260917-tile-fluid">` after Leaflet; `map-app.js` / `styles.css` re-versioned |
 | `sw.js` | the new file + the re-versioned URLs added to `PRECACHE_URLS`, and `CACHE_NAME` bumped to `detectlab-v105-tile-fluid` so installed PWAs drop the old shell and pick the governor up |
-| `css/styles.css` | `#detectlab-map` background `#060E1E` (hides Leaflet's `#ddd` through empty tiles) and 1 px tile overlap |
+| `css/styles.css` | `#detectlab-map` background `#060E1E` (hides Leaflet's `#ddd` through empty tiles); the 1 px tile overlap pinned to `mix-blend-mode: normal` — the white-grid fix (see §2.4) |
 | `test-tile-perf.js` | new regression test (see §5) |
 | `bench-tile-perf.js` | optional benchmark, needs `jsdom` (see §5) — not loaded by the site |
+
+### 2.4 `css/styles.css` — the white grid between tiles
+
+Reported as „se vede gridul alb al hărții": a white line every 256 px, in
+both directions, on top of the basemap. Two rules cooperate on the seams:
+
+1. every tile overlaps its right and bottom neighbour by 1 px
+   (`width/height: 257px !important`), so no sub-pixel hairline can open
+   between tiles — at rest, during the zoom-animation scaling, or at a
+   fractional zoom;
+2. the tiles' blend mode is pinned to `normal`. Leaflet ships
+   `.leaflet-container img.leaflet-tile { mix-blend-mode: plus-lighter }`
+   (a workaround for Chromium bug 600120), which **adds** the colours of
+   whatever is underneath a tile instead of covering it. With the 1 px
+   overlap, the pixels of two neighbouring tiles were added together on
+   every seam and saturated to white — the grid. With `normal` blending the
+   overlapping pixel is simply covered by the neighbour.
+
+Canvas tiles (the UAT buildings layer) get the same pin, and `.leaflet-tile`
+keeps `image-rendering: auto` so tiles stay smoothly resampled while the
+zoom animation scales them — Leaflet's Safari rule would otherwise force
+`-webkit-optimize-contrast` and render the scaling blocky.
 
 ---
 
@@ -176,11 +211,13 @@ screen to protect there, so the repaint must go through at once.
 - **Visual effect on a phone**: on an *animated* gesture (pinch, wheel, double
   tap) the previous level stays on screen and is CSS-scaled. The new zoom starts
   loading ~50–80 ms after the gesture ends (was ~160–260 ms), and covering tiles
-  stay until the incoming ones are `active`. That is the trade-off that removes
-  the burst that killed the tab without the white-tile buffer. Non-animated zooms
-  (`setView(..., {animate:false})`, `redraw()`, `viewprereset`) are **not**
-  delayed at all: there the old tiles are already gone, so the layer repaints
-  immediately.
+  stay until the incoming ones are `active`. The swap itself is a **cross-fade
+  on every device** (§2.1.5): the incoming tiles fade in over the previous
+  level through a CSS transition — no per-frame JS, no hard pop. That is the
+  trade-off that removes the burst that killed the tab without the white-tile
+  buffer. Non-animated zooms (`setView(..., {animate:false})`, `redraw()`,
+  `viewprereset`) are **not** delayed at all: there the old tiles are already
+  gone, so the layer repaints immediately.
 - **`keepBuffer: 1` on phones** keeps a one-tile ring so pan/zoom edges stay
   covered; conservation mode still drops it to 0 under memory pressure. Desktop
   keeps Leaflet's 2-tile ring.
