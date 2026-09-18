@@ -99,21 +99,26 @@
            both iOS safe areas. Controls are still kept clear of the notch and
            home indicator below, but the safe-area space itself now shows the
            map instead of a solid blue strip.
-           - 100dvh follows the currently visible standalone viewport.
-           - 100svh and --vh are fallbacks for older mobile WebViews.
-           - width:100% (not 100vw) avoids a horizontal blank gutter. */
+           The section is STRETCHED between the viewport edges (top:0 +
+           bottom:0) instead of being given a computed height: iOS standalone
+           settles its vh / svh / dvh numbers one frame late — and on some
+           versions the dynamic viewport excludes the home-indicator band —
+           so a computed height could end up shorter than the real screen and
+           left a dark navy strip of page background below the map (the
+           "bottom padding / bottom bar" seen in the installed app). Stretching
+           is exact on every engine, needs no fallback ladder and never leaves
+           a gap. width:100% (not 100vw) avoids a horizontal blank gutter. */
         body.is-pwa #map-section {
             padding: 0 !important;
             margin: 0 !important;
-            height: 100vh !important;
-            height: calc(var(--vh, 1vh) * 100) !important;
-            height: 100svh !important;
-            height: 100dvh !important;
-            width: 100% !important;
-            max-width: 100% !important;
             position: fixed;
             top: 0;
+            right: 0;
+            bottom: 0;
             left: 0;
+            height: auto !important;
+            width: 100% !important;
+            max-width: 100% !important;
             z-index: 10;
             background: #060E1E;
         }
@@ -4233,6 +4238,37 @@
                 });
                 if (window.visualViewport) {
                     window.visualViewport.addEventListener('resize', updatePwaMapLayout);
+                }
+                window.addEventListener('load', updatePwaMapLayout);
+                window.addEventListener('pageshow', updatePwaMapLayout);
+
+                // ── Kill the dark strip under the map (installed PWA) ──
+                // iOS standalone finalises the viewport height only AFTER the
+                // first paint (status bar / home-indicator band settle late),
+                // so the map container can reach its true, full-screen height
+                // without any resize event ever firing — Leaflet then keeps
+                // the shorter size and the page background shows as a blank
+                // navy band below the tiles. The delayed passes cover the
+                // settle window; the ResizeObserver catches the exact frame
+                // the container grows, on any engine. Neither moves a single
+                // control: only the map canvas is re-measured.
+                setTimeout(updatePwaMapLayout, 800);
+                setTimeout(updatePwaMapLayout, 1600);
+                if (typeof window.ResizeObserver === 'function') {
+                    var pwaMapROPending = false;
+                    var pwaMapRO = new window.ResizeObserver(function () {
+                        if (pwaMapROPending) return;
+                        pwaMapROPending = true;
+                        window.requestAnimationFrame(function () {
+                            pwaMapROPending = false;
+                            updatePwaMapLayout();
+                        });
+                    });
+                    [document.getElementById('map-section'),
+                     document.querySelector('#map-section .map-frame'),
+                     document.getElementById('detectlab-map')].forEach(function (el) {
+                        if (el) pwaMapRO.observe(el);
+                    });
                 }
 
                 // PWA Launch screen coordinator & deterministic auth startup
