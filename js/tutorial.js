@@ -102,8 +102,8 @@
                     sel: '#btnOfflineMaps',
                     title: { ro: 'Hărți offline', en: 'Offline maps' },
                     desc: {
-                        ro: 'Activează butonul, desenează un poligon de maximum 10 km², alege straturile disponibile, nivelul de zoom și descarcă-le pentru teren fără internet. Închide poligonul atingând primul punct sau apăsând „Finalizează”; dacă nu e mulțumit de formă, alege „Desenează alt poligon”. Cât timp o hartă offline e activă, un ✕ centrat jos o dezactivează.',
-                        en: 'Activate the button, draw a polygon of up to 10 km², choose the available layers and the zoom level, then download them for use without internet. Close the polygon by tapping its first corner or pressing “Finish”; if the shape is not right, press “Draw another polygon”. While an offline map is active, a centred ✕ at the bottom leaves it.'
+                        ro: 'Activează butonul, desenează un poligon de maximum 100 km², alege straturile disponibile, nivelul de zoom și descarcă-le pentru teren fără internet. Închide poligonul atingând primul punct sau apăsând „Finalizează”; dacă nu e mulțumit de formă, alege „Desenează alt poligon”. Cât timp o hartă offline e activă, un ✕ centrat jos o dezactivează.',
+                        en: 'Activate the button, draw a polygon of up to 100 km², choose the available layers and the zoom level, then download them for use without internet. Close the polygon by tapping its first corner or pressing “Finish”; if the shape is not right, press “Draw another polygon”. While an offline map is active, a centred ✕ at the bottom leaves it.'
                     }
                 },
                 {
@@ -333,8 +333,8 @@
             {
                 name: { ro: 'Hărți offline', en: 'Offline maps' },
                 desc: {
-                    ro: 'Desenează o zonă de maximum 10 km², alege straturile disponibile și descarcă tile-urile pe dispozitiv. Harta expiră automat după 10 zile; în butonul cu card SD apare categoria Hărți offline.',
-                    en: 'Draw an area of up to 10 km², choose the available layers and download their tiles to the device. The map expires automatically after 10 days; the SD-card button contains the Offline maps category.'
+                    ro: 'Desenează o zonă de maximum 100 km², alege straturile disponibile și descarcă tile-urile pe dispozitiv. Harta expiră automat după 10 zile; în butonul cu card SD apare categoria Hărți offline.',
+                    en: 'Draw an area of up to 100 km², choose the available layers and download their tiles to the device. The map expires automatically after 10 days; the SD-card button contains the Offline maps category.'
                 }
             }
         ],

@@ -11,11 +11,12 @@
 //    or the Finish button, which is hard on a phone. A tap within 18 screen
 //    pixels of the FIRST corner now closes the polygon, and that corner is
 //    painted green and pulses so it is recognisable as the closing handle.
-// 3. Over-sized polygon: finishDrawing() reported the 10 km² error and then
+// 3. Over-sized polygon: finishDrawing() reported the size-limit error and then
 //    called updatePanel(), which overwrote the message with the generic
 //    "layers from the active offline map" line — so the refusal looked like it
 //    did nothing. The message is sticky now, and the size is checked while
-//    drawing, not only on Finish.
+//    drawing, not only on Finish. The cap itself was raised from 10 km² to
+//    100 km², so a "too large" polygon must now be really large.
 // 4. Layout: .offline-map-panel was clamped to min(76vh, 620px), so with many
 //    downloadable layers it grew taller than the map canvas and spilled out of
 //    it; in the installed app the PWA bottom stacks covered the download
@@ -312,7 +313,7 @@ tapMap(48.0, 22.0);
 assert.equal(state.status && state.status.key, 'tooLarge',
     'the size limit must be reported while drawing');
 assert.equal(state.status.isError, true);
-assert(/10 km²/.test(messageNode.textContent), 'the panel should show the 10 km² error, got: ' + messageNode.textContent);
+assert(/100 km²/.test(messageNode.textContent), 'the panel should show the 100 km² error, got: ' + messageNode.textContent);
 
 const errorText = messageNode.textContent;
 panel.querySelector('.offline-finish').onclick();
@@ -415,5 +416,84 @@ assert(/bottom:[^;]*var\(--layer-dock-clearance/.test(exitRule[1]),
     'the ✕ lifts above the bottom-centred action dock instead of overlapping it');
 assert(/\.offline-active-exit\.is-visible/.test(exitCss), 'the ✕ has an explicit visible state');
 
-console.log('✓ offline maps: zoom-level wording, ring closing, size error and panel layout');
+/* ── 5. The 100 km² download cap ─────────────────────────────────────────── */
+/* The cap was 10 km²; it is now 100 km², so the old "too large" triangles
+   must be accepted and only genuinely large rings must be refused.
+   (Section 4 left the offline mode off — the ✕ turned it off.) */
+if (!state.mode) windowMock.toggleOfflineMaps();
+
+/* ~44 km² triangle (11.1 km × 8 km at this latitude): inside the new cap. */
+resetDrawing();
+tapMap(44.0, 20.0);
+tapMap(44.1, 20.0);
+tapMap(44.1, 20.1);
+assert.equal(state.status, null,
+    'a ~44 km² polygon (rejected under the old 10 km² limit) raises no error now');
+panel.querySelector('.offline-finish').onclick();
+assert.equal(state.drawState, 'finished', 'a ~44 km² polygon can be finished');
+const areaLine = panel.querySelector('.offline-area-line');
+assert(/\/\s*100 km²/.test(areaLine.querySelector('strong').textContent),
+    'the area line must show the 100 km² budget, got: ' + areaLine.querySelector('strong').textContent);
+
+/* ~266 km² triangle (22.2 km × 24 km): refused, while drawing and on Finish. */
+resetDrawing();
+tapMap(44.0, 20.0);
+tapMap(44.2, 20.0);
+tapMap(44.2, 20.3);
+assert.equal(state.status && state.status.key, 'tooLarge',
+    'a polygon over 100 km² is reported while drawing');
+assert(/100 km²/.test(messageNode.textContent),
+    'the too-large message must name the 100 km² limit, got: ' + messageNode.textContent);
+panel.querySelector('.offline-finish').onclick();
+assert.equal(state.drawState, 'drawing', 'a polygon over 100 km² cannot be finished');
+
+/* ── 6. New free downloadable layers: patrimoniu, free historical maps, OSM places ── */
+const sources = windowMock._offlineSources;
+assert(Array.isArray(sources) && sources.length > 0, 'the source catalogue must be exposed for tests');
+
+const freeIds = sources.filter(s => !s.requiresPremium).map(s => s.id);
+for (const id of ['patrimoniu', 'austrian', 'firingplans', 'soviet', 'osm-places']) {
+    assert(freeIds.includes(id), id + ' must be in the offline catalogue as a FREE layer (no premium gate)');
+}
+const premiumIds = sources.filter(s => s.requiresPremium).map(s => s.id);
+for (const id of ['apm20', 'bucovina', 'austrohu', 'moldova1868', 'moldova1771', 'moldovawwii', 'banat', 'transylvania1859', 'galicia1855']) {
+    assert(premiumIds.includes(id), id + ' must stay premium-gated');
+}
+
+/* The heritage entry replays the same WMS service the online map falls back
+   to (eism.geo-spatial.ro, layers 0,5,6), and the three historical maps come
+   from the free geo-spatial.org eharta service. */
+const patrimoniu = sources.find(s => s.id === 'patrimoniu');
+assert(/eism\.geo-spatial\.ro.*Patrimoniu.*WmsServer/.test(patrimoniu.wms.url), 'patrimoniu offline uses the CIMEC WMS fallback service');
+assert.equal(patrimoniu.wms.layers, '0,5,6', 'patrimoniu offline shows the same WMS layers as the online fallback');
+for (const id of ['austrian', 'firingplans', 'soviet']) {
+    const s = sources.find(x => x.id === id);
+    assert(/services\.geo-spatial\.org\/geoserver\/eharta\/wms/.test(s.wms.url), id + ' uses the free geo-spatial.org eharta WMS');
+    assert(/mozaic_/.test(s.wms.layers), id + ' names its eharta mosaic layer');
+}
+
+/* WMS tiles are cached per XYZ tile as GetMap requests in EPSG:3857 — the
+   same CRS the online L.tileLayer.wms layers use — and every offline URL is
+   tagged so the service worker can find it in the cache. */
+assert(/function wmsTileUrl/.test(SOURCE), 'WMS sources need a deterministic per-tile GetMap URL builder');
+assert(/'SRS=EPSG:3857'/.test(SOURCE), 'WMS tiles must be requested in EPSG:3857, like the online layers');
+assert(/REQUEST=GetMap/.test(SOURCE), 'WMS tiles are GetMap images');
+assert(/sourceJobUrl/.test(SOURCE), 'the download loop must build WMS URLs through the same builder as the activated layer');
+
+/* The OSM places layer is vector: one GeoJSON document per download, replayed
+   as permanent locality labels from the cache when the map is activated. */
+const osmPlaces = sources.find(s => s.id === 'osm-places');
+assert(osmPlaces.kind === 'geojson', 'osm-places must be declared as a geojson (single-document) source');
+assert(/OSM\.geojson/.test(osmPlaces.url), 'osm-places caches the same GeoJSON the online layer uses');
+assert(/function makeOfflinePlacesLayer/.test(SOURCE), 'the cached GeoJSON must be replayed as an offline label layer');
+assert(/osm-places-tooltip/.test(SOURCE), 'offline OSM labels reuse the online .osm-places-tooltip styling');
+
+/* sw.js must serve every tagged offline request from the cache — this is what
+   makes WMS tiles and the cached GeoJSON work without connection. */
+const SW = read('sw.js');
+assert(/__dl_offline_map=/.test(SW),
+    'sw.js must treat any request tagged with __dl_offline_map= as an offline-cache lookup');
+
+console.log('✓ offline maps: zoom-level wording, ring closing, size error, panel layout,');
+console.log('  100 km² cap and the new free layers (patrimoniu, eharta maps, OSM places)');
 console.log('All offline-maps panel checks passed.');
