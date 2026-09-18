@@ -752,11 +752,14 @@ async function partWiring() {
     assert(/window\.DetectLabNotify/.test(FRIENDS_JS), 'friends.js must expose window.DetectLabNotify');
     ok('index.html încarcă noile versiuni, events.js înaintea friends.js');
 
-    // The PWA pre-caches both and bumps the app shell.
-    assert(/detectlab-v110-social-notify/.test(SW_JS), 'sw.js must bump the cache name');
+    // The PWA pre-caches both and bumps the app shell. Every later release
+    // bumps CACHE_NAME again (a full shell replacement), so anything at or
+    // past the social-notify bump keeps installed PWAs fresh.
+    const socialCacheNumber = Number((SW_JS.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1] || 0);
+    assert(socialCacheNumber >= 110, 'sw.js must bump the cache name past the social-notify release');
     assert(/'js\/friends\.js\?v=20260918-social-notify'/.test(SW_JS), 'sw.js must pre-cache the new friends.js');
     assert(/'js\/events\.js\?v=20260918-social-notify'/.test(SW_JS), 'sw.js must pre-cache the new events.js');
-    ok('sw.js pre-cache-uiește ambele fișiere și sare la detectlab-v110-social-notify');
+    ok('sw.js pre-cache-uiește ambele fișiere și cache name-ul e mărit past v110');
 
     // The pop-up styles ship with the social stylesheet.
     ['#dlNotifyStack', '.dl-notify', 'dlNotifyIn', '.dl-notify-close'].forEach(function (needle) {

@@ -9,9 +9,15 @@
 (function () {
     'use strict';
 
-    var MAX_AREA_M2 = 10 * 1000 * 1000;
+    /* A polygon may now span up to 100 km² — large enough for a whole
+       commune with its surroundings on every free layer. */
+    var MAX_AREA_M2 = 100 * 1000 * 1000;
     var MAP_TTL_MS = 10 * 24 * 60 * 60 * 1000;
-    var MAX_TILE_JOBS = 5000;
+    /* Scaled up together with the 100 km² area cap: a 100 km² satellite
+       download at zoom 18 alone is ~6 200 tiles, so the old 5 000 cap would
+       have refused what the new area allows. Storage is still bounded by the
+       browser quota, and the tile estimate warns before the cap is hit. */
+    var MAX_TILE_JOBS = 20000;
     var DB_NAME = 'detectlab-offline-maps';
     var DB_VERSION = 1;
     var STORE_NAME = 'maps';
@@ -34,8 +40,8 @@
         redraw: { ro: 'Desenează alt poligon', en: 'Draw another polygon' },
         clear: { ro: 'Șterge poligonul', en: 'Clear polygon' },
         area: { ro: 'Suprafață', en: 'Area' },
-        maximum: { ro: 'Suprafața maximă este de 10 km².', en: 'The maximum area is 10 km².' },
-        tooLarge: { ro: 'Poligonul depășește limita de 10 km². Micșorează-l sau modifică punctele.', en: 'The polygon exceeds the 10 km² limit. Make it smaller or edit its points.' },
+        maximum: { ro: 'Suprafața maximă este de 100 km².', en: 'The maximum area is 100 km².' },
+        tooLarge: { ro: 'Poligonul depășește limita de 100 km². Micșorează-l sau modifică punctele.', en: 'The polygon exceeds the 100 km² limit. Make it smaller or edit its points.' },
         tooFew: { ro: 'Ai nevoie de cel puțin 3 puncte.', en: 'You need at least 3 points.' },
         available: { ro: 'Straturi disponibile în această zonă', en: 'Layers available in this area' },
         noLayers: { ro: 'Nu există straturi raster descărcabile în această zonă.', en: 'No downloadable raster layers are available in this area.' },
@@ -105,7 +111,8 @@
     }
 
     /* A local equirectangular projection is accurate to well below a percent
-       for a ten-square-kilometre area and avoids a heavyweight geometry plugin. */
+       for an area up to a hundred square kilometres and avoids a heavyweight
+       geometry plugin. */
     function polygonAreaM2(points) {
         points = pointArray(points);
         if (points.length < 3) return 0;
@@ -181,6 +188,48 @@
             minZoom: 8, maxNativeZoom: 15, tms: false,
             bounds: boundsArray(43.5, 19.5, 48.5, 30.5),
             description: { ro: 'Foi istorice georeferențiate', en: 'Georeferenced historical sheets' }, onlineKey: '_jLayerRef'
+        },
+        {
+            /* WMS raster fallback for the heritage layer — the same service the
+               map falls back to when the heritage API is unreachable, so the
+               offline copy looks like the online map without connection. */
+            id: 'patrimoniu', label: { ro: 'Patrimoniu', en: 'Heritage' }, category: 'free',
+            wms: { url: 'https://eism.geo-spatial.ro/eismgeo/services/Patrimoniu/PatrimoniuWM/MapServer/WmsServer', layers: '0,5,6', format: 'image/png', transparent: true, version: '1.1.1' },
+            minZoom: 8, maxNativeZoom: 16,
+            bounds: boundsArray(43.5, 19.5, 48.5, 30.5),
+            description: { ro: 'Situri arheologice și monumente istorice (CIMEC)', en: 'Archaeological sites and historic monuments (CIMEC)' }, onlineKey: '_patrimoniuLayer'
+        },
+        {
+            /* The three free historical maps from geo-spatial.org (eharta WMS). */
+            id: 'austrian', label: { ro: 'Harta Austriacă 1910', en: 'Austrian Map 1910' }, category: 'free',
+            wms: { url: 'https://services.geo-spatial.org/geoserver/eharta/wms', layers: 'eharta:mozaic_austrian_200k', format: 'image/png', transparent: true, version: '1.1.1' },
+            minZoom: 6, maxNativeZoom: 13,
+            bounds: boundsArray(43.5, 19.5, 48.5, 30.5),
+            description: { ro: 'Mozaic austriac 1:200.000 (geo-spatial.org)', en: 'Austrian 1:200,000 mosaic (geo-spatial.org)' }, onlineKey: '_austrianMapLayer'
+        },
+        {
+            id: 'firingplans', label: { ro: 'Planuri de Tragere 20k', en: 'Firing Plans 20k' }, category: 'free',
+            wms: { url: 'https://services.geo-spatial.org/geoserver/eharta/wms', layers: 'eharta:mozaic_planuri_tragere_20k', format: 'image/png', transparent: true, version: '1.1.1' },
+            minZoom: 8, maxNativeZoom: 15,
+            bounds: boundsArray(43.5, 19.5, 48.5, 30.5),
+            description: { ro: 'Planuri de tragere 1:20.000 (geo-spatial.org)', en: '1:20,000 firing plans (geo-spatial.org)' }, onlineKey: '_firingPlansLayer'
+        },
+        {
+            id: 'soviet', label: { ro: 'Harta Sovietică 1970', en: 'Soviet Map 1970' }, category: 'free',
+            wms: { url: 'https://services.geo-spatial.org/geoserver/eharta/wms', layers: 'eharta:mozaic_soviet100k', format: 'image/png', transparent: true, version: '1.1.1' },
+            minZoom: 6, maxNativeZoom: 13,
+            bounds: boundsArray(43.5, 19.5, 48.5, 30.5),
+            description: { ro: 'Harta sovietică 1:100.000 (geo-spatial.org)', en: 'Soviet 1:100,000 map (geo-spatial.org)' }, onlineKey: '_sovietMapLayer'
+        },
+        {
+            /* Vector source: the OSM Places document is downloaded as one file
+               and the locality labels are rebuilt from the cached copy when the
+               offline map is activated (see makeOfflinePlacesLayer). */
+            id: 'osm-places', label: { ro: 'Localități OSM', en: 'OSM Places' }, category: 'free',
+            kind: 'geojson',
+            url: 'https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/OSM.geojson',
+            bounds: boundsArray(43.5, 19.5, 48.5, 30.5),
+            description: { ro: 'Numele localităților din OpenStreetMap', en: 'Locality names from OpenStreetMap' }, onlineKey: '_osmPlacesGroup'
         },
         {
             id: 'apm20', label: { ro: 'APM 2.0', en: 'APM 2.0' }, category: 'premium', requiresPremium: true,
@@ -466,12 +515,48 @@
         return appendParam(url, TILE_QUERY_KEY, mapId);
     }
 
+    /* A WMS tile is a GetMap request whose BBOX is the XYZ tile extent in
+       EPSG:3857 metres — the same CRS the online L.tileLayer.wms layers use.
+       The URL depends only on (source, z, x, y, mapId), so the download loop
+       and the activated layer build byte-identical URLs and the service
+       worker finds every downloaded tile in the cache. */
+    function wmsTileUrl(source, z, x, y, mapId) {
+        var b = tileBounds(z, x, y);
+        var R = 6378137, rad = Math.PI / 180;
+        function merY(lat) { return R * Math.log(Math.tan(Math.PI / 4 + lat * rad / 2)); }
+        var params = [
+            'SERVICE=WMS',
+            'REQUEST=GetMap',
+            'VERSION=' + (source.wms.version || '1.1.1'),
+            'LAYERS=' + source.wms.layers,
+            'STYLES=',
+            'FORMAT=' + (source.wms.format || 'image/png'),
+            'TRANSPARENT=' + (source.wms.transparent === false ? 'FALSE' : 'TRUE'),
+            'SRS=EPSG:3857',
+            'WIDTH=256',
+            'HEIGHT=256',
+            'BBOX=' + (R * b.west * rad) + ',' + merY(b.south) + ',' + (R * b.east * rad) + ',' + merY(b.north)
+        ];
+        return source.wms.url + '?' + params.join('&') + '&' + TILE_QUERY_KEY + '=' + mapId;
+    }
+
+    function sourceJobUrl(source, z, x, y, mapId) {
+        return source.wms ? wmsTileUrl(source, z, x, y, mapId) : tileUrl(source, z, x, y, mapId);
+    }
+
     function jobsFor(recordId, points, selectedIds, zoomMin, zoomMax) {
         var bounds = polygonBounds(points);
         var polygon = pointArray(points);
         var jobs = [], seen = {};
         var sources = selectedIds.map(sourceById).filter(function (s) { return s && intersects(bounds, s.bounds); });
         sources.forEach(function (source) {
+            /* A vector source is stored as a single document (the whole
+               GeoJSON file), not as a zoom pyramid of raster tiles. */
+            if (source.kind === 'geojson') {
+                var docUrl = appendParam(source.url, TILE_QUERY_KEY, recordId);
+                if (!seen[docUrl]) { seen[docUrl] = true; jobs.push({ source: source, url: docUrl }); }
+                return;
+            }
             var start = Math.max(1, Number(zoomMin), source.minZoom || 0);
             var end = Math.min(20, Number(zoomMax), source.maxNativeZoom || 20);
             for (var z = start; z <= end; z++) {
@@ -479,7 +564,7 @@
                 for (var x = range.x0; x <= range.x1; x++) {
                     for (var y = range.y0; y <= range.y1; y++) {
                         if (!tileTouchesPolygon(z, x, y, polygon)) continue;
-                        var url = tileUrl(source, z, x, y, recordId);
+                        var url = sourceJobUrl(source, z, x, y, recordId);
                         if (seen[url]) continue;
                         seen[url] = true;
                         jobs.push({ source: source, z: z, x: x, y: y, url: url });
@@ -649,7 +734,7 @@
         var area = polygonAreaM2(state.points);
         areaLine.hidden = state.points.length < 3;
         areaLine.querySelector('span').textContent = t('areaLabel');
-        areaLine.querySelector('strong').textContent = formatArea(area) + ' / 10 km²';
+        areaLine.querySelector('strong').textContent = formatArea(area) + ' / 100 km²';
         areaLine.classList.toggle('is-over', area > MAX_AREA_M2);
 
         var finish = panel.querySelector('.offline-finish');
@@ -891,14 +976,19 @@
         state.hiddenOnlineLayers = [];
     }
 
+    function ensureOfflinePane(name, zIndex) {
+        if (!state.map.getPane(name)) {
+            state.map.createPane(name);
+            state.map.getPane(name).style.zIndex = zIndex;
+            state.map.getPane(name).style.pointerEvents = 'none';
+        }
+        return name;
+    }
+
     function makeOfflineLayer(source, record) {
         var url = appendParam(source.url, TILE_QUERY_KEY, record.id);
         var pane = source.id === 'satellite' ? 'offlineBase' : 'offlineOverlay';
-        if (!state.map.getPane(pane)) {
-            state.map.createPane(pane);
-            state.map.getPane(pane).style.zIndex = pane === 'offlineBase' ? 399 : 665;
-            state.map.getPane(pane).style.pointerEvents = 'none';
-        }
+        ensureOfflinePane(pane, pane === 'offlineBase' ? 399 : 665);
         return L.tileLayer(url, {
             pane: pane,
             minZoom: source.minZoom || 0,
@@ -910,6 +1000,105 @@
             attribution: '© DetectLab · ' + source.label.en,
             crossOrigin: 'anonymous'
         });
+    }
+
+    /* WMS layers replay the exact URLs built by wmsTileUrl() during the
+       download, so the service worker serves the cached GetMap images when
+       the device is offline and falls through to the network when it is not. */
+    function makeOfflineWmsLayer(source, record) {
+        var pane = ensureOfflinePane('offlineOverlay', 665);
+        var WmsTileLayer = L.TileLayer.extend({
+            initialize: function (src, recordId, options) {
+                this._dlSource = src;
+                this._dlRecordId = recordId;
+                L.TileLayer.prototype.initialize.call(this, null, options);
+            },
+            getTileUrl: function (coords) {
+                var z = typeof this._getZoomForUrl === 'function' ? this._getZoomForUrl() : coords.z;
+                return wmsTileUrl(this._dlSource, z, coords.x, coords.y, this._dlRecordId);
+            }
+        });
+        return new WmsTileLayer(source, record.id, {
+            pane: pane,
+            minZoom: source.minZoom || 0,
+            maxZoom: 20,
+            maxNativeZoom: source.maxNativeZoom,
+            opacity: 0.82,
+            tileSize: 256,
+            attribution: '© DetectLab · ' + source.label.en,
+            crossOrigin: 'anonymous'
+        });
+    }
+
+    function readCachedJson(url) {
+        if (!window.caches) return Promise.reject(new Error('Cache Storage unavailable'));
+        return caches.open(OFFLINE_TILE_CACHE).then(function (cache) {
+            return cache.match(url).then(function (hit) {
+                if (!hit) throw new Error('Document not cached');
+                return hit.json();
+            });
+        });
+    }
+
+    /* OSM Places offline: the GeoJSON document cached during the download is
+       replayed as permanent name labels — the same label-only look as the
+       online layer (transparent markers + permanent tooltips). Only the
+       localities inside the downloaded polygon are shown, mirroring what the
+       download was built for. The layer lives in its own pane so the opacity
+       slider can drive pane opacity without touching the other overlays. */
+    function makeOfflinePlacesLayer(source, record) {
+        var pane = ensureOfflinePane('offlinePlacesPane', 666);
+        var group = L.layerGroup([], { pane: pane });
+        group.options.opacity = 1;
+        group.setOpacity = function (value) {
+            var node = state.map && state.map.getPane ? state.map.getPane('offlinePlacesPane') : null;
+            if (node && node.style) node.style.opacity = value;
+        };
+        var docUrl = appendParam(source.url, TILE_QUERY_KEY, record.id);
+        var polygon = pointArray(record.polygon);
+        var box = polygonBounds(record.polygon);
+        readCachedJson(docUrl).then(function (data) {
+            var feats = (data && data.features) || [];
+            var picked = [];
+            for (var i = 0; i < feats.length; i++) {
+                var coords = feats[i] && feats[i].geometry && feats[i].geometry.coordinates;
+                if (!coords) continue;
+                var lng = Number(coords[0]), lat = Number(coords[1]);
+                if (!isFinite(lat) || !isFinite(lng)) continue;
+                if (box && (lat < box.south || lat > box.north || lng < box.west || lng > box.east)) continue;
+                if (polygon.length >= 3 && !pointInPolygon({ lat: lat, lng: lng }, polygon)) continue;
+                var props = feats[i].properties || {};
+                picked.push({
+                    lat: lat, lng: lng,
+                    name: props.name || props.NAME || '',
+                    pop: Number(props.population || props.pop || 0) || 0
+                });
+            }
+            /* Crowded polygons still have to stay readable: cities and towns
+               (the populated entries) win the label budget over hamlets. */
+            picked.sort(function (a, b) { return b.pop - a.pop; });
+            picked = picked.slice(0, 600);
+            for (var j = 0; j < picked.length; j++) {
+                var marker = L.marker([picked[j].lat, picked[j].lng], {
+                    pane: pane,
+                    icon: L.divIcon({ className: '', iconSize: [0, 0], iconAnchor: [0, 0] }),
+                    interactive: false
+                });
+                if (picked[j].name) {
+                    marker.bindTooltip(picked[j].name, { permanent: true, direction: 'center', className: 'osm-places-tooltip', offset: [0, 0] });
+                }
+                group.addLayer(marker);
+            }
+        }).catch(function (error) {
+            console.warn('[Offline maps] OSM places layer unavailable:', error && error.message);
+        });
+        return group;
+    }
+
+    function makeOfflineSourceLayer(source, record) {
+        if (source.kind === 'geojson') return makeOfflinePlacesLayer(source, record);
+        if (source.wms) return makeOfflineWmsLayer(source, record);
+        return makeOfflineLayer(source, record);
     }
 
     function onlineLayerFor(source) {
@@ -1001,7 +1190,7 @@
             if (source.requiresPremium && !isPremium()) return;
             var online = onlineLayerFor(source);
             if (online && state.map.hasLayer(online)) { state.map.removeLayer(online); state.hiddenOnlineLayers.push(online); }
-            var layer = makeOfflineLayer(source, record);
+            var layer = makeOfflineSourceLayer(source, record);
             layer.addTo(state.map); state.activeLayers.push(layer); state.activeSources.push(source);
         });
         renderOfflineRows(record);
@@ -1241,6 +1430,10 @@
         // touching the network.
         state.refreshExitButton = updateExitButton;
         window._offlineMapsState = state;
+        /* Test/debug handle: the layer catalogue (ids, categories, WMS/geojson
+           descriptors) so the node tests can assert the free/premium split
+           without parsing the source. */
+        window._offlineSources = SOURCES;
         document.addEventListener('detectlab:langchange', updateLanguage);
         window.addEventListener('detectlab:authchange', updatePremiumAvailability);
         window.addEventListener('beforeunload', function () { if (state.downloading) state.cancelDownload = true; });

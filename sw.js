@@ -105,7 +105,14 @@
 //   forever once seen — the marks live in the per-account mirror). Messages
 //   arrive instantly through a realtime inbox channel; requests through the
 //   20 s counter poll. See FRIENDS_AND_CHAT.md.
-const CACHE_NAME = 'detectlab-v110-social-notify';
+// v111: offline maps — the download cap grows from 10 km² to 100 km² (tile
+//   budget raised with it) and the free catalogue gains Patrimoniu (CIMEC
+//   WMS), the three free eharta historical maps (Austriacă 1910, Planuri de
+//   Tragere 20k, Sovietică 1970) and Localități OSM (the GeoJSON is cached as
+//   one document and replayed as name labels). sw.js now treats every
+//   request tagged with __dl_offline_map= as an offline-cache lookup so WMS
+//   tiles and the cached GeoJSON also work with no connection.
+const CACHE_NAME = 'detectlab-v111-offline-100km';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -501,6 +508,11 @@ const PRECACHE_URLS = [
   // per-frame JS). See MAP_LAYER_PERFORMANCE.md.
   'js/tile-perf.js?v=20260918-tile-seamless',
   'css/styles.css?v=20260918-tile-seamless',
+  // Hărți offline: limita de download crește la 100 km² și catalogul gratuit
+  // primește Patrimoniu (WMS CIMEC), cele trei hărți istorice gratuite eharta
+  // (Austriacă 1910, Planuri de Tragere 20k, Sovietică 1970) și Localități
+  // OSM (GeoJSON cache-uit ca un singur document). Vezi OFFLINE_MAPS_100KM2.md.
+  'js/offline-maps.js?v=20260918-offline-100km-free-layers',
   // Notificări sociale: cerculețul roșu de pe butonul de profil adună tot ce
   // așteaptă (chat-uri de eveniment necitite + cereri de prietenie + mesaje
   // necitite), iar o cerere sau un mesaj nou apare ca pop-up în colțul din
@@ -572,6 +584,9 @@ self.addEventListener('activate', function (event) {
 function isOfflineTileRequest(url) {
   var path = url.pathname || '';
   var query = (url.search || '').toLowerCase();
+  // Anything carrying the offline-module tag was queued by js/offline-maps.js
+  // (raster XYZ tiles, WMS GetMap images and cached GeoJSON documents alike).
+  if (query.indexOf('__dl_offline_map=') !== -1) return true;
   if (query.indexOf('request=getmap') !== -1) return true;
   if (path.indexOf('/tile/') !== -1 || path.indexOf('/APM_TILES/') !== -1 || path.indexOf('/UAT/') !== -1) return true;
   return /\/\d+\/\d+\/\d+\.(png|jpg|jpeg)(?:$|\?)/i.test(path + url.search);
