@@ -279,7 +279,9 @@
                 archeo_legend_heat_lo: 'Weak',
                 archeo_legend_heat_hi: 'Strong',
                 archeo_legend_excluded: 'UAT / heritage radius',
-                archeo_hint: 'Searches for locations with archaeological potential reported to the marked archaeological sites, based on a triangulation logic — colour = score, on one absolute scale shared with the bubbles and with the legend. Red = the UAT built-up area and the protection radii of the sites, where nothing is generated.',
+                // ex-archeo_hint: explicația stratului a fost mutată în fereastra
+                // de info (butonul „i”) — textul trăiește acum în I18N-ul din
+                // js/archeo-potential.js (cheia info_hint).
                 archeo_show_label: 'Show results',
                 // ── Premium: Archeological Report / Raport arheologic (js/archeo-report.js) ──
                 layer_arch_report: 'Archeological Report',
@@ -783,7 +785,9 @@
                 archeo_legend_heat_lo: 'Slab',
                 archeo_legend_heat_hi: 'Puternic',
                 archeo_legend_excluded: 'UAT / rază patrimoniu',
-                archeo_hint: 'Se cauta locatii cu potential arheologic raportate la siturile arheologice marcate, pe baza unei logici de triangulare — culoarea = scorul, pe o scară absolută comună cu bulele și cu legenda. Roșu = intravilanul UAT și razele de protecție ale siturilor, unde nu se generează nimic.',
+                // ex-archeo_hint: explicația stratului a fost mutată în fereastra
+                // de info (butonul „i”) — textul trăiește acum în I18N-ul din
+                // js/archeo-potential.js (cheia info_hint).
                 archeo_show_label: 'Arată rezultatele',
                 // ── Premium: Archeological Report / Raport arheologic (js/archeo-report.js) ──
                 layer_arch_report: 'Raport arheologic',

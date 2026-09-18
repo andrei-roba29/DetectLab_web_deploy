@@ -526,6 +526,14 @@ const PRECACHE_URLS = [
   'js/translations.js?v=20260918-archeo-heat-northup',
   'js/vertical-opacity-control.js?v=20260918-archeo-heat-northup',
   'css/styles.css?v=20260918-archeo-heat-northup',
+  // „Zone cu potențial arheologic”: explicația (logica de triangulare, roșu =
+  // excluse) a fost mutată din bara de sub legendă în fereastra butonului de
+  // info „i” (sub titlu + atribuire), iar stratul nu mai pornește ON implicit
+  // — pinul mov, oglinda razei și butonul „Detectează” se activează numai
+  // după ce utilizatorul aprinde comutatorul.
+  'js/archeo-potential.js?v=20260918-archeo-info-toggle-off',
+  'js/translations.js?v=20260918-archeo-info-toggle-off',
+  'css/styles.css?v=20260918-archeo-info-toggle-off',
   // Seamless tiles: kill the white grid (Leaflet's mix-blend-mode:
   // plus-lighter adds the colours of the 1px tile overlap instead of
   // covering them, saturating every 256px seam to white) and make the zoom
