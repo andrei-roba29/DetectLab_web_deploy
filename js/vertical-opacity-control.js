@@ -61,7 +61,7 @@
        poată fi specifice fiecărui strat. */
     var DISTANCE_SOURCES = [
         { id: 'lidarScannerDistance', toggle: 'lidarScannerToggle', actions: ['lidarScannerRun'], caption: 'distance' },
-        { id: 'archeoPotDistance', toggle: 'archeoPotPinToggle', actions: ['archeoPotRunBtn'], caption: 'radius' },
+        { id: 'archeoPotDistance', toggle: 'archeoPotToggle', actions: ['archeoPotRunBtn'], caption: 'radius' },
         { id: 'archReportDistance', toggle: 'archReportToggle', actions: ['archReportRunBtn'], caption: 'radius' }
     ];
 
@@ -720,14 +720,6 @@
             hideValueTip();
         }
         startProgrammaticSync();
-
-        if (source && source.id === 'archeoPotDistance') {
-            try {
-                if (typeof window.setArcheoPotentialPinMode === 'function') {
-                    window.setArcheoPotentialPinMode(true);
-                }
-            } catch (e) {}
-        }
 
         if (closePanel) closeLayerPanel();
         syncLayerActions();

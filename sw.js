@@ -74,7 +74,15 @@
 // v105: fluid zoom — shorter settle window, covering tiles until the new
 //   zoom is active, keepBuffer 1/2, dark map background so empty tiles no
 //   longer flash white. See MAP_LAYER_PERFORMANCE.md.
-const CACHE_NAME = 'detectlab-v106-gmaps-directions';
+// v107: "Zone cu potențial arheologic" — the heatmap now matches the bubbles:
+//   the score raster is copied north-up into the source bitmap (it used to be
+//   mirrored N–S, so colours and the transparent exclusion holes landed on
+//   the opposite side of the circle, in places that are neither UAT nor a
+//   site radius); the separate "Mod pin" switch is removed — the map-point
+//   logic (tap → purple pin) is permanent while the layer's main switch is on
+//   (the radius mirror + dock now follow that switch), and the layer info
+//   text is replaced. See ARCHEO_POTENTIAL.md.
+const CACHE_NAME = 'detectlab-v107-archeo-heat-northup';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -452,7 +460,17 @@ const PRECACHE_URLS = [
   'js/archeo-potential.js?v=20260917-gmaps-directions',
   'js/lidar-scanner.js?v=20260917-gmaps-directions',
   'js/archeo-report.js?v=20260917-gmaps-directions',
-  'css/styles.css?v=20260917-gmaps-directions'
+  'css/styles.css?v=20260917-gmaps-directions',
+  // „Zone cu potențial arheologic": heatmap-ul e desenat nord în sus (rândurile
+  // rasterului se inversează în bitmap-ul sursă — înainte ieșea oglindit N–S
+  // față de bule, cu „goluri” în zone care nu sunt nici UAT, nici raze de
+  // sit); switch-ul „Mod pin” e scos — logica de punct pe hartă e permanentă
+  // (urmează comutatorul mare al stratului, care poartă și oglinda razei +
+  // dock-ul), iar textul de info al stratului e înlocuit.
+  'js/archeo-potential.js?v=20260918-archeo-heat-northup',
+  'js/translations.js?v=20260918-archeo-heat-northup',
+  'js/vertical-opacity-control.js?v=20260918-archeo-heat-northup',
+  'css/styles.css?v=20260918-archeo-heat-northup'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──
