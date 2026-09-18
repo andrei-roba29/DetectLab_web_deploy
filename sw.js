@@ -112,7 +112,32 @@
 //   one document and replayed as name labels). sw.js now treats every
 //   request tagged with __dl_offline_map= as an offline-cache lookup so WMS
 //   tiles and the cached GeoJSON also work with no connection.
-const CACHE_NAME = 'detectlab-v111-offline-100km';
+// v112: the dark band under the map in the installed iPhone PWA — root cause
+//   found. `#map-section` is position:fixed, so top:0 / bottom:0 resolve
+//   against the initial containing block, and this page asks iOS for the one
+//   viewport documented to come up short there: viewport-fit=cover +
+//   apple-mobile-web-app-status-bar-style:black-translucent + a document sized
+//   in % / svh / dvh. WebKit then hands the page an ICB that is
+//   safe-area-inset-top (~59px) shorter than the physical screen — content is
+//   laid out from y=0 behind the translucent status bar but the box height is
+//   never compensated — so bottom:0 stops ~59px above the bottom edge, the map
+//   container ends there, the "© Leafleet" tag sits on top of the gap and the
+//   empty #060E1E page background shows through under it as the "bottom
+//   padding / bottom bar". Every reading of the ICB is short by the same
+//   amount (%, svh, dvh and bottom:0 alike), which is why v109's ladder →
+//   stretch rewrite did not remove it. 100vh is the one unit WebKit resolves to
+//   the FULL screen in this mode, so #map-section and .transp-panel now carry
+//   min-height:100vh as a floor: where the ICB already equals the screen
+//   (Android, desktop ?pwa=1, iOS without the short-ICB behaviour) it is
+//   exactly the top:0→bottom:0 stretch and changes nothing; where the ICB is
+//   short it clamps the box back to the real screen height. No control offset
+//   is touched. Also ships js/pwa-debug.js — a gated on-device probe
+//   (?pwaDebug=1 / ?pwaDebug=colors, or five taps on the © Leafleet tag) that
+//   prints the ICB / 100vh / dvh / svh / env() / element rects and can copy the
+//   whole readout, plus paints each candidate layer a different colour so the
+//   band's own colour names its painter in one round trip. See
+//   PWA_BOTTOM_BAND.md.
+const CACHE_NAME = 'detectlab-v112-pwa-bottom-band';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -519,7 +544,14 @@ const PRECACHE_URLS = [
   // dreapta sus. js/events.js și js/friends.js scriu în aceleași două elemente
   // prin window.DetectLabNotify.
   'js/events.js?v=20260918-social-notify',
-  'js/friends.js?v=20260918-social-notify'
+  'js/friends.js?v=20260918-social-notify',
+  // Banda închisă la culoare de sub hartă în PWA-ul instalat (iPhone): cauza e
+  // ICB-ul scurt cu safe-area-inset-top dat de viewport-fit=cover +
+  // black-translucent, iar #map-section / .transp-panel primesc podeaua
+  // min-height:100vh. js/pwa-debug.js e sonda opțională de pe dispozitiv
+  // (?pwaDebug=1 / ?pwaDebug=colors, sau 5 tap-uri pe eticheta „© Leafleet”).
+  // Vezi PWA_BOTTOM_BAND.md.
+  'js/pwa-debug.js?v=20260918-pwa-bottom-probe'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

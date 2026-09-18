@@ -100,14 +100,50 @@
            home indicator below, but the safe-area space itself now shows the
            map instead of a solid blue strip.
            The section is STRETCHED between the viewport edges (top:0 +
-           bottom:0) instead of being given a computed height: iOS standalone
-           settles its vh / svh / dvh numbers one frame late — and on some
-           versions the dynamic viewport excludes the home-indicator band —
-           so a computed height could end up shorter than the real screen and
-           left a dark navy strip of page background below the map (the
-           "bottom padding / bottom bar" seen in the installed app). Stretching
-           is exact on every engine, needs no fallback ladder and never leaves
-           a gap. width:100% (not 100vw) avoids a horizontal blank gutter. */
+           bottom:0) instead of being given a computed height, and never
+           carries a vh / svh / dvh ladder: iOS standalone settles those one
+           frame late, so a computed height could end up shorter than the real
+           screen. width:100% (not 100vw) avoids a horizontal blank gutter.
+
+           ── min-height:100vh — the strip under the map (installed iPhone) ──
+           Stretching alone is NOT enough on iOS, because top:0 / bottom:0 on a
+           position:fixed box resolve against the initial containing block, and
+           this page asks iOS for the one viewport that is documented to come
+           up short there:
+
+               viewport-fit=cover                     (the meta viewport tag)
+             + apple-mobile-web-app-status-bar-style: black-translucent
+             + a document sized in % / dvh / svh
+
+           In that combination WebKit hands the page an ICB that is
+           `safe-area-inset-top` (~59px on a Face-ID iPhone) SHORTER than the
+           physical screen — the content is laid out from y=0, behind the
+           translucent status bar, but the box height is not compensated. So
+           `bottom:0` lands ~59px above the bottom edge, the map container
+           stops there, the "© Leafleet" tag (anchored 4px above that
+           container's bottom edge) sits on top of the gap, and the empty
+           #060E1E page background shows through underneath it as the
+           "bottom padding / bottom bar" the installed app was showing.
+           Every value that reads the ICB is short by the same amount — `%`,
+           `svh`, `dvh` and `bottom:0` alike — which is why replacing the
+           ladder with a stretch did not remove the band.
+
+           The large-viewport unit `vh` is the one reading that WebKit resolves
+           to the FULL physical screen in this mode, so `min-height:100vh`
+           clamps the stretched box back up to the real screen height: the map
+           and its tag reach the bottom edge and nothing is left for the page
+           background to show through. It is a floor, never a size — where the
+           ICB already equals the screen (Android standalone, desktop ?pwa=1,
+           and any iOS version without the short-ICB behaviour) 100vh is
+           exactly the top:0→bottom:0 stretch and this declaration changes
+           nothing at all. Not one control offset is touched: the floating
+           right stack, the compass column, the action dock and the tag all
+           keep their published values.
+           (The one path where 100vh exceeds the visible area is ?pwa=1 opened
+           in a mobile BROWSER TAB, where 100vh is the large viewport and the
+           preview map slides under the browser toolbar. ?pwa=1 is a desktop
+           preview aid — in a real installed app there are no dynamic toolbars,
+           so 100vh is the screen. Production is unaffected.) */
         body.is-pwa #map-section {
             padding: 0 !important;
             margin: 0 !important;
@@ -117,6 +153,7 @@
             bottom: 0;
             left: 0;
             height: auto !important;
+            min-height: 100vh;
             width: 100% !important;
             max-width: 100% !important;
             z-index: 10;
@@ -154,13 +191,21 @@
            bottom:0 (not the safe-area inset) so there is no navy gap under it.
            Square corners so the rounded bottom-left no longer looks cropped.
            z-index above #pwa-br-stack so live-location / profile stay behind
-           the panel instead of jumping onto the left map buttons. */
+           the panel instead of jumping onto the left map buttons.
+           min-height:100vh for the same reason as #map-section: this box is
+           position:fixed too, so top:0 / bottom:0 resolve against the initial
+           containing block, which the viewport-fit=cover + black-translucent
+           combination leaves ~safe-area-inset-top shorter than the physical
+           screen on iOS. Without the floor the layers window would stop above
+           the bottom edge and show the very navy strip it was made flush to
+           avoid. Where the ICB already is the screen this changes nothing. */
         body.is-pwa .transp-panel {
             position: fixed !important;
             top: 0 !important;
             right: 0 !important;
             bottom: 0 !important;
             height: auto !important;
+            min-height: 100vh !important;
             max-height: none !important;
             padding-bottom: 0 !important;
             border-radius: 0 !important;
@@ -4150,6 +4195,15 @@
     </script>
 
 <script src="js/auth-forms.js"></script>
+
+    <!-- PWA bottom-band probe (temporary diagnostic, OFF by default).
+         Switch it on with ?pwaDebug=1 (numbers) or ?pwaDebug=colors (numbers +
+         colour bands), or with FIVE TAPS on the "© Leafleet" tag from inside
+         the installed app — iOS gives an Add-to-Home-Screen web app its own
+         storage container, so a flag set in Safari never reaches it. It adds no
+         element and no listener that can move a control while it is off.
+         See js/pwa-debug.js and PWA_BOTTOM_BAND.md. -->
+    <script src="js/pwa-debug.js?v=20260918-pwa-bottom-probe"></script>
 
     <script>
         (function() {
