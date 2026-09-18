@@ -140,7 +140,7 @@
 // v113: keep event creation below the phone status bar and within the viewport.
 // v115: move the Battles epoch-colour legend from the layers panel into the
 // Battles info tab, directly below its attribution.
-const CACHE_NAME = 'detectlab-v115-battles-info-legend';
+const CACHE_NAME = 'detectlab-v116-layer-initials';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -228,6 +228,8 @@ const PRECACHE_URLS = [
   'js/library-of-babel.js?v=20260917-babel-epochs',
   'js/vertical-opacity-control.js',
   'js/vertical-opacity-control.js?v=20260812',
+  'js/vertical-opacity-control.js?v=20260918-layer-initials',
+  'css/styles.css?v=20260918-layer-initials',
   'js/auth.js?v=20260812-vertical-opacity',
   'js/subscriptions.js?v=20260812-premium',
   'js/checkout.js?v=20260812-premium',

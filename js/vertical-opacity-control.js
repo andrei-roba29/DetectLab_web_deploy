@@ -380,17 +380,73 @@
         return String(value || '').replace(/\s+/g, ' ').trim();
     }
 
-    /* Numele stratului e scris vertical (de jos în sus) pe laterala stângă a
-       casetei de sticlă: maximum 15 caractere, iar restul devine „…”. Numele
-       complet rămâne în atributul title al etichetei. */
-    var LAYER_TITLE_MAX_CHARS = 15;
+    /* Deasupra sliderului vertical (laterala stângă a casetei de sticlă) nu
+       mai stă numele stratului, ci DOAR inițialele lui: maximum 3 litere,
+       fără ani / cifre — „Austrian Map 1910” → „AM”, „Bucovina 1861–1864” →
+       „B”, „APM Layer” → „APM”, „HD · Hunedoara” → „HD”. Numele complet
+       rămâne în atributul title al etichetei (tooltip / cititoare de ecran). */
+    var LAYER_INITIALS_MAX = 3;
+
+    /* Grupuri de litere latine + diacritice românești / europene
+       (ă, â, î, ș, ț, é, ö…): din fiecare se ia inițiala. */
+    var LAYER_WORD_RE = /[A-Za-z\u00C0-\u024F]+/g;
+
+    /* Particele de legătură nu contribuie cu inițială
+       („Planuri de Tragere” → „PT”). */
+    var LAYER_STOPWORDS = {
+        de: true, din: true, al: true, ai: true, ale: true, cu: true, pe: true,
+        la: true, le: true, di: true, du: true, da: true, and: true, of: true,
+        the: true, on: true, in: true, for: true
+    };
+
+    function isLayerAcronym(word) {
+        /* Prescurtările de maxim 3 litere (APM, OSM, UAT, CS, HD, WWI…) se
+           păstrează întregi — ele sunt deja inițialele stratului. */
+        return word.length <= LAYER_INITIALS_MAX &&
+            word === word.toUpperCase() && /[A-Z]/.test(word);
+    }
+
+    function layerInitials(name) {
+        var text = compactText(name);
+        if (!text) return '';
+        /* Doar segmentul dinaintea unui separator de expandare: la rândurile
+           LIDAR codul de județ („CS · Caraș-Severin”) ESTE inițiala, iar după
+           „/” („Battles / Bătălii”) urmează doar traducerea aceluiași nume. */
+        var head = text.split('\u00B7')[0].split('/')[0];
+        var chunks = head.split(/\s+/);
+        var initials = '';
+        for (var c = 0; c < chunks.length && initials.length < LAYER_INITIALS_MAX; c++) {
+            var chunk = chunks[c];
+            /* Fără ani / cifre: orice grup care conține o cifră dispare
+               (1910, 1861–1864, 2.0, 2–5, 60's…). */
+            if (!chunk || /\d/.test(chunk)) continue;
+            var words = chunk.match(LAYER_WORD_RE);
+            if (!words) continue;
+            for (var w = 0; w < words.length && initials.length < LAYER_INITIALS_MAX; w++) {
+                var word = words[w];
+                /* Fragmentele de o literă („m” din „m/pixel”, „s” din „60's”)
+                   nu sunt inițiale. */
+                if (word.length < 2) continue;
+                if (LAYER_STOPWORDS[word.toLowerCase()]) continue;
+                if (isLayerAcronym(word)) {
+                    if (initials.length + word.length <= LAYER_INITIALS_MAX) {
+                        initials += word;
+                    } else {
+                        /* Prescurtarea nu mai încape întreagă: o reprezentăm
+                           doar prin prima ei literă („Localități OSM” → „LO”),
+                           niciodată tăiată în jumătate. */
+                        initials += word.charAt(0);
+                    }
+                } else {
+                    initials += word.charAt(0).toUpperCase();
+                }
+            }
+        }
+        return initials;
+    }
 
     function layerTitleText(name) {
-        var text = compactText(name);
-        if (text.length > LAYER_TITLE_MAX_CHARS) {
-            return text.slice(0, LAYER_TITLE_MAX_CHARS) + '\u2026';
-        }
-        return text;
+        return layerInitials(name);
     }
 
     function getLayerName(source, owner) {
