@@ -5135,7 +5135,7 @@
            Selecting the Satellite layer (either its opacity slider or the
            „Istoric” period slider) shows BOTH vertical mirrors at the same
            time: the opacity one keeps its usual anchor, the period one sits
-           immediately to its left. Only two discrete stops (2016 / Prezent),
+           immediately to its left. Only two discrete stops (2016 / 2025),
            so the value chip stays permanently visible.
 
            The selector carries BOTH classes on purpose. A bare
@@ -5160,7 +5160,7 @@
         }
 
         /* Two stop dots on the vertical period track: 2016 at the bottom of
-           the travel, Prezent at the top (the 2018 middle stop is gone). */
+           the travel, 2025 at the top (the 2018 middle stop is gone). */
         .vertical-period-control .vertical-opacity-slider-wrap::after {
             content: '';
             position: absolute;
@@ -5180,7 +5180,7 @@
         }
 
         /* Panel „Istoric” slider: same look as every .transp-slider, plus two
-           stop markers aligned with the 2016 / Prezent tick labels. */
+           stop markers aligned with the 2016 / 2025 tick labels. */
         input.transp-slider.sat-period-slider {
             background:
                 radial-gradient(circle at 8px 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),

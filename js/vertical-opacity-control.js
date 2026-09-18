@@ -77,14 +77,14 @@
     }
 
     /* The Satellite layer owns TWO ranges: its opacity and the „Istoric”
-       period selector (2016 / Prezent — the 2018 orthophoto was dropped from
+       period selector (2016 / 2025 — the 2018 orthophoto was dropped from
        the base layer). Selecting either one shows both vertical mirrors on the
        map at the same time — each permanently bound to its own panel slider. */
     var SATELLITE_PAIR_IDS = ['satOpacitySlider', 'satPeriodSlider'];
     /* Only a last-resort fallback for when the panel ticks are not in the DOM
        (unit tests / pre-render). The live ticks win, so the mirror follows
        whatever stop list the panel actually ships. */
-    var SAT_PERIOD_LABELS_FALLBACK = ['2016', 'Prezent'];
+    var SAT_PERIOD_LABELS_FALLBACK = ['2016', '2025'];
 
     function isSatellitePairId(id) {
         return SATELLITE_PAIR_IDS.indexOf(id) !== -1;
@@ -97,7 +97,7 @@
     }
 
     function satPeriodLastTickLabel() {
-        /* „Prezent” follows the translated last tick of the panel slider. */
+        /* „2025” follows the translated last tick of the panel slider. */
         var tick = document.querySelector('#satPeriodTicks span:last-child');
         return tick ? String(tick.textContent || '').replace(/\s+/g, ' ').trim() : '';
     }
@@ -607,7 +607,7 @@
         var periodSource = document.getElementById('satPeriodSlider');
         if (!periodSource || !periodSlider) return;
         /* Follow the panel range's own geometry, so a stop list that shrinks
-           (2016 / Prezent after the 2018 orthophoto was dropped) can never
+           (2016 / 2025 after the 2018 orthophoto was dropped) can never
            leave the mirror pointing at a period the panel cannot reach. */
         if (periodSource.max && periodSlider.max !== periodSource.max) periodSlider.max = periodSource.max;
         if (periodSource.min && periodSlider.min !== periodSource.min) periodSlider.min = periodSource.min;
