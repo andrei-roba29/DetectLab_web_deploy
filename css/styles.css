@@ -4768,8 +4768,8 @@
 
            Slim frosted-glass card (no more purple panel): a semi-transparent
            fill blurred with backdrop-filter, a narrow column layout — the
-           layer name runs vertically along the LEFT side of the slider,
-           written bottom-up (max 15 characters, the rest becomes „…”), and
+           layer's INITIALS run vertically along the LEFT side of the slider,
+           written bottom-up (max 3 letters, without years), and
            the percentage chip only appears while the opacity is changed. */
         .vertical-opacity-control {
             position: absolute;
@@ -4836,13 +4836,13 @@
         }
 
         /* ── SLIDER TITLE: VERTICAL, ON THE LEFT SIDE OF THE SLIDER ──
-           The layer name is written bottom-up along the left edge of the slim
-           card (writing-mode vertical + 180° rotation), in a single column of
-           text — js/vertical-opacity-control.js keeps it to 15 characters and
-           replaces the rest with „…” (the full name stays in the title
-           attribute). The small DISTANȚĂ / RAZĂ / ISTORIC caption remains a
-           chip floating above the card and collapses when the JS leaves it
-           empty (opacity mirrors carry no caption). */
+           The layer's initials are written bottom-up along the left edge of
+           the slim card (writing-mode vertical + 180° rotation), in a single
+           column of text — js/vertical-opacity-control.js keeps them to 3
+           letters at most, without years (the full layer name stays in the
+           title attribute). The small DISTANȚĂ / RAZĂ / ISTORIC caption
+           remains a chip floating above the card and collapses when the JS
+           leaves it empty (opacity mirrors carry no caption). */
         .vertical-opacity-title {
             grid-column: 1;
             grid-row: 1 / -1;

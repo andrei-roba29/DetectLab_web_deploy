@@ -148,6 +148,16 @@ const lidar = range('lidarHdOpacitySlider', 0);
 lidarOwner.appendChild(lidar);
 panel.appendChild(lidarOwner);
 
+// A year-bearing layer name: the initials must drop the year entirely
+// („Austrian Map 1910” → „AM”, never „A19…” or „AM1”).
+const austrianOwner = new MockElement('div', 'austrianOwner', ['transp-layer-row']);
+const austrianTitle = new MockElement('span');
+austrianTitle.textContent = 'Austrian Map 1910';
+const austrian = range('austrianMapOpacitySlider', 70);
+austrianOwner.appendChild(austrianTitle);
+austrianOwner.appendChild(austrian);
+panel.appendChild(austrianOwner);
+
 // This visually similar range is NOT opacity: the generic panel selector must
 // keep ignoring it, but the explicit distance registration mirrors it (km) and
 // docks the layer's action button in the bottom-centred dock.
@@ -178,7 +188,7 @@ battlesOwner.appendChild(battles);
 panel.appendChild(battlesOwner);
 
 const byId = {};
-[panel, tab, control, caption, vertical, output, label, close, apm, lidar, distance, battles,
+[panel, tab, control, caption, vertical, output, label, close, apm, lidar, austrian, distance, battles,
  dock, dockInner, scanButton, scannerToggle].forEach(function (el) {
     byId[el.id] = el;
 });
@@ -196,7 +206,7 @@ const documentMock = new (class extends EventTarget {
     querySelectorAll(selector) {
         // Selectorul generic de opacitate din panou NU trebuie să prindă
         // sliderele de distanță (au altă unitate și alt dock de acțiune).
-        if (selector.indexOf('[id*="Opacity"]') !== -1) return [apm, lidar, battles];
+        if (selector.indexOf('[id*="Opacity"]') !== -1) return [apm, lidar, austrian, battles];
         return [];
     }
 })();
@@ -253,7 +263,8 @@ assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), 'apm
 assert(control.classList.contains('visible'), 'vertical control should become visible');
 assert(apmOwner.classList.contains('opacity-layer-selected'), 'selected row should be highlighted');
 assert.strictEqual(panelCloseClicks, 1, 'existing layer panel should close via its own tab');
-assert.strictEqual(label.textContent, 'APM Layer', 'translated live layer title should be used');
+assert.strictEqual(label.textContent, 'APM', 'above the slider stand only the layer initials (APM kept whole, max 3 letters)');
+assert.strictEqual(label.title, 'APM Layer', 'the full layer name survives in the title attribute');
 assert.strictEqual(caption.textContent, '', 'opacity sources show no caption above the map-side slider');
 assert.strictEqual(control.getAttribute('data-kind'), 'opacity');
 assert.strictEqual(vertical.value, '80');
@@ -282,7 +293,7 @@ windowMock.DetectLabVerticalOpacity.select('lidarHdOpacitySlider');
 assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), 'lidarHdOpacitySlider');
 assert(!apmOwner.classList.contains('opacity-layer-selected'), 'old row highlight should clear');
 assert(lidarOwner.classList.contains('opacity-layer-selected'), 'new row should be highlighted');
-assert.strictEqual(label.textContent, 'HD · Hunedoara');
+assert.strictEqual(label.textContent, 'HD', 'county-code rows reduce to the code itself („HD · Hunedoara” → „HD”)');
 assert.strictEqual(output.textContent, '0%');
 
 // The polling sync covers existing code that assigns source.value directly.
@@ -291,13 +302,21 @@ intervals.forEach(function (fn) { fn(); });
 assert.strictEqual(vertical.value, '64');
 assert.strictEqual(output.textContent, '64%');
 
+// ── Initials above the slider: years and digits never reach the label ──
+windowMock.DetectLabVerticalOpacity.select('austrianMapOpacitySlider');
+assert.strictEqual(label.textContent, 'AM',
+    'the year is stripped from the label: „Austrian Map 1910” shows only „AM”');
+assert.strictEqual(label.title, 'Austrian Map 1910',
+    'the full name (with the year) survives in the title attribute');
+assert(label.textContent.length <= 3, 'the label never exceeds 3 initials');
+
 // ── Battles period mirror: centuries instead of percentages ──
 windowMock.DetectLabVerticalOpacity.select('battlesPeriodSlider');
 assert.strictEqual(windowMock.DetectLabVerticalOpacity.getActiveSliderId(), 'battlesPeriodSlider');
 assert(battlesOwner.classList.contains('opacity-layer-selected'), 'battles row should be highlighted');
 assert(!lidarOwner.classList.contains('opacity-layer-selected'), 'previous row highlight should clear');
-assert.strictEqual(label.textContent, 'Battles / Bătăl…',
-    'titles longer than 15 characters are truncated with …');
+assert.strictEqual(label.textContent, 'B',
+    'above the slider stand only the initials (max 3 letters; „/” ends the name before its translation)');
 assert.strictEqual(label.title, 'Battles / Bătălii',
     'the full layer name survives in the title attribute');
 assert.strictEqual(vertical.min, '-8', 'century range min should mirror the source');
@@ -352,7 +371,7 @@ assert.strictEqual(vertical.min, '10', 'the mirror adopts the source range (10�
 assert.strictEqual(vertical.max, '50');
 assert.strictEqual(output.textContent, '10 km', 'distance is formatted in km, not %');
 assert.strictEqual(caption.textContent, 'DISTANȚĂ', 'distance caption (RO default in this sandbox)');
-assert.strictEqual(label.textContent, 'LIDAR Scanner', 'layer name comes from the row title / fallback table');
+assert.strictEqual(label.textContent, 'LS', 'initials come from the row title / fallback table („LIDAR Scanner” → „LS”)');
 
 // The layer's own button is physically moved into the bottom dock, together
 // with a radius chip; the dock only shows while the mirror is visible.
@@ -419,10 +438,11 @@ close.click();
     assert(layerRule, '.vertical-opacity-layer must be styled');
     assert(/writing-mode:\s*vertical-rl/.test(layerRule[1]) && /rotate\(180deg\)/.test(layerRule[1]),
         'the layer name is written vertically, bottom to top');
-    // JS keeps the vertical title to 15 characters + „…".
+    // JS reduces the vertical title to the layer's initials: max 3
+    // letters, without years („Austrian Map 1910” → „AM”).
     const voSrc = fs.readFileSync(path.join(__dirname, 'js', 'vertical-opacity-control.js'), 'utf8');
-    assert(/LAYER_TITLE_MAX_CHARS\s*=\s*15/.test(voSrc),
-        'the vertical layer title caps at 15 characters');
+    assert(/LAYER_INITIALS_MAX\s*=\s*3/.test(voSrc),
+        'the vertical layer title caps at 3 initials');
 
     // The card is narrow frosted glass: semi-transparent fill + blur, no
     // purple radial gradient left.

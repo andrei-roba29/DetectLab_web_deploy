@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260918-battles-info-legend">
+    <link rel="stylesheet" href="css/styles.css?v=20260918-layer-initials">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -1175,17 +1175,22 @@
                 <!-- Selected-layer opacity control. Clicking any layer card that owns an
                      opacity slider mirrors that slider here, vertically, so the map can
                      remain visible while opacity is adjusted (desktop and installed PWA).
-                     The card is a slim semi-transparent frosted-glass box; the layer
-                     name is written vertically (bottom-up) along the slider's left
-                     side — max 15 characters, the rest becomes „…” — and the
-                     percentage is only visible while the opacity is changed. -->
+                     The card is a slim semi-transparent frosted-glass box; above
+                     the slider stand ONLY the layer's initials — max 3 letters,
+                     without years (js/vertical-opacity-control.js reduces
+                     „Austrian Map 1910” to „AM”, „Bucovina 1861–1864” to „B”) —
+                     written vertically (bottom-up) along the slider's left
+                     side, while the full layer name stays in the label's title
+                     attribute; the percentage is only visible while the opacity
+                     is changed. -->
                 <div class="vertical-opacity-control" id="verticalOpacityControl"
                      role="group" aria-label="Selected layer opacity" aria-hidden="true">
                     <button type="button" class="vertical-opacity-close" id="verticalOpacityClose"
                             title="Close opacity control" aria-label="Close opacity control">×</button>
                     <!-- Title of the mirrored range: the small caption chip (RAZĂ /
-                         DISTANȚĂ / ISTORIC) floats above the card, while the layer
-                         name runs bottom-up along the left side of the slider. -->
+                         DISTANȚĂ / ISTORIC) floats above the card, while the layer's
+                         initials (max 3 letters, no years) run bottom-up along the
+                         left side of the slider. -->
                     <span class="vertical-opacity-title" id="verticalOpacityTitle">
                         <span class="vertical-opacity-caption" id="verticalOpacityCaption"></span>
                         <span class="vertical-opacity-layer" id="verticalOpacityLayer">Layer</span>
@@ -3705,7 +3710,7 @@
     <script src="js/map-app.js?v=20260917-gmaps-directions"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
-    <script src="js/vertical-opacity-control.js?v=20260918-archeo-heat-northup"></script>
+    <script src="js/vertical-opacity-control.js?v=20260918-layer-initials"></script>
     <!-- leaflet-heat rămâne în shell (pre-cache), dar nu mai e folosit de
          „Archeological Potential Sites": heatmap-ul de acolo e propriul raster de
          scoruri ancorat geografic, ca să nu alunece la zoom. -->

@@ -200,7 +200,7 @@ console.log('\n[Runtime: default OFF + info popup]');
 /* ── 5. Cache busting: the touched assets ship under the new ?v= tag ── */
 console.log('\n[Cache busting]');
 {
-    const stylesV = 'battles-info-legend';
+    const stylesV = 'layer-initials';
     const archeoV = 'archeo-info-toggle-off';
     check('index.html requests the bumped styles.css', html.includes('css/styles.css?v=20260918-' + stylesV));
     const translationUrl = (html.match(/src="(js\/translations\.js\?v=[^"]+)"/) || [])[1];
