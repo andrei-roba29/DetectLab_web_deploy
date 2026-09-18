@@ -88,7 +88,15 @@
 //   in/out now cross-fades the incoming tiles over the previous zoom level
 //   through a CSS-only fade on every device — same crash protection, no
 //   hard pop. See MAP_LAYER_PERFORMANCE.md.
-const CACHE_NAME = 'detectlab-v108-tile-seamless';
+// v109: no dark strip below the map in the installed PWA — #map-section no
+//   longer computes its height from vh/svh/dvh (iOS standalone settles those
+//   one frame late, and on some versions the dynamic viewport excludes the
+//   home-indicator band, so the section could end up shorter than the screen
+//   and the navy page background showed as an empty "bottom bar" under the
+//   tiles). It now stretches between the viewport edges (top:0 + bottom:0),
+//   and delayed passes + a ResizeObserver re-run Leaflet's invalidateSize the
+//   exact frame the container reaches its real size. No control moves.
+const CACHE_NAME = 'detectlab-v109-pwa-no-bottom-strip';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
