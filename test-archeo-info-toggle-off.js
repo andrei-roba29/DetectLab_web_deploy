@@ -200,16 +200,17 @@ console.log('\n[Runtime: default OFF + info popup]');
 /* ── 5. Cache busting: the touched assets ship under the new ?v= tag ── */
 console.log('\n[Cache busting]');
 {
-    const v = 'archeo-info-toggle-off';
-    check('index.html requests the bumped styles.css', html.includes('css/styles.css?v=20260918-' + v));
+    const stylesV = 'battles-info-legend';
+    const archeoV = 'archeo-info-toggle-off';
+    check('index.html requests the bumped styles.css', html.includes('css/styles.css?v=20260918-' + stylesV));
     const translationUrl = (html.match(/src="(js\/translations\.js\?v=[^"]+)"/) || [])[1];
     check('index.html requests versioned translations.js', !!translationUrl);
-    check('index.html requests the bumped archeo-potential.js', html.includes('js/archeo-potential.js?v=20260918-' + v));
+    check('index.html requests the bumped archeo-potential.js', html.includes('js/archeo-potential.js?v=20260918-' + archeoV));
     const sw = read('sw.js');
     check('sw.js precaches the bumped app shell',
-        sw.includes('js/archeo-potential.js?v=20260918-' + v) &&
+        sw.includes('js/archeo-potential.js?v=20260918-' + archeoV) &&
         sw.includes("'" + translationUrl + "'") &&
-        sw.includes('css/styles.css?v=20260918-' + v));
+        sw.includes('css/styles.css?v=20260918-' + stylesV));
 }
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');

@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260918-archeo-info-toggle-off">
+    <link rel="stylesheet" href="css/styles.css?v=20260918-battles-info-legend">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -2277,7 +2277,7 @@
                                 <span class="t" data-key="layer_battles">Battles</span>
                             </span>
                             <span style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
-                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Bătălii / Battles','© DetectLab 2026 · batalii.csv · 198 evenimente / events')" title="Layer info"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showBattlesInfo()" title="Layer info"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
                                 <label class="apm-toggle-switch" title="Toggle Battles / Bătălii">
                                     <input type="checkbox" id="battlesToggle" onchange="toggleBattlesLayer(this.checked)">
                                     <span class="apm-toggle-track"></span>
@@ -2305,18 +2305,7 @@
                             <span class="t" data-key="battles_slider_max">20th c. AD</span>
                         </div>
 
-                        <!-- Epoch legend -->
-                        <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(184,216,240,0.12)">
-                            <div style="font-size:0.62rem;opacity:0.55;margin-bottom:6px" class="t" data-key="battles_legend">Epoch colors</div>
-                            <div style="display:flex;flex-wrap:wrap;gap:6px 11px;font-size:0.62rem;color:rgba(245,240,235,0.62)">
-                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#9b59b6;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_antiquity">Pre-Roman Antiquity</span></span>
-                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#e74c3c;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_dacoroman">Daco-Roman era</span></span>
-                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#e67e22;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_migrations">Migrations &amp; Early Middle Ages</span></span>
-                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#d4a017;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_medieval">Middle Ages</span></span>
-                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#16a085;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_earlymodern">Early Modern era</span></span>
-                                <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#2980b9;display:inline-block;flex-shrink:0"></span><span class="t" data-key="battles_epoch_modern">Modern era</span></span>
-                            </div>
-                        </div>
+
                     </div><!-- /battles transp-layer-row -->
 
                     <div class="transp-divider" data-category="premium"></div>
@@ -4156,6 +4145,19 @@
             </button>
             <h3 class="layer-info-title" id="layerInfoTitle">Layer</h3>
             <p class="layer-info-attribution" id="layerInfoAttribution">© Source</p>
+            <!-- The Battles epoch legend lives in the layer info tab, not in the
+                 layers panel. It is revealed only by the Battles info button. -->
+            <div class="layer-info-battles-legend" id="battlesLayerInfoLegend" style="display:none">
+                <div class="layer-info-battles-heading t" data-key="battles_legend">Epoch colors</div>
+                <div class="layer-info-battles-list">
+                    <div class="layer-info-battles-item"><span class="layer-info-battles-swatch" style="background:#9b59b6"></span><span class="t" data-key="battles_epoch_antiquity">Pre-Roman Antiquity</span></div>
+                    <div class="layer-info-battles-item"><span class="layer-info-battles-swatch" style="background:#e74c3c"></span><span class="t" data-key="battles_epoch_dacoroman">Daco-Roman era</span></div>
+                    <div class="layer-info-battles-item"><span class="layer-info-battles-swatch" style="background:#e67e22"></span><span class="t" data-key="battles_epoch_migrations">Migrations &amp; Early Middle Ages</span></div>
+                    <div class="layer-info-battles-item"><span class="layer-info-battles-swatch" style="background:#d4a017"></span><span class="t" data-key="battles_epoch_medieval">Middle Ages</span></div>
+                    <div class="layer-info-battles-item"><span class="layer-info-battles-swatch" style="background:#16a085"></span><span class="t" data-key="battles_epoch_earlymodern">Early Modern era</span></div>
+                    <div class="layer-info-battles-item"><span class="layer-info-battles-swatch" style="background:#2980b9"></span><span class="t" data-key="battles_epoch_modern">Modern era</span></div>
+                </div>
+            </div>
             <p class="layer-info-description" id="layerInfoDescription" style="display:none"></p>
         </div>
     </div>
@@ -4186,11 +4188,23 @@
             }
             if (last < text.length) box.appendChild(document.createTextNode(text.slice(last)));
         }
+        // Bătălii păstrează legenda cu punctele colorate în tab-ul info, sub
+        // titlu + atribuire, nu în panoul de straturi. Elementele `.t` din
+        // legendă rămân în DOM ca să fie actualizate automat la schimbarea
+        // limbii, la fel ca restul interfeței.
+        function showBattlesInfo() {
+            showLayerInfo('Bătălii / Battles', '© DetectLab 2026 · batalii.csv · 198 evenimente / events');
+            var legend = document.getElementById('battlesLayerInfoLegend');
+            if (legend) legend.style.display = '';
+        }
+
         // Al treilea parametru (opțional) e o descriere mai lungă, afișată sub
         // atribuire — folosită de ex. de „Zone cu potențial arheologic”, a cărei
         // explicație a fost mutată din panou aici (vezi showArcheoPotInfo()).
         function showLayerInfo(name, attribution, description) {
             var overlay = document.getElementById('layerInfoOverlay');
+            var battlesLegend = document.getElementById('battlesLayerInfoLegend');
+            if (battlesLegend) battlesLegend.style.display = 'none';
             document.getElementById('layerInfoTitle').textContent = name;
             renderLayerInfoAttribution(document.getElementById('layerInfoAttribution'),
                 String(attribution == null ? '' : attribution));
