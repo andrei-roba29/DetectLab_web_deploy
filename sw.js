@@ -82,7 +82,13 @@
 //   logic (tap → purple pin) is permanent while the layer's main switch is on
 //   (the radius mirror + dock now follow that switch), and the layer info
 //   text is replaced. See ARCHEO_POTENTIAL.md.
-const CACHE_NAME = 'detectlab-v107-archeo-heat-northup';
+// v108: seamless tiles — the white grid between tiles is gone (Leaflet's
+//   mix-blend-mode: plus-lighter added the colours of the 1px seam overlap
+//   instead of covering them, so every 256px line lit up white) and zoom
+//   in/out now cross-fades the incoming tiles over the previous zoom level
+//   through a CSS-only fade on every device — same crash protection, no
+//   hard pop. See MAP_LAYER_PERFORMANCE.md.
+const CACHE_NAME = 'detectlab-v108-tile-seamless';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -470,7 +476,14 @@ const PRECACHE_URLS = [
   'js/archeo-potential.js?v=20260918-archeo-heat-northup',
   'js/translations.js?v=20260918-archeo-heat-northup',
   'js/vertical-opacity-control.js?v=20260918-archeo-heat-northup',
-  'css/styles.css?v=20260918-archeo-heat-northup'
+  'css/styles.css?v=20260918-archeo-heat-northup',
+  // Seamless tiles: kill the white grid (Leaflet's mix-blend-mode:
+  // plus-lighter adds the colours of the 1px tile overlap instead of
+  // covering them, saturating every 256px seam to white) and make the zoom
+  // handoff a real cross-fade on every device (CSS-only tile fade, no
+  // per-frame JS). See MAP_LAYER_PERFORMANCE.md.
+  'js/tile-perf.js?v=20260918-tile-seamless',
+  'css/styles.css?v=20260918-tile-seamless'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

@@ -51,7 +51,12 @@
         a covering-tile handoff: loaded tiles from the previous zoom stay on
         screen until the incoming ones are `active`, so zoom in/out does not
         flash the map background. A hard ceiling still caps extras once the
-        new zoom is painted (and always in conservation mode).
+        new zoom is painted (and always in conservation mode). The handoff is
+        a real cross-fade on every device class: incoming tiles fade in
+        through a pure-CSS opacity transition (§4b) instead of Leaflet's own
+        fadeAnimation (a requestAnimationFrame loop over ALL tiles of the
+        layer for every loaded tile), so zoom in/out reads as one smooth
+        image morphing into the next instead of a hard pop — on phones too.
      4. A watchdog (every 5 s) that estimates the decoded-tile memory of the
         whole page; above the device budget it switches to CONSERVATION MODE
         (drops the off-screen rings of every layer, keeps only what is on
@@ -130,12 +135,27 @@
         // Hard ceiling for tiles kept OUTSIDE the current viewport, per layer.
         // The effective ceiling is at least one full extra level (see below).
         maxRetainedTiles: LOW_POWER ? 24 : 64,
+        // Duration (ms) of the CSS tile fade (§4b): incoming tiles cross-fade
+        // over the previous zoom level for this long; the covering tiles are
+        // released only once the fade is done.
+        fadeMs: 180,
+        // Fade incoming tiles with a pure-CSS opacity transition instead of
+        // Leaflet's own fadeAnimation. Leaflet's fade runs _updateOpacity() —
+        // a requestAnimationFrame loop that rewrites the opacity of EVERY tile
+        // of the layer for ~200 ms after EACH tile loads — the worst possible
+        // work during a tile burst, which is why phones previously got no
+        // fade at all. The CSS transition gives the same smooth zoom handoff
+        // on every device with no per-frame JS.
+        cssFade: true,
         // Page-wide decoded-tile budget before conservation mode kicks in.
         // 256×256 RGBA ≈ 0.25 MB per tile: 320 ≈ 80 MB, 1400 ≈ 350 MB.
         maxLiveTiles: LOW_POWER ? 320 : 1400,
         // How often the tile watchdog measures the page.
         sweepEveryMs: 5000,
-        // null = keep the map's own option (the app sets fadeAnimation: true).
+        // Legacy knob, only honoured when cssFade is switched off: keep the
+        // map's own fadeAnimation option (the app sets fadeAnimation: true),
+        // except on low-power devices, where Leaflet's per-frame fade loop
+        // must stay out.
         fadeAnimation: LOW_POWER ? false : null,
         // Show the one-time "too many layers" notice in conservation mode.
         notice: true
@@ -393,6 +413,110 @@
         }
     };
 
+    /* ── 4b. Smooth zoom handoff: a pure-CSS tile fade ──────────────────── */
+
+    // Leaflet's own fadeAnimation fades each loaded tile in through
+    // _updateOpacity(): a requestAnimationFrame loop that rewrites the
+    // opacity of ALL tiles of the layer for ~200 ms after every single tile
+    // load. On a stack of dense layers that is exactly the work the governor
+    // exists to remove, so low-power devices used to run with the fade off —
+    // which is why the new zoom level popped in over the old one. This
+    // section replaces the mechanism with a CSS opacity transition (GPU-side,
+    // zero per-frame JS) while keeping Leaflet's handoff semantics: a tile
+    // becomes `active` — the flag the pruner above waits for — only once its
+    // fade has finished, so the covering tiles of the previous zoom stay on
+    // screen for the whole cross-fade.
+
+    function cssFadeActiveFor(layer) {
+        if (!CFG.enabled || !CFG.cssFade) return false;
+        if (layer.options && layer.options.dltilePerf === false) return false;
+        // Only on the governed map: any other Leaflet map on the page (e.g.
+        // a mini-map) keeps Leaflet's own behaviour untouched.
+        var map = layer._map;
+        return !!STATE.map && map === STATE.map && map._fadeAnimated === false;
+    }
+
+    var fadeStyleInstalled = false;
+
+    function installFadeStyle() {
+        if (fadeStyleInstalled || typeof document === 'undefined') return;
+        // The page head only: test harnesses without one simply skip the
+        // style and get the un-animated behaviour.
+        var host = document.head;
+        if (!host || typeof document.createElement !== 'function') return;
+        var el = document.createElement('style');
+        el.id = 'dltilePerfFadeStyle';
+        el.textContent = '.dltile-cssfade .leaflet-tile{transition:opacity ' +
+            CFG.fadeMs + 'ms linear;}';
+        try {
+            host.appendChild(el);
+            fadeStyleInstalled = true;
+        } catch (err) { /* the fade is cosmetic; never break for it */ }
+    }
+
+    var _origTileReady = L.GridLayer.prototype._tileReady;
+
+    if (typeof _origTileReady === 'function') {
+        L.GridLayer.prototype._tileReady = function (coords, err, tile) {
+            var key = this._tileCoordsToKey ? this._tileCoordsToKey(coords) : null;
+            var entry = (key !== null && this._tiles) ? this._tiles[key] : null;
+            if (!cssFadeActiveFor(this) || err || !tile || !entry ||
+                entry.el !== tile || entry._dlCssFade) {
+                return _origTileReady.apply(this, arguments);
+            }
+            entry._dlCssFade = true;
+            entry.loaded = +new Date();
+
+            var el = entry.el;
+            var layer = this;
+
+            // Two animation frames so the browser registers opacity:0 before
+            // the transition starts. The fade target is 1, exactly like
+            // Leaflet's own fade: a layer opacity below 1 is applied by
+            // Leaflet to the layer CONTAINER, never to the tiles, and when a
+            // layer's opacity changes (e.g. the vertical slider) Leaflet
+            // rewrites the tile opacities itself.
+            try {
+                el.style.opacity = 0;
+                var raf = window.requestAnimationFrame ||
+                    function (f) { return setTimeout(f, 16); };
+                raf(function () {
+                    raf(function () {
+                        try { el.style.opacity = 1; } catch (e) {}
+                    });
+                });
+            } catch (e) { /* never break tile loading for a visual effect */ }
+
+            // The loaded-tile bookkeeping of Leaflet's own _tileReady — the
+            // tile is announced at once, but becomes `active` (and lets the
+            // pruner release the covering tiles) only when the fade is done.
+            try {
+                if (L.DomUtil && L.DomUtil.addClass) {
+                    L.DomUtil.addClass(tile, 'leaflet-tile-loaded');
+                }
+            } catch (e) {}
+            if (this.fire) this.fire('tileload', { tile: tile, coords: coords });
+
+            setTimeout(function () {
+                var t = layer._tiles ? layer._tiles[key] : null;
+                if (!t || t !== entry) return;   // removed/replaced meanwhile
+                t.active = true;
+                if (t.el) {
+                    try { t.el.style.opacity = 1; } catch (e) {}
+                }
+                if (!layer._noPrune && layer._pruneTiles) {
+                    try { layer._pruneTiles(); } catch (e) {}
+                }
+            }, CFG.fadeMs + 40);
+
+            if (this._noTilesToLoad && this._noTilesToLoad()) {
+                this._loading = false;
+                if (this.fire) this.fire('load');
+            }
+            return tile;
+        };
+    }
+
     /* ── 5. Page watchdog: tile budget + conservation mode ────────────────── */
 
     function countLiveTiles() {
@@ -597,10 +721,22 @@
             if (STATE.pending.length) scheduleFlush();
         });
 
-        // fadeAnimation: with it on, every loaded tile fades in through a
-        // requestAnimationFrame loop over ALL tiles of its layer — the worst
-        // possible work during a burst of tile loads. Phones get instant tiles.
-        if (CFG.fadeAnimation !== null && CFG.fadeAnimation !== undefined && map._fadeAnimated) {
+        // Tile fade. Leaflet's own fadeAnimation runs a requestAnimationFrame
+        // loop over ALL tiles of a layer for every loaded tile — the worst
+        // possible work during a tile burst, so it cannot stay on a stack of
+        // dense layers. With cssFade (the default) Leaflet's fade machinery
+        // is switched off and §4b cross-fades the incoming tiles with a CSS
+        // transition instead: the zoom handoff stays smooth on every device.
+        if (CFG.cssFade) {
+            if (map.options) map.options.fadeAnimation = false;
+            map._fadeAnimated = false;
+            installFadeStyle();
+            if (map.getContainer) {
+                try {
+                    map.getContainer().classList.add('dltile-cssfade');
+                } catch (err) { /* cosmetic; the fade degrades to a pop */ }
+            }
+        } else if (CFG.fadeAnimation !== null && CFG.fadeAnimation !== undefined && map._fadeAnimated) {
             map.options.fadeAnimation = !!CFG.fadeAnimation;
             map._fadeAnimated = !!CFG.fadeAnimation;
         }
@@ -618,7 +754,7 @@
     /* ── 8. Public API ────────────────────────────────────────────────────── */
 
     var api = {
-        version: '20260917-tile-fluid',
+        version: '20260918-tile-seamless',
         config: CFG,
         conservationLimits: CONSERVATION,
         isLowPowerDevice: function () { return !!CFG.lowPower; },
