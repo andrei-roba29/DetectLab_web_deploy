@@ -447,6 +447,56 @@ section('Weighted score');
     check('blue + inside bubble + annotated = maximum score', best.score === 1, best.score);
     check('classification thresholds', R.classifyScore(0.9) === 'high' && R.classifyScore(0.6) === 'medium' && R.classifyScore(0.2) === 'low');
 }
+section('Evidence alignment regressions');
+{
+    const seed = { x: CENTER.x, y: CENTER.y, origin: 'grid' };
+    const ll = R.localMetersToLatLng(CENTER.x, CENTER.y, 46.8);
+    const lidarPoints = [{ lat: ll.lat, lng: ll.lng, category: 'tumul' }];
+    const near = { x: CENTER.x + 50, y: CENTER.y, origin: 'grid' };
+    const nearResult = R.evaluateSeed(near, baseCtx({ lidarPoints }));
+    check('50 m proximity does not invent a scanner annotation or 100% score',
+        nearResult.ok && !nearResult.annotated && nearResult.score < 1 && nearResult.parts.lidarComp < 1);
+    check('proximity does not waive below-average APM',
+        R.evaluateSeed(near, baseCtx({ lidarPoints, apmGrid: mkApmGridAt(3) })).reason === 'apm_below_average');
+    check('a forged lidar origin without a scanner point cannot waive APM',
+        R.evaluateSeed({ ...seed, origin: 'lidar' }, baseCtx({ apmGrid: mkApmGridAt(3) })).reason === 'apm_below_average');
+    check('the exact annotation still qualifies', R.evaluateSeed(seed, baseCtx({ lidarPoints })).annotated);
+    const ignoredCtx = baseCtx({ lidarPoints, ignoreLidar: true });
+    check('ignore mode excludes the annotation', R.evaluateSeed(seed, ignoredCtx).reason === 'lidar_ignored');
+    check('ignore mode excludes nearby grid points inside the scanner ring',
+        R.evaluateSeed(near, ignoredCtx).reason === 'lidar_ignored');
+    check('ignore mode generates no annotation seeds',
+        R.buildSeeds(ignoredCtx).every(s => s.origin !== 'lidar'));
+    const farSeed = { x: CENTER.x + 150, y: CENTER.y, origin: 'grid' };
+    const ignoredResult = R.evaluateSeed(farSeed, ignoredCtx);
+    const noLidar = R.evaluateSeed(farSeed, baseCtx());
+    check('outside the excluded ring, ignore mode removes all LIDAR scoring',
+        ignoredResult.ok && !ignoredResult.annotated && !ignoredResult.parts.lidarApplied &&
+        ignoredResult.parts.lidarPoint === null && ignoredResult.score === noLidar.score);
+    check('APM-only scores receive no invented potential evidence', noLidar.parts.potentialComp === 0);
+
+    const bubbles = [
+        { x: CENTER.x + 70, y: CENTER.y, radiusM: 35, score: 0.3 },
+        { x: CENTER.x + 200, y: CENTER.y, radiusM: 240, score: 0.9 }
+    ];
+    const matched = R.nearestBubble(seed.x, seed.y, { bubbles });
+    check('actual containing bubble wins over a nearer small bubble centre', matched.inside && matched.bubble === bubbles[1]);
+    check('a 35 m bubble does not create a phantom 300 m zone',
+        !R.nearestBubble(seed.x, seed.y, { bubbles: [bubbles[0]] }).inside);
+    const high = R.evaluateSeed(seed, baseCtx({ bubbles }));
+    const blueOnly = R.evaluateSeed({ x: CENTER.x + 1000, y: CENTER.y, origin: 'grid' }, baseCtx());
+    check('blue APM plus high potential outranks blue APM alone',
+        R.selectResults([blueOnly, high], 1, 350)[0] === high);
+
+    let info;
+    sandbox.showLayerInfo = (...args) => { info = args; };
+    sandbox.showArcheoReportInfo();
+    check('Info includes attribution followed by translated exclusions',
+        info[1] === '© DetectLab 2026 · APM 2.0 + RAN CIMEC + LIDAR' && info[2] === R.tr('arch_report_hint_bottom'));
+    const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    check('exclusions removed from the control panel', !html.includes('data-key="arch_report_hint_bottom"'));
+    check('ignore checkbox has a change handler', fakeEl('archReportIgnoreLidar')._handlers.change.length === 1);
+}
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 function mkApmGridAt(cls) {
     const g = mkApmGrid(400, 400, 12, cls);
@@ -724,8 +774,25 @@ section('End-to-end analysis (runReport)');
         ensureLoaded: () => Promise.resolve(null)
     };
 
+    let reportField, reportFieldRadius;
+    const realField = sandbox.computeArcheoPotentialField;
+    sandbox.computeArcheoPotentialField = async (lat, lng, radius, opts) => {
+        reportFieldRadius = radius;
+        reportField = await realField(lat, lng, radius, opts);
+        return reportField;
+    };
+    // Raw-only annotations must not leak through the scanner's eligible API.
+    const rawPoints = sandbox._lidarScannerApi.getPoints;
+    sandbox._lidarScannerApi.getEligiblePoints = rawPoints;
+    sandbox._lidarScannerApi.getPoints = () => rawPoints().concat([{ lat: C.lat, lon: C.lng, category: 'hidden' }]);
     sandbox._archeoReportSetPoint(C.lat, C.lng);
     const model = await sandbox.runArcheoReport();
+    check('report calls the visible potential field with the selected radius', reportFieldRadius === 3000);
+    check('report uses packed bubbles, not legacy candidates or heat cells',
+        model.meta.bubblesCount === reportField.bubbles.length &&
+        model.potentialBubbles.every((b, i) => b.radiusM === reportField.bubbles[i].radiusM && b.score === reportField.bubbles[i].score));
+    sandbox.computeArcheoPotentialField = realField;
+    sandbox._lidarScannerApi.getPoints = rawPoints;
 
     check('runReport returns a model', !!model);
     if (!model) { console.log(failures + ' TEST(S) FAILED'); process.exit(1); }
@@ -992,6 +1059,50 @@ section('End-to-end analysis (runReport)');
         sandbox._currentLang = () => 'en';
     }
 
+    section('Ignore LIDAR full pipeline');
+    fakeEl('archReportIgnoreLidar').checked = true;
+    sandbox._archeoReportSetPoint(C.lat, C.lng);
+    sandbox.computeArcheoPotentialField = async () => ({ ...reportField, status: 'sparse_sites' });
+    const pendingIgnore = sandbox.runArcheoReport();
+    check('ignore checkbox is locked during analysis', fakeEl('archReportIgnoreLidar').disabled);
+    const ignored = await pendingIgnore;
+    sandbox.computeArcheoPotentialField = realField;
+    check('sparse-site fields keep their visible bubbles', ignored.meta.bubblesCount === reportField.bubbles.length);
+    check('ignore setting recorded in model', ignored.meta.ignoreLidar === true);
+    check('ignore checkbox unlocks after analysis', !fakeEl('archReportIgnoreLidar').disabled);
+    check('ignored annotations replaced with three next eligible candidates', ignored.results.length === 3);
+    check('ignored report has no annotation flags or LIDAR contribution',
+        ignored.results.every(r => !r.annotated && !r.parts.lidarApplied && r.parts.lidarIgnored));
+    check('ignored results are outside every scanner ring', ignored.results.every(r =>
+        rawPoints().every(p => {
+            const a = R.projectToLocalMeters(r.lat, r.lng, C.lat);
+            const b = R.projectToLocalMeters(p.lat, p.lon, C.lat);
+            return Math.hypot(a.x - b.x, a.y - b.y) > 100;
+        })));
+    check('annotation exclusions are counted', ignored.meta.rejected.lidar_ignored > 0);
+    check('PDF model weights reflect the renormalised non-LIDAR score',
+        ignored.weights.lidar === 0 && ignored.results.every(r =>
+            r.weights.lidar === 0 && Math.abs(r.weights.apm + r.weights.potential - 1) < 1e-9));
+    const ignoredFigures = await R.captureFigures(ignored, ctxForFigures);
+    check('ignored report omits the LIDAR figure', !ignoredFigures.lidar);
+    const textStart = ALL_FILL_TEXT.length;
+    await sandbox.DetectLabReportPdf.build(ignored, ignoredFigures, {
+        tr: R.tr, fmtM: m => Math.round(m) + ' m', lang: 'en'
+    });
+    check('ignored PDF records the mode and exclusion statistics',
+        ALL_FILL_TEXT.slice(textStart).some(t => t.includes('arch_report_lidar_ignored_desc')) &&
+        ALL_FILL_TEXT.slice(textStart).some(t => t.includes('arch_report_rej_lidar_ignored')));
+
+    const loadedApi = sandbox._lidarScannerApi;
+    sandbox._lidarScannerApi = { ensureLoaded: () => Promise.reject(new Error('CSV HTTP 503')), getPoints: () => [] };
+    const failedIgnore = await sandbox.runArcheoReport();
+    check('ignore mode fails closed when scanner annotations cannot load', failedIgnore === null);
+    check('failed exclusion clears stale results and unlocks the checkbox',
+        sandbox._archeoReportState().results.length === 0 && !fakeEl('archReportIgnoreLidar').disabled);
+    sandbox._lidarScannerApi = loadedApi;
+
+    fakeEl('archReportIgnoreLidar').checked = false;
+
     pixelsFor = origPixelsFor;
     /* ═══════════ 11b. degraded sources (offline / CORS blocked) ═══════════ */
     section('Degraded sources');
@@ -1045,9 +1156,7 @@ section('End-to-end analysis (runReport)');
     {
         const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
         const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-        // Sat-base native-zoom fix: only js/archeo-report.js changed, so it gets its
-        // own ?v= tag; the PDF builder, translations and styles keep their page tags.
-        const Vpdf = '?v=20260831-arch-report-v4';   // archeo-report-pdf.js (unchanged this fix)
+        const Vpdf = tagOf('js/archeo-report-pdf.js');
         const V0 = '?v=20260827-arch-report';        // pdf-writer.js is unchanged this release
         // The assets this release touched carry the CURRENT page tag. Reading the
         // tag out of index.html instead of hard-coding it keeps the check honest
@@ -1073,7 +1182,7 @@ section('End-to-end analysis (runReport)');
         ['archReportRow', 'archReportToggle', 'archReportRunBtn', 'archReportPdfBtn',
          'archReportPdfLang', 'archReportPdfLangRo', 'archReportPdfLangEn',
          'archReportResultsToggleWrap', 'archReportResultsToggle', 'archReportStatus', 'archReportSummary',
-         'archReportDistance', 'archReportDistanceValue', 'archReportLoading']
+         'archReportDistance', 'archReportDistanceValue', 'archReportLoading', 'archReportIgnoreLidar']
             .forEach(function (id) { check('index.html has #' + id, html.indexOf('id="' + id + '"') !== -1); });
         check('the PDF language selector sits next to the PDF button',
             html.indexOf('id="archReportPdfBtn"') < html.indexOf('id="archReportPdfLang"') &&
@@ -1132,7 +1241,7 @@ section('End-to-end analysis (runReport)');
         ['5', '45', '4', 'unknown', 'unknown_waived'].forEach(function (v) { used.add('arch_report_apm_explain_' + v); });
         ['high', 'medium', 'low'].forEach(function (v) { used.add('arch_report_class_' + v); });
         ['apm', 'lidar', 'potential'].forEach(function (v) { used.add('arch_report_fig_' + v + '_title'); used.add('arch_report_fig_' + v + '_caption'); });
-        ['uat_not_red', 'uat_too_close', 'site_radius', 'site_polygon', 'apm_below_average'].forEach(function (v) { used.add('arch_report_rej_' + v); });
+        ['uat_not_red', 'uat_too_close', 'site_radius', 'site_polygon', 'apm_below_average', 'lidar_ignored'].forEach(function (v) { used.add('arch_report_rej_' + v); });
         ['inside', 'near', 'none'].forEach(function (v) { used.add('arch_report_pot_' + v + '_long'); });
         ['hit', 'near', 'none'].forEach(function (v) { used.add('arch_report_lidar_' + v + '_long'); });
         ['near', 'none'].forEach(function (v) { used.add('arch_report_roads_' + v + '_long'); });

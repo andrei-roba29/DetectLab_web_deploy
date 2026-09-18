@@ -120,20 +120,17 @@ for (const consumer of ['js/events.js', 'js/map-app.js', 'js/archeo-potential.js
     check(`index.html loads the helper BEFORE ${consumer}`,
         posHelper !== -1 && posHelper < indexHtml.indexOf('<script src="' + consumer + '?v='));
 }
-check('all five consumers + styles.css carry the new cache-busting version',
-    (indexHtml.match(/\?v=20260917-gmaps-directions/g) || []).length >= 6);
-
+// Consumers can be updated by later releases: verify the actual page URLs,
+// not a count of one historical release suffix.
+const assets = ['js/google-maps-directions.js', 'js/events.js', 'js/map-app.js',
+    'js/archeo-potential.js', 'js/lidar-scanner.js', 'js/archeo-report.js', 'css/styles.css'];
+const urls = assets.map(asset => (indexHtml.match(new RegExp('(?:src|href)="(' +
+    asset.replace(/\./g, '\\.') + '\\?v=[^"]+)"')) || [])[1]);
+check('helper, all five consumers and styles.css are cache-busted', urls.every(Boolean));
 const sw = read('sw.js');
-check('sw.js pre-caches the helper and the re-versioned consumers',
-    sw.includes("'js/google-maps-directions.js?v=20260917-gmaps-directions'") &&
-    sw.includes("'js/events.js?v=20260917-gmaps-directions'") &&
-    sw.includes("'js/map-app.js?v=20260917-gmaps-directions'") &&
-    sw.includes("'js/archeo-potential.js?v=20260917-gmaps-directions'") &&
-    sw.includes("'js/lidar-scanner.js?v=20260917-gmaps-directions'") &&
-    sw.includes("'js/archeo-report.js?v=20260917-gmaps-directions'") &&
-    sw.includes("'css/styles.css?v=20260917-gmaps-directions'"));
+check('sw.js pre-caches the actual helper and consumer URLs', urls.every(url => sw.includes("'" + url + "'")));
 check('sw.js cache name was bumped (installed PWAs pick the change up)',
-    /CACHE_NAME = 'detectlab-v10[6-9]-gmaps-directions'/.test(sw));
+    Number((sw.match(/CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]) >= 106);
 
 const css = read('css/styles.css');
 check('styles.css styles the button', css.includes('.dl-gmaps-directions-btn'));

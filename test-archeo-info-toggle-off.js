@@ -202,12 +202,13 @@ console.log('\n[Cache busting]');
 {
     const v = 'archeo-info-toggle-off';
     check('index.html requests the bumped styles.css', html.includes('css/styles.css?v=20260918-' + v));
-    check('index.html requests the bumped translations.js', html.includes('js/translations.js?v=20260918-' + v));
+    const translationUrl = (html.match(/src="(js\/translations\.js\?v=[^"]+)"/) || [])[1];
+    check('index.html requests versioned translations.js', !!translationUrl);
     check('index.html requests the bumped archeo-potential.js', html.includes('js/archeo-potential.js?v=20260918-' + v));
     const sw = read('sw.js');
     check('sw.js precaches the bumped app shell',
         sw.includes('js/archeo-potential.js?v=20260918-' + v) &&
-        sw.includes('js/translations.js?v=20260918-' + v) &&
+        sw.includes("'" + translationUrl + "'") &&
         sw.includes('css/styles.css?v=20260918-' + v));
 }
 

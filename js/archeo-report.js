@@ -36,7 +36,7 @@
  *   score = W_APM · APM  +  W_POTENTIAL · PotentialZone  +  W_LIDAR · LIDAR
  *   • APM            colour class → 1.00 blue / 0.85 green / 0.62 yellow
  *   • PotentialZone  inside a bubble → that bubble's own score; near a bubble →
- *                    bubble score × (1 − d/PROXIMITY_M); no bubble → baseline
+ *                    bubble score × (1 − d/PROXIMITY_M); no bubble → 0
  *   • LIDAR          is an optional modifier, not a penalty for missing data:
  *                    annotated → 1.0; near an anomaly → 1 − d/PROXIMITY_M;
  *                    when no scanner point is within PROXIMITY_M its weight is
@@ -72,9 +72,9 @@
         SEED_GRID_M: 100,             // baseline seed spacing (grows with radius)
         RESULT_CIRCLE_VERTS: 32,      // circular footprint for PDF / geometry
 
-        // Triangulation source ("zone cu potențial arheologic")
+        // Shared dense field / variable-radius bubbles ("zone cu potențial arheologic")
         POTENTIAL: {
-            SEARCH_RADIUS_M: 10000,   // same working radius as the potential layer
+            SEARCH_RADIUS_M: 10000,   // minimum site-guard context; field uses selected radius
             PROXIMITY_M: 1500         // "aproape de o zonă cu potențial" threshold
         },
 
@@ -102,7 +102,8 @@
 
         // LIDAR Scanner
         LIDAR: {
-            HIT_M: 60,                // ≤ this = "adnotat pe LIDAR Scanner"
+            HIT_M: 1,                 // coordinate tolerance; proximity is NOT an annotation
+            EXCLUSION_M: 100,         // scanner result-ring radius when ignoring annotations
             PROXIMITY_M: 600          // "în proximitatea unui rezultat LIDAR"
         },
 
@@ -120,7 +121,7 @@
             W_ROMAN_ROADS: 0.12,      // optional bonus, not part of the 1.0 mix
             APM_CLASS_SCORE: { '5': 1.00, '4.5': 0.85, '4': 0.62 },
             APM_UNKNOWN: 0.30,        // unreadable pixel, LIDAR-waived candidate
-            POTENTIAL_NONE: 0.25,     // no triangulation bubble in the area at all
+            POTENTIAL_NONE: 0,        // no bubble = no supporting potential evidence
             // Kept as named configuration values for backwards-compatible
             // consumers; missing/far LIDAR is no longer inserted as a score.
             LIDAR_NO_DATA: 0.20,
@@ -925,16 +926,28 @@
      * 7. LIDAR SCANNER POINTS
      * ═══════════════════════════════════════════════════════════════════════ */
 
-    function loadLidarPoints() {
+    function loadLidarPoints(ignoreLidar) {
         var api = window._lidarScannerApi;
-        if (!api) return Promise.resolve([]);
+        if (!api) {
+            if (ignoreLidar) {
+                return Promise.reject(new Error('LIDAR source unavailable for exclusion'));
+            }
+            return Promise.resolve([]);
+        }
         var ready = (typeof api.ensureLoaded === 'function')
-            ? api.ensureLoaded().catch(function () { return null; })
+            ? api.ensureLoaded().catch(function (err) {
+                // Without annotations we cannot honour an explicit exclusion.
+                if (ignoreLidar) throw err;
+                return null;
+            })
             : Promise.resolve(null);
         return ready.then(function () {
-            var pts = (typeof api.getPoints === 'function' ? api.getPoints() : null) || [];
+            var pts = (typeof api.getEligiblePoints === 'function' ? api.getEligiblePoints()
+                : (typeof api.getPoints === 'function' ? api.getPoints() : null)) || [];
             return pts.filter(function (p) {
-                return isFinite(p.lat) && isFinite(p.lon !== undefined ? p.lon : p.lng);
+                var lng = p.lon !== undefined ? p.lon : p.lng;
+                return typeof p.lat === 'number' && typeof lng === 'number' &&
+                    isFinite(p.lat) && isFinite(lng) && Math.abs(p.lat) <= 90 && Math.abs(lng) <= 180;
             }).map(function (p) {
                 return {
                     lat: p.lat,
@@ -962,7 +975,7 @@
         }
         // Every LIDAR annotation inside the area becomes a candidate of its own
         // (the spec: an annotated zone is returned automatically).
-        ctx.lidarPoints.forEach(function (p) {
+        (ctx.ignoreLidar ? [] : ctx.lidarPoints).forEach(function (p) {
             var m = projectToLocalMeters(p.lat, p.lng, ctx.lat0);
             if (inCircle(sq, m.x, m.y)) {
                 seeds.push({ x: m.x, y: m.y, origin: 'lidar', lidarPoint: p });
@@ -996,16 +1009,18 @@
     }
 
     function nearestBubble(x, y, ctx) {
-        var insideRadius = (window.ARCH_POTENTIAL_CONFIG && window.ARCH_POTENTIAL_CONFIG.CANDIDATE_RADIUS_M) || 300;
-        var best = null, bestD = Infinity;
+        var best = null;
         for (var i = 0; i < ctx.bubbles.length; i++) {
             var b = ctx.bubbles[i];
             var dx = x - b.x, dy = y - b.y;
             var d = Math.sqrt(dx * dx + dy * dy);
-            if (d < bestD) { bestD = d; best = b; }
+            var radius = b.radiusM || 300;
+            var hit = { bubble: b, distM: d, edgeDistM: Math.max(0, d - radius), inside: d <= radius };
+            // A small nearby centre must not hide a larger containing bubble.
+            if (!best || (hit.inside && !best.inside) ||
+                (hit.inside === best.inside && hit.edgeDistM < best.edgeDistM)) best = hit;
         }
-        if (!best) return null;
-        return { bubble: best, distM: bestD, inside: bestD <= insideRadius };
+        return best;
     }
 
     function nearestLidar(x, y, ctx) {
@@ -1036,7 +1051,13 @@
 
         // ── LIDAR context (needed for the APM waiver) ──
         var lidar = nearestLidar(x, y, ctx);
-        var annotated = !!(lidar && lidar.annotated) || seed.origin === 'lidar';
+        var exclusionM = (window._lidarScannerApi && window._lidarScannerApi.resultRadiusM) || CONFIG.LIDAR.EXCLUSION_M;
+        if (ctx.ignoreLidar && lidar && lidar.distM <= exclusionM) {
+            return { ok: false, reason: 'lidar_ignored' };
+        }
+        // Do not allow a seed label or a nearby grid point to invent an annotation.
+        var annotated = !ctx.ignoreLidar && !!(lidar && lidar.annotated);
+        if (ctx.ignoreLidar) lidar = null;
 
         // ── exclusion C: APM 2.0 must be at least neutral ──
         var apmCls = apmClassAt(ctx.apmGrid, x, y);
@@ -1104,9 +1125,10 @@
                 potentialDistM: pot ? Math.round(pot.distM) : null,
                 potentialScore: pot ? pot.bubble.score : null,
                 potentialFactors: pot ? pot.bubble.factors : null,
-                bubblesInArea: ctx.bubblesInArea,
+                bubblesInArea: (ctx.bubblesInArea || []).length,
                 lidarComp: lidarComp,
-                lidarApplied: lidarNearby,
+                lidarApplied: !!lidarNearby,
+                lidarIgnored: !!ctx.ignoreLidar,
                 lidarDistM: lidar ? Math.round(lidar.distM) : null,
                 lidarPoint: lidar ? lidar.point : null,
                 uatClearanceM: isFinite(uat.clearanceM) ? Math.round(uat.clearanceM) : null,
@@ -1343,6 +1365,17 @@
           });
     }
 
+    function scoringWeights(applyLidar) {
+        var S = CONFIG.SCORING;
+        var divisor = applyLidar ? 1 : (S.W_APM + S.W_POTENTIAL);
+        return {
+            apm: divisor ? S.W_APM / divisor : 0,
+            potential: divisor ? S.W_POTENTIAL / divisor : 0,
+            lidar: applyLidar ? S.W_LIDAR : 0,
+            romanRoads: S.W_ROMAN_ROADS
+        };
+    }
+
     function buildResultModel(cand, ctx, index, total) {
         var nearest = nearestSitesFor(cand.x, cand.y, ctx, CONFIG.NEAREST_SITES);
         var period = estimatePeriod(nearest, CONFIG.PERIOD_SITES);
@@ -1360,12 +1393,7 @@
             annotated: cand.annotated,
             origin: cand.origin,
             parts: cand.parts,
-            weights: {
-                apm: CONFIG.SCORING.W_APM,
-                potential: CONFIG.SCORING.W_POTENTIAL,
-                lidar: CONFIG.SCORING.W_LIDAR,
-                romanRoads: CONFIG.SCORING.W_ROMAN_ROADS
-            },
+            weights: scoringWeights(cand.parts.lidarApplied),
             nearestSites: nearest,
             period: period,
             polygon: resultPolygon(ll.lat, ll.lng, CONFIG.RESULT_RADIUS_M, ctx.lat0)
@@ -1469,6 +1497,8 @@
         }
         var pdfBtn = el('archReportPdfBtn');
         if (pdfBtn) pdfBtn.disabled = running;
+        var ignore = el('archReportIgnoreLidar');
+        if (ignore) ignore.disabled = running;
         var ov = el('archReportLoading');
         if (ov) ov.classList.toggle('visible', !!running);
     }
@@ -1550,32 +1580,33 @@
                     center: center,
                     lat0: center.lat,
                     radiusKm: radiusKm,
+                    ignoreLidar: !!(el('archReportIgnoreLidar') && el('archReportIgnoreLidar').checked),
                     radiusM: radiusM,
                     areaKm2: Math.PI * radiusM * radiusM / 1e6,
                     square: analysisArea(center.lat, center.lng, radiusM)
                 };
 
                 // ── known sites (radii + polygons) via archeo-potential.js ──
-                var collected = collectSites(center.lat, center.lng, CONFIG.POTENTIAL.SEARCH_RADIUS_M, ctx.lat0);
+                var collected = collectSites(center.lat, center.lng, Math.max(CONFIG.POTENTIAL.SEARCH_RADIUS_M, radiusM + CONFIG.SITE.RADIUS_M + CONFIG.SITE.BUFFER_M), ctx.lat0);
                 ctx.sites = collected.sites || [];
                 ctx.polygons = collected.polygons || [];
                 ctx.siteRecords = buildSiteRecords(ctx.sites);
 
-                // ── triangulation bubbles ("zone cu potențial arheologic") ──
+                // ── same packed bubbles as the visible potential layer ──
                 setStatus('arch_report_step_potential');
                 ctx.bubbles = [];
                 ctx.potentialStatus = 'unavailable';
-                if (typeof window.computeArcheoPotential === 'function') {
+                if (typeof window.computeArcheoPotentialField === 'function') {
                     try {
-                        var pot = await window.computeArcheoPotential(center.lat, center.lng, CONFIG.POTENTIAL.SEARCH_RADIUS_M, {
+                        var pot = await window.computeArcheoPotentialField(center.lat, center.lng, radiusM, {
+                            mode: 'bubbles',
                             isCancelled: function () { return myVersion !== _state.version; },
-                            chunkSize: 40,
-                            yieldModulo: 8,
+                            chunkSize: 400,
                             skipDataWait: true      // waitForSiteData() ran just above
                         });
                         if (myVersion !== _state.version) return null;
                         ctx.potentialStatus = pot.status;
-                        if (pot.status === 'ok') ctx.bubbles = pot.results || [];
+                        if (pot.status === 'ok' || pot.status === 'sparse_sites') ctx.bubbles = pot.bubbles || [];
                     } catch (e) {
                         console.warn('[ArcheoReport] potential layer failed:', e);
                     }
@@ -1586,7 +1617,7 @@
 
                 // ── LIDAR Scanner annotations ──
                 setStatus('arch_report_step_lidar');
-                var allLidar = await loadLidarPoints();
+                var allLidar = await loadLidarPoints(ctx.ignoreLidar);
                 if (myVersion !== _state.version) return null;
                 var margin = CONFIG.LIDAR.PROXIMITY_M + CONFIG.UAT.CLEARANCE_M;
                 ctx.lidarPoints = allLidar.filter(function (p) {
@@ -1646,7 +1677,7 @@
                 _state.model = {
                     // lat/lng copies for the canvas overlays (the PDF figures)
                     potentialBubbles: ctx.bubbles.map(function (b) {
-                        return { lat: b.lat, lng: b.lng, score: b.score };
+                        return { lat: b.lat, lng: b.lng, score: b.score, radiusM: b.radiusM };
                     }),
                     meta: {
                         generatedAt: new Date(),
@@ -1660,6 +1691,7 @@
                         bubblesCount: ctx.bubbles.length,
                         bubblesInArea: ctx.bubblesInArea.length,
                         potentialStatus: ctx.potentialStatus,
+                        ignoreLidar: ctx.ignoreLidar,
                         lidarCount: ctx.lidarPoints.length,
                         lidarInArea: ctx.lidarInArea.length,
                         romanRoadSegments: ctx.romanRoadSegs ? ctx.romanRoadSegs.length : 0,
@@ -1672,12 +1704,7 @@
                         ms: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
                     },
                     results: results,
-                    weights: {
-                        apm: CONFIG.SCORING.W_APM,
-                        potential: CONFIG.SCORING.W_POTENTIAL,
-                        lidar: CONFIG.SCORING.W_LIDAR,
-                        romanRoads: CONFIG.SCORING.W_ROMAN_ROADS
-                    },
+                    weights: scoringWeights(!ctx.ignoreLidar),
                     thresholds: {
                         uatClearanceM: CONFIG.UAT.CLEARANCE_M,
                         siteRadiusM: CONFIG.SITE.RADIUS_M,
@@ -1749,7 +1776,7 @@
             ['<b>' + esc(tr('arch_report_row_potential')) + '</b>',
              p.potentialInside
                 ? esc(tr('arch_report_pot_inside', { score: pctComp(p.potentialScore) }))
-                : (p.potentialDistM !== null
+                : (p.potentialDistM !== null && p.potentialDistM <= CONFIG.POTENTIAL.PROXIMITY_M
                     ? esc(tr('arch_report_pot_near', { dist: fmtM(p.potentialDistM), score: pctComp(p.potentialScore) }))
                     : esc(tr('arch_report_pot_none')))],
             ['<b>' + esc(tr('arch_report_row_lidar')) + '</b>',
@@ -1757,7 +1784,7 @@
                 ? esc(tr('arch_report_lidar_hit', { title: p.lidarPoint ? (p.lidarPoint.category || p.lidarPoint.name || '—') : '—' }))
                 : (p.lidarDistM !== null && p.lidarDistM <= CONFIG.LIDAR.PROXIMITY_M
                     ? esc(tr('arch_report_lidar_near', { dist: fmtM(p.lidarDistM) }))
-                    : esc(tr('arch_report_lidar_none')))],
+                    : esc(tr(p.lidarIgnored ? 'arch_report_ignore_lidar' : 'arch_report_lidar_none')))],
             ['<b>' + esc(tr('arch_report_row_roads')) + '</b>',
              p.romanRoadApplied
                 ? esc(tr('arch_report_roads_near', { dist: fmtM(p.romanRoadDistM) }))
@@ -2140,7 +2167,7 @@
     function drawBubbles(g, proj, model) {
         model.potentialBubbles.forEach(function (b) {
             var pt = proj.latLngToPx(b.lat, b.lng);
-            var rPx = ((window.ARCH_POTENTIAL_CONFIG && window.ARCH_POTENTIAL_CONFIG.CANDIDATE_RADIUS_M) || 300) * proj.pxPerMeter;
+            var rPx = (b.radiusM || 300) * proj.pxPerMeter;
             g.beginPath();
             g.arc(pt.x, pt.y, Math.max(6, rPx), 0, Math.PI * 2);
             g.fillStyle = 'rgba(123,63,212,0.28)';
@@ -2227,7 +2254,7 @@
             out.apm = fig;
         }));
 
-        if (model.meta.lidarInArea > 0 || model.meta.lidarCount > 0) {
+        if (!model.meta.ignoreLidar && (model.meta.lidarInArea > 0 || model.meta.lidarCount > 0)) {
             var lidarSources = [{ key: 'sat', label: trx('arch_report_fig_satellite'), url: SATELLITE_URL, opacity: 1, maxNativeZoom: 18 }]
                 .concat(lidarImageSources());
             tasks.push(captureFigure({
@@ -2516,6 +2543,13 @@
             show.dataset.archReportWired = '1';
             show.addEventListener('change', function () { toggleResults(this.checked); });
         }
+        var ignore = el('archReportIgnoreLidar');
+        if (ignore && !ignore.dataset.archReportWired) {
+            ignore.dataset.archReportWired = '1';
+            ignore.addEventListener('change', function () {
+                if (_state.point && !_state.running) runReport();
+            });
+        }
         var slider = el('archReportDistance');
         var valueLabel = el('archReportDistanceValue');
         if (slider && !slider.dataset.archReportWired) {
@@ -2607,6 +2641,11 @@
     /* ═══════════════════════════════════════════════════════════════════════
      * 16. PUBLIC API
      * ═══════════════════════════════════════════════════════════════════════ */
+    window.showArcheoReportInfo = function () {
+        if (typeof window.showLayerInfo === 'function') {
+            window.showLayerInfo(tr('layer_arch_report'), '© DetectLab 2026 · APM 2.0 + RAN CIMEC + LIDAR', tr('arch_report_hint_bottom'));
+        }
+    };
     window.toggleArcheoReportLayer = setActive;
     window.runArcheoReport = runReport;
     window.generateArcheoReportPdf = generatePdf;
