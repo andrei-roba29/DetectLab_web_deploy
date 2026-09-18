@@ -345,6 +345,7 @@
     // site it labels — at z12 it floated ~2.6 km (94 px) above the circle, and
     // past z17 it sank inside it. Anchoring the label a few pixels above the
     // centre keeps it locked onto its site at every zoom level.
+    var RESULT_RADIUS_M = 100;
     var RESULT_LABEL_OFFSET = [0, -14];
     function makeResult(p) {
         // Result rings stay on Leaflet's SVG renderer on purpose. They are
@@ -357,7 +358,7 @@
         // A scan returns at most a few dozen rings, so the DOM cost is small;
         // the perf-critical shape is the search circle resized on every frame
         // of the distance drag, and that one keeps the canvas renderer.
-        var resultOptions = assignPane({radius:100,color:'#8cff66',weight:2,dashArray:'3 6',fillColor:'#39ff14',fillOpacity:.11,opacity:.98,interactive:true}, PANE_CIRCLES);
+        var resultOptions = assignPane({radius:RESULT_RADIUS_M,color:'#8cff66',weight:2,dashArray:'3 6',fillColor:'#39ff14',fillOpacity:.11,opacity:.98,interactive:true}, PANE_CIRCLES);
         var circle=L.circle([p.lat,p.lng],resultOptions);
         circle.bindTooltip('<span class="lidar-result-tag"><b>Category / Categoria</b><br>'+esc(p.category)+'</span>',assignPane({permanent:true,direction:'top',offset:RESULT_LABEL_OFFSET,className:'lidar-result-tooltip'}, PANE_TAGS));
         // Traseu Google Maps: destinația e ÎNTOTDEAUNA centrul inelului de
@@ -630,6 +631,10 @@
     // never triggers a second CSV download.
     window._lidarScannerApi = {
         getPoints: function () { return points; },
+        // Same heritage exclusions as run(); never expose hidden annotations
+        // as automatic report results. Re-evaluate as heritage data loads.
+        getEligiblePoints: function () { return points.filter(function (p) { return !isNearHeritage(p); }); },
+        resultRadiusM: RESULT_RADIUS_M,
         ensureLoaded: function () { return load(); },
         isActive: function () { return active; },
         getSelected: function () { return selected; },

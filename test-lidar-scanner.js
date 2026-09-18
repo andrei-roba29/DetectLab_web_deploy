@@ -522,6 +522,13 @@ async function main() {
         layer.latlng[0] === 43.7708993 && layer.latlng[1] === 28.5362063);
     assert(!excluded, 'a site inside a heritage radius must still be filtered out');
 
+    const api = sandbox.window._lidarScannerApi;
+    assert(api.getPoints().some(p => p.lat === 43.7708993), 'raw CSV retains the annotation');
+    assert(!api.getEligiblePoints().some(p => p.lat === 43.7708993), 'report API excludes the same heritage annotation as scanner');
+    assert.strictEqual(api.resultRadiusM, 100, 'report exclusion matches the visible scanner ring');
+    sandbox.window._localLayerData[0] = { features: [] };
+    assert(api.getEligiblePoints().some(p => p.lat === 43.7708993), 'eligible annotations refresh after heritage data changes');
+
     // 6. Deactivate scanner.
     sandbox.window.toggleLidarScannerLayer(false);
     assert(!mapEventListeners.click, 'map click listener should be removed when deactivated');

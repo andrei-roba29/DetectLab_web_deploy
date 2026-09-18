@@ -1,8 +1,8 @@
 # Archeological Report — "Raport arheologic"
 
 Premium layer. Pick a point on the map, press **Run / Rulează**: the layer
-analyses the **5 km²** around that point, returns **3 ranked locations** as
-orange polygons and produces a **downloadable PDF** that explains each one.
+analyses the selected **1–10 km circular radius** around that point, returns
+**up to 3 ranked locations** as blue circles and produces a **downloadable PDF** that explains each one.
 
 Three sources feed a single weighted score:
 
@@ -12,6 +12,29 @@ Three sources feed a single weighted score:
 | **Zone cu potențial arheologic** | Proximity to a triangulation bubble |
 | **LIDAR Scanner** | Proximity to an annotated object; an annotated point is returned automatically |\n| **Roman roads** | Optional bonus: proximity to a mapped Roman road can raise the score; absence never lowers it |
 
+
+## Evidence alignment and LIDAR exclusion (2026-09-18)
+
+* Report potential evidence now comes from `computeArcheoPotentialField()` at
+  the **report centre and selected radius**, not the legacy sparse triangulation
+  API at a fixed 10 km. It uses `field.bubbles` (including `sparse_sites` runs),
+  with their actual `radiusM`, both for membership and PDF figures. To compare
+  the report to the potential layer, use the same centre and radius. The report
+  still applies its own stricter UAT clearance and APM filters.
+* The report reads `getEligiblePoints()`: the scanner's own heritage-filtered
+  annotations, even when the scanner layer is off. Being nearby is not being
+  annotated: nearby grid points no longer receive the annotation bonus or APM
+  exception. The scanner and report share the scanner result-ring radius.
+* **Ignore LIDAR Scanner results / Ignoră rezultate LIDAR Scanner** defaults off.
+  Changing it with a selected report point regenerates the report. When on,
+  candidates inside scanner result rings (100 m) are rejected **before** top-three
+  selection; no LIDAR seeds, weights, bonuses or APM waivers are used. The next
+  eligible candidates replace them. If annotations cannot be loaded, exclusion
+  mode aborts rather than falsely claiming to exclude them.
+* PDF source notes and rejection statistics record exclusion mode. Its LIDAR
+  figure is omitted. The panel's exclusions hint now lives in the localized
+  **Info** popup below `© DetectLab 2026 · APM 2.0 + RAN CIMEC + LIDAR`.
+
 ## Files
 
 | Path | Role |
@@ -19,8 +42,8 @@ Three sources feed a single weighted score:
 | `js/archeo-report.js` | The layer: seed generation, filters, scoring, map rendering, PDF orchestration |
 | `js/archeo-report-pdf.js` | Page layout — paints every page on a canvas, hands JPEGs to the writer |
 | `js/pdf-writer.js` | Dependency-free PDF 1.4 writer (`window.DetectLabPdf`) |
-| `js/archeo-potential.js` | Unchanged logic, exposes `computeArcheoPotential()` headlessly |
-| `js/lidar-scanner.js` | Adds `window._lidarScannerApi` (`getPoints`, `ensureLoaded`) |
+| `js/archeo-potential.js` | Unchanged logic, exposes `computeArcheoPotentialField()` headlessly |
+| `js/lidar-scanner.js` | Adds `window._lidarScannerApi` (`getPoints`, `getEligiblePoints`, `ensureLoaded`) |
 | `css/styles.css` | `.arch-report-*` (row, buttons, popup, pin, labels) |
 | `js/translations.js` | `arch_report_*` + `arch_period_*` keys, EN and RO |
 | `test-archeo-report.js` | Node harness — `node test-archeo-report.js` |
@@ -51,8 +74,8 @@ results unless the user turns the layer off.
 
 ## Mandatory filters (a seed must pass all of them)
 
-Seeds = 100 m systematic grid inside the square **+ every LIDAR point + every
-triangulation bubble inside it**.
+Seeds = adaptive systematic grid inside the search circle **+ every eligible
+LIDAR annotation + every visible potential bubble centre inside it**.
 
 1. **UAT** — the candidate must sit on the **red** part of the UAT raster
    (opaque and dark = open land) **and** be **≥ 500 m** from any non-red
@@ -69,8 +92,8 @@ triangulation bubble inside it**.
    `_classifyPixel` was *not* reused: its yellow rule accepts pure olive
    `#808000`, the colour the spec forbids, while rejecting the real reference
    yellow `[240,240,140]`).
-4. **Exception** — a point **annotated in LIDAR Scanner** (≤ 60 m from a scanner
-   result) bypasses filter 3 and is returned automatically; its APM component
+4. **Exception** — a point **annotated in LIDAR Scanner** (at the annotation
+   coordinates, with a 1 m numerical tolerance) bypasses filter 3 and is returned automatically; its APM component
    becomes `APM_UNKNOWN` (0.30) and it receives `LIDAR_ANNOTATION_BONUS`.
 
 ## Scoring
@@ -82,8 +105,8 @@ score = 0.40 · APM  +  0.30 · Potential  +  0.30 · LIDAR   (+ 0.45 if annotat
 
 * **APM** — class → 1.00 / 0.85 / 0.62 (5 / 4.5 / 4).
 * **Potential** — inside a bubble: the bubble's own score; within
-  `PROXIMITY_M` (1500 m): half of it; otherwise 0 (`POTENTIAL_NONE` 0.25 when
-  the area has no bubble at all).
+  `PROXIMITY_M` (1500 m): its score attenuated by centre distance; otherwise 0.
+  No bubbles means no potential evidence (0), not an invented 25% baseline.
 * **LIDAR** — `1 − d/600` for the nearest scanner object; `LIDAR_NO_DATA` 0.20
   when there is no coverage in the area, `LIDAR_FAR` 0.10 when nothing is near.
 
@@ -187,7 +210,7 @@ Everything fails **closed** — the layer never guesses:
 The APM figure itself needs no APM tiles: it draws the classified grid the
 analysis produced, so it can never disagree with the score.
 
-`computeArcheoPotential()` accepts `skipDataWait` so the report's own
+`computeArcheoPotentialField()` accepts `skipDataWait` so the report's own
 `waitForSiteData()` is not waited on a second time (40 s → 20 s when the
 heritage API is unreachable).
 

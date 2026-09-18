@@ -496,9 +496,9 @@
             tr('arch_report_src_pot_title') + ' — ' + tr('arch_report_src_pot_state', {
                 n: meta.bubblesInArea, total: meta.bubblesCount
             }),
-            tr('arch_report_src_lidar_title') + ' — ' + tr('arch_report_src_lidar_state', {
-                n: meta.lidarInArea, total: meta.lidarCount
-            }),
+            tr('arch_report_src_lidar_title') + ' — ' + (meta.ignoreLidar
+                ? tr('arch_report_lidar_ignored_desc')
+                : tr('arch_report_src_lidar_state', { n: meta.lidarInArea, total: meta.lidarCount })),
             tr('arch_report_src_roads_title') + ' — ' + tr('arch_report_src_roads_state', {
                 n: meta.romanRoadSegments || 0
             }),
@@ -544,7 +544,7 @@
             [tr('arch_report_tbl_component'), tr('arch_report_tbl_weight'), tr('arch_report_tbl_how')],
             ['APM 2.0', Math.round(model.weights.apm * 100) + '%', tr('arch_report_weight_apm')],
             [tr('arch_report_src_pot_title'), Math.round(model.weights.potential * 100) + '%', tr('arch_report_weight_potential')],
-            ['LIDAR Scanner', Math.round(model.weights.lidar * 100) + '%', tr('arch_report_weight_lidar')],
+            ['LIDAR Scanner', Math.round(model.weights.lidar * 100) + '%', meta.ignoreLidar ? tr('arch_report_lidar_ignored_desc') : tr('arch_report_weight_lidar')],
             [tr('arch_report_src_roads_title'), '+' + Math.round((model.weights.romanRoads || 0) * 100) + '%', tr('arch_report_weight_roads')]
         ], [120, 58, CONTENT_W - 178], { boldFirstCol: true });
 
@@ -663,7 +663,7 @@
                 title: res.parts.lidarPoint ? (res.parts.lidarPoint.category || res.parts.lidarPoint.name || '—') : '—'
             }), { size: 8.4, spaceAfter: 4 });
         } else {
-            pt.para(tr('arch_report_lidar_none_long'), { color: C.muted, size: 8.4, spaceAfter: 4 });
+            pt.para(tr(res.parts.lidarIgnored ? 'arch_report_lidar_ignored_desc' : 'arch_report_lidar_none_long'), { color: C.muted, size: 8.4, spaceAfter: 4 });
         }
 
         pt.h2(tr('arch_report_roads_section_title'));

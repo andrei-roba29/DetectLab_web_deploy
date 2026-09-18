@@ -138,7 +138,7 @@
 //   band's own colour names its painter in one round trip. See
 //   PWA_BOTTOM_BAND.md.
 // v113: keep event creation below the phone status bar and within the viewport.
-const CACHE_NAME = 'detectlab-v113-event-safe-area';
+const CACHE_NAME = 'detectlab-v114-report-evidence';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -153,6 +153,11 @@ const PROTECTED_SITES_CACHE_KEY = 'protected-sites';
 
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
+  // Report: shared potential field, exact scanner annotations, ignore option.
+  'js/archeo-report.js?v=20260918-report-evidence',
+  'js/archeo-report-pdf.js?v=20260918-report-evidence',
+  'js/lidar-scanner.js?v=20260918-report-evidence',
+  'js/translations.js?v=20260918-report-evidence',
   '.',
   'index.html',
   'css/styles.css',
