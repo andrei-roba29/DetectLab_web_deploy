@@ -138,7 +138,9 @@
 //   band's own colour names its painter in one round trip. See
 //   PWA_BOTTOM_BAND.md.
 // v113: keep event creation below the phone status bar and within the viewport.
-const CACHE_NAME = 'detectlab-v114-report-evidence';
+// v115: move the Battles epoch-colour legend from the layers panel into the
+// Battles info tab, directly below its attribution.
+const CACHE_NAME = 'detectlab-v115-battles-info-legend';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -540,6 +542,9 @@ const PRECACHE_URLS = [
   'js/archeo-potential.js?v=20260918-archeo-info-toggle-off',
   'js/translations.js?v=20260918-archeo-info-toggle-off',
   'css/styles.css?v=20260918-archeo-info-toggle-off',
+  // Battles info tab: the epoch-colour legend is shown below the layer
+  // attribution instead of taking space in the layers panel.
+  'css/styles.css?v=20260918-battles-info-legend',
   // Seamless tiles: kill the white grid (Leaflet's mix-blend-mode:
   // plus-lighter adds the colours of the 1px tile overlap instead of
   // covering them, saturating every 256px seam to white) and make the zoom

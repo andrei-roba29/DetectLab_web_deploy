@@ -7274,6 +7274,45 @@
             border-top: 1px solid rgba(200, 169, 110, 0.18);
         }
 
+        /* Legend moved from the Battles layer panel into its info tab. */
+        .layer-info-battles-legend {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(200, 169, 110, 0.18);
+            color: rgba(245, 240, 235, 0.78);
+        }
+
+        .layer-info-battles-heading {
+            margin-bottom: 8px;
+            color: #c8a96e;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .layer-info-battles-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .layer-info-battles-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 0.74rem;
+            line-height: 1.25;
+        }
+
+        .layer-info-battles-swatch {
+            width: 9px;
+            height: 9px;
+            flex: 0 0 9px;
+            border-radius: 50%;
+            box-shadow: 0 0 0 1px rgba(245, 240, 235, 0.16);
+        }
+
         /* Source links inside a layer attribution (e.g. bukowina1856.eu for the
            maps digitized by Universitatea „Ștefan cel Mare” din Suceava). */
         .layer-info-attribution a {
