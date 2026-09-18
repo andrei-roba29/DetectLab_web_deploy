@@ -36,7 +36,12 @@ const sandbox = {
                             canvas.ops.push('createImageData:' + w + 'x' + h);
                             return { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
                         },
-                        putImageData() { canvas.ops.push('putImageData'); },
+                        putImageData(img) {
+                            canvas.ops.push('putImageData');
+                            // Capturăm pixelii ca testele să poată verifica
+                            // orientarea/continutul imaginii sursă de heatmap.
+                            canvas.lastImageData = img && img.data ? img.data : null;
+                        },
                         clearRect() { canvas.ops.push('clearRect'); },
                         drawImage(img, x, y, w, h) { canvas.draws.push({ x, y, w, h }); },
                         save() {}, restore() {}
@@ -349,7 +354,6 @@ console.log('\n[End-to-end pipeline]');
         archeoPotLegendBubbles: fakeEl(),
         archeoPotLegendHeat: fakeEl(),
         archeoPotHeatbar: fakeEl(),
-        archeoPotPinToggle: fakeEl({ checked: false }),
         archeoPotToggle: fakeEl({ checked: true }),
         archeoPotentialRow: fakeEl()
     };
@@ -811,6 +815,45 @@ console.log('\n[End-to-end pipeline]');
         Object.values(D.HEAT_GRADIENT).every((c) => !/^#(e0|c0|f0|ff)/i.test(c)),
         JSON.stringify(D.HEAT_GRADIENT));
 
+    /* ── 3c-orient. orientarea N–S a heatmap-ului ──────────────────────────
+       redraw() ancorează VÂRFUL bitmap-ului la bbox.maxLat (nord), deci
+       rândul 0 al imaginii trebuie să conțină rândul NORDIC al grilei
+       (rows-1) — grila e indexată row 0 = sud (minLat). Fără inversare,
+       harta termică ieșea oglindită față de bule: culorile și „golurile”
+       (celulele excluse) cădeau pe cealaltă parte a cercului, în zone care
+       nu sunt nici UAT, nici razele siturilor. */
+    {
+        const savedSigma = D.config.HEAT.SMOOTH_SIGMA_CELLS;
+        D.config.HEAT.SMOOTH_SIGMA_CELLS = 0; // fără netezire → culoarea = exact scorul
+        sandbox.window.setArcheoPotentialMode('heat');
+        await sandbox.window.runArcheoPotentialAnalysis();
+        const of = sandbox.window._archeoPotentialField();
+        const heatO = sandbox.window._archeoPotentialHeat();
+        const imgData = heatO && heatO._srcCanvas && heatO._srcCanvas.lastImageData;
+        const oCols = of.grid.cols, oRows = of.grid.rows;
+        const mismatches = [];
+        let checked = 0;
+        const step = Math.max(1, Math.floor(of.results.length / 400));
+        for (let i = 0; i < of.results.length && checked < 400; i += step) {
+            const r = of.results[i];
+            const off = ((oRows - 1 - r.row) * oCols + r.col) * 4;
+            const exp = D.scoreColorRgb(r.score);
+            if (off + 3 >= imgData.length) continue;
+            if (imgData[off] !== exp[0] || imgData[off + 1] !== exp[1] || imgData[off + 2] !== exp[2]) {
+                if (mismatches.length < 3) {
+                    mismatches.push('row' + r.row + ',col' + r.col + ': ' +
+                        [imgData[off], imgData[off + 1], imgData[off + 2]] + ' != ' + exp.join(','));
+                }
+            }
+            checked++;
+        }
+        check('the heat image is north-up: every cell keeps its colour at its own latitude',
+            !!imgData && checked > 0 && mismatches.length === 0,
+            (checked + ' sampled') + (mismatches.length ? ' — ' + mismatches.join(' | ') : ''));
+        D.config.HEAT.SMOOTH_SIGMA_CELLS = savedSigma;
+        sandbox.window.setArcheoPotentialMode('heat'); // rămâne în modul inițial al secțiunii
+    }
+
     const heat = sandbox.window._archeoPotentialHeat();
     check('a heat canvas layer was created', !!heat && !!heat._canvas && !!heat._srcCanvas);
     check('the heat canvas lives in the layer heat pane',
@@ -1047,13 +1090,20 @@ console.log('\n[End-to-end pipeline]');
             /id="archeoPotLegendBubbles"[^]*?archeo-pot-swatch-red[^]*?<\/div>/.test(
                 indexHtml.slice(indexHtml.indexOf('id="archeoPotLegendBubbles"'),
                     indexHtml.indexOf('id="archeoPotLegendHeat"'))));
+        check('the separate pin switch is gone (map-point logic is permanent)',
+            !/id="archeoPotPinToggle"/.test(indexHtml) && !/archeo_pot_pin_hint/.test(indexHtml));
     }
 
-    /* ── 4. pinul mov + sliderul de rază 1–10 km ── */
+    /* ── 4. pinul mov + sliderul de rază 1–10 km ──
+       Logica de punct pe hartă e permanentă (switch-ul de pin a fost scos):
+       stratul pornește cu tap-ul pe hartă activ; apelul explicit de mai jos
+       e idempotent (handler-ul nu se înmulțește). */
+    check('pin logic is permanent — armed from load, without a pin switch',
+        sandbox.window._archeoPotentialState().pinMode === true &&
+        (mapEvents.click || []).length === 1);
     sandbox.window.setArcheoPotentialPinMode(true);
     check('pin mode on', sandbox.window._archeoPotentialState().pinMode === true);
-    check('map click handler armed for the pin', (mapEvents.click || []).length > 0);
-    check('pin toggle reflected in the DOM', dom.archeoPotPinToggle.checked === true);
+    check('map click handler armed for the pin (exactly once)', (mapEvents.click || []).length === 1);
     check('row marked as on', dom.archeoPotentialRow.classList.contains('is-on'));
 
     sandbox.window._archeoPotSetPoint(46.805, 23.605);

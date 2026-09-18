@@ -5660,12 +5660,11 @@
             margin: 8px 0;
         }
 
-        /* ── Zone cu potențial arheologic (premium) — pin mov, rază 1–10 km,
-              moduri de afișare bule / heatmap ── */
+        /* ── Zone cu potențial arheologic (premium) — pin mov (logica de punct
+              e permanentă, fără switch separat), rază 1–10 km, moduri de
+              afișare bule / heatmap ── */
         .archeo-potential-row { border-color: rgba(163,112,232,0.20); }
         .archeo-potential-row.is-on { box-shadow: 0 0 22px rgba(123,63,212,0.14), inset 0 0 18px rgba(123,63,212,0.05); }
-        .archeo-pot-pinrow { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0 2px; }
-        .archeo-pot-pin-copy { font-size:.72rem; line-height:1.4; color:rgba(245,240,235,.72); }
         .archeo-pot-control { display:flex; justify-content:space-between; align-items:center; font-size:.7rem; color:rgba(245,240,235,.6); margin:8px 0 6px; }
         .archeo-pot-control strong { color:#c4a0f0; font-family:'Cinzel',serif; font-size:.74rem; }
         .archeo-pot-mode { display:flex; align-items:center; gap:8px; margin:11px 0 2px; }

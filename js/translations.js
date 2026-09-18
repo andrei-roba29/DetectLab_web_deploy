@@ -270,7 +270,6 @@
                 archeo_run_btn: 'Detect',
                 archeo_run_running: 'Analyzing…',
                 archeo_status_ready: 'Set the radius (1–10 km) and press the button.',
-                archeo_pot_pin_hint: 'Pin mode: tap the map to drop the purple pin',
                 archeo_pot_mode: 'Output',
                 archeo_pot_mode_bubbles: 'Bubbles',
                 archeo_pot_mode_heat: 'Heatmap',
@@ -280,7 +279,7 @@
                 archeo_legend_heat_lo: 'Weak',
                 archeo_legend_heat_hi: 'Strong',
                 archeo_legend_excluded: 'UAT / heritage radius',
-                archeo_hint: 'Bubbles fill the free ground: mixed sizes, never touching each other or a heritage radius. The heatmap scores every free cell with the same triangulated logic — colour = score on one absolute scale shared with the bubbles and this legend. Red = UAT built-up area and heritage protection radii, where nothing is ever generated.',
+                archeo_hint: 'Searches for locations with archaeological potential reported to the marked archaeological sites, based on a triangulation logic — colour = score, on one absolute scale shared with the bubbles and with the legend. Red = the UAT built-up area and the protection radii of the sites, where nothing is generated.',
                 archeo_show_label: 'Show results',
                 // ── Premium: Archeological Report / Raport arheologic (js/archeo-report.js) ──
                 layer_arch_report: 'Archeological Report',
@@ -775,7 +774,6 @@
                 archeo_run_btn: 'Detectează',
                 archeo_run_running: 'Se analizează…',
                 archeo_status_ready: 'Alege raza (1–10 km) și apasă butonul.',
-                archeo_pot_pin_hint: 'Mod pin: atinge harta ca să pui pinul mov',
                 archeo_pot_mode: 'Afișare',
                 archeo_pot_mode_bubbles: 'Bule',
                 archeo_pot_mode_heat: 'Heatmap',
@@ -785,7 +783,7 @@
                 archeo_legend_heat_lo: 'Slab',
                 archeo_legend_heat_hi: 'Puternic',
                 archeo_legend_excluded: 'UAT / rază patrimoniu',
-                archeo_hint: 'Bulele umplu terenul liber: mărimi diferite, fără să se atingă între ele sau cu vreo rază de protecție. Heatmap-ul scotează fiecare celulă liberă cu aceeași logică de triangulare — culoarea = scorul, pe o scară absolută comună cu bulele și cu această legendă. Roșu = intravilanul UAT și razele de protecție ale siturilor, unde nu se generează nimic.',
+                archeo_hint: 'Se cauta locatii cu potential arheologic raportate la siturile arheologice marcate, pe baza unei logici de triangulare — culoarea = scorul, pe o scară absolută comună cu bulele și cu legenda. Roșu = intravilanul UAT și razele de protecție ale siturilor, unde nu se generează nimic.',
                 archeo_show_label: 'Arată rezultatele',
                 // ── Premium: Archeological Report / Raport arheologic (js/archeo-report.js) ──
                 layer_arch_report: 'Raport arheologic',

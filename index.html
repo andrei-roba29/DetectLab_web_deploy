@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260917-gmaps-directions">
+    <link rel="stylesheet" href="css/styles.css?v=20260918-archeo-heat-northup">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -2691,11 +2691,13 @@
 
                     <!-- Archeological Potential Sites (premium) — "Zone cu potențial arheologic".
                          Analiză statistică pe siturile cunoscute (triangulație Delaunay + grilă
-                         densă de scor) în jurul unui PIN MOV ales pe hartă — sau al centrului
-                         hărții, când modul pin e oprit — pe o rază de 1–10 km. Rulare manuală
-                         prin butonul "Detectează" / "Detect". Două moduri de afișare a rezultatului:
+                         densă de scor) în jurul PINULUI MOV pus pe hartă (logica de punct e
+                         permanentă, fără switch separat) — sau al centrului hărții, când nu s-a
+                         pus niciun pin — pe o rază de 1–10 km. Rulare manuală prin butonul
+                         "Detectează" / "Detect". Două moduri de afișare a rezultatului:
                          bule cu scor (mici, dese, fără goluri) și heatmap (scor pe fiecare
-                         celulă; UAT + razele de protecție apar cu roșu). -->
+                         celulă, nord în sus, pe aceeași scară absolută cu bulele; UAT + razele
+                         de protecție apar cu roșu). -->
                     <div class="transp-layer-row archeo-potential-row" data-category="premium" id="archeoPotentialRow">
                         <div class="transp-layer-label" style="margin-bottom:6px">
                             <span style="display:flex;align-items:center;gap:7px;min-width:0">
@@ -2720,16 +2722,6 @@
                             </span>
                         </div>
 
-                        <!-- Pin mov + rază 1–10 km (același tip de interacțiune ca la
-                             LIDAR Scanner și Raport arheologic). Fără pin, analiza
-                             pornește din centrul hărții. -->
-                        <div class="archeo-pot-pinrow">
-                            <span class="archeo-pot-pin-copy t" data-key="archeo_pot_pin_hint">Pin mode: tap the map to drop the purple pin</span>
-                            <label class="apm-toggle-switch" style="flex-shrink:0" title="Enable point selection">
-                                <input type="checkbox" id="archeoPotPinToggle">
-                                <span class="apm-toggle-track"></span>
-                            </label>
-                        </div>
                         <div class="archeo-pot-control"><span>Search radius / Rază</span><strong id="archeoPotDistanceValue">10 km</strong></div>
                         <input type="range" class="transp-slider" id="archeoPotDistance" min="1" max="10" value="10" step="1" aria-label="Search radius from 1 to 10 kilometres">
 
@@ -2828,7 +2820,7 @@
                                 <span class="t" data-key="archeo_legend_excluded">UAT / heritage radius</span>
                             </span>
                         </div>
-                        <div style="font-size:0.66rem;color:rgba(245,240,235,0.38);margin-top:7px;line-height:1.45" class="t" data-key="archeo_hint">Bubbles fill the free ground: mixed sizes, never touching each other or a heritage radius. The heatmap scores every free cell with the same triangulated logic — colour = score on one absolute scale shared with the bubbles and this legend. Red = UAT built-up area and heritage protection radii, where nothing is ever generated.</div>
+                        <div style="font-size:0.66rem;color:rgba(245,240,235,0.38);margin-top:7px;line-height:1.45" class="t" data-key="archeo_hint">Searches for locations with archaeological potential reported to the marked archaeological sites, based on a triangulation logic — colour = score, on one absolute scale shared with the bubbles and with the legend. Red = the UAT built-up area and the protection radii of the sites, where nothing is generated.</div>
                     </div>
 
                     <!-- Archeological Report (premium) — "Raport arheologic".
@@ -3613,7 +3605,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260917-archeo-coverage"></script>
+    <script src="js/translations.js?v=20260918-archeo-heat-northup"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -3664,12 +3656,12 @@
     <script src="js/map-app.js?v=20260917-gmaps-directions"></script>
     <script src="js/offline-maps.js?v=20260916-pwa-panel-offline-exit"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
-    <script src="js/vertical-opacity-control.js?v=20260917-vertical-slim-glass"></script>
+    <script src="js/vertical-opacity-control.js?v=20260918-archeo-heat-northup"></script>
     <!-- leaflet-heat rămâne în shell (pre-cache), dar nu mai e folosit de
          „Archeological Potential Sites": heatmap-ul de acolo e propriul raster de
          scoruri ancorat geografic, ca să nu alunece la zoom. -->
     <script src="js/leaflet-heat.js?v=20260916-analysis-dock"></script>
-    <script src="js/archeo-potential.js?v=20260917-gmaps-directions"></script>
+    <script src="js/archeo-potential.js?v=20260918-archeo-heat-northup"></script>
     <script src="js/lidar-geo.js?v=20260811-latlon"></script>
     <script src="js/lidar-scanner.js?v=20260917-gmaps-directions"></script>
     <script src="js/library-of-babel.js?v=20260917-babel-epochs"></script>

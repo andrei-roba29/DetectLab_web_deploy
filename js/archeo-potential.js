@@ -85,8 +85,8 @@
         // Working area -------------------------------------------------------
         SEARCH_RADIUS_M: 10000,      // pipeline default (also the report's radius)
         // The layer's own slider: 1–10 km around the purple pin (or around the
-        // map centre when pin mode is off). SEARCH_RADIUS_M stays the default
-        // for headless callers (js/archeo-report.js).
+        // map centre when no pin has been dropped). SEARCH_RADIUS_M stays the
+        // default for headless callers (js/archeo-report.js).
         RADIUS_KM_MIN: 1,
         RADIUS_KM_MAX: 10,
         RADIUS_KM_DEFAULT: 10,
@@ -2081,8 +2081,14 @@
     }
 
     /**
-     * Rasterul de scor al rulării: o imagine de cols × rows pixeli în care
-     * fiecare celulă a grilei e un pixel colorat după scorul ei normalizat.
+     * Rasterul de scor al rulării: cols × rows pixeli în care fiecare celulă a
+     * grilei e un pixel colorat după scorul ei normalizat.
+     *
+     * Indicare: `rgba`/`valid`/`values` sunt în ORDINE DE CÂMP — idx =
+     * row·cols + col cu row 0 = marginea SUDICĂ (minLat) — exact ca
+     * field.results. Imaginea sursă (createHeatSourceCanvas) le inversează pe
+     * vertical ca bitmap-ul desenat să fie NORD în sus (redraw ancorează vârful
+     * bitmap-ului la maxLat), iar colorAt() rămâne în ordine de câmp.
      * @returns {{cols,rows,rgba,values,valid,window,bbox,cellM}}
      */
     function buildHeatRaster(field) {
@@ -2436,6 +2442,15 @@
 
     // Rasterul de scoruri, ca imagine sursă de cols × rows px (redimensionată
     // de canvas la desenare — de aici aspectul neted, fără „trepte”).
+    //
+    // ORIENTAREA N–S (sursa vechiului „heatmap oglindit, cu zone goale care nu
+    // sunt nici UAT, nici razele siturilor”): rândul 0 al rasterului e
+    // marginea SUDICĂ a grilei (buildFieldCells indexează row 0 la minLat),
+    // iar rândul 0 al imaginii e partea de SUS a bitmap-ului — pe care
+    // redraw() o ancorează la bbox.maxLat (NORD). Rândurile se copiază
+    // inversate, ca culoarea unei celule să cadă la latitudinea ei reală:
+    // identic cu bulele (aceleași culori, pe aceeași poziție) și cu masca
+    // roșie desenată la coordonatele corecte.
     function createHeatSourceCanvas(raster) {
         if (!raster || !raster.cols || !raster.rows || !raster.rgba) return null;
         var canvas = createCanvasEl(raster.cols, raster.rows);
@@ -2444,7 +2459,10 @@
         if (!ctx || typeof ctx.createImageData !== 'function') return null;
         var img = ctx.createImageData(raster.cols, raster.rows);
         if (!img || !img.data) return canvas;
-        img.data.set(raster.rgba);
+        var rowBytes = raster.cols * 4;
+        for (var r = 0; r < raster.rows; r++) {
+            img.data.set(raster.rgba.subarray((raster.rows - 1 - r) * rowBytes, (raster.rows - r) * rowBytes), r * rowBytes);
+        }
         if (typeof ctx.putImageData === 'function') ctx.putImageData(img, 0, 0);
         return canvas;
     }
@@ -2802,7 +2820,7 @@
             running_pin: 'Analyzing the {r} km area around the purple pin…',
             running_center: 'Analyzing the {r} km area around the map center…',
             progress: 'Analyzing… {p}%',
-            ready: 'Set the radius (1–10 km) and press the button. With the pin switch on, tap the map first.',
+            ready: 'Set the radius (1–10 km) and press the button.',
             done: 'Analysis complete.',
             no_sites: 'Not enough archaeological sites in the area (need at least 3).',
             no_triangles: 'Sites are collinear / too clustered — no valid triangles.',
@@ -2827,8 +2845,6 @@
             summary: '{n} candidates · {h} High · {m} Medium',
             summary_field: '{n} bubbles ({h} High · {m} Medium · {l} Low) covering {c}% of the free ground · {s} scored cells · {x} excluded (red)',
             summary_heat: '{n} scored cells in the heatmap ({h} High · {m} Medium · {l} Low) · {x} excluded (red)',
-            pin_hint: 'Pin mode off — the analysis starts from the map center.',
-            pin_armed: 'Tap the map to drop the purple pin, then press “Detect”.',
             pin_set: 'Pin at {lat}, {lng} · radius {r} km — press “Detect”.'
         },
         ro: {
@@ -2839,7 +2855,7 @@
             running_pin: 'Se analizează raza de {r} km din jurul pinului mov…',
             running_center: 'Se analizează raza de {r} km din jurul centrului hărții…',
             progress: 'Se analizează… {p}%',
-            ready: 'Alege raza (1–10 km) și apasă butonul. Cu comutatorul de pin pornit, atinge întâi harta.',
+            ready: 'Alege raza (1–10 km) și apasă butonul.',
             done: 'Analiză finalizată.',
             no_sites: 'Nu sunt suficiente situri arheologice în zonă (e nevoie de cel puțin 3).',
             no_triangles: 'Siturile sunt coliniare / prea grupate — fără triunghiuri valide.',
@@ -2864,8 +2880,6 @@
             summary: '{n} candidați · {h} Ridicat · {m} Mediu',
             summary_field: '{n} bule ({h} Ridicat · {m} Mediu · {l} Scăzut) care acoperă {c}% din terenul liber · {s} celule cu scor · {x} excluse (roșu)',
             summary_heat: '{n} celule în heatmap ({h} Ridicat · {m} Mediu · {l} Scăzut) · {x} excluse (roșu)',
-            pin_hint: 'Modul pin e oprit — analiza pornește din centrul hărții.',
-            pin_armed: 'Atinge harta ca să pui pinul mov, apoi apasă „Detectează”.',
             pin_set: 'Pin la {lat}, {lng} · rază {r} km — apasă „Detectează”.'
         }
     };
@@ -2933,7 +2947,10 @@
     }
 
     function updateRunButtonVisibility(show) {
-        if (show === undefined) show = !!_pinLatLng;
+        // Butonul e vizibil cât timp stratul e pornit — cu pin, analiza
+        // pornește din pin; fără pin, din centrul hărții (logica de punct e
+        // permanentă, deci butonul nu mai apare/dispare odată cu pinul).
+        if (show === undefined) show = _resultsVisible;
         var btn = el('archeoPotRunBtn');
         if (btn) {
             if (btn.style) btn.style.display = show ? '' : 'none';
@@ -2963,13 +2980,14 @@
     /* ═══════════════════════════════════════════════════════════════════════
      * 9b. PIN MOV + RAZĂ 1–10 KM + MOD DE AFIȘARE (bule / heatmap)
      * ═══════════════════════════════════════════════════════════════════════
-     * Același tip de interacțiune ca la LIDAR Scanner și Raport arheologic:
-     * comutatorul de pin pornește modul de selectare, un tap pe hartă pune
-     * pinul (mov, ca identitatea stratului) și cercul razei, iar sliderul
+     * Logica de punct pe hartă e PERMANENTĂ (nu mai există switch-ul de pin):
+     * cât timp stratul e pornit cu comutatorul mare, un tap pe hartă pune
+     * pinul mov (ca identitatea stratului) și cercul razei, iar sliderul
      * 1–10 km redimensionează cercul în timp real. Fără pin, analiza pornește
-     * din centrul hărții — comportamentul vechi rămâne disponibil. */
+     * din centrul hărții. */
 
     var _pinMode = false;
+    var _clickArmed = false;  // handler-ul de tap pe hartă e deja atasat
     var _pinLatLng = null;
     var _pinMarker = null;
     var _pinCircle = null;
@@ -3129,7 +3147,6 @@
         try { window._dlSearchAreaPin = { lat: latlng.lat, lng: latlng.lng }; } catch (e) {}
         if (typeof L === 'undefined' || !L.marker || !L.divIcon) {
             drawPinCircle(latlng, false);
-            updateRunButtonVisibility(true);
             return;
         }
         var icon = L.divIcon({
@@ -3149,7 +3166,6 @@
             );
         }
         drawPinCircle(latlng, false);
-        updateRunButtonVisibility(true);
     }
 
     function clearPin() {
@@ -3158,7 +3174,6 @@
         _pinMarker = null;
         _pinLatLng = null;
         clearPinCircle();
-        updateRunButtonVisibility(false);
     }
 
     function onMapClick(e) {
@@ -3173,47 +3188,34 @@
         });
     }
 
+    // Pornește/oprește logica de punct pe hartă. E permanentă cât timp
+    // stratul e activ (comutatorul mare al stratului) — nu mai există switch
+    // separat de pin. Idempotent: handler-ul de tap se atasează o singură
+    // dată, deci apelurile repetate (oglinda verticală, comutatorul stratului)
+    // nu-l înmulțesc și nu rescriu statusul unei analize încheiate.
     function setPinMode(on) {
         _pinMode = !!on;
         var map = window._dlMap;
         var row = el('archeoPotentialRow');
         if (row && row.classList) row.classList.toggle('is-on', _pinMode);
-        var toggle = el('archeoPotPinToggle');
-        if (toggle && toggle.checked !== _pinMode) toggle.checked = _pinMode;
 
-        if (map && typeof map.on === 'function') {
-            if (_pinMode) {
-                ensurePane(map);
-                map.on('click', onMapClick);
-                if (_pinLatLng) drawPinCircle(_pinLatLng, false);
-                setStatus(_pinLatLng ? 'pin_set' : 'pin_armed', false, _pinLatLng ? {
-                    lat: _pinLatLng.lat.toFixed(5), lng: _pinLatLng.lng.toFixed(5), r: radiusKm()
-                } : null);
-                updateRunButtonVisibility(!!_pinLatLng);
-            } else {
-                if (typeof map.off === 'function') map.off('click', onMapClick);
-                clearPin();
-                setStatus('pin_hint');
-            }
+        if (!map || typeof map.on !== 'function') return _pinMode;
+
+        if (_pinMode && !_clickArmed) {
+            ensurePane(map);
+            map.on('click', onMapClick);
+            _clickArmed = true;
+            if (_pinLatLng) drawPinCircle(_pinLatLng, false);
+            setStatus(_pinLatLng ? 'pin_set' : 'ready', false, _pinLatLng ? {
+                lat: _pinLatLng.lat.toFixed(5), lng: _pinLatLng.lng.toFixed(5), r: radiusKm()
+            } : null);
+        } else if (!_pinMode && _clickArmed) {
+            if (typeof map.off === 'function') map.off('click', onMapClick);
+            _clickArmed = false;
+            clearPin();
+            setStatus('ready');
         }
-        // Oglinda verticală a razei + butonul andocat jos urmează modul pin.
-        notifyVerticalControl(_pinMode ? 'archeoPotDistance' : null);
         return _pinMode;
-    }
-
-    // Trimite stratul către oglinda verticală (slider de rază în dreapta) și
-    // către dock-ul centrat jos (butonul „Detectează”). Absența modulului
-    // (teste node, încărcare parțială) e ignorată.
-    function notifyVerticalControl(sliderId) {
-        try {
-            var api = window.DetectLabVerticalOpacity;
-            if (!api) return;
-            if (sliderId && typeof api.select === 'function') api.select(sliderId);
-            else if (!sliderId && typeof api.getActiveSliderId === 'function' &&
-                     api.getActiveSliderId() === 'archeoPotDistance' && typeof api.close === 'function') {
-                api.close();
-            }
-        } catch (e) { /* controlul nu e încă inițializat */ }
     }
 
     // Sliderul de rază: aceeași optimizare ca la LIDAR Scanner / Raport —
@@ -3496,11 +3498,12 @@
 
     function toggleArcheoPotentialLayer(on) {
         _resultsVisible = !!on;
-        // Stratul oprit → și modul pin se oprește (iar oglinda razei + dock-ul
-        // de acțiune se închid), ca să nu rămână unelte active fără rezultate.
-        if (!_resultsVisible && _pinMode) setPinMode(false);
+        // Logica de punct pe hartă urmează comutatorul mare al stratului:
+        // oprit → nu mai poate fi pus pinul (și se curăță cel existent);
+        // pornit → tap-ul pe hartă e din nou activ.
+        setPinMode(_resultsVisible);
         var map = window._dlMap;
-        if (!map) return;
+        if (!map) { updateRunButtonVisibility(_resultsVisible); return; }
         layerList().forEach(function (layer) {
             try {
                 var has = (typeof map.hasLayer === 'function') ? map.hasLayer(layer) : false;
@@ -3512,6 +3515,7 @@
                 }
             } catch (e) { /* DOM-only tests */ }
         });
+        updateRunButtonVisibility(_resultsVisible);
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -3540,13 +3544,6 @@
                 toggleArcheoPotentialLayer(toggle.checked);
             });
         }
-        var pinToggle = el('archeoPotPinToggle');
-        if (pinToggle && !pinToggle.dataset.archeoWired) {
-            pinToggle.dataset.archeoWired = '1';
-            pinToggle.addEventListener('change', function () {
-                setPinMode(this.checked);
-            });
-        }
         var slider = el('archeoPotDistance');
         if (slider && !slider.dataset.archeoWired) {
             slider.dataset.archeoWired = '1';
@@ -3569,9 +3566,11 @@
         if (typeof document !== 'undefined' && document.addEventListener) {
             document.addEventListener('detectlab:langchange', onLangChange);
         }
-        updateRunButtonVisibility(!!_pinLatLng);
-        setStatus(_pinLatLng ? 'pin_set' : (_pinMode ? 'pin_armed' : 'ready'), false,
-            _pinLatLng ? { lat: _pinLatLng.lat.toFixed(5), lng: _pinLatLng.lng.toFixed(5), r: radiusKm() } : null);
+        // Logica de punct pe hartă e permanentă: stratul pornește cu tap-ul pe
+        // hartă activ (fără switch de pin); fără pin, analiza pornește din
+        // centrul hărții.
+        setPinMode(_resultsVisible);
+        updateRunButtonVisibility(_resultsVisible);
     }
 
     // The panel may load before or after this script — wire on both events.

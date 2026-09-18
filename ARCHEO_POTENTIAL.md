@@ -16,7 +16,7 @@ Premium map analysis layer for DetectLab.
 | `js/archeo-potential.js` | The whole layer: triangulation, filtering, scoring, score field, rendering, pin/radius, UI wiring. |
 | `js/leaflet-heat.js` | `L.heatLayer` (simpleheat). **No longer used by this layer** — the heatmap is now the layer's own score raster (see below). Still in the app shell, so keep it precached. |
 | `js/vertical-opacity-control.js` | Mirrors the layer's radius slider vertically on the map and docks its action button bottom-centre (`DISTANCE_SOURCES`, `syncDistanceDock`). |
-| `index.html` | Premium-tab UI row (pin switch, radius slider, output-mode buttons, run button, dual legend, status) + `#layerActionDock` + `<script>` includes. |
+| `index.html` | Premium-tab UI row (permanent purple pin, radius slider, output-mode buttons, run button, dual legend, status) + `#layerActionDock` + `<script>` includes. |
 | `css/styles.css` | `.archeo-pot-*` (row, pin, mode buttons, legend, heat bar), `.layer-action-dock*`, `[data-kind="distance"]` mirror colours. |
 | `js/translations.js` | RO/EN labels for the new UI. |
 | `sw.js` | Pre-cache list + cache version bump for the new scripts. |
@@ -50,7 +50,8 @@ the heatmap and the legend all read from.
 
 ## Workflow (button press)
 
-1. Take the **purple pin** dropped on the map (`#archeoPotPinToggle` on) or,
+1. Take the **purple pin** dropped on the map (the map-point logic is
+   permanent — no pin switch; tap the map any time the layer is on) or,
    without a pin, the **current map center** (`map.getCenter()`).
 2. Build a search circle from the **radius slider** (`#archeoPotDistance`,
    1–10 km; `currentRadiusM()`). Headless callers that pass no radius still get
@@ -199,6 +200,13 @@ The layer now builds its own surface (`buildHeatRaster`):
    (`getZoomScale` + `_getNewPixelOrigin`, scaled around the recorded bitmap
    anchor) during `zoomanim`/pinch. Unrounded projection keeps a zoom jump from
    multiplying a half-pixel rounding error into a visible slide.
+   **Orientation is north-up**: the grid indexes row 0 at the southern edge
+   (`minLat`), while the bitmap's top row is pinned to `maxLat` (north), so
+   `createHeatSourceCanvas` copies the raster rows flipped — a cell's colour
+   always lands at its own latitude, exactly where its bubble is drawn.
+   (The old un-flipped copy painted the whole surface mirror-reversed N–S:
+   colours and the transparent exclusion holes landed on the opposite side of
+   the circle, in places that are neither UAT nor a site radius.)
 
 So a colour always means the same thing — the score of that ground — and the
 surface stays glued to the map at every zoom. `test-archeo-potential.js`
@@ -221,7 +229,7 @@ sliders explicitly (`DISTANCE_SOURCES`, by id — never through the generic
 | Layer | slider | toggle | docked button |
 |---|---|---|---|
 | LIDAR Scanner | `#lidarScannerDistance` (10–50 km) | `#lidarScannerToggle` | `#lidarScannerRun` |
-| Archeological Potential Sites | `#archeoPotDistance` (1–10 km) | `#archeoPotPinToggle` | `#archeoPotRunBtn` |
+| Archeological Potential Sites | `#archeoPotDistance` (1–10 km) | `#archeoPotToggle` (main layer switch) | `#archeoPotRunBtn` |
 | Archeological Report | `#archReportDistance` (1–10 km) | `#archReportToggle` | `#archReportRunBtn` |
 
 Pressing the layer row (or switching the layer on) opens the **vertical mirror**
@@ -233,10 +241,13 @@ chip beside it, and returned to its panel row when the mirror closes. While the
 dock is open, `body.layer-dock-open` lifts the other bottom-centre floating
 controls (`--layer-dock-clearance`) so nothing overlaps.
 
-The purple pin (`#archeoPotPinToggle`) works like the LIDAR/report points: tap
-the map to drop it, drag the slider to resize its circle, press the docked
-button to analyse that exact radius. Turning the layer off also closes the pin
-mode, the mirror and the dock.
+The purple pin works like the LIDAR/report points, with one difference: there
+is **no separate pin switch** — the map-point logic is permanent while the
+layer's main switch (`#archeoPotToggle`) is on. Tap the map to drop the pin,
+drag the slider to resize its circle, press the docked button to analyse that
+exact radius; without a pin the analysis starts from the map center. Turning
+the layer off also closes the pin logic (removes the tap handler and the pin),
+the mirror and the dock.
 
 
 ---
