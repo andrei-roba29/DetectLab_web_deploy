@@ -76,6 +76,25 @@
         #pwaUserDropdown button[onclick*="openEvents"] { position: relative !important; }
         .pwa-dropdown-user button[onclick*="openEvents"] { position: relative !important; }
 
+        /* Keep the creation form below the phone status bar, including PWAs
+           that report a zero safe-area inset. Bound the scrollable card to
+           the remaining viewport so centering cannot push its title above it. */
+        #createEventModal {
+            --ce-top-gap: calc(16px + env(safe-area-inset-top, 0px));
+            --ce-bottom-gap: calc(16px + env(safe-area-inset-bottom, 0px));
+            box-sizing: border-box;
+            padding: var(--ce-top-gap) 16px var(--ce-bottom-gap);
+        }
+        html.is-pwa #createEventModal,
+        body.is-pwa #createEventModal {
+            --ce-top-gap: calc(16px + max(32px, env(safe-area-inset-top, 0px)));
+        }
+        #createEventModal > div {
+            box-sizing: border-box;
+            max-height: calc(100vh - var(--ce-top-gap) - var(--ce-bottom-gap));
+            max-height: calc(100dvh - var(--ce-top-gap) - var(--ce-bottom-gap));
+        }
+
         /* Calendar panel */
         #eventsManagerPanel {
             position: fixed;
@@ -1747,8 +1766,8 @@
 
         var modal = document.createElement('div');
         modal.id = 'createEventModal';
-        modal.style.cssText = 'position: fixed; inset: 0; z-index: 4000; background: rgba(4,10,22,0.85); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 16px;';
-        modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.25); border-radius: 12px; width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">' +
+        modal.style.cssText = 'position: fixed; inset: 0; z-index: 4000; background: rgba(4,10,22,0.85); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center;';
+        modal.innerHTML = '<div style="background: rgba(10,20,42,0.98); border: 1px solid rgba(184,216,240,0.25); border-radius: 12px; width: 100%; max-width: 440px; overflow-y: auto; padding: 20px; color: #F5F0EB; font-family: \'Outfit\', sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">' +
             '<h3 style="margin-top:0; font-size:1.1rem; color:var(--sky); font-family:\'Cinzel\',serif;">' + (isRo ? 'Creează un eveniment din acest Pin' : 'Create Event from this Pin') + '</h3>' +
             locationBlock +
             '<div style="margin-bottom:10px;"><label style="display:block; font-size:0.76rem; margin-bottom:4px;">' + (isRo ? 'Titlu eveniment *' : 'Event Title *') + '</label><input type="text" id="ceTitle" placeholder="' + (isRo ? 'Ex: Căutare comori în pădure' : 'Ex: Forest metal detecting') + '" style="width:100%; padding:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(184,216,240,0.25); border-radius:6px; color:#F5F0EB; font-size:0.85rem;" autocomplete="off"></div>' +

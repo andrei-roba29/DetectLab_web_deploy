@@ -137,7 +137,8 @@
 //   whole readout, plus paints each candidate layer a different colour so the
 //   band's own colour names its painter in one round trip. See
 //   PWA_BOTTOM_BAND.md.
-const CACHE_NAME = 'detectlab-v112-pwa-bottom-band';
+// v113: keep event creation below the phone status bar and within the viewport.
+const CACHE_NAME = 'detectlab-v113-event-safe-area';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
