@@ -149,7 +149,13 @@
 //   is published: the search waits for the answer, the search dialog steps
 //   aside for the question and returns with it, and the answer is applied
 //   through _presenceVisible() („Nu” still searches — you just stay invisible).
-const CACHE_NAME = 'detectlab-v117-nearby-visibility-prompt';
+// v118: PWA bottom band — the inner percentage chain (.container → .map-frame →
+//   .map-wrapper → #detectlab-map) was still min-height:100% so it inherited the
+//   short ICB (785px on an 844px screen) even after #map-section got the 100vh
+//   floor; the © Leafleet tag sat on top of the gap and #060E1E showed through.
+//   All four inner boxes now carry min-height:100vh as well, closing the band
+//   without moving any control offset. See PWA_BOTTOM_BAND.md.
+const CACHE_NAME = 'detectlab-v118-pwa-bottom-band-inner-chain';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';

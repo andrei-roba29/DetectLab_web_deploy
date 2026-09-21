@@ -136,9 +136,20 @@
            ICB already equals the screen (Android standalone, desktop ?pwa=1,
            and any iOS version without the short-ICB behaviour) 100vh is
            exactly the top:0→bottom:0 stretch and this declaration changes
-           nothing at all. Not one control offset is touched: the floating
-           right stack, the compass column, the action dock and the tag all
-           keep their published values.
+           nothing at all.
+
+           The same floor must also be applied to the percentage chain inside
+           it: `.container → .map-frame → .map-wrapper → #detectlab-map` were
+           `height:100% / min-height:100%`, so they inherited the short ICB
+           even after #map-section got the floor — #detectlab-map stayed at
+           785px on an 844px screen, the © Leafleet tag (4px above its bottom)
+           sat on top of the gap, and the #060E1E section background showed
+           underneath as \"padding\". Giving those inner boxes `min-height:100vh`
+           as well forces the whole chain to the real screen height.
+
+           Not one control offset is touched: the floating right stack, the
+           compass column, the action dock and the tag all keep their published
+           values.
            (The one path where 100vh exceeds the visible area is ?pwa=1 opened
            in a mobile BROWSER TAB, where 100vh is the large viewport and the
            preview map slides under the browser toolbar. ?pwa=1 is a desktop
@@ -180,7 +191,7 @@
         body.is-pwa .map-wrapper,
         body.is-pwa #detectlab-map {
             height: 100% !important;
-            min-height: 100% !important;
+            min-height: 100vh !important;
             border: none !important;
             border-radius: 0 !important;
             box-shadow: none !important;
@@ -250,6 +261,7 @@
             max-width: 100% !important;
             width: 100% !important;
             height: 100% !important;
+            min-height: 100vh !important;
             margin: 0 !important;
             overflow: hidden !important;
         }
