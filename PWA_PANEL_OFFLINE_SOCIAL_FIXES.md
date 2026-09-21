@@ -103,6 +103,14 @@ utilizatorul nu l-a cerut niciodată. Regula de vizibilitate a fost simplificat�
 * **oprirea detecției nu te mai ascunde** atâta timp cât locația live merge; pinul
   dispare când se oprește locația live (sau când răspunsul devine „Nu").
 
+**Actualizare.** Consimțământul se cere acum și din fluxul lupitei, cu **aceeași**
+fereastră ca la switchul de detecție: după „Da / Yes" la întrebarea de 10 km,
+„Vrei să fii vizibil și pentru alți utilizatori?" (Da/Nu) apare înainte ca ceva să
+fie publicat, iar căutarea **așteaptă răspunsul** (dialogul de căutare se retrage
+cât timp întrebarea e pe ecran și revine după răspuns). „Nu" nu oprește căutarea —
+vezi vecinii fără să fii văzut — iar răspunsul intră în aceeași regulă
+`_presenceVisible()`. Detalii în `FRIENDS_AND_CHAT.md`.
+
 ## 6. Butonul „Adaugă prietenie" apărea doar câteodată
 
 **Cauza.** `Popup.update()` din Leaflet **reatribuie conținutul**: pentru un popup al cărui

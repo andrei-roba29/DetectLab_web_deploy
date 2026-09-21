@@ -140,7 +140,16 @@
 // v113: keep event creation below the phone status bar and within the viewport.
 // v115: move the Battles epoch-colour legend from the layers panel into the
 // Battles info tab, directly below its attribution.
-const CACHE_NAME = 'detectlab-v116-layer-initials';
+// v116: layer-card initials — the mirrored layer cards (analysis sliders +
+//   the PWA layer panel) fall back to the layer's initials when the icon is
+//   missing, so no card is painted with an empty header.
+// v117: visibility prompt on the nearby search — tapping „Da / Yes” in „Vezi
+//   alți detectoriști în zonă” now asks the SAME question as the Detect switch
+//   („Vrei să fii vizibil și pentru alți utilizatori?”, Da/Nu) before anything
+//   is published: the search waits for the answer, the search dialog steps
+//   aside for the question and returns with it, and the answer is applied
+//   through _presenceVisible() („Nu” still searches — you just stay invisible).
+const CACHE_NAME = 'detectlab-v117-nearby-visibility-prompt';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -572,7 +581,12 @@ const PRECACHE_URLS = [
   // min-height:100vh. js/pwa-debug.js e sonda opțională de pe dispozitiv
   // (?pwaDebug=1 / ?pwaDebug=colors, sau 5 tap-uri pe eticheta „© Leafleet”).
   // Vezi PWA_BOTTOM_BAND.md.
-  'js/pwa-debug.js?v=20260918-pwa-bottom-probe'
+  'js/pwa-debug.js?v=20260918-pwa-bottom-probe',
+  // „Vezi alți detectoriști în zonă” întreabă și el „Vrei să fii vizibil și
+  // pentru alți utilizatori?” (Da/Nu), exact ca switchul de detecție: căutarea
+  // așteaptă răspunsul înainte să publice prezența sau să pornească locația
+  // live, iar „Nu” doar te ține ascuns — căutarea merge înainte.
+  'js/map-app.js?v=20260921-nearby-visibility-prompt'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──

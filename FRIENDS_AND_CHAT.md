@@ -250,14 +250,25 @@ Notes:
   your Detect mode on — the two switches stay independent, and being seen does not
   require detecting:
 
-  * **seen by others** = live location running **and** the „Sunt de acord”
-    consent (`_visibleToOthers`);
+  * **seen by others** = live location running **and** the „Da” answer
+    (`_visibleToOthers`);
   * the **Detect** switch only decides whether your finds are recorded;
   * turning Detect **off** no longer hides you — the pin disappears when live
     location stops or the consent is withdrawn.
 
   Every publish site in `js/map-app.js` routes through one `_presenceVisible()`
   helper, so no code path can write a `visible` row that disagrees with that rule.
+* **The consent is asked by both entry points, with the same window.** Turning the
+  Detect switch (or the 🎯 live-location button) ON already asked „Vrei să fii
+  vizibil și pentru alți utilizatori?” (`#visibilityModal`, Da/Nu); pressing
+  „Da / Yes” in „Vezi alți detectoriști în zonă” asks it too, because wanting to
+  see the neighbours is exactly the moment your own position would be published.
+  `searchNearbyDetectors()` **awaits** the answer (`_promptVisibleToOthers()`
+  returns a Promise; the search dialog steps aside for the question and returns
+  afterwards), „Nu” still runs the search — you just stay invisible — and the
+  answer is applied through the same `_presenceVisible()` helper. Programmatic
+  re-activations (resume from background, auto-enable) never re-ask: they reuse
+  the stored answer.
 
 ---
 
