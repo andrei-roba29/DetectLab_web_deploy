@@ -1026,14 +1026,11 @@
             animation: fadeUp 1s 0.2s ease both;
         }
 
-        .hero-desc {
+        .hero-tech {
             position: relative;
-            max-width: 620px;
-            font-size: 1.05rem;
-            font-weight: 300;
-            line-height: 1.75;
-            color: rgba(245,240,235,0.72);
-            margin-bottom: 52px;
+            display: flex;
+            justify-content: center;
+            margin-bottom: 32px;
             animation: fadeUp 1s 0.3s ease both;
         }
 

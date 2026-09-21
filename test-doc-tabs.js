@@ -125,6 +125,9 @@ for (const [file, html] of Object.entries(pages)) {
 
 /* ── 6. index.html: sections removed, tabs wired ──────────────────────── */
 const index = read('index.html');
+assert.ok(!/data-key="hero_desc"/.test(index), 'the homepage no longer displays the long hero description');
+assert.ok(/class="hero-tech">\s*<a href="tehnologie.html" class="btn-secondary t" data-key="nav_tech" data-doc-link="technology">Tehnologie<\/a>/.test(index),
+    'the hero has a styled, language-aware button linking directly to Technology');
 assert.ok(!/id="what"/.test(index), 'index.html no longer carries the Technology section (#what)');
 assert.ok(!/id="how"/.test(index), 'index.html no longer carries the Process section (#how)');
 assert.ok(!/href="#what"/.test(index) && !/href="#how"/.test(index), 'no navigation entry still targets the removed anchors');

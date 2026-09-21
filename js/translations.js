@@ -6,7 +6,6 @@
                 // (technology.html / process.html), not as homepage sections.
                 nav_tech: 'Technology', nav_process: 'Process',
                 hero_badge: 'Archaeology × Artificial Intelligence', hero_tagline: 'Saving History Together',
-                hero_desc: 'An Archaeological Prediction Model that automatically identifies high-potential zones for ancient settlements — using topographic, geological, and hydrographic data collected since the dawn of civilization.',
                 hero_btn1: '🗺 Explore the Map', hero_btn2: 'View Membership Plans', scroll: 'Scroll to discover',
                 what_label: 'Technology', what_title: 'What is an <span class="hl">Archaeological Prediction Model</span>?',
                 what_desc: 'Think of it as a smart map that reads the landscape like an archaeologist. Instead of spending years walking fields and digging randomly, the APM analyzes thousands of environmental variables to tell you: <em>here is where people lived.</em>',
@@ -514,7 +513,6 @@
                 // (tehnologie.html / proces.html), nu mai sunt secțiuni pe prima pagină.
                 nav_tech: 'Tehnologie', nav_process: 'Proces',
                 hero_badge: 'Arheologie × Inteligență Artificială', hero_tagline: 'Salvăm Istoria Împreună',
-                hero_desc: 'Un Model de Predicție Arheologică care identifică automat zonele cu potențial ridicat pentru așezări antice — folosind date topografice, geologice și hidrografice colectate de la începuturile civilizației.',
                 hero_btn1: '🗺 Explorează Harta', hero_btn2: 'Vezi Planurile de Abonament', scroll: 'Derulează pentru a descoperi',
                 what_label: 'Tehnologie', what_title: 'Ce este un <span class="hl">Model de Predicție Arheologică</span>?',
                 what_desc: 'Gândește-l ca pe o hartă inteligentă care citește peisajul ca un arheolog. În loc să petreci ani întregi mergând prin câmpuri și săpând aleatoriu, APM-ul analizează mii de variabile de mediu pentru a-ți spune: <em>aici au trăit oamenii.</em>',
