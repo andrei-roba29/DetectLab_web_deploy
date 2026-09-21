@@ -5,8 +5,10 @@ apare o bandă orizontală goală, albăstru-închis (`#060E1E`), în partea de 
 ecranului, **imediat sub eticheta „© Leafleet”**. Nu conține nimic. Harta se
 oprește deasupra ei.
 
-**Fix.** `min-height: 100vh` pe `body.is-pwa #map-section` și pe
-`body.is-pwa .transp-panel`. Niciun offset de control nu a fost modificat.
+**Fix.** `min-height: 100vh` pe `body.is-pwa #map-section`,
+`body.is-pwa .transp-panel`, `body.is-pwa .container` și pe
+`body.is-pwa .map-frame, .map-wrapper, #detectlab-map`. Niciun offset de control
+nu a fost modificat.
 
 **Diagnostic pe dispozitiv.** `js/pwa-debug.js` — `?pwaDebug=1`, `?pwaDebug=colors`,
 sau **5 tap-uri pe eticheta „© Leafleet”** din aplicația instalată.
@@ -91,6 +93,16 @@ body.is-pwa #map-section {
     height: auto !important;
     min-height: 100vh;      /* ← podeaua */
 }
+body.is-pwa .container {
+    height: 100% !important;
+    min-height: 100vh !important; /* ← podeaua pe lanțul % */
+}
+body.is-pwa .map-frame,
+body.is-pwa .map-wrapper,
+body.is-pwa #detectlab-map {
+    height: 100% !important;
+    min-height: 100vh !important; /* ← podeaua pe lanțul % */
+}
 ```
 
 Este o **podea, nu o dimensiune**. Când ICB-ul este deja egal cu ecranul
@@ -98,6 +110,13 @@ Este o **podea, nu o dimensiune**. Când ICB-ul este deja egal cu ecranul
 comportamentul scurt), `100vh` este exact stretch-ul `top:0 → bottom:0` și
 declarația nu schimbă absolut nimic. Când ICB-ul este scurt, `min-height`
 forțează cutia înapoi la înălțimea reală a ecranului, iar banda dispare.
+
+Lanțul `.container → .map-frame → .map-wrapper → #detectlab-map` fusese
+`height:100% / min-height:100%`, deci moștenea ICB-ul scurt chiar și după ce
+`#map-section` primise podeaua. Fără `min-height:100vh` pe verigile interioare,
+`#detectlab-map` rămânea la 785px pe un ecran de 844px, tag-ul `© Leafleet`
+(4px deasupra marginii containerului) stătea deasupra golului, iar fundalul
+`#060E1E` al secțiunii se vedea dedesubt ca „padding”.
 
 Același tratament pentru `body.is-pwa .transp-panel` (fereastra de straturi):
 este tot `position:fixed` cu `top:0 + bottom:0`, deci ar fi arătat exact aceeași
