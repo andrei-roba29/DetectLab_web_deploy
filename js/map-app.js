@@ -6360,6 +6360,27 @@
                     status.innerHTML='Pornește locația live (butonul 🎯 de pe hartă) ca să te poți căuta.<br><small>Start live location (the 🎯 map button) before searching.</small>';
                     return;
                 }
+                // ── Aceeași fereastră Da/Nu ca la switchul de detecție ──
+                // „Vrei să fii vizibil și pentru alți utilizatori?” este întrebat
+                // și aici: momentul în care vrei să vezi alți detectoriști este
+                // exact momentul în care propria poziție se publică, deci
+                // răspunsul trebuie să vină de la utilizator, nu din valoarea
+                // veche.  Căutarea AȘTEAPTĂ răspunsul — fereastra de întrebare
+                // rămâne singura pe ecran (dialogul de căutare se retrage și
+                // revine după răspuns), iar publicarea de mai jos trece oricum
+                // prin _presenceVisible(), deci nu poate contrazice răspunsul.
+                // „Nu” NU oprește căutarea: vezi vecinii fără să fii văzut.
+                if (typeof window._promptVisibleToOthers === 'function') {
+                    var nearbyModalEl = document.getElementById('nearbyModal');
+                    var nearbyWasShowing = !!(nearbyModalEl && nearbyModalEl.classList.contains('show'));
+                    if (nearbyModalEl) nearbyModalEl.classList.remove('show');
+                    try {
+                        await window._promptVisibleToOthers();
+                    } catch (err) {
+                        console.warn('[Nearby] visibility prompt failed:', err);
+                    }
+                    if (nearbyModalEl && nearbyWasShowing) nearbyModalEl.classList.add('show');
+                }
                 if (!window._isLiveLocationActive()) {
                     status.innerHTML='Activăm locația live…<br><small>Turning on your live location…</small>';
                     try {
@@ -6710,21 +6731,48 @@
             // nearby search) reuse it instead of re-asking.  Default until the user
             // makes an explicit choice: "Nu" (invisible) — presence rows are written
             // with visible=false, so nobody is broadcast without an explicit "Da".
+            //
+            // The SAME dialog is asked by the TWO user actions that hand our
+            // position to the other detectorists:
+            //   • turning the Detect switch ON / starting the live location by hand
+            //     (window.toggleDetection + the 🎯 button below), and
+            //   • the "Vezi alți detectoriști în zonă" search — wanting to see the
+            //     neighbours is answered with the identical question instead of
+            //     being published silently (searchNearbyDetectors awaits the
+            //     answer before it broadcasts or starts the GPS watcher).
+            // Programmatic re-activations never ask again: they reuse the stored
+            // answer.  A second ask that arrives while the dialog is already on
+            // screen joins the SAME question (the window is never stacked); every
+            // waiter — a callback or the Promise a flow is awaiting — is released
+            // with the single Da/Nu answer.
             var _visibleToOthers = (function () {
                 try { return localStorage.getItem('detect_visible_to_others') === 'true'; }
                 catch (e) { return false; }
             })();
-            var _visibilityPromptCb = null;
+            var _visibilityWaiters = [];
 
-            // Show the Da/Nu dialog.  Optional cb is invoked with the answer
-            // (true = "Da", visible · false = "Nu", invisible).  If the dialog is
-            // already on screen it is not stacked — the newest callback wins.
+            // Show the Da/Nu dialog: "Vrei să fii vizibil și pentru alți utilizatori?"
+            //   • with a cb  → cb(answer) is invoked when Da/Nu is pressed
+            //                  (true = "Da", visible · false = "Nu", invisible);
+            //   • without one → a Promise resolving with the same answer, so an
+            //                   async flow (the nearby-detectorists search) can WAIT
+            //                   for the user instead of publishing behind the window.
+            // With the markup missing the current stored answer is handed over
+            // immediately, so no caller can ever hang on a dialog that cannot open.
             window._promptVisibleToOthers = function (cb) {
+                var hasCb = (typeof cb === 'function');
                 var m = document.getElementById('visibilityModal');
-                if (!m) { if (cb) { try { cb(_visibleToOthers); } catch (e) {} } return; }
-                if (m.classList.contains('show')) { _visibilityPromptCb = cb || _visibilityPromptCb; return; }
-                _visibilityPromptCb = cb || null;
-                m.classList.add('show');
+                if (!m) {
+                    if (hasCb) { try { cb(_visibleToOthers); } catch (e) {} }
+                    return Promise.resolve(_visibleToOthers);
+                }
+                return new Promise(function (resolve) {
+                    _visibilityWaiters.push(function (answer) {
+                        if (hasCb) { try { cb(answer); } catch (e) {} }
+                        resolve(answer);
+                    });
+                    m.classList.add('show');
+                });
             };
 
             // Da/Nu answer from the dialog's buttons (inline onclick in index.html).
@@ -6739,10 +6787,10 @@
                 if (_detLat !== null && typeof publishDetectorPresence === 'function') {
                     publishDetectorPresence(_detLat, _detLng, _presenceVisible());
                 }
-                if (_visibilityPromptCb) {
-                    var cb = _visibilityPromptCb; _visibilityPromptCb = null;
-                    try { cb(_visibleToOthers); } catch (e) {}
-                }
+                // Release every ask waiting on this window, with the same answer.
+                var waiters = _visibilityWaiters;
+                _visibilityWaiters = [];
+                waiters.forEach(function (w) { try { w(_visibleToOthers); } catch (e) {} });
             };
 
             // ── PROXIMITY DETECTION ──
