@@ -34,6 +34,13 @@ assert(captionMarkup[1] !== undefined && captionMarkup[1].trim() === '',
     'the vertical mirror must not ship an OPACITY caption (got: ' + JSON.stringify(captionMarkup[1]) + ')');
 assert(!/verticalOpacityCaption"[^>]*>\s*OPACITY/i.test(indexHtml), 'the OPACITY caption strip should be gone from the markup');
 assert(indexHtml.includes('body.is-pwa .transp-panel'), 'page should retain its installed-PWA layer panel mode');
+assert(indexHtml.includes('id="verticalOpacityControlSecondary"') &&
+    indexHtml.includes('id="verticalOpacitySliderSecondary"'),
+    'the page should ship a second map-side mirror slot');
+assert(/\.vertical-opacity-control\.vertical-opacity-secondary\s*\{[^}]*right:\s*calc\(38px\s*\+\s*50px\s*\+\s*14px/.test(stylesCss),
+    'the second mirror needs its own side-by-side desktop anchor');
+assert(/opacity-layer-mirrored/.test(stylesCss),
+    'mirrored panel rows need a dedicated visual state');
 
 // Installed mobile WebViews can collapse an auto grid track when the title is
 // the only writing-mode child. The PWA path therefore owns a fixed title column
