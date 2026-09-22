@@ -67,6 +67,22 @@
     z-index: 10001;
 }
 
+/* Mobile WEB fullscreen: the ✕ exits to the bottom-right there (styles.css,
+   the max-width:600px "MOBILE FULLSCREEN & SEARCH FIXES" block), so the
+   top-right corner stays free. The desktop offset above (right:64px — room
+   for the ✕) otherwise slides the "?" against the centred map search bar on
+   a narrow screen ("se mută lipit de bara de căutare"). Keep it pinned in
+   the same top-right corner — same offsets — as the normal (non-fullscreen)
+   map. The installed PWA never toggles .is-fullscreen, so this is
+   browser-tab layout only. */
+@media (max-width: 600px) {
+    .map-frame.is-fullscreen .map-help-btn {
+        top: 14px;
+        top: calc(14px + env(safe-area-inset-top, 0px));
+        right: 14px;
+    }
+}
+
 /* ── Overlay root ── */
 .dl-tut {
     position: fixed;

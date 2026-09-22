@@ -191,7 +191,17 @@
 //   written beside the vertical mirror (v121) — never surfaced in the PWA
 //   even after deploy. The corrupt trailing bytes after index.html's </html>
 //   are gone as well, so the document parses as one clean unit again.
-const CACHE_NAME = 'detectlab-v125-pwa-shell-refresh';
+// v126: mobile WEB fullscreen control clearance (browser tab, not the
+//   installed PWA). The bottom-left compass + rotation-lock column was hidden
+//   behind the browser's bottom search/URL bar in map fullscreen — the frame
+//   is `inset:0; height:100vh` and 100vh is the LARGE viewport, so the map's
+//   bottom edge (and every absolute control on it) slides under the browser
+//   toolbar — and the "?" help button slid against the map search bar because
+//   the desktop fullscreen offset (right:64px, clearing the ✕) also applied
+//   on phones where the ✕ lives at the bottom-right instead. The bottom-left
+//   corner now fixes to the visible viewport above the browser bar, and the
+//   "?" stays pinned in the top-right corner on narrow screens.
+const CACHE_NAME = 'detectlab-v126-mobile-fs-controls';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -657,6 +667,11 @@ const PRECACHE_URLS = [
   'js/auth.js?v=20260922-resend-confirm',
   'js/map-rotate.js?v=20260916-no-bottom-bar',
   'js/newsletter.js?v=20260916-newsletter',
+  // Mobile WEB fullscreen: bottom-left compass column clears the browser's
+  // bottom search bar; the "?" help button stays in the top-right corner
+  // (tutorial.css) instead of sliding against the map search bar.
+  'css/styles.css?v=20260922-mobile-fs-controls',
+  'css/tutorial.css?v=20260922-mobile-fs-controls',
   'js/supabase.js?v=20260811-event-sync'
 ];
 

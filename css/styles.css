@@ -7201,6 +7201,28 @@
                 height: 44px;
                 border-radius: 50%;
             }
+
+            /* Mobile WEB fullscreen only (browser tab — NOT the installed PWA):
+               the browser's bottom search/URL bar hid the compass +
+               rotation-lock column pinned to the map's bottom-left corner.
+               The full-screen map frame is `inset:0; height:100vh`, and 100vh
+               is the LARGE viewport — the frame's bottom edge, and every
+               absolutely-positioned control anchored to it, slides under the
+               browser toolbar (the same overshoot documented for ?pwa=1 in a
+               mobile browser tab in index.html). position:fixed pulls the
+               Leaflet bottom-left corner back onto the visible viewport —
+               .map-frame / .map-wrapper / #detectlab-map carry no transform,
+               so it fixes to the screen exactly like the ✕ button above —
+               and lifts it clear of the browser search bar (~50-56px) plus
+               the home-indicator / gesture inset; the compass keeps its own
+               10px margin on top of that. Scoped to body:not(.is-pwa): the
+               installed app has no browser bar and keeps its own clearance
+               (body.is-pwa .leaflet-bottom → env(safe-area-inset-bottom),
+               index.html). */
+            body:not(.is-pwa) .map-frame.is-fullscreen #detectlab-map .leaflet-bottom.leaflet-left {
+                position: fixed;
+                bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+            }
             /* Leaflet's attribution bar sits flush against the true viewport
                bottom by default, crowding the ✕ button and search-help pill
                on small screens. Hide it entirely on mobile — it's the only
