@@ -38,8 +38,8 @@ const css = read('css/styles.css');
 /* 1. The cache version is bumped so the byte-difference triggers an update
       and old caches are purged on activate. */
 assert(
-    sw.includes("const CACHE_NAME = 'detectlab-v125-pwa-shell-refresh';"),
-    'sw.js must carry the v125 cache name'
+    sw.includes("const CACHE_NAME = 'detectlab-v126-mobile-fs-controls';"),
+    'sw.js must carry the v126 cache name'
 );
 assert(sw.includes('skipWaiting()'), 'sw.js must skipWaiting on install');
 assert(sw.includes('clients.claim()'), 'sw.js must claim clients on activate');
@@ -85,7 +85,7 @@ assert(css.includes('body.is-pwa .vertical-opacity-layer'),
     'the standalone-PWA rotated layer title fallback is missing from styles.css');
 assert(css.includes('.vertical-opacity-control.vertical-opacity-secondary'),
     'the second mirror anchor is missing from styles.css');
-assert(sw.includes('css/styles.css?v=20260922-mirrored-light-shade'),
+assert(sw.includes('css/styles.css?v=20260922-mobile-fs-controls'),
     'sw.js must precache the current styles.css');
 assert(sw.includes('js/vertical-opacity-control.js?v=20260922-mirrored-light-shade'),
     'sw.js must precache the current vertical-opacity-control.js');
