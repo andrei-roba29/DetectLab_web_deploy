@@ -165,6 +165,7 @@
             left: 0;
             height: auto !important;
             min-height: 100vh;
+            min-height: var(--dl-vvh, 100vh);
             width: 100% !important;
             max-width: 100% !important;
             z-index: 10;
@@ -192,6 +193,7 @@
         body.is-pwa #detectlab-map {
             height: 100% !important;
             min-height: 100vh !important;
+            min-height: var(--dl-vvh, 100vh) !important;
             border: none !important;
             border-radius: 0 !important;
             box-shadow: none !important;
@@ -217,6 +219,7 @@
             bottom: 0 !important;
             height: auto !important;
             min-height: 100vh !important;
+            min-height: var(--dl-vvh, 100vh) !important;
             max-height: none !important;
             padding-bottom: 0 !important;
             border-radius: 0 !important;
@@ -262,6 +265,7 @@
             width: 100% !important;
             height: 100% !important;
             min-height: 100vh !important;
+            min-height: var(--dl-vvh, 100vh) !important;
             margin: 0 !important;
             overflow: hidden !important;
         }
@@ -734,6 +738,44 @@
             || /[?&]pwa=1(&|$)/.test(window.location.search)) {
             document.documentElement.classList.add('is-pwa');
         }
+
+        // ── --dl-vvh: a JS-measured floor for the PWA full-screen boxes ──
+        // 100vh is documented to come up short on iOS standalone under
+        // viewport-fit=cover + black-translucent (see PWA_BOTTOM_BAND.md), but
+        // that shortfall is a CSS-unit quirk, not a JS one: window.innerHeight
+        // (and visualViewport.height) already report the true, full physical
+        // screen height in that same mode. Publishing it as a pixel custom
+        // property gives #map-section / .transp-panel / .container a floor
+        // that cannot itself be short, instead of trusting a single CSS unit
+        // to always resolve correctly on every iOS/Android build. It is only
+        // ever used as a min-height fallback (`min-height: var(--dl-vvh, 100vh)`
+        // declared right after the plain 100vh rule), so nothing regresses if
+        // the property is ever unset: the 100vh line still wins as intended.
+        (function () {
+            function setDlVvh() {
+                var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+                if (h) {
+                    document.documentElement.style.setProperty('--dl-vvh', h + 'px');
+                }
+            }
+            setDlVvh();
+            document.addEventListener('DOMContentLoaded', setDlVvh);
+            window.addEventListener('resize', setDlVvh);
+            window.addEventListener('orientationchange', function () {
+                setDlVvh();
+                setTimeout(setDlVvh, 300);
+            });
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', setDlVvh);
+            }
+            window.addEventListener('load', setDlVvh);
+            window.addEventListener('pageshow', setDlVvh);
+            // iOS settles the standalone viewport one frame after first paint —
+            // mirror the same delayed passes used by updatePwaMapLayout() below.
+            setTimeout(setDlVvh, 300);
+            setTimeout(setDlVvh, 800);
+            setTimeout(setDlVvh, 1600);
+        })();
     </script>
 </head>
 <body>
@@ -4302,6 +4344,13 @@
                     var visibleHeight = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
                     var vh = visibleHeight * 0.01;
                     document.documentElement.style.setProperty('--vh', vh + 'px');
+                    // Keep the JS-measured full-screen floor (see the early
+                    // <head> script) in sync with the same passes that already
+                    // re-check the viewport for Leaflet, instead of running a
+                    // second independent measurement loop.
+                    if (visibleHeight) {
+                        document.documentElement.style.setProperty('--dl-vvh', visibleHeight + 'px');
+                    }
                 }
 
                 function resizeMap() {
