@@ -155,7 +155,17 @@
 //   floor; the © Leafleet tag sat on top of the gap and #060E1E showed through.
 //   All four inner boxes now carry min-height:100vh as well, closing the band
 //   without moving any control offset. See PWA_BOTTOM_BAND.md.
-const CACHE_NAME = 'detectlab-v118-pwa-bottom-band-inner-chain';
+// v119: PWA bottom band, take two — 100vh itself is still a CSS-unit reading of
+//   the same short ICB on some iOS/Android builds, so v118's floor could still
+//   come up short there. #map-section / .map-frame / .map-wrapper /
+//   #detectlab-map / .transp-panel / .container now also take a JS-measured
+//   `--dl-vvh` pixel floor (window.innerHeight / visualViewport.height, which
+//   already reports the true physical screen height in that mode) as a second
+//   `min-height` line after the plain 100vh one — CSS keeps the last
+//   `min-height` that resolves to a real length, so this only raises the floor
+//   when 100vh itself was short, and changes nothing where it already matched
+//   the screen. No control offset moved. See PWA_BOTTOM_BAND.md.
+const CACHE_NAME = 'detectlab-v119-pwa-bottom-band-js-floor';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -592,7 +602,19 @@ const PRECACHE_URLS = [
   // pentru alți utilizatori?” (Da/Nu), exact ca switchul de detecție: căutarea
   // așteaptă răspunsul înainte să publice prezența sau să pornească locația
   // live, iar „Nu” doar te ține ascuns — căutarea merge înainte.
-  'js/map-app.js?v=20260921-nearby-visibility-prompt'
+  'js/map-app.js?v=20260921-nearby-visibility-prompt',
+  // These four were referenced by index.html with a cache-busted query string
+  // but never added here, so an already-installed PWA kept serving whatever
+  // older copy it had cached under the un-versioned URL instead of picking up
+  // the current script/stylesheet on the next update. Re-added so the v119
+  // bottom-band fix below (index.html's inline scripts) actually reaches
+  // installed apps together with the styles/auth/newsletter/map-rotate code
+  // that shipped alongside it.
+  'css/styles.css?v=20260922-resend-confirm',
+  'js/auth.js?v=20260922-resend-confirm',
+  'js/map-rotate.js?v=20260916-no-bottom-bar',
+  'js/newsletter.js?v=20260916-newsletter',
+  'js/supabase.js?v=20260811-event-sync'
 ];
 
 // ── Domains that normally bypass the app-shell strategy ──
