@@ -4795,7 +4795,11 @@
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
-            transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s;
+            /* `right` e în listă ca oglinda rămasă singură (clasa
+               „mirror-sole”) să alunece spre marginea din dreapta în același
+               ritm cu apariția/dispariția ei, în loc să sară. */
+            transition: opacity 0.2s ease, transform 0.2s ease, right 0.2s ease,
+                visibility 0s linear 0.2s;
         }
 
         .vertical-opacity-control.visible {
@@ -5155,6 +5159,18 @@
             right: calc(38px + 50px + 14px + env(safe-area-inset-right, 0px));
         }
 
+        /* ── O SINGURĂ OGLINDĂ = CEA MAI DIN DREAPTA POZIȚIE ──
+           Clasa „mirror-sole” e pusă de js/vertical-opacity-control.js pe
+           singura oglindă vizibilă. Fără ea, al doilea slot și-ar păstra
+           ancora de pereche (un pas spre stânga) și după închiderea sliderului
+           din dreapta, deci un singur slider pe ecran ar pluti decalat, cu o
+           bandă goală până la marginea hărții. Două clase (0,2,0) ca să bată
+           regula de mai sus a slotului secundar; blocul mobil de mai jos
+           redeclară aceeași geometrie îngustă, tot după regula lui. */
+        .vertical-opacity-control.mirror-sole {
+            right: calc(38px + env(safe-area-inset-right, 0px));
+        }
+
         .vertical-opacity-control[data-kind="satperiod"] .vertical-opacity-value {
             font-size: 0.58rem;
             letter-spacing: 0.02em;
@@ -5319,6 +5335,12 @@
                 right: calc(34px + 46px + 14px + env(safe-area-inset-right, 0px));
             }
 
+            /* O singură oglindă rămâne cea mai din dreapta și pe telefon, deasupra
+               aceleiași ancore de 34px ca primul slot (vezi regula desktop). */
+            .vertical-opacity-control.mirror-sole {
+                right: calc(34px + env(safe-area-inset-right, 0px));
+            }
+
             .vertical-opacity-slider {
                 width: 142px;
             }
@@ -5371,11 +5393,13 @@
         /* ── VERTICAL OPACITY: LAYER QUICK ACTIONS ──
            Butonul „Ajutor de căutare” (APM 2.0) și cele trei butoane Iosefină
            Premium (căutare clădiri dispărute / setări / sugerează) sunt mutate
-           de js/vertical-opacity-control.js în #verticalOpacityActions și apar
-           ca iconițe circulare, dispuse vertical sub slider — vizibile doar cât
-           timp stratul lor e selectat în oglinda verticală. Eticheta fiecărui
-           buton e ascunsă vizual și devine bula de informații la hover / focus
-           / tap (clasa .show-tip e adăugată de JS pe touch). */
+           de js/vertical-opacity-control.js în slotul de acțiuni al oglinzii
+           selectate (.vertical-opacity-actions — containerul există în AMBELE
+           oglinzi: #verticalOpacityActions și #verticalOpacityActionsSecondary)
+           și apar ca iconițe circulare, dispuse vertical sub slider — vizibile
+           doar cât timp stratul lor e selectat în oglinda verticală. Eticheta
+           fiecărui buton e ascunsă vizual și devine bula de informații la
+           hover / focus / tap (clasa .show-tip e adăugată de JS pe touch). */
         .vertical-opacity-actions {
             position: absolute;
             top: calc(100% + 10px);
@@ -5555,11 +5579,18 @@
            măsură / offline): pătrat 38×38 cu colțuri rotunjite, fond
            bleumarin, glif #B8D8F0, hover mov — fără culori per strat.
            Suprascriu poziționarea absolută bottom-center a variantelor
-           flotante de pe hartă. */
-        #verticalOpacityActions #apm20SearchHelpBtn,
-        #verticalOpacityActions #iosBldSearchHelpBtn,
-        #verticalOpacityActions #iosBldSettingsBtn,
-        #verticalOpacityActions #iosBldSuggestBtn {
+           flotante de pe hartă. Selectorul e pe CLASA containerului, nu pe
+           id-ul primei oglinzi: aceleași butoane ajung și în oglinda secundară
+           (#verticalOpacityActionsSecondary), iar un selector „#verticalOpacityActions …”
+           nu le mai prindea acolo — rămâneau cu position:absolute / bottom:76px /
+           left:50% / translateX(±112px) din regulile de bază, deci ieșeau din
+           coloana flex și se suprapuneau orizontal, descentrat, în stânga
+           sliderului. Clasa acoperă ambele sloturi, deci butoanele stau sub
+           slider în oglinda în care a fost selectat stratul. */
+        .vertical-opacity-actions #apm20SearchHelpBtn,
+        .vertical-opacity-actions #iosBldSearchHelpBtn,
+        .vertical-opacity-actions #iosBldSettingsBtn,
+        .vertical-opacity-actions #iosBldSuggestBtn {
             position: relative !important;
             bottom: auto !important;
             left: auto !important;
@@ -5586,24 +5617,24 @@
             white-space: normal;
             letter-spacing: 0;
         }
-        #verticalOpacityActions #apm20SearchHelpBtn:hover,
-        #verticalOpacityActions #iosBldSearchHelpBtn:hover,
-        #verticalOpacityActions #iosBldSettingsBtn:hover,
-        #verticalOpacityActions #iosBldSuggestBtn:hover {
+        .vertical-opacity-actions #apm20SearchHelpBtn:hover,
+        .vertical-opacity-actions #iosBldSearchHelpBtn:hover,
+        .vertical-opacity-actions #iosBldSettingsBtn:hover,
+        .vertical-opacity-actions #iosBldSuggestBtn:hover {
             background: rgba(107,63,160,0.82) !important;
             border-color: rgba(107,63,160,0.6) !important;
             color: #fff;
         }
-        #verticalOpacityActions #iosBldSuggestBtn.active,
-        #verticalOpacityActions #iosBldSuggestBtn.active:hover {
+        .vertical-opacity-actions #iosBldSuggestBtn.active,
+        .vertical-opacity-actions #iosBldSuggestBtn.active:hover {
             background: rgba(107,63,160,0.82) !important;
             border-color: rgba(107,63,160,0.6) !important;
             color: #fff;
         }
-        #verticalOpacityActions #apm20SearchHelpBtn svg,
-        #verticalOpacityActions #iosBldSearchHelpBtn svg,
-        #verticalOpacityActions #iosBldSettingsBtn svg,
-        #verticalOpacityActions #iosBldSuggestBtn svg {
+        .vertical-opacity-actions #apm20SearchHelpBtn svg,
+        .vertical-opacity-actions #iosBldSearchHelpBtn svg,
+        .vertical-opacity-actions #iosBldSettingsBtn svg,
+        .vertical-opacity-actions #iosBldSuggestBtn svg {
             flex-shrink: 0;
             width: 17px;
             height: 17px;
@@ -5611,7 +5642,7 @@
 
         /* Eticheta devine bulă de informații în stânga iconiței — vizibilă doar
            la hover (desktop), focus tastatură, stare activă sau tap (mobil). */
-        #verticalOpacityActions .vo-action-tip {
+        .vertical-opacity-actions .vo-action-tip {
             position: absolute;
             right: calc(100% + 9px);
             top: 50%;
@@ -5636,7 +5667,7 @@
             visibility: hidden;
             transition: opacity 0.16s ease, transform 0.16s ease, visibility 0s linear 0.16s;
         }
-        #verticalOpacityActions .vo-action-tip::after {
+        .vertical-opacity-actions .vo-action-tip::after {
             content: '';
             position: absolute;
             top: 50%;
@@ -5645,17 +5676,17 @@
             border-left-color: rgba(8, 20, 41, 0.97);
             transform: translateY(-50%);
         }
-        #verticalOpacityActions button:hover .vo-action-tip,
-        #verticalOpacityActions button:focus-visible .vo-action-tip,
-        #verticalOpacityActions button:active .vo-action-tip,
-        #verticalOpacityActions button.show-tip .vo-action-tip,
-        #verticalOpacityActions button:disabled .vo-action-tip {
+        .vertical-opacity-actions button:hover .vo-action-tip,
+        .vertical-opacity-actions button:focus-visible .vo-action-tip,
+        .vertical-opacity-actions button:active .vo-action-tip,
+        .vertical-opacity-actions button.show-tip .vo-action-tip,
+        .vertical-opacity-actions button:disabled .vo-action-tip {
             opacity: 1;
             visibility: visible;
             transform: translateY(-50%) translateX(0);
             transition-delay: 0s;
         }
-        #verticalOpacityActions button:focus-visible {
+        .vertical-opacity-actions button:focus-visible {
             outline: 2px solid rgba(184, 216, 240, 0.75);
             outline-offset: 2px;
         }
@@ -5663,15 +5694,15 @@
         /* Zoom insuficient: iconița rămâne vizibilă, estompată, iar bula arată
            mesajul de zoom (textul etichetei e comutat de JS pe hint-ul de zoom).
            Click-ul declanșează toast-ul explicativ din run*SearchHelp. */
-        #verticalOpacityActions button.needs-zoom {
+        .vertical-opacity-actions button.needs-zoom {
             opacity: 0.55;
             cursor: pointer;
         }
         /* Stare de încărcare: iconița pulsează, bula cu „Se analizează…” rămâne vizibilă. */
-        #verticalOpacityActions button:disabled {
+        .vertical-opacity-actions button:disabled {
             cursor: wait;
         }
-        #verticalOpacityActions button:disabled svg {
+        .vertical-opacity-actions button:disabled svg {
             animation: vo-action-pulse 1.1s ease-in-out infinite;
         }
         @keyframes vo-action-pulse {
@@ -5689,6 +5720,13 @@
             right: calc(38px + 50px + 14px + env(safe-area-inset-right, 0px));
             transform: translateY(-50%);
         }
+        /* Oglinda Josephine poate sta și în al doilea slot (la 50px + 14px spre
+           stânga de primul): ancora panoului urmărește oglinda, ca panoul să
+           rămână în stânga sliderului care i-a deschis iconițele, nu peste el.
+           Două clase pe body (0,3,0) bat regula de mai sus (0,2,0). */
+        body.vo-josephine-docked.vo-josephine-docked-secondary #iosBldSettingsPanel {
+            right: calc(38px + 50px + 14px + 50px + 14px + env(safe-area-inset-right, 0px));
+        }
         body.is-pwa.vo-josephine-docked #iosBldSettingsPanel {
             top: calc(50% - var(--pwa-bottom-controls-half-clearance, 22px));
             bottom: auto;
@@ -5702,7 +5740,7 @@
         @media (max-width: 600px) {
             /* Aceeași dimensiune 38px ca restul iconițelor de pe hartă (care nu
                se micșorează pe mobil); doar bula de informații se îngustează. */
-            #verticalOpacityActions .vo-action-tip {
+            .vertical-opacity-actions .vo-action-tip {
                 max-width: 160px;
                 white-space: normal;
                 text-align: right;
@@ -5711,6 +5749,9 @@
                 right: calc(34px + 46px + 10px + env(safe-area-inset-right, 0px));
                 width: min(280px, calc(100vw - 140px));
             }
+            body.vo-josephine-docked.vo-josephine-docked-secondary #iosBldSettingsPanel {
+                right: calc(34px + 46px + 10px + 46px + 10px + env(safe-area-inset-right, 0px));
+            }
         }
 
         @media (max-height: 500px) {
@@ -5718,10 +5759,10 @@
                 top: calc(100% + 8px);
                 gap: 6px;
             }
-            #verticalOpacityActions #apm20SearchHelpBtn,
-            #verticalOpacityActions #iosBldSearchHelpBtn,
-            #verticalOpacityActions #iosBldSettingsBtn,
-            #verticalOpacityActions #iosBldSuggestBtn {
+            .vertical-opacity-actions #apm20SearchHelpBtn,
+            .vertical-opacity-actions #iosBldSearchHelpBtn,
+            .vertical-opacity-actions #iosBldSettingsBtn,
+            .vertical-opacity-actions #iosBldSuggestBtn {
                 width: 34px !important;
                 height: 34px !important;
                 min-width: 34px;
@@ -5733,10 +5774,10 @@
             .vertical-opacity-control {
                 transition: none;
             }
-            #verticalOpacityActions .vo-action-tip {
+            .vertical-opacity-actions .vo-action-tip {
                 transition: none;
             }
-            #verticalOpacityActions button:disabled svg {
+            .vertical-opacity-actions button:disabled svg {
                 animation: none;
             }
         }

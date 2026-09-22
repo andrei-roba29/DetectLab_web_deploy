@@ -201,7 +201,16 @@
 //   on phones where the ✕ lives at the bottom-right instead. The bottom-left
 //   corner now fixes to the visible viewport above the browser bar, and the
 //   "?" stays pinned in the top-right corner on narrow screens.
-const CACHE_NAME = 'detectlab-v126-mobile-fs-controls';
+// v127: layer quick actions in BOTH vertical mirrors. The docked icon rules
+//   (APM 2.0 „Ajutor de căutare” + the three Iosefină Premium buttons) were
+//   scoped to `#verticalOpacityActions …`, so when a layer was mirrored into
+//   the SECOND on-screen slider (#verticalOpacityActionsSecondary) its buttons
+//   kept the floating bottom-center geometry from their base rules
+//   (position:absolute, bottom:76px, left:50%, translateX(±112px)) — out of the
+//   column, overlapping and off to the left of the slider. The selectors now
+//   key off the shared `.vertical-opacity-actions` container class. The bump
+//   matters for the installed PWA, which serves the shell from this cache.
+const CACHE_NAME = 'detectlab-v128-sole-mirror-activate';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -672,6 +681,20 @@ const PRECACHE_URLS = [
   // (tutorial.css) instead of sliding against the map search bar.
   'css/styles.css?v=20260922-mobile-fs-controls',
   'css/tutorial.css?v=20260922-mobile-fs-controls',
+  // v127: the layer quick-action icons (APM 2.0 „Ajutor de căutare” + the three
+  // Iosefină Premium buttons) are now styled from the shared
+  // .vertical-opacity-actions container, so they dock under the slider in the
+  // SECOND on-screen mirror too instead of keeping their floating
+  // bottom-center geometry there. Both files are cache-busted on the page, so
+  // both URLs must be pre-cached for an installed PWA to pick them up.
+  'css/styles.css?v=20260922-vo-actions-both-slots',
+  'js/vertical-opacity-control.js?v=20260922-vo-actions-both-slots',
+  // v128: a mirror left ALONE on screen slides onto the right-most anchor
+  // (class „mirror-sole”), and adding a slider on screen now really STARTS its
+  // layer even when the panel switch was left checked by browser form
+  // restoration (reload / back-forward) — the switch-on event fires regardless.
+  'css/styles.css?v=20260922-sole-mirror-activate',
+  'js/vertical-opacity-control.js?v=20260922-sole-mirror-activate',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
