@@ -70,8 +70,8 @@
                     sel: '#btnLiveLocation',
                     title: { ro: 'Locația mea', en: 'My location' },
                     desc: {
-                        ro: 'Pornește / oprește urmărirea GPS în timp real și centrează harta pe poziția ta. În aplicația instalată, butonul stă dreapta-jos, deasupra iconiței contului.',
-                        en: 'Start / stop real-time GPS tracking and centre the map on your position. In the installed app, the button sits at the bottom-right, above the account icon.'
+                        ro: 'Pornește / oprește urmărirea GPS în timp real și centrează harta pe poziția ta. Butonul există doar pe site, în coloana din stânga; în aplicația instalată nu mai există nicio bară jos, iar locația live pornește singură din comutatorul Detectare sau din lupa „Detectoriști din zonă”.',
+                        en: 'Start / stop real-time GPS tracking and centre the map on your position. The button only exists on the website, in the left-hand column; the installed app has no bottom bar any more — live location starts on its own from the Detect switch or from the "Detectorists nearby" magnifier.'
                     }
                 },
                 {
@@ -163,11 +163,15 @@
                     }
                 },
                 {
-                    sel: '#pwaUserItem',
+                    // The account menu used to be the "AN" / initials button of
+                    // the removed PWA bottom bar (#pwaUserItem). It now only
+                    // exists in the website's top nav, so the guide points at
+                    // that pill and is skipped inside the installed app.
+                    sel: ['#navUser', '#pwaUserItem'],
                     title: { ro: 'Contul tău', en: 'Your account' },
                     desc: {
-                        ro: 'Autentificare, administrarea contului și a abonamentului, evenimente și delogare. Tot aici găsești și categoriile Limbă (română / engleză) și Stocare (pin-uri, trasee și hărți salvate), plus intrarea spre Prieteni (căutare, cereri, chat).',
-                        en: 'Log in, manage your account and subscription, events and log out. The Language (Romanian / English) and Storage (pins, trails and saved maps) sections live here too, plus the entry to Friends (search, requests, chat).'
+                        ro: 'Autentificare, administrarea contului și a abonamentului, evenimente și delogare, plus Limbă (română / engleză), Stocare (pin-uri, trasee și hărți salvate) și intrarea spre Prieteni (căutare, cereri, chat). Meniul contului stă în bara de sus a site-ului: în aplicația instalată bara de jos a fost scoasă, deci nu mai există niciun buton acolo.',
+                        en: 'Log in, manage your account and subscription, events and log out, plus Language (Romanian / English), Storage (pins, trails and saved maps) and the entry to Friends (search, requests, chat). The account menu lives in the website\'s top bar: the installed app had its bottom bar removed, so there is no button down there any more.'
                     }
                 },
                 {

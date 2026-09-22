@@ -68,8 +68,11 @@ assert(/addEventListener\('load', updatePwaMapLayout\)/.test(html)
 /* 3. No control moved: the floating stacks keep their exact offsets.
    (Targeted regexes: several earlier selectors end in the same element, e.g.
    body.is-pwa.transp-panel-open #pwa-br-stack, so "first rule wins" would
-   grab the wrong block.) */
-const stack = (html.match(/#pwa-br-stack\s*\{\s*display:\s*none;\s*position:\s*fixed;[^}]*\}/) || [])[0] || '';
+   grab the wrong block.)
+   The bottom-right stack is the bottom bar itself, so it is display:none
+   !important now — its published geometry is kept under the display so the
+   numbers stay auditable (see test-pwa-no-bottom-bar.js). */
+const stack = (html.match(/#pwa-br-stack\s*\{\s*display:\s*none !important;\s*position:\s*fixed;[^}]*\}/) || [])[0] || '';
 assert(/bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 28px\)/.test(stack),
     'the bottom-right floating stack must keep its offset (no button may move)');
 const pwaVars = (html.match(/(?:^|\})\s*body\.is-pwa\s*\{[^}]*\}/) || [])[0] || '';
