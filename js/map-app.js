@@ -1316,9 +1316,15 @@
                     '</svg>' +
                     '</button>';
 
-                // PWA mode: the button floats bottom-right above the account
-                // trigger (first child of #pwa-br-stack, right above the
-                // "© Leafleet" tag). Desktop keeps it in the left stack.
+                // The bottom bar of the installed PWA is gone (see the
+                // "#pwa-br-stack" rules in index.html): this button used to be
+                // prepended into that bottom-right stack, above the account
+                // trigger. In standalone mode it is therefore never inserted —
+                // no geolocation button anywhere on the bottom edge. The live
+                // location itself keeps working headless: the Detect switch,
+                // the trail recorder and the nearby-detectorists search all go
+                // through window._startLiveLocation / _showLiveLocation.
+                // Desktop keeps the button in the left icon stack.
                 // NOTE: documentElement (set by the <head> script) is used on
                 // purpose — initMap runs before the footer script adds .is-pwa
                 // to <body>.
@@ -1328,13 +1334,13 @@
                 // Wait for DOM to be ready then insert below zoom buttons
                 setTimeout(function () {
                     if (isPwaMode) {
-                        var stack = document.getElementById('pwa-br-stack');
-                        var liveBtn = btn.querySelector('#btnLiveLocation');
-                        if (stack && liveBtn) stack.prepend(liveBtn);
-                    } else {
-                        var zoomCtrl = document.querySelector('#detectlab-map .leaflet-top.leaflet-left');
-                        if (zoomCtrl) zoomCtrl.appendChild(btn);
+                        // Nothing to insert: the bottom bar that hosted this
+                        // button was removed, and the left stack must not gain
+                        // it either.
+                        return;
                     }
+                    var zoomCtrl = document.querySelector('#detectlab-map .leaflet-top.leaflet-left');
+                    if (zoomCtrl) zoomCtrl.appendChild(btn);
                     // Attach listener directly on the button (not delegated) so Leaflet's
                     // internal stopPropagation on control containers can't swallow clicks.
                     var btnEl = document.getElementById('btnLiveLocation');
@@ -1395,9 +1401,14 @@
                         alert('Geolocation is not supported by your browser.');
                         return;
                     }
-                    // watchId is the single source of truth — already guarded by the click handler
-                    document.getElementById('btnLiveLocation').classList.add('active');
-                    document.getElementById('btnLiveLocation').title = 'Stop tracking';
+                    // watchId is the single source of truth — already guarded by the click handler.
+                    // The button itself is gone in the installed PWA (the bottom
+                    // bar was removed), so the visual "active" state is optional.
+                    var liveBtn = document.getElementById('btnLiveLocation');
+                    if (liveBtn) {
+                        liveBtn.classList.add('active');
+                        liveBtn.title = 'Stop tracking';
+                    }
                     watchId = navigator.geolocation.watchPosition(
                         function (pos) {
                             var lat = pos.coords.latitude;
@@ -6622,15 +6633,16 @@
             });
 
             // ── TRANSPARENCY PANEL ──
-            // The open state is also published on <body>: the panel now stretches to
-            // the bottom of the screen in the installed PWA, and the floating
-            // bottom-right stack (live location + account) has to step aside so it
-            // never sits over the layer switches.
+            // The open state is also published on <body>: the panel stretches to
+            // the bottom of the screen in the installed PWA. The floating
+            // bottom-right stack (live location + account) that used to have to
+            // step aside is gone — the whole bottom bar was removed — but the
+            // body flag stays: it is what the CSS hides-in-place rule keys on,
+            // and other code reads it to know the window is open.
             var transpPanelOpen = false;
-            // Both the panel element and a body-level flag follow the open state:
-            // the flag is what lets the floating PWA stack move out of the way of
-            // the (now bottom-anchored) window, so no path may set one without the
-            // other — hence one tiny setter used by open AND close.
+            // Both the panel element and a body-level flag follow the open state,
+            // so no path may set one without the other — hence one tiny setter
+            // used by open AND close.
             function markTranspPanelOpen(on) {
                 transpPanelOpen = !!on;
                 document.getElementById('transpPanel').classList.toggle('open', transpPanelOpen);

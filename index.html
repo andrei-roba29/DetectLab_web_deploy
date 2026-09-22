@@ -300,15 +300,26 @@
             top: calc(14px + env(safe-area-inset-top, 0px)) !important;
         }
 
-        /* ── PWA FLOATING CONTROLS (bottom-right stack) ──
-           The old full-width bottom bar is gone. What remains floats at the
-           bottom-right, above the "© Leafleet" tag (which occupies ~4–22px):
-           the live-location button on top (moved here by js/map-app.js) over
-           the account trigger — same place as before. Right edges align at
-           10px; the 8px gaps match the Leaflet stacks. z-index 2000 keeps the
-           stack tappable above the map and the side panels, like the bar. */
+        /* ── PWA BOTTOM BAR: REMOVED ──
+           The installed app shows NOTHING along the bottom edge of the screen.
+           The last thing that lived there was the bottom-right floating stack
+           (#pwa-br-stack): the geolocation / live-location 🎯 button (moved
+           into it by js/map-app.js) above the account trigger — the button
+           showing the e-mail initials ("AN", "MI", …) or the "Log In" pill
+           when signed out, with its upward dropdown (Manage Account / Events /
+           Friends / Language / Storage / Log Out).
+           The whole container is display:none here, and the footer script
+           below also removes it from the DOM in standalone mode, so the map is
+           the only thing at the bottom of the screen. The markup is kept
+           because the badge / language / storage / dropdown scripts look those
+           ids up; every one of them is null-guarded, and the desktop website
+           never showed this stack anyway.
+
+           The old geometry is kept verbatim underneath the display:none, so
+           nothing reflows if the bar is ever brought back: right edge at 10px,
+           bottom above the "© Leafleet" tag, 8px gaps, z-index 2000. */
         #pwa-br-stack {
-            display: none;
+            display: none !important;
             position: fixed;
             right: max(10px, env(safe-area-inset-right, 0px));
             bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
@@ -316,6 +327,8 @@
             flex-direction: column;
             align-items: flex-end;
             gap: 8px;
+            visibility: hidden;
+            pointer-events: none;
         }
         body.is-pwa {
             /* Bottom-anchored overlays (toasts, zoom hints, panels) still lift
@@ -328,8 +341,19 @@
         body.is-pwa #mapAuthGate {
             display: none !important;
         }
-        body.is-pwa #pwa-br-stack {
-            display: flex;
+        /* The bottom bar stays gone in standalone mode. This used to be
+           `display: flex` — the rule that put the bar on screen. Nothing may
+           re-open it: every selector below wins with !important, including the
+           buttons js/map-app.js used to move into the stack and the account
+           dropdown that expands upwards from it. */
+        body.is-pwa #pwa-br-stack,
+        body.is-pwa #pwaUserItem,
+        body.is-pwa #pwaUserTrigger,
+        body.is-pwa #pwaLoginTrigger,
+        body.is-pwa #pwaUserDropdown,
+        body.is-pwa #btnLiveLocation,
+        body.is-pwa .btn-live-location {
+            display: none !important;
         }
 
         #pwa-br-stack .pwa-bar-item {
@@ -881,14 +905,21 @@
         </div>
     </nav>
 
-    <!-- PWA FLOATING CONTROLS (only visible in PWA/standalone mode) —
-         bottom-right stack floating above the "© Leafleet" tag: the live-location
-         button (moved here by js/map-app.js, on top) over the account trigger
-         (same place as before). The old full-width bottom bar is gone:
-         • the Detect toggle lives under the compass (bottom-left),
-         • Language + Storage live inside the account menu below,
-         • Nearby detectorists moved to the left icon stack. -->
-    <div id="pwa-br-stack">
+    <!-- PWA BOTTOM BAR — REMOVED.
+         This container used to be the strip at the bottom of the installed
+         app's screen: the geolocation (live-location 🎯) button that
+         js/map-app.js moved in, above the account trigger (the "AN" /
+         initials button, or the "Log In" pill when signed out) with its
+         upward dropdown. It is display:none in CSS and removed() from the DOM
+         by the PWA footer script, so the map now runs to the bottom edge with
+         no bar and no buttons under it.
+         The markup stays in the document for the desktop website's scripts
+         (badges, language, storage, dropdown closing), which are all
+         null-guarded. Everything the bar used to offer lives elsewhere:
+         • the Detect toggle under the compass (bottom-left),
+         • Nearby detectorists in the left icon stack,
+         • Language + Storage + account in the top nav on the website. -->
+    <div id="pwa-br-stack" aria-hidden="true">
         <!-- User Menu (expands up) -->
         <div class="pwa-bar-item" id="pwaUserItem">
             <!-- Logged-in trigger -->
@@ -3787,7 +3818,7 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260921-nearby-visibility-prompt"></script>
+    <script src="js/map-app.js?v=20260922-pwa-no-bottom-bar"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20260922-two-layer-mirrors"></script>
@@ -3804,7 +3835,7 @@
     <script src="js/pdf-writer.js?v=20260827-arch-report"></script>
     <script src="js/archeo-report-pdf.js?v=20260918-report-evidence"></script>
     <script src="js/archeo-report.js?v=20260918-report-evidence"></script>
-    <script src="js/tutorial.js?v=20260917-friends-tabs"></script>
+    <script src="js/tutorial.js?v=20260922-pwa-no-bottom-bar"></script>
 
     <!-- AUTH MODAL -->
     <style>
@@ -4329,6 +4360,33 @@
                 document.body.classList.add('is-pwa');
                 document.documentElement.classList.add('is-pwa');
 
+                // ── REMOVE THE BOTTOM BAR FROM THE DOM ──
+                // #pwa-br-stack is the whole bottom strip of the installed app:
+                // the geolocation (live-location) button plus the account
+                // trigger ("AN" / initials, or the Log In pill) and its
+                // dropdown. CSS already hides it, but three scripts write
+                // inline styles on its buttons every 500 ms
+                // (updatePwaUserStack: userTrigger.style.display = 'flex'), and
+                // an inline display beats any stylesheet rule without
+                // !important — so the node is taken out of the document
+                // instead of only hidden. Nothing else lives at the bottom of
+                // the screen after this: the map runs to the bottom edge.
+                // Every consumer of these ids is null-guarded
+                // (js/events.js, js/friends.js, js/map-app.js, the dropdown
+                // helpers below), and the desktop website is untouched because
+                // it never enters this branch.
+                var pwaBottomBar = document.getElementById('pwa-br-stack');
+                if (pwaBottomBar && pwaBottomBar.parentNode) {
+                    pwaBottomBar.parentNode.removeChild(pwaBottomBar);
+                }
+                // The live-location button is built by js/map-app.js ~200 ms
+                // later; that path no longer creates it in standalone mode, and
+                // the CSS guard below covers any build that still does.
+                ['btnLiveLocation'].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el && el.parentNode) el.parentNode.removeChild(el);
+                });
+
                 // Keep browser/page zoom disabled in standalone mode while
                 // still allowing Leaflet pinch zoom on the actual map surface.
                 // If a two-finger gesture starts over a static overlay (search,
@@ -4359,11 +4417,13 @@
                     document.addEventListener(type, blockNonMapPinch, { passive: false, capture: true });
                 });
 
-                // ── Keep the standalone viewport and fixed bottom bar in sync ──
+                // ── Keep the standalone viewport in sync ──
                 // Older WebViews use --vh instead of dvh/svh. visualViewport
                 // tracks the actually visible area when mobile UI changes size.
-                // The device safe area is kept as an offset below the compact
-                // bar, rather than being painted as thick padding inside it.
+                // There is no bottom bar to keep clear any more (it was removed
+                // entirely — see #pwa-br-stack above), so this only publishes
+                // the measured height; bottom-anchored overlays use the fixed
+                // --pwa-bottom-controls-clearance for the home indicator.
                 function setVH() {
                     var visibleHeight = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
                     var vh = visibleHeight * 0.01;
@@ -4573,14 +4633,18 @@
                 };
 
                 // ── PWA FLOATING STACK: User dropdown ──
+                // The bottom bar that hosted this dropdown was removed from the
+                // standalone DOM, so both nodes can legitimately be missing —
+                // the function must stay callable (and silent) in that case.
                 window.togglePwaUserDropdown = function() {
                     var dd = document.getElementById('pwaUserDropdown');
                     var trigger = document.getElementById('pwaUserTrigger');
+                    if (!dd) return;
                     var isOpen = dd.classList.contains('open');
                     closePwaDropdowns();
                     if (!isOpen) {
                         dd.classList.add('open');
-                        trigger.classList.add('active');
+                        if (trigger) trigger.classList.add('active');
                     }
                 };
 

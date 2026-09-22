@@ -78,11 +78,26 @@ assert(/name="apple-mobile-web-app-status-bar-style"\s+content="black-translucen
     + 'hand the status-bar strip to iOS');
 
 /* ── 2. THE CONTRACT — not one control may move ────────────────────────── */
-const stack = (html.match(/#pwa-br-stack\s*\{\s*display:\s*none;\s*position:\s*fixed;[^}]*\}/) || [])[0] || '';
+/* The bottom-right stack (live-location 🎯 + the account "AN" / initials
+   button) IS the bottom bar the app used to show, so it is gone: hidden by
+   CSS and removed() from the DOM in standalone mode. Its old geometry is kept
+   verbatim under the display:none so the numbers stay published, and nothing
+   else at the bottom of the screen may move. */
+const stack = (html.match(/#pwa-br-stack\s*\{\s*display:\s*none !important;\s*position:\s*fixed;[^}]*\}/) || [])[0] || '';
+assert(stack, 'the #pwa-br-stack rule must stay readable (display:none !important + position:fixed)');
 assert(/right:\s*max\(10px, env\(safe-area-inset-right, 0px\)\)/.test(stack),
     'live-location + account stack: right edge offset changed');
 assert(/bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 28px\)/.test(stack),
     'live-location + account stack: bottom offset changed');
+assert(/visibility:\s*hidden/.test(stack) && /pointer-events:\s*none/.test(stack),
+    'the bottom bar must also be invisible and click-through, not only display:none');
+assert(!/body\.is-pwa #pwa-br-stack\s*\{\s*display:\s*flex/.test(html),
+    'the rule that put the bottom bar on screen (display:flex in PWA) must be gone');
+assert(/body\.is-pwa #pwa-br-stack,[\s\S]{0,400}?display:\s*none !important;/.test(html),
+    'a PWA rule must hide the whole bottom bar and its buttons with !important '
+    + '(updatePwaUserStack writes inline display:flex on #pwaUserTrigger every 500 ms)');
+assert(/getElementById\('pwa-br-stack'\)/.test(html) && /removeChild\(pwaBottomBar\)/.test(html),
+    'the standalone script must remove the bottom bar from the DOM, not just hide it');
 
 const leafletBottom = ruleOf(html, 'body.is-pwa .leaflet-bottom');
 assert(/bottom:\s*env\(safe-area-inset-bottom, 0px\) !important/.test(leafletBottom),

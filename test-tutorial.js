@@ -58,10 +58,23 @@ check('every targeted id exists in the shipped UI', missing.length === 0, 'missi
 
 /* ── 4. Copy tracks the latest UI ──────────────────────────────────────── */
 ['＋ Adaugă prieten', '＋ Add friend', 'muresan', 'Mureșan', 'ana cluj',
- 'sub busolă', 'under the compass', 'deasupra iconiței contului', 'above the account icon',
+ 'sub busolă', 'under the compass',
  'butonul cu lupă', 'magnifier button', 'Stocare (pin-uri', 'Storage (pins'].forEach(function (snippet) {
     check('tutorial copy mentions "' + snippet + '"', TUT_SRC.indexOf(snippet) !== -1);
 });
+
+/* The PWA bottom bar is gone: the guide must no longer describe controls that
+   sit at the bottom-right of the installed app, and it must say so instead. */
+['dreapta-jos, deasupra iconiței contului', 'at the bottom-right, above the account icon'].forEach(function (stale) {
+    check('the guide no longer points at the removed bottom bar ("' + stale + '")',
+        TUT_SRC.indexOf(stale) === -1);
+});
+['nu mai există nicio bară jos', 'has no bottom bar any more',
+ 'bara de jos a fost scoasă', 'had its bottom bar removed'].forEach(function (snippet) {
+    check('tutorial copy mentions "' + snippet + '"', TUT_SRC.indexOf(snippet) !== -1);
+});
+check('the account slide points at the website nav pill, not only at the removed PWA button',
+    /sel: \['#navUser', '#pwaUserItem'\]/.test(TUT_SRC));
 
 /* ── 5. Friends slide mechanics ────────────────────────────────────────── */
 check('the friends slide opens the real panel on the search tab',

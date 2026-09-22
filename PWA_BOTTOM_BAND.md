@@ -27,7 +27,19 @@ marginea fizică a ecranului, pictată de fundalul paginii
 
 Așadar banda nu este o bară rămasă în DOM. Bara veche, pe toată lățimea, a fost
 scoasă în `b319558` („PWA bottom bar removal”) și nu mai există nicio referință
-`pwaBottomBar` / `.pwa-bottom-bar` în cod. Un audit al tuturor regulilor
+`pwaBottomBar` / `.pwa-bottom-bar` în cod.
+
+> **Update (v123).** Ce mai rămăsese jos — stiva plutitoare din dreapta-jos
+> `#pwa-br-stack`, adică butonul de geolocație 🎯 peste butonul contului (cel cu
+> inițialele din e-mail, „AN”, sau pastila „Log In” când ești delogat, cu
+> meniul care se desfășoară în sus) — a fost **șters complet** la cererea
+> utilizatorului: `display:none !important` în CSS, `removeChild()` în scriptul
+> de standalone, iar `js/map-app.js` nu mai creează butonul de locație live în
+> aplicația instalată. Josul ecranului nu mai conține niciun buton; harta merge
+> până la marginea de jos. Vezi `PWA_NO_BOTTOM_BAR.md` și
+> `test-pwa-no-bottom-bar.js`. Contractul de offset-uri de mai jos rămâne
+> publicat neschimbat sub `display:none` (geometria veche e păstrată literal,
+> ca să poată fi restaurată dacă bara revine vreodată). Un audit al tuturor regulilor
 `position:fixed|absolute` + `bottom:0` + `background` din `index.html`,
 `css/styles.css`, `css/offline-maps.css` și restul fișierelor CSS nu găsește
 niciun element care să picteze o bandă jos: `body::before` este doar sus și e
@@ -256,6 +268,8 @@ din `sw.js` → `const CACHE_NAME = 'detectlab-vNNN-…'`.
 | `node test-pwa-no-bottom-strip.js` | testul v109, încă verde |
 | `node test-pwa-layer-panel.js` | fereastra de straturi, încă verde |
 | `node test-offline-maps-panel.js` · `node test-tutorial.js` | încă verzi |
+| `node test-pwa-no-bottom-bar.js` | **v123**: bara de jos (stiva `#pwa-br-stack` cu butonul de geolocație și butonul contului „AN”) e ștearsă complet, iar restul UI-ului nu s-a mișcat — vezi `PWA_NO_BOTTOM_BAR.md` |
 
-`test-gmaps-directions.js` eșuează și la HEAD, dintr-un motiv preexistent și
-fără legătură: așteaptă `CACHE_NAME = 'detectlab-v10[6-9]-gmaps-directions`.
+`test-gmaps-directions.js` eșua la momentul analizei de mai sus, dintr-un motiv
+preexistent și fără legătură (aștepta `CACHE_NAME = 'detectlab-v10[6-9]-gmaps-directions`);
+între timp a fost actualizat și este verde.

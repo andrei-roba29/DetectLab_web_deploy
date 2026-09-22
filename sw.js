@@ -172,7 +172,18 @@
 //   Satellite base remains the deliberate two-slider pair (opacity + historic
 //   period), while other selected layers use the two map-side slots and mark
 //   their rows as already represented on the map.
-const CACHE_NAME = 'detectlab-v122-two-layer-mirrors';
+// v123: the PWA bottom bar is GONE. The installed app showed a strip at the
+//   bottom of the screen — the bottom-right floating stack (#pwa-br-stack):
+//   the geolocation / live-location 🎯 button above the account trigger (the
+//   button showing the e-mail initials, "AN", or the "Log In" pill) with its
+//   upward dropdown (Manage Account / Events / Friends / Language / Storage /
+//   Log Out). The container is display:none !important, it is removed() from
+//   the DOM by the standalone script, and js/map-app.js no longer builds the
+//   live-location button in PWA mode — so the map now runs to the bottom edge
+//   with no bar and no buttons under it. The left icon stack (zoom, measure,
+//   coordinates, trail, offline maps, magnifier), the compass / rotation-lock /
+//   Detect column and the "© Leafleet" tag are untouched.
+const CACHE_NAME = 'detectlab-v123-pwa-no-bottom-bar';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -615,6 +626,13 @@ const PRECACHE_URLS = [
   // așteaptă răspunsul înainte să publice prezența sau să pornească locația
   // live, iar „Nu” doar te ține ascuns — căutarea merge înainte.
   'js/map-app.js?v=20260921-nearby-visibility-prompt',
+  // Bara de jos a PWA-ului a fost scoasă complet: #pwa-br-stack (butonul de
+  // geolocație + butonul contului cu inițialele „AN” / „Log In” și meniul lui)
+  // e display:none !important și remove() din DOM în modul standalone, iar
+  // js/map-app.js nu mai creează butonul de locație live în aplicația
+  // instalată. Harta merge acum până la marginea de jos a ecranului.
+  'js/map-app.js?v=20260922-pwa-no-bottom-bar',
+  'js/tutorial.js?v=20260922-pwa-no-bottom-bar',
   // These four were referenced by index.html with a cache-busted query string
   // but never added here, so an already-installed PWA kept serving whatever
   // older copy it had cached under the un-versioned URL instead of picking up
