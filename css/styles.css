@@ -6763,6 +6763,34 @@
                 font-weight: 600;
             }
 
+            .auth-resend-confirm {
+                display: none;
+                width: 100%;
+                margin-top: 2px;
+                padding: 11px 14px;
+                background: transparent;
+                border: 1px dashed rgba(184,216,240,0.4);
+                border-radius: 8px;
+                color: var(--sky);
+                font-family: 'Outfit', sans-serif;
+                font-size: 0.88rem;
+                font-weight: 600;
+                cursor: pointer;
+                letter-spacing: 0.02em;
+                transition: background 0.15s, border-color 0.15s, color 0.15s;
+            }
+
+            .auth-resend-confirm:hover:not(:disabled) {
+                background: rgba(184,216,240,0.08);
+                border-color: rgba(184,216,240,0.7);
+                color: #fff;
+            }
+
+            .auth-resend-confirm:disabled {
+                opacity: 0.65;
+                cursor: default;
+            }
+
         /* ── MAP LOCK OVERLAY (auth version) ── */
         /* ── AUTH GATE OVERLAY WITH SLIDESHOW ── */
         .map-overlay-lock-auth {

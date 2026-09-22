@@ -67,6 +67,82 @@
                 }
             }
 
+            async function checkEmailUnconfirmed(email) {
+                try {
+                    if (!window.supabaseClient) return null;
+                    var res = await window.supabaseClient.rpc('check_email_unconfirmed', { p_email: email });
+                    if (res.error) {
+                        var res2 = await window.supabaseClient.rpc('check_email_unconfirmed', { email: email });
+                        if (res2.error) {
+                            console.warn('[Auth] check_email_unconfirmed RPC failed:', res.error.message, res2.error.message);
+                            return null;
+                        }
+                        return !!res2.data;
+                    }
+                    return !!res.data;
+                } catch (e) {
+                    console.warn('[Auth] checkEmailUnconfirmed threw:', e && e.message);
+                    return null;
+                }
+            }
+
+            var _pendingConfirmEmail = '';
+
+            function _setResendConfirmVisible(show, email) {
+                var btn = document.getElementById('resendConfirmBtn');
+                if (!btn) return;
+                if (email) _pendingConfirmEmail = email;
+                btn.style.display = show ? 'block' : 'none';
+                btn.disabled = false;
+                btn.textContent = 'Nu ți-ai confirmat email-ul?';
+            }
+
+            window.resendConfirmEmail = async function () {
+                var email = _pendingConfirmEmail;
+                if (!email) {
+                    var loginForm = document.getElementById('loginForm');
+                    var emailInputs = loginForm ? loginForm.querySelectorAll('input[type="email"]') : [];
+                    email = emailInputs[0] ? (emailInputs[0].value || '').trim() : '';
+                }
+                if (!email) {
+                    _showMsg('Introdu adresa de email mai întâi.');
+                    return;
+                }
+                var btn = document.getElementById('resendConfirmBtn');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = 'Se trimite…';
+                }
+                try {
+                    if (!window.supabaseClient || !window.supabaseClient.auth) {
+                        throw new Error('Supabase not ready');
+                    }
+                    var redirectTo = window.location.origin + (window.location.pathname || '/');
+                    var result = await window.supabaseClient.auth.resend({
+                        type: 'signup',
+                        email: email,
+                        options: { emailRedirectTo: redirectTo }
+                    });
+                    if (result.error) throw result.error;
+                    _showMsg(
+                        'Am retrimis emailul de confirmare. Verifică Inbox, dar și Spam, Junk sau Promotions / Oferte.',
+                        'success'
+                    );
+                    if (btn) {
+                        btn.textContent = 'Email retrimis';
+                        btn.disabled = true;
+                    }
+                } catch (err) {
+                    console.error('[Auth] resend confirmation failed:', err);
+                    var m = (err && err.message) ? err.message : 'Nu am putut retrimite emailul. Încearcă din nou.';
+                    _showMsg(m);
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = 'Nu ți-ai confirmat email-ul?';
+                    }
+                }
+            };
+
             function isAuthErrorFatal(err) {
                 if (!err) return false;
                 var status = err.status || (err.error && err.error.status);
@@ -335,6 +411,7 @@ function _clearMsg() {
         el.textContent = '';
         el.className = 'auth-msg';
     }
+    _setResendConfirmVisible(false);
 }
 
 function fixMapLegendAndControls() {
@@ -493,19 +570,28 @@ window.doLogin = async function () {
             console.error('Supabase login error:', err);
             var msg = err.message || 'Login failed';
             var lower = msg.toLowerCase();
-            // If invalid credentials, check if email exists and suggest Google
-            if (lower.indexOf('invalid login credentials') !== -1 || lower.indexOf('invalid') !== -1) {
+            var showResend = false;
+            if (lower.indexOf('email not confirmed') !== -1 || lower.indexOf('not confirmed') !== -1) {
+                showResend = true;
+                msg = 'Emailul nu este confirmat. Apasă butonul de mai jos ca să retrimiți emailul de confirmare.';
+            } else if (lower.indexOf('invalid login credentials') !== -1 || lower.indexOf('invalid') !== -1) {
                 try {
-                    var exists = await checkEmailExists(email);
-                    if (exists) {
-                        // Could be Google-only account
-                        msg = 'Invalid password. If you previously signed in with Google, please use "Continue with Google" instead. Otherwise, check your password or reset it.';
+                    var unconfirmed = await checkEmailUnconfirmed(email);
+                    if (unconfirmed === true) {
+                        showResend = true;
+                        msg = 'Autentificarea a eșuat. Dacă nu ți-ai confirmat emailul, retrimite-l din butonul de mai jos.';
                     } else {
-                        msg = 'No account found with this email. Please register first or use Google sign-in.';
+                        var exists = await checkEmailExists(email);
+                        if (exists) {
+                            msg = 'Invalid password. If you previously signed in with Google, please use "Continue with Google" instead. Otherwise, check your password or reset it.';
+                        } else {
+                            msg = 'No account found with this email. Please register first or use Google sign-in.';
+                        }
                     }
                 } catch (e) {}
             }
             _showMsg(msg);
+            _setResendConfirmVisible(showResend, email);
         } finally {
             btn.textContent = 'Log In to DetectLab';
             btn.disabled = false;
@@ -819,5 +905,5 @@ window.switchTab = function (btn, tab) {
     });
 })();
 
-console.log("✅ AUTH JS LOADED - FIXED VERSION 20260922 (duplicate email prevention)");
+console.log("✅ AUTH JS LOADED - FIXED VERSION 20260922 (resend confirmation email)");
         })();
