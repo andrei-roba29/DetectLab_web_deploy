@@ -255,7 +255,7 @@ console.log('\n[Runtime: default OFF + info popup]');
 /* ── 5. Cache busting: the touched assets ship under the new ?v= tag ── */
 console.log('\n[Cache busting]');
 {
-    const stylesV = '20260922-resend-confirm';
+    const stylesV = '20260922-two-layer-mirrors';
     const archeoV = '20260922-archeo-default-off';
     check('index.html requests the bumped styles.css', html.includes('css/styles.css?v=' + stylesV));
     const translationUrl = (html.match(/src="(js\/translations\.js\?v=[^"]+)"/) || [])[1];

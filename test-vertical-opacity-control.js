@@ -6,6 +6,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const stylesCss = fs.readFileSync(path.join(__dirname, 'css/styles.css'), 'utf8');
 
 // Static coverage: every opacity range currently shipped by the real panel is
 // discoverable by the feature selector, while the similarly styled scanner
@@ -33,10 +34,29 @@ assert(captionMarkup[1] !== undefined && captionMarkup[1].trim() === '',
     'the vertical mirror must not ship an OPACITY caption (got: ' + JSON.stringify(captionMarkup[1]) + ')');
 assert(!/verticalOpacityCaption"[^>]*>\s*OPACITY/i.test(indexHtml), 'the OPACITY caption strip should be gone from the markup');
 assert(indexHtml.includes('body.is-pwa .transp-panel'), 'page should retain its installed-PWA layer panel mode');
+assert(indexHtml.includes('id="verticalOpacityControlSecondary"') &&
+    indexHtml.includes('id="verticalOpacitySliderSecondary"'),
+    'the page should ship a second map-side mirror slot');
+assert(/\.vertical-opacity-control\.vertical-opacity-secondary\s*\{[^}]*right:\s*calc\(38px\s*\+\s*50px\s*\+\s*14px/.test(stylesCss),
+    'the second mirror needs its own side-by-side desktop anchor');
+assert(/opacity-layer-mirrored/.test(stylesCss),
+    'mirrored panel rows need a dedicated visual state');
+
+// Installed mobile WebViews can collapse an auto grid track when the title is
+// the only writing-mode child. The PWA path therefore owns a fixed title column
+// and a concrete rotated label box; this is the regression that desktop-only
+// checks would miss.
+assert(/body\.is-pwa \.vertical-opacity-control\s*\{[^}]*grid-template-columns:\s*14px\s+1fr/.test(stylesCss),
+    'the PWA mirror must reserve a title column beside the slider');
+assert(/body\.is-pwa \.vertical-opacity-title\s*\{[^}]*position:\s*absolute/.test(stylesCss) &&
+    /body\.is-pwa \.vertical-opacity-title\s*\{[^}]*height:\s*calc\(100%\s*-\s*42px\)/.test(stylesCss),
+    'the PWA title needs an explicit visible box');
+assert(/body\.is-pwa \.vertical-opacity-layer\s*\{[^}]*writing-mode:\s*horizontal-tb/.test(stylesCss) &&
+    /body\.is-pwa \.vertical-opacity-layer\s*\{[^}]*rotate\(-90deg\)/.test(stylesCss),
+    'the PWA title must use the rotated-label fallback');
 
 // The Battles mirror must stay as compact as every other map-side slider.
 // Its longer century label may wrap, but must never widen the container.
-const stylesCss = fs.readFileSync(path.join(__dirname, 'css/styles.css'), 'utf8');
 assert(/\.vertical-opacity-caption:empty\s*\{[^}]*display\s*:\s*none/.test(stylesCss),
     'an empty caption (opacity mirrors) must collapse instead of leaving a gap above the layer name');
 const periodContainerRules = stylesCss.match(/\.vertical-opacity-control\[data-kind=["']period["']\]\s*\{[^}]*\}/g) || [];

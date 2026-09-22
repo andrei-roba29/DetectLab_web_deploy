@@ -165,7 +165,14 @@
 //   `min-height` that resolves to a real length, so this only raises the floor
 //   when 100vh itself was short, and changes nothing where it already matched
 //   the screen. No control offset moved. See PWA_BOTTOM_BAND.md.
-const CACHE_NAME = 'detectlab-v120-archeo-default-off';
+// v121: the standalone PWA gives the map-side layer title an explicit column
+//   and a concrete rotated label box, avoiding the mobile WebView auto-grid
+//   collapse that could leave the initials outside the visible card.
+// v122: two independent layer mirrors can stay on the map at once. The
+//   Satellite base remains the deliberate two-slider pair (opacity + historic
+//   period), while other selected layers use the two map-side slots and mark
+//   their rows as already represented on the map.
+const CACHE_NAME = 'detectlab-v122-two-layer-mirrors';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -615,7 +622,8 @@ const PRECACHE_URLS = [
   // bottom-band fix below (index.html's inline scripts) actually reaches
   // installed apps together with the styles/auth/newsletter/map-rotate code
   // that shipped alongside it.
-  'css/styles.css?v=20260922-resend-confirm',
+  'css/styles.css?v=20260922-two-layer-mirrors',
+  'js/vertical-opacity-control.js?v=20260922-two-layer-mirrors',
   'js/auth.js?v=20260922-resend-confirm',
   'js/map-rotate.js?v=20260916-no-bottom-bar',
   'js/newsletter.js?v=20260916-newsletter',

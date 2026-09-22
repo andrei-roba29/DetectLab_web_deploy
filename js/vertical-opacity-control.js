@@ -116,6 +116,9 @@
         return satPeriodTickLabel(idx) || SAT_PERIOD_LABELS_FALLBACK[idx] || String(value);
     }
 
+    /* Two independent map-side mirror slots are available. The first slot is
+       also reused by the Satellite opacity + historic-period pair. Keeping the
+       first slot's legacy ids preserves the public/test integration surface. */
     var control;
     var verticalSlider;
     var valueOutput;
@@ -128,6 +131,9 @@
     var periodCaptionEl;
     var periodLayerLabel;
     var actionsEl = null;
+    var mirrorSlotPool = [];
+    var mirrorSlots = [];
+    var activeSlot = null;
     var activeSource = null;
     var activeOwner = null;
     var activeFormatter = percentageText;
@@ -192,11 +198,43 @@
         }
     }
 
-    /* Mută butoanele stratului activ în #verticalOpacityActions (sub slider) și
-       le readuce pe celelalte la locul lor din .map-wrapper. Ordinea din
-       LAYER_ACTION_MAP e păstrată la fiecare sincronizare. */
+    function mirroredRowLabel() {
+        return (window._currentLang && window._currentLang() === 'en') ? 'ON MAP' : 'PE HARTĂ';
+    }
+
+    function refreshMirroredRows() {
+        var mirroredOwners = [];
+        for (var i = 0; i < mirrorSlots.length; i++) {
+            var slot = mirrorSlots[i];
+            if (slot && slot.owner && mirroredOwners.indexOf(slot.owner) === -1) {
+                mirroredOwners.push(slot.owner);
+            }
+        }
+
+        /* Clear both classes first so a layer closed from the map immediately
+           returns to its normal panel colour. */
+        var rows = document.querySelectorAll('#transpPanel .opacity-layer-selectable');
+        for (var r = 0; r < rows.length; r++) {
+            if (rows[r].classList) {
+                rows[r].classList.remove('opacity-layer-mirrored');
+                rows[r].classList.remove('opacity-layer-selected');
+            }
+            if (typeof rows[r].removeAttribute === 'function') rows[r].removeAttribute('data-vo-mirrored-label');
+        }
+        for (var m = 0; m < mirroredOwners.length; m++) {
+            var owner = mirroredOwners[m];
+            if (!owner.classList) continue;
+            owner.classList.add('opacity-layer-mirrored');
+            if (owner.setAttribute) owner.setAttribute('data-vo-mirrored-label', mirroredRowLabel());
+            if (owner === activeOwner) owner.classList.add('opacity-layer-selected');
+        }
+    }
+
+    /* Mută butoanele stratului activ în slotul de acțiuni de sub oglinda
+       selectată și le readuce pe celelalte la locul lor din .map-wrapper. */
     function syncLayerActions() {
         if (!control) return;
+        if (activeSlot && activeSlot.actions) actionsEl = activeSlot.actions;
         if (!actionsEl) {
             try { actionsEl = document.getElementById('verticalOpacityActions'); } catch (e) { actionsEl = null; }
         }
@@ -619,24 +657,105 @@
         if (activeSource && sourceKind(activeSource) === 'opacity') hideValueTip(delay);
     }
 
-    function syncFromSource() {
-        if (!activeSource || !verticalSlider) return;
-        if (String(verticalSlider.value) !== String(activeSource.value)) {
-            verticalSlider.value = activeSource.value;
+    function slotForSource(source) {
+        for (var i = 0; i < mirrorSlots.length; i++) {
+            if (mirrorSlots[i] && mirrorSlots[i].source === source) return mirrorSlots[i];
         }
-        valueOutput.textContent = activeFormatter(activeSource.value);
-        verticalSlider.setAttribute('aria-valuetext', valueOutput.textContent);
-        updateDockRadius();
-        if (valueOutput.classList.contains('visible')) positionPeriodTip();
+        return null;
+    }
+
+    function setActiveSlot(slot) {
+        activeSlot = slot || null;
+        if (activeSlot) {
+            /* These aliases keep the existing action-dock and tooltip code
+               focused on the slot the user most recently touched. */
+            control = activeSlot.control;
+            verticalSlider = activeSlot.slider;
+            valueOutput = activeSlot.output;
+            layerLabel = activeSlot.label;
+            captionEl = activeSlot.caption;
+            closeButton = activeSlot.close;
+            actionsEl = activeSlot.actions || actionsEl;
+            activeSource = activeSlot.source;
+            activeOwner = activeSlot.owner;
+            activeFormatter = activeSlot.formatter || percentageText;
+        } else {
+            activeSource = null;
+            activeOwner = null;
+            activeFormatter = percentageText;
+        }
+        refreshMirroredRows();
+    }
+
+    function configureSlot(slot, source) {
+        if (!slot || !source || !source.parentElement) return false;
+        var owner = source.parentElement;
+        var kind = sourceKind(source);
+        var name = getLayerName(source, owner);
+        slot.source = source;
+        slot.owner = owner;
+        slot.kind = kind;
+        slot.formatter = sourceFormatter(source);
+        slot.label.textContent = layerTitleText(name);
+        slot.label.title = name;
+        if (slot.caption) slot.caption.textContent = sourceCaption(source);
+        slot.control.setAttribute('data-kind', kind);
+        slot.control.setAttribute('data-owner', source.id);
+        slot.control.setAttribute('aria-label', name + ' ' + kind);
+        slot.control.setAttribute('aria-hidden', 'false');
+        slot.slider.min = source.min || '0';
+        slot.slider.max = source.max || '100';
+        slot.slider.step = source.step || '1';
+        slot.slider.value = source.value;
+        slot.slider.setAttribute('aria-label', name + ' ' + kind);
+        slot.slider.setAttribute('aria-valuetext', slot.formatter(source.value));
+        slot.control.classList.add('visible');
+        if (kind === 'opacity') {
+            slot.output.textContent = slot.formatter(source.value);
+            slot.output.classList.add('visible');
+        }
+        return true;
+    }
+
+    function clearSlot(slot) {
+        if (!slot) return;
+        if (slot.owner && slot.owner.classList) {
+            slot.owner.classList.remove('opacity-layer-mirrored');
+            slot.owner.classList.remove('opacity-layer-selected');
+        }
+        if (slot.control) {
+            slot.control.classList.remove('visible', 'pair-shown');
+            slot.control.setAttribute('aria-hidden', 'true');
+            if (typeof slot.control.removeAttribute === 'function') slot.control.removeAttribute('data-owner');
+        }
+        if (slot.output && slot.output.classList) slot.output.classList.remove('visible');
+        slot.source = null;
+        slot.owner = null;
+        slot.kind = null;
+        slot.formatter = percentageText;
+    }
+
+    function syncFromSource(slot) {
+        slot = slot || activeSlot;
+        if (!slot || !slot.source || !slot.slider || !slot.output) return;
+        if (String(slot.slider.value) !== String(slot.source.value)) {
+            slot.slider.value = slot.source.value;
+        }
+        slot.output.textContent = slot.formatter(slot.source.value);
+        slot.slider.setAttribute('aria-valuetext', slot.output.textContent);
+        if (slot === activeSlot) {
+            updateDockRadius();
+            if (slot.output.classList.contains('visible')) positionPeriodTip();
+        }
     }
 
     function startProgrammaticSync() {
         if (syncTimer !== null) window.clearInterval(syncTimer);
         /* Some existing layer toggles restore a range by assigning .value
-           directly (without an input event). This light poll keeps the mirror
-           correct for those programmatic updates as well. */
+           directly (without an input event). Keep both visible mirrors in
+           sync without giving either one ownership of the other. */
         syncTimer = window.setInterval(function () {
-            syncFromSource();
+            for (var i = 0; i < mirrorSlots.length; i++) syncFromSource(mirrorSlots[i]);
             if (pairActive) syncPeriodFromSource();
         }, 250);
     }
@@ -674,53 +793,57 @@
         updatePeriodOutput();
     }
 
+    function removeMirrorSlot(slot) {
+        if (!slot) return;
+        var index = mirrorSlots.indexOf(slot);
+        if (index !== -1) mirrorSlots.splice(index, 1);
+        var wasActive = activeSlot === slot;
+        clearSlot(slot);
+        if (wasActive) setActiveSlot(null);
+        refreshMirroredRows();
+    }
+
+    function clearAllMirrorSlots() {
+        var slots = mirrorSlots.slice();
+        mirrorSlots.length = 0;
+        for (var i = 0; i < slots.length; i++) clearSlot(slots[i]);
+        setActiveSlot(null);
+    }
+
     function hideSatellitePair() {
         pairActive = false;
         if (periodControl) {
             periodControl.classList.remove('visible', 'pair-shown');
             periodControl.setAttribute('aria-hidden', 'true');
         }
-        if (control) control.classList.remove('pair-shown');
+        var satSource = document.getElementById('satOpacitySlider');
+        var satSlot = satSource ? slotForSource(satSource) : null;
+        if (satSlot) removeMirrorSlot(satSlot);
+        refreshMirroredRows();
     }
 
-    /* Satellite pair: the main control mirrors the Satellite opacity range and
-       the second control mirrors the „Istoric” period range. Both stay visible
-       together, whichever of the two the user touched. */
+    /* Satellite is the deliberate two-slider exception: its first slot is
+       opacity and its second control is the historic period. It occupies both
+       available map-side positions, so selecting it replaces other mirrors. */
     function showSatellitePair(closePanel) {
         var opacitySource = document.getElementById('satOpacitySlider');
         var periodSource = document.getElementById('satPeriodSlider');
-        if (!opacitySource || !periodSource || !periodControl || !periodSlider) return false;
+        var primarySlot = mirrorSlotPool[0];
+        if (!opacitySource || !periodSource || !periodControl || !periodSlider || !primarySlot) return false;
 
         resetPeriodTip();
-        if (activeOwner) activeOwner.classList.remove('opacity-layer-selected');
-
+        clearAllMirrorSlots();
         pairActive = true;
-        activeSource = opacitySource;
-        activeOwner = opacitySource.parentElement;
-        if (activeOwner) activeOwner.classList.add('opacity-layer-selected');
+        configureSlot(primarySlot, opacitySource);
+        mirrorSlots.push(primarySlot);
+        setActiveSlot(primarySlot);
 
-        var name = getLayerName(opacitySource, activeOwner);
-        layerLabel.textContent = layerTitleText(name);
-        layerLabel.title = name;
-        if (captionEl) captionEl.textContent = ''; // no "OPACITY" strip above the mirror
-        control.setAttribute('data-kind', 'opacity');
-
-        verticalSlider.min = opacitySource.min || '0';
-        verticalSlider.max = opacitySource.max || '100';
-        verticalSlider.step = opacitySource.step || '1';
-        verticalSlider.value = opacitySource.value;
-        verticalSlider.setAttribute('aria-label', name + ' opacity');
-        control.setAttribute('aria-label', name + ' opacity');
-        activeFormatter = percentageText;
-
-        syncFromSource();
-        control.classList.add('visible', 'pair-shown');
-        control.setAttribute('aria-hidden', 'false');
         /* The current percentage peeks briefly when the mirror opens, then
            fades — it only stays up while the value is actually changed. */
         showValueTip();
         hideValueTip();
 
+        var name = getLayerName(opacitySource, primarySlot.owner);
         if (periodLayerLabel) {
             periodLayerLabel.textContent = layerTitleText(name);
             periodLayerLabel.title = name;
@@ -733,6 +856,8 @@
         startProgrammaticSync();
         if (closePanel) closeLayerPanel();
         syncLayerActions();
+        syncDistanceDock();
+        refreshMirroredRows();
         return true;
     }
 
@@ -743,35 +868,39 @@
         if (isSatellitePairId(source.id) && showSatellitePair(closePanel)) return;
 
         resetPeriodTip();
-        hideSatellitePair();
-        if (activeOwner) activeOwner.classList.remove('opacity-layer-selected');
+        if (pairActive) hideSatellitePair();
 
-        activeSource = source;
-        activeOwner = source.parentElement;
-        activeOwner.classList.add('opacity-layer-selected');
+        var slot = slotForSource(source);
+        if (!slot) {
+            /* A third selection replaces the oldest visible mirror. This keeps
+               the on-map surface bounded while making the second selection an
+               additive action instead of hiding the first slider. */
+            if (mirrorSlots.length >= 2) {
+                slot = mirrorSlots[0];
+                removeMirrorSlot(slot);
+            } else {
+                for (var i = 0; i < mirrorSlotPool.length; i++) {
+                    if (mirrorSlots.indexOf(mirrorSlotPool[i]) === -1) {
+                        slot = mirrorSlotPool[i];
+                        break;
+                    }
+                }
+            }
+            /* DOM-only integrations from before the second slot existed may
+               expose only the primary control; preserve their old replacement
+               behaviour instead of dropping the selection. */
+            if (!slot && mirrorSlots.length) {
+                slot = mirrorSlots[0];
+                removeMirrorSlot(slot);
+            }
+            if (!slot) return;
+            configureSlot(slot, source);
+            mirrorSlots.push(slot);
+        }
 
-        var kind = sourceKind(source);
-        var name = getLayerName(source, activeOwner);
-        layerLabel.textContent = layerTitleText(name);
-        layerLabel.title = name;
-        if (captionEl) captionEl.textContent = sourceCaption(source);
-        control.setAttribute('data-kind', kind);
-        control.setAttribute('data-owner', source.id);
-
-        verticalSlider.min = source.min || '0';
-        verticalSlider.max = source.max || '100';
-        verticalSlider.step = source.step || '1';
-        verticalSlider.value = source.value;
-        verticalSlider.setAttribute('aria-label', name + ' ' + kind);
-        control.setAttribute('aria-label', name + ' ' + kind);
-        activeFormatter = sourceFormatter(source);
-
-        syncFromSource();
-        control.classList.add('visible');
-        control.setAttribute('aria-hidden', 'false');
-        /* Opacity only: peek the current percentage when the mirror opens,
-           then fade it — it stays up only while the value is changed. */
-        if (kind === 'opacity') {
+        setActiveSlot(slot);
+        syncFromSource(slot);
+        if (slot.kind === 'opacity') {
             showValueTip();
             hideValueTip();
         }
@@ -780,22 +909,51 @@
         if (closePanel) closeLayerPanel();
         syncLayerActions();
         syncDistanceDock();
+        refreshMirroredRows();
     }
 
-    function hideControl() {
+    function hideControl(slot) {
+        slot = slot || activeSlot;
+        if (!slot) return;
         resetPeriodTip();
-        hideSatellitePair();
-        control.classList.remove('visible');
-        control.setAttribute('aria-hidden', 'true');
-        if (activeOwner) activeOwner.classList.remove('opacity-layer-selected');
-        activeOwner = null;
-        activeSource = null;
+        if (pairActive && slot.source && isSatellitePairId(slot.source.id)) {
+            hideSatellitePair();
+        } else {
+            var wasActive = activeSlot === slot;
+            removeMirrorSlot(slot);
+            if (wasActive && mirrorSlots.length) {
+                setActiveSlot(mirrorSlots[mirrorSlots.length - 1]);
+                syncFromSource(activeSlot);
+            }
+        }
+
+        if (!mirrorSlots.length) {
+            setActiveSlot(null);
+            if (syncTimer !== null) {
+                window.clearInterval(syncTimer);
+                syncTimer = null;
+            }
+        }
+        syncLayerActions();
+        syncDistanceDock();
+        refreshMirroredRows();
+    }
+
+    function closeAllControls() {
+        resetPeriodTip();
+        pairActive = false;
+        if (periodControl) {
+            periodControl.classList.remove('visible', 'pair-shown');
+            periodControl.setAttribute('aria-hidden', 'true');
+        }
+        clearAllMirrorSlots();
         if (syncTimer !== null) {
             window.clearInterval(syncTimer);
             syncTimer = null;
         }
         syncLayerActions();
         syncDistanceDock();
+        refreshMirroredRows();
     }
 
     function isInteractiveTarget(target) {
@@ -840,10 +998,16 @@
             selectSource(source, false);
         });
         source.addEventListener('input', function () {
-            if (source === activeSource) { syncFromSource(); opacityTipShow(); }
+            var slot = slotForSource(source);
+            if (!slot) return;
+            syncFromSource(slot);
+            if (slot === activeSlot) opacityTipShow();
         });
         source.addEventListener('change', function () {
-            if (source === activeSource) { syncFromSource(); opacityTipHide(); }
+            var slot = slotForSource(source);
+            if (!slot) return;
+            syncFromSource(slot);
+            if (slot === activeSlot) opacityTipHide();
         });
     }
 
@@ -890,10 +1054,14 @@
         source.addEventListener('pointerdown', function () { selectSource(source, false); });
         source.addEventListener('focus', function () { selectSource(source, false); });
         source.addEventListener('input', function () {
-            if (source === activeSource) syncFromSource();
+            var slot = slotForSource(source);
+            if (slot) syncFromSource(slot);
+            if (slot === activeSlot) opacityTipShow();
         });
         source.addEventListener('change', function () {
-            if (source === activeSource) syncFromSource();
+            var slot = slotForSource(source);
+            if (slot) syncFromSource(slot);
+            if (slot === activeSlot) opacityTipHide();
         });
 
         // Comutatorul stratului (LIDAR Scanner / pin potențial / raport):
@@ -904,16 +1072,20 @@
             toggle.dataset.voDistanceWired = '1';
             toggle.addEventListener('change', function () {
                 if (this.checked) selectSource(source, false);
-                else if (activeSource === source) hideControl();
+                else {
+                    var slot = slotForSource(source);
+                    if (slot) hideControl(slot);
+                }
             });
         }
     }
 
-    function emitSourceEvent(type) {
-        if (!activeSource) return;
-        activeSource.value = verticalSlider.value;
-        activeSource.dispatchEvent(new Event(type, { bubbles: true }));
-        syncFromSource();
+    function emitSourceEvent(type, slot) {
+        slot = slot || activeSlot;
+        if (!slot || !slot.source || !slot.slider) return;
+        slot.source.value = slot.slider.value;
+        slot.source.dispatchEvent(new Event(type, { bubbles: true }));
+        syncFromSource(slot);
     }
 
     /* Registration for a range that shares its row with an already registered
@@ -952,12 +1124,49 @@
         layerLabel = document.getElementById('verticalOpacityLayer');
         captionEl = document.getElementById('verticalOpacityCaption');
         closeButton = document.getElementById('verticalOpacityClose');
+        var secondaryControl = document.getElementById('verticalOpacityControlSecondary');
+        var secondarySlider = document.getElementById('verticalOpacitySliderSecondary');
+        var secondaryOutput = document.getElementById('verticalOpacityValueSecondary');
+        var secondaryLabel = document.getElementById('verticalOpacityLayerSecondary');
+        var secondaryCaption = document.getElementById('verticalOpacityCaptionSecondary');
+        var secondaryClose = document.getElementById('verticalOpacityCloseSecondary');
+        var secondaryActions = document.getElementById('verticalOpacityActionsSecondary');
         periodControl = document.getElementById('verticalSatPeriodControl');
         periodSlider = document.getElementById('verticalSatPeriodSlider');
         periodOutput = document.getElementById('verticalSatPeriodValue');
         periodCaptionEl = document.getElementById('verticalSatPeriodCaption');
         periodLayerLabel = document.getElementById('verticalSatPeriodLayer');
         if (!control || !verticalSlider || !valueOutput || !layerLabel || !closeButton) return;
+
+        mirrorSlotPool = [{
+            control: control,
+            slider: verticalSlider,
+            output: valueOutput,
+            label: layerLabel,
+            caption: captionEl,
+            close: closeButton,
+            actions: document.getElementById('verticalOpacityActions'),
+            source: null,
+            owner: null,
+            formatter: percentageText,
+            kind: null
+        }];
+        if (secondaryControl && secondarySlider && secondaryOutput && secondaryLabel && secondaryClose) {
+            mirrorSlotPool.push({
+                control: secondaryControl,
+                slider: secondarySlider,
+                output: secondaryOutput,
+                label: secondaryLabel,
+                caption: secondaryCaption,
+                close: secondaryClose,
+                actions: secondaryActions,
+                source: null,
+                owner: null,
+                formatter: percentageText,
+                kind: null
+            });
+        }
+        setActiveSlot(null);
 
         /* Opacity in the id intentionally excludes the LIDAR Scanner distance
            range, which shares the panel's visual .transp-slider class. The
@@ -978,15 +1187,78 @@
            explicit (vezi DISTANCE_SOURCES), cu dock de acțiune centrat jos. */
         for (var d = 0; d < DISTANCE_SOURCES.length; d++) registerDistanceSource(DISTANCE_SOURCES[d]);
 
-        verticalSlider.addEventListener('input', function () {
-            emitSourceEvent('input');
-            if (periodTipPinned || valueOutput.classList.contains('visible')) showPeriodTip();
-            opacityTipShow();
-        });
-        verticalSlider.addEventListener('change', function () {
-            emitSourceEvent('change');
-            opacityTipHide();
-        });
+        function wireMirrorSlot(slot) {
+            if (!slot || !slot.slider) return;
+            slot.slider.addEventListener('input', function () {
+                if (slot !== activeSlot) setActiveSlot(slot);
+                emitSourceEvent('input', slot);
+                if (periodTipPinned || slot.output.classList.contains('visible')) showPeriodTip();
+                opacityTipShow();
+            });
+            slot.slider.addEventListener('change', function () {
+                if (slot !== activeSlot) setActiveSlot(slot);
+                emitSourceEvent('change', slot);
+                opacityTipHide();
+            });
+            slot.slider.addEventListener('pointerenter', function () {
+                if (slot === activeSlot) showPeriodTip();
+            });
+            slot.slider.addEventListener('pointerleave', function () {
+                /* The opacity chip has its own fade-out timer; pulling it here
+                   would kill the brief readable moment after a drag ends. */
+                if (slot !== activeSlot || sourceKind(slot.source || {}) !== 'period') return;
+                if (!periodTipPinned) hidePeriodTip(0);
+            });
+            slot.slider.addEventListener('pointerdown', function () {
+                setActiveSlot(slot);
+                if (activeSource && sourceKind(activeSource) === 'opacity') showValueTip();
+                if (!activeSource || sourceKind(activeSource) !== 'period') return;
+                periodTipPinned = true;
+                showPeriodTip();
+            });
+            slot.slider.addEventListener('pointerup', function () {
+                opacityTipHide();
+                if (slot !== activeSlot || !periodTipPinned) return;
+                periodTipPinned = false;
+                hidePeriodTip(PERIOD_TIP_HIDE_DELAY);
+            });
+            slot.slider.addEventListener('pointercancel', function () {
+                if (slot === activeSlot && activeSource && sourceKind(activeSource) === 'opacity') hideValueTip(0);
+                if (slot !== activeSlot || !periodTipPinned) return;
+                periodTipPinned = false;
+                hidePeriodTip(0);
+            });
+            slot.slider.addEventListener('focus', function () {
+                setActiveSlot(slot);
+                showPeriodTip();
+                opacityTipShow();
+            });
+            slot.slider.addEventListener('blur', function () {
+                if (slot !== activeSlot) return;
+                if (activeSource && sourceKind(activeSource) === 'period') hidePeriodTip(0);
+                opacityTipHide(200);
+            });
+            if (slot.close && slot.close.addEventListener) {
+                slot.close.addEventListener('click', function () { hideControl(slot); });
+            }
+            if (slot.actions && slot.actions.addEventListener) {
+                slot.actions.addEventListener('click', function (event) {
+                    var btn = event.target && event.target.closest
+                        ? event.target.closest('button')
+                        : null;
+                    if (!btn || !slot.actions.contains(btn)) return;
+                    if (btn.classList) btn.classList.add('show-tip');
+                    var id = btn.id || 'tip';
+                    if (tipTimers[id]) window.clearTimeout(tipTimers[id]);
+                    tipTimers[id] = window.setTimeout(function () {
+                        tipTimers[id] = null;
+                        if (btn.classList) btn.classList.remove('show-tip');
+                    }, TIP_TAP_MS);
+                });
+            }
+        }
+
+        for (var s = 0; s < mirrorSlotPool.length; s++) wireMirrorSlot(mirrorSlotPool[s]);
 
         /* The paired Satellite period mirror drives the panel's „Istoric”
            range, which owns the actual layer switching (setSatPeriod). */
@@ -1007,96 +1279,35 @@
             });
         }
 
-        // Just like the panel's horizontal Battles range, its map-side mirror
-        // reveals the century only while hovered, dragged or keyboard-focused.
-        verticalSlider.addEventListener('pointerenter', showPeriodTip);
-        verticalSlider.addEventListener('pointerleave', function () {
-            /* The opacity chip has its own fade-out timer; pulling it here
-               would kill the brief readable moment after a drag ends. */
-            if (!activeSource || sourceKind(activeSource) !== 'period') return;
-            if (!periodTipPinned) hidePeriodTip(0);
-        });
-        verticalSlider.addEventListener('pointerdown', function () {
-            if (activeSource && sourceKind(activeSource) === 'opacity') showValueTip();
-            if (!activeSource || sourceKind(activeSource) !== 'period') return;
-            periodTipPinned = true;
-            showPeriodTip();
-        });
-        verticalSlider.addEventListener('pointerup', function () {
-            opacityTipHide();
-            if (!periodTipPinned) return;
-            periodTipPinned = false;
-            hidePeriodTip(PERIOD_TIP_HIDE_DELAY);
-        });
-        verticalSlider.addEventListener('pointercancel', function () {
-            if (activeSource && sourceKind(activeSource) === 'opacity') hideValueTip(0);
-            if (!activeSource || sourceKind(activeSource) !== 'period') return;
-            periodTipPinned = false;
-            hidePeriodTip(0);
-        });
-        verticalSlider.addEventListener('focus', function () {
-            showPeriodTip();
-            opacityTipShow();
-        });
-        verticalSlider.addEventListener('blur', function () {
-            if (activeSource && sourceKind(activeSource) === 'period') hidePeriodTip(0);
-            opacityTipHide(200);
-        });
         if (typeof window.addEventListener === 'function') {
             window.addEventListener('resize', function () {
-                if (valueOutput.classList.contains('visible')) positionPeriodTip();
+                if (activeSlot && activeSlot.output.classList.contains('visible')) positionPeriodTip();
             });
         }
-
-        closeButton.addEventListener('click', hideControl);
 
         document.addEventListener('keydown', function (event) {
-            if (event.key === 'Escape' && control.classList.contains('visible')) {
-                hideControl();
-            }
+            if (event.key === 'Escape' && activeSlot) closeAllControls();
         });
-
-        /* Acțiuni rapide sub slider: pe touch, primul tap pe iconiță arată bula
-           de informații (clasa .show-tip), iar tap-ul următor declanșează
-           acțiunea — comportamentul nativ al butonului nu e blocat. */
-        actionsEl = document.getElementById('verticalOpacityActions');
-        if (actionsEl && actionsEl.addEventListener) {
-            actionsEl.addEventListener('click', function (event) {
-                var btn = event.target && event.target.closest
-                    ? event.target.closest('button')
-                    : null;
-                if (!btn || !actionsEl.contains(btn)) return;
-                if (btn.classList) btn.classList.add('show-tip');
-                var id = btn.id || 'tip';
-                if (tipTimers[id]) window.clearTimeout(tipTimers[id]);
-                tipTimers[id] = window.setTimeout(function () {
-                    tipTimers[id] = null;
-                    if (btn.classList) btn.classList.remove('show-tip');
-                }, TIP_TAP_MS);
-            });
-        }
 
         /* Bilingual mirrors: the layer name, the caption that mirrors still carry
            (PERIOADĂ / ISTORIC) and the formatted value follow the live language.
            Plain opacity mirrors have no caption any more. */
         document.addEventListener('detectlab:langchange', function () {
-            syncDistanceDock();
-            if (!activeSource || !activeOwner) {
-                /* Chiar și fără strat activ, etichetele/aria butoanelor mutate
-                   trebuie să urmeze limba curentă. */
-                refreshLayerActionVisibility();
-                syncActionAriaLabels();
-                return;
+            for (var i = 0; i < mirrorSlots.length; i++) {
+                var slot = mirrorSlots[i];
+                if (!slot || !slot.source || !slot.owner) continue;
+                var name = getLayerName(slot.source, slot.owner);
+                slot.label.textContent = layerTitleText(name);
+                slot.label.title = name;
+                if (slot.caption) slot.caption.textContent = sourceCaption(slot.source);
+                syncFromSource(slot);
             }
-            var name = getLayerName(activeSource, activeOwner);
-            layerLabel.textContent = layerTitleText(name);
-            layerLabel.title = name;
-            if (captionEl) captionEl.textContent = sourceCaption(activeSource);
-            syncFromSource();
             if (pairActive) {
+                var satName = activeSource && activeOwner
+                    ? getLayerName(activeSource, activeOwner) : 'Satellite';
                 if (periodLayerLabel) {
-                    periodLayerLabel.textContent = layerTitleText(name);
-                    periodLayerLabel.title = name;
+                    periodLayerLabel.textContent = layerTitleText(satName);
+                    periodLayerLabel.title = satName;
                 }
                 var periodSource = document.getElementById('satPeriodSlider');
                 if (periodCaptionEl && periodSource) {
@@ -1104,6 +1315,8 @@
                 }
                 updatePeriodOutput();
             }
+            syncDistanceDock();
+            refreshMirroredRows();
             refreshLayerActionVisibility();
             syncActionAriaLabels();
         });
@@ -1115,7 +1328,7 @@
                 var source = document.getElementById(sliderId);
                 if (source) selectSource(source, false);
             },
-            close: hideControl,
+            close: closeAllControls,
             getActiveSliderId: function () {
                 return activeSource ? activeSource.id : null;
             },
