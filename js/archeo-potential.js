@@ -2137,8 +2137,9 @@
     var _heatRaster = null;      // rasterul de scoruri al ultimei rulări (debug)
     var _currentResults = null;  // celulele scorate la ultima rulare (API public)
     var _currentField = null;    // câmpul complet (debug / teste)
-    // Stratul pornește OPRIT implicit − starea reală e sincronizată din
-    // comutatorul #archeoPotToggle în wireUI() (fără `checked` în HTML → off).
+    // Stratul pornește întotdeauna OPRIT implicit — wireUI() forțează OFF la
+    // prima cablare (fără `checked` în HTML + resetarea oricărei stări
+    // restaurate de browser la reload), nu doar citește comutatorul.
     var _resultsVisible = false;
 
     // Treptele de stil ale bulelor: grosimea și opacitatea spun cât de puternică
@@ -3548,20 +3549,41 @@
             btn.addEventListener('click', function () { runArcheoPotentialAnalysis(); });
         }
         var toggle = el('archeoPotToggle');
-        if (toggle && !toggle.dataset.archeoWired) {
+        var firstToggleWire = !!(toggle && !toggle.dataset.archeoWired);
+        if (firstToggleWire) {
             toggle.dataset.archeoWired = '1';
             toggle.addEventListener('change', function () {
                 toggleArcheoPotentialLayer(toggle.checked);
             });
         }
-        // Stratul NU mai pornește ON implicit: starea inițială e citită din
-        // comutatorul panoului (fără atributul `checked` în HTML → oprit),
-        // pentru ca rezultatele să apară numai după ce utilizatorul pornește
-        // stratul. Atașarea/detasarea propriu-zisă se face prin
-        // setPinMode/updateRunButtonVisibility de mai jos; nu există încă
-        // straturi de rezultate la cablare, deci nu e nevoie de o parcurgere
-        // completă prin toggleArcheoPotentialLayer.
-        if (toggle) _resultsVisible = !!toggle.checked;
+        // Stratul pornește întotdeauna OPRIT implicit. NU e de ajuns că HTML-ul
+        // n-are atributul `checked`: browserele restaurează starea bifată a
+        // checkbox-ului la reload / back-forward (form restoration), iar vechea
+        // citire `_resultsVisible = !!toggle.checked` pornea atunci stratul ON
+        // fără ca utilizatorul să-l fi aprins. De aceea, la prima cablare,
+        // forțăm OFF atât comutatorul, cât și starea internă (fără eveniment
+        // `change`, ca să nu declanșăm listener-ul de mai sus). Excepția e
+        // revenirea dintr-o achiziție premium pentru chiar acest strat
+        // (js/subscriptions.js re-aplică toggle-ul cerut explicit de utilizator
+        // prin `dl_pending_premium_toggle`, DUPĂ cablarea de aici — deci un OFF
+        // forțat acum nu rupe fluxul acela). La o eventuală re-cablare nu mai
+        // atingem starea, ca să nu stingem un strat pornit între timp.
+        // Atașarea/detasarea se face prin setPinMode/updateRunButtonVisibility
+        // de mai jos; nu există încă straturi de rezultate la cablare, deci nu
+        // e nevoie de o parcurgere completă prin toggleArcheoPotentialLayer.
+        if (toggle && firstToggleWire) {
+            var keepRestoredOn = false;
+            try {
+                keepRestoredOn = (typeof sessionStorage !== 'undefined' &&
+                    sessionStorage !== null &&
+                    typeof sessionStorage.getItem === 'function' &&
+                    sessionStorage.getItem('dl_pending_premium_toggle') === 'archeoPotToggle');
+            } catch (e) { keepRestoredOn = false; }
+            if (!keepRestoredOn) toggle.checked = false;
+            _resultsVisible = !!toggle.checked;
+        } else if (!toggle) {
+            _resultsVisible = false;
+        }
         var slider = el('archeoPotDistance');
         if (slider && !slider.dataset.archeoWired) {
             slider.dataset.archeoWired = '1';
@@ -3584,9 +3606,11 @@
         if (typeof document !== 'undefined' && document.addEventListener) {
             document.addEventListener('detectlab:langchange', onLangChange);
         }
-        // Logica de punct pe hartă e permanentă: stratul pornește cu tap-ul pe
-        // hartă activ (fără switch de pin); fără pin, analiza pornește din
-        // centrul hărții.
+        // Logica de punct pe hartă e permanentă cât timp stratul e pornit (fără
+        // switch separat de pin): tap-ul pe hartă urmează comutatorul mare al
+        // stratului, iar fără pin analiza pornește din centrul hărții. La boot
+        // stratul e OPRIT (vezi mai sus), deci pin-ul / oglinda razei / butonul
+        // „Detectează” se armează numai după ce utilizatorul aprinde stratul.
         setPinMode(_resultsVisible);
         updateRunButtonVisibility(_resultsVisible);
     }
