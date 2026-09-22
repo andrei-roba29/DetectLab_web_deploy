@@ -50,6 +50,71 @@
         archReportDistance: 'Archeological Report'
     };
 
+    /* ── AUTO-ACTIVAREA STRATULUI AFERENT SLIDERULUI OGLINDIT ──
+       Fiecare slider oglindit vertical pe ecran e legat de comutatorul stratului
+       lui din panou: când oglinda APARE pe ecran (rândul/sliderul e selectat),
+       stratul pornește automat; când oglinda e ștearsă de pe ecran cu butonul
+       „×” (sau cu Escape, sau când e înlocuită de o oglindă mai nouă), stratul
+       se oprește automat. Comutatorul primește exact aceeași secvență ca la un
+       clic al utilizatorului (checked + eveniment „change”), deci rulează
+       aceeași funcție toggle din js/map-app.js — nu există o a doua cale de
+       pornire/oprire. Satellite e excepția deliberată: e strat de bază,
+       permanent aprins, fără comutator, deci oglinzile lui nu pornesc/opresc
+       nimic (intrările sale lipsesc intenționat din hartă). */
+    var LAYER_TOGGLE_MAP = {
+        apmOpacitySlider: 'apmToggle',
+        apm20OpacitySlider: 'apm20Toggle',
+        osmPlacesOpacitySlider: 'osmPlacesToggle',
+        uatOpacitySlider: 'uatToggle',
+        patrimoniuOpacitySlider: 'patrimoniuToggle',
+        iosfreeOpacitySlider: 'iosfreeToggle',
+        austrianMapOpacitySlider: 'austrianMapToggle',
+        firingPlansOpacitySlider: 'firingPlansToggle',
+        sovietMapOpacitySlider: 'sovietMapToggle',
+        romanOpacitySlider: 'romanToggle',
+        battlesPeriodSlider: 'battlesToggle',
+        josephineOpacitySlider: 'josephineToggle',
+        bucovinaMapOpacitySlider: 'bucovinaMapToggle',
+        austrohuMapOpacitySlider: 'austrohuMapToggle',
+        moldova1868MapOpacitySlider: 'moldova1868MapToggle',
+        moldovaWwiiMapOpacitySlider: 'moldovaWwiiMapToggle',
+        polishTactical1933MapOpacitySlider: 'polishTactical1933MapToggle',
+        ww1MapOpacitySlider: 'ww1MapToggle',
+        ww2MapOpacitySlider: 'ww2MapToggle',
+        moldova1771MapOpacitySlider: 'moldova1771MapToggle',
+        banatMapOpacitySlider: 'banatMapToggle',
+        transylvania1859MapOpacitySlider: 'transylvania1859MapToggle',
+        galicia1855MapOpacitySlider: 'galicia1855MapToggle',
+        satellite60sMapOpacitySlider: 'satellite60sToggle',
+        /* Straturile de analiză: oglinzile lor de distanță/rază comută
+           aceleași comutatoare care și le deschid (wire bidirecional deja
+           existent în registerDistanceSource), ca butonul „×” să le oprească
+           la fel ca la restul straturilor. */
+        lidarScannerDistance: 'lidarScannerToggle',
+        archeoPotDistance: 'archeoPotToggle',
+        archReportDistance: 'archReportToggle'
+    };
+
+    /* Substraturile LIDAR nu au comutatoare funcționale proprii în panou
+       („lidar…Toggle” sunt input-uri ascunse, fără logică). Stratul lor real
+       se pornește/oprește prin window.toggleLidarSub (js/map-app.js), sub
+       masterul #lidarToggle, care pornește odată cu primul substrat adăugat
+       pe ecran și rămâne neatins la închiderea unei oglinzi (alte substraturi
+       pot fi încă vizibile). */
+    var LIDAR_SUB_TOGGLE_KEYS = {
+        lidarHdOpacitySlider: 'hd',
+        lidarArOpacitySlider: 'ar',
+        lidarAbOpacitySlider: 'ab',
+        lidarBhOpacitySlider: 'bh',
+        lidarCsOpacitySlider: 'cs',
+        lidarRo2mOpacitySlider: 'ro2m',
+        lidarRo1mOpacitySlider: 'ro1m',
+        lidarCs917OpacitySlider: 'cs917',
+        lidarDj917OpacitySlider: 'dj917',
+        lidarGj917OpacitySlider: 'gj917',
+        lidarMh917OpacitySlider: 'mh917'
+    };
+
     /* ── OGLINZI DE DISTANȚĂ / RAZĂ + DOCK DE ACȚIUNE ──
        Straturile de analiză (LIDAR Scanner, Zone cu potențial arheologic,
        Raport arheologic) au un slider de distanță/rază în panou. Când stratul
@@ -682,6 +747,56 @@
         refreshMirroredRows();
     }
 
+    function dispatchToggleChange(el) {
+        try {
+            if (el && typeof el.dispatchEvent === 'function') {
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        } catch (e) { /* DOM-only tests */ }
+    }
+
+    /* Substrat LIDAR: pornit → masterul (#lidarToggle) pornește întâi (ca în
+       js/map-app.js la mișcarea sliderului de opacitate), apoi substratul —
+       toggleLidarSub îl pune pe hartă imediat dacă masterul e vizibil, sau la
+       următoarea pornire a masterului; oprit → doar substratul se stinge,
+       masterul rămâne aprins pentru restul substraturilor de pe ecran. */
+    function setLidarSubActive(subKey, on) {
+        var master = null;
+        try { master = document.getElementById('lidarToggle'); } catch (e) { master = null; }
+        if (on && master && master.checked !== true) {
+            master.checked = true;
+            dispatchToggleChange(master);
+        }
+        try {
+            if (typeof window !== 'undefined' && window &&
+                typeof window.toggleLidarSub === 'function') {
+                window.toggleLidarSub(subKey, on);
+            }
+        } catch (e) { /* map module not initialised yet */ }
+    }
+
+    /* Pornește / oprește stratul căruia îi aparține sliderul oglindit, în
+       numele oglinzii de pe ecran. Apelat cu on=true la APARIȚIA oglinzii pe
+       ecran (selectSource / showSatellitePair, după înregistrarea slotului) și
+       cu on=false la ȘTERGEREA ei de pe ecran (clearSlot: butonul „×”,
+       Escape, înlocuirea oglinzii). */
+    function setLayerActiveForSource(sliderId, on) {
+        if (!sliderId) return;
+        var subKey = LIDAR_SUB_TOGGLE_KEYS[sliderId];
+        if (subKey) {
+            setLidarSubActive(subKey, on);
+            return;
+        }
+        var toggleId = LAYER_TOGGLE_MAP[sliderId];
+        if (!toggleId) return; // Satellite: strat de bază, permanent aprins
+        var toggle = null;
+        try { toggle = document.getElementById(toggleId); } catch (e) { toggle = null; }
+        if (!toggle) return;
+        if (toggle.checked === on) return; // deja în starea cerută — fără eveniment redundant
+        toggle.checked = on;
+        dispatchToggleChange(toggle);
+    }
+
     function configureSlot(slot, source) {
         if (!slot || !source || !source.parentElement) return false;
         var owner = source.parentElement;
@@ -709,11 +824,20 @@
             slot.output.textContent = slot.formatter(source.value);
             slot.output.classList.add('visible');
         }
+        /* Activarea stratului NU are loc aici, ci la apelatorii acestei
+           funcții, imediat după înregistrarea slotului în mirrorSlots — ca
+           un eventual eveniment „change” declanșat de comutator (ex.
+           comutatoarele de distanță, care reintră în selectSource) să găsească
+           oglinda deja înregistrată și să nu configureze un al doilea slot. */
         return true;
     }
 
     function clearSlot(slot) {
         if (!slot) return;
+        /* Oglinda părăsește ecranul (butonul „×”, Escape, înlocuirea ei) →
+           stratul aferent se oprește automat, înainte ca sursa slotului să
+           fie ștearsă. */
+        if (slot.source) setLayerActiveForSource(slot.source.id, false);
         if (slot.owner && slot.owner.classList) {
             slot.owner.classList.remove('opacity-layer-mirrored');
             slot.owner.classList.remove('opacity-layer-selected');
@@ -832,6 +956,10 @@
         configureSlot(primarySlot, opacitySource);
         mirrorSlots.push(primarySlot);
         setActiveSlot(primarySlot);
+        /* Oglinda de opacitate Satellite a ajuns pe ecran → stratul aferent
+           pornește automat (Satellite e strat de bază fără comutator, deci
+           apelul rămâne un no-op intenționat — vezi LAYER_TOGGLE_MAP). */
+        setLayerActiveForSource(opacitySource.id, true);
 
         /* The current percentage peeks briefly when the mirror opens, then
            fades — it only stays up while the value is actually changed. */
@@ -891,6 +1019,13 @@
             if (!slot) return;
             configureSlot(slot, source);
             mirrorSlots.push(slot);
+            /* Sliderul a fost ADĂUGAT pe ecran → stratul aferent pornește
+               automat: comutatorul lui din panou primește exact secvența unui
+               clic manual (checked + „change”). Apelat după înregistrarea
+               slotului, ca o reintrare în selectSource declanșată de
+               comutator (straturile de distanță) să găsească oglinda deja
+               existentă în loc să configureze un al doilea slot. */
+            setLayerActiveForSource(source.id, true);
         }
 
         setActiveSlot(slot);
