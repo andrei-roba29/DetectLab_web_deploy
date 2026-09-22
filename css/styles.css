@@ -5228,6 +5228,46 @@
 
         body.is-pwa .vertical-opacity-control {
             top: calc(50% - var(--pwa-bottom-controls-half-clearance, 22px));
+            /* Keep a real title column in the standalone app. Some mobile
+               WebViews collapse an `auto` grid track when its only child uses
+               writing-mode + a transform, which leaves the layer initials
+               painted outside the card (and therefore invisible). */
+            grid-template-columns: 14px 1fr;
+        }
+
+        /* PWA title fallback: render the initials as a rotated, explicit-size
+           label instead of relying on vertical-writing grid measurement. The
+           label remains on the slider's left side, but has a concrete box and
+           its own stacking level on iOS/Android standalone WebViews. */
+        body.is-pwa .vertical-opacity-title {
+            position: absolute;
+            left: 2px;
+            top: 50%;
+            width: 14px;
+            height: calc(100% - 42px);
+            max-height: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: visible;
+            transform: translateY(-50%);
+            z-index: 3;
+        }
+
+        body.is-pwa .vertical-opacity-layer {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            display: block;
+            width: max-content;
+            max-height: none;
+            overflow: visible;
+            writing-mode: horizontal-tb;
+            transform: translate(-50%, -50%) rotate(-90deg);
+            transform-origin: center;
+            white-space: nowrap;
+            visibility: visible;
+            opacity: 1;
         }
 
         .vertical-opacity-control.auth-hidden {

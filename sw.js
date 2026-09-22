@@ -165,7 +165,12 @@
 //   `min-height` that resolves to a real length, so this only raises the floor
 //   when 100vh itself was short, and changes nothing where it already matched
 //   the screen. No control offset moved. See PWA_BOTTOM_BAND.md.
-const CACHE_NAME = 'detectlab-v120-archeo-default-off';
+// v121: the standalone PWA now gives the map-side layer title an explicit
+//   column and a concrete rotated label box. Mobile WebViews could collapse
+//   the auto grid track created by the vertical-writing title, leaving the
+//   initials outside the visible card even though the desktop browser painted
+//   them correctly.
+const CACHE_NAME = 'detectlab-v121-pwa-layer-title';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -615,7 +620,7 @@ const PRECACHE_URLS = [
   // bottom-band fix below (index.html's inline scripts) actually reaches
   // installed apps together with the styles/auth/newsletter/map-rotate code
   // that shipped alongside it.
-  'css/styles.css?v=20260922-resend-confirm',
+  'css/styles.css?v=20260922-pwa-layer-title',
   'js/auth.js?v=20260922-resend-confirm',
   'js/map-rotate.js?v=20260916-no-bottom-bar',
   'js/newsletter.js?v=20260916-newsletter',
