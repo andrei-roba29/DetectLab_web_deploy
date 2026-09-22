@@ -165,7 +165,7 @@
 //   `min-height` that resolves to a real length, so this only raises the floor
 //   when 100vh itself was short, and changes nothing where it already matched
 //   the screen. No control offset moved. See PWA_BOTTOM_BAND.md.
-const CACHE_NAME = 'detectlab-v119-pwa-bottom-band-js-floor';
+const CACHE_NAME = 'detectlab-v120-archeo-default-off';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -569,6 +569,11 @@ const PRECACHE_URLS = [
   'js/archeo-potential.js?v=20260918-archeo-info-toggle-off',
   'js/translations.js?v=20260918-archeo-info-toggle-off',
   'css/styles.css?v=20260918-archeo-info-toggle-off',
+  // „Zone cu potențial arheologic” OFF by default (forțat): browserele
+  // restaurează starea bifată a checkbox-ului la reload, iar vechea citire a
+  // comutatorului la boot pornea stratul ON fără voia utilizatorului. wireUI()
+  // resetează acum explicit comutatorul + starea internă la prima cablare.
+  'js/archeo-potential.js?v=20260922-archeo-default-off',
   // Battles info tab: the epoch-colour legend is shown below the layer
   // attribution instead of taking space in the layers panel.
   'css/styles.css?v=20260918-battles-info-legend',

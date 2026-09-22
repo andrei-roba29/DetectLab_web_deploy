@@ -1,4 +1,4 @@
-// Regression test — „Zone cu potențial arheologic” panel cleanup.
+// Regression test — „Zone cu potențial arheologic” panel cleanup + forced OFF by default.
 //
 // What changed
 // ------------
@@ -12,6 +12,15 @@
 //    wireUI() syncs the true initial state from the toggle itself, so the
 //    purple pin / radius mirror / Detect button only arm once the user
 //    switches the layer on.
+// 2b. The OFF default is now FORCED at first wire: browsers restore a ticked
+//    checkbox across reload / back-forward (form restoration), and the old
+//    `_resultsVisible = !!toggle.checked` read booted the layer ON without
+//    any user action. wireUI() now resets both the checkbox and the internal
+//    state to OFF on first wiring (silently, no `change` event), except when
+//    returning from a premium purchase requested for this very layer
+//    (`dl_pending_premium_toggle === 'archeoPotToggle'` — subscriptions.js
+//    re-applies that toggle right after wiring). A later re-wire never
+//    touches the state again.
 // 3. showLayerInfo(name, attribution, description) gained an optional third
 //    parameter rendered in #layerInfoDescription (styled by
 //    .layer-info-description in css/styles.css).
@@ -49,6 +58,8 @@ console.log('\n[Panel markup]');
     check('the layer toggle exists', !!toggleTag);
     check('the layer toggle has NO checked attribute (OFF by default)',
         !!toggleTag && !/\schecked[\s=>]/i.test(toggleTag[0]));
+    check('the layer toggle opts out of form restoration (autocomplete=off)',
+        !!toggleTag && /autocomplete="off"/i.test(toggleTag[0]));
     // The info button goes through the localized showArcheoPotInfo() helper
     // (with a plain showLayerInfo fallback if the module fails to load).
     check('the info button opens the localized info helper',
@@ -110,7 +121,7 @@ console.log('\n[Runtime: default OFF + info popup]');
         appendChild(child) { return child; }, focus() {}, querySelector() { return null; }
     }, extra || {});
 
-    const build = (toggleChecked, lang) => {
+    const build = (toggleChecked, lang, pendingToggle) => {
         const dom = {
             archeoPotRunBtn: fakeEl(),
             archeoPotStatus: fakeEl(),
@@ -125,9 +136,18 @@ console.log('\n[Runtime: default OFF + info popup]');
             archeoPotToggle: fakeEl({ checked: toggleChecked }),
             archeoPotentialRow: fakeEl()
         };
+        const store = {};
+        if (pendingToggle !== undefined && pendingToggle !== null) {
+            store.dl_pending_premium_toggle = pendingToggle;
+        }
         const sandbox = {
             console, performance: { now: () => Date.now() }, setTimeout, clearTimeout,
             Promise, Math, JSON, isFinite, isNaN,
+            sessionStorage: {
+                getItem: (k) => (store[k] === undefined ? null : store[k]),
+                setItem: (k, v) => { store[k] = String(v); },
+                removeItem: (k) => { delete store[k]; }
+            },
             document: {
                 readyState: 'complete',
                 addEventListener() {},
@@ -195,22 +215,57 @@ console.log('\n[Runtime: default OFF + info popup]');
         /^Se cauta locatii cu potential arheologic raportate/.test(ro.infoCalls[0].description) &&
         /Roșu = intravilanul UAT/.test(ro.infoCalls[0].description),
         JSON.stringify(ro.infoCalls[0] || null));
+
+    // 4c. Browser form restoration (reload with the box still ticked) must NOT
+    // boot the layer ON: the toggle is forced back to OFF at first wire.
+    const restored = build(true, 'en');
+    vm.runInNewContext(archeoCode, restored.sandbox, { filename: 'archeo-potential.js' });
+    const stR = restored.sandbox.window._archeoPotentialState();
+    check('restored checked toggle → checkbox forced back to OFF',
+        restored.dom.archeoPotToggle.checked === false,
+        'checked=' + restored.dom.archeoPotToggle.checked);
+    check('restored checked toggle → results hidden at load',
+        stR.resultsVisible === false, JSON.stringify(stR));
+    check('restored checked toggle → pin mode stays off at load',
+        stR.pinMode === false, JSON.stringify(stR));
+    check('restored checked toggle → the Detect button stays hidden',
+        restored.dom.archeoPotRunBtn.style.display === 'none' ||
+        restored.dom.archeoPotRunBtn.classList.contains('is-hidden'),
+        restored.dom.archeoPotRunBtn.style.display);
+    check('restored checked toggle → the row is not marked as on',
+        !restored.dom.archeoPotentialRow.classList.contains('is-on'));
+
+    // 4d. Exception: returning from a premium purchase requested for THIS layer
+    // keeps the restored ON state (subscriptions.js re-applies it right after).
+    const pending = build(true, 'en', 'archeoPotToggle');
+    vm.runInNewContext(archeoCode, pending.sandbox, { filename: 'archeo-potential.js' });
+    const stP = pending.sandbox.window._archeoPotentialState();
+    check('pending premium toggle for this layer → ON state is kept',
+        pending.dom.archeoPotToggle.checked === true && stP.resultsVisible === true,
+        JSON.stringify(stP));
+    // …while a pending toggle for ANOTHER layer still boots this one OFF.
+    const pendingOther = build(true, 'en', 'lidarScannerToggle');
+    vm.runInNewContext(archeoCode, pendingOther.sandbox, { filename: 'archeo-potential.js' });
+    const stO = pendingOther.sandbox.window._archeoPotentialState();
+    check('pending premium toggle for another layer → this layer boots OFF',
+        pendingOther.dom.archeoPotToggle.checked === false && stO.resultsVisible === false,
+        JSON.stringify(stO));
 }
 
 /* ── 5. Cache busting: the touched assets ship under the new ?v= tag ── */
 console.log('\n[Cache busting]');
 {
-    const stylesV = 'layer-initials';
-    const archeoV = 'archeo-info-toggle-off';
-    check('index.html requests the bumped styles.css', html.includes('css/styles.css?v=20260918-' + stylesV));
+    const stylesV = '20260922-resend-confirm';
+    const archeoV = '20260922-archeo-default-off';
+    check('index.html requests the bumped styles.css', html.includes('css/styles.css?v=' + stylesV));
     const translationUrl = (html.match(/src="(js\/translations\.js\?v=[^"]+)"/) || [])[1];
     check('index.html requests versioned translations.js', !!translationUrl);
-    check('index.html requests the bumped archeo-potential.js', html.includes('js/archeo-potential.js?v=20260918-' + archeoV));
+    check('index.html requests the bumped archeo-potential.js', html.includes('js/archeo-potential.js?v=' + archeoV));
     const sw = read('sw.js');
     check('sw.js precaches the bumped app shell',
-        sw.includes('js/archeo-potential.js?v=20260918-' + archeoV) &&
+        sw.includes('js/archeo-potential.js?v=' + archeoV) &&
         sw.includes("'" + translationUrl + "'") &&
-        sw.includes('css/styles.css?v=20260918-' + stylesV));
+        sw.includes('css/styles.css?v=' + stylesV));
 }
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
