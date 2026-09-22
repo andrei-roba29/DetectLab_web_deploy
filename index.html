@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260918-layer-initials">
+    <link rel="stylesheet" href="css/styles.css?v=20260922-resend-confirm">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260908-smooth-slides">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -3850,6 +3850,7 @@
                     <input type="password" id="loginPass" class="auth-input" placeholder="••••••••" autocomplete="current-password">
                 </div>
                 <button class="auth-submit" onclick="doLogin()">Log In to DetectLab</button>
+                <button type="button" id="resendConfirmBtn" class="auth-resend-confirm" style="display:none" onclick="resendConfirmEmail()">Nu ți-ai confirmat email-ul?</button>
                 <div class="auth-divider"><span>or continue with</span></div>
                 <div class="auth-oauth-row">
                     <button type="button" class="auth-oauth-btn" onclick="authWithProvider('google')">
@@ -4130,7 +4131,7 @@
           </div>
     </div>
 
-    <script src="js/auth.js?v=20260922-duplicate-fix"></script>
+    <script src="js/auth.js?v=20260922-resend-confirm"></script>
     <script src="js/newsletter.js?v=20260916-newsletter"></script>
 
 
