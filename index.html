@@ -4855,19 +4855,7 @@
 
 
 
-<script src="js/hybrid-tile-switch.js"></script></body>
-</html>
 <script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
-            navigator.serviceWorker.register('sw.js').then(function (reg) {
-                console.log('[PWA] Service Worker registered successfully');
-            }).catch(function (err) {
-                console.warn('[PWA] Service Worker registration failed:', err);
-            });
-        });
-    }
-
     // Roman Empire – shims for inline handlers (real logic lives in js/map-app.js)
     // The map module exposes window.toggleRomanLayer / window.toggleRomanSub / window.toggleRomanSubLayers.
     // These shims keep the inline onchange="toggleRomanLayer(...)" from throwing before the map initializes,
@@ -4888,8 +4876,56 @@
         };
     }
 </script>
-init', on);
-        };
+
+<script>
+    /* ── Service worker: register + keep the installed PWA on the latest shell ──
+       An installed app keeps running the app shell it opened with: the
+       WebView snapshot survives ordinary "restarts" of the PWA on phones, so
+       freshly shipped map/UI changes (e.g. two layer sliders on screen, the
+       layer title on the side of the mirror) never reach the screen even
+       after the new sw.js finishes activating — the old page DOM stays in
+       charge until a full reload, which mobile users effectively never do.
+       This block therefore:
+       1. registers sw.js;
+       2. re-checks for a new sw.js right after load, on every pageshow, every
+          time the app returns to the foreground and once a minute while the
+          app stays open (installed PWAs otherwise re-check very rarely);
+       3. reloads once when a NEW service worker takes control
+          (controllerchange) — but only when an OLD worker was already in
+          charge, so first-time installs never see a reload. A sessionStorage
+          timestamp rules out any reload loop. */
+    if ('serviceWorker' in navigator) {
+        var dlSwHadController = !!navigator.serviceWorker.controller;
+        var dlSwReloaded = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+            if (!dlSwHadController || dlSwReloaded) return;
+            try {
+                var lastReload = Number(window.sessionStorage.getItem('dl-sw-reload-at') || 0);
+                if (lastReload && Date.now() - lastReload < 30000) return;
+                window.sessionStorage.setItem('dl-sw-reload-at', String(Date.now()));
+            } catch (e) { /* storage blocked — the in-memory flag still guards this session */ }
+            dlSwReloaded = true;
+            window.location.reload();
+        });
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('sw.js').then(function (reg) {
+                console.log('[PWA] Service Worker registered successfully');
+                if (!reg || typeof reg.update !== 'function') return;
+                var dlSwCheckForUpdate = function () {
+                    try { reg.update(); } catch (e) { /* offline / transient */ }
+                };
+                dlSwCheckForUpdate();
+                window.addEventListener('pageshow', dlSwCheckForUpdate);
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState === 'visible') dlSwCheckForUpdate();
+                });
+                window.setInterval(dlSwCheckForUpdate, 60 * 1000);
+            }).catch(function (err) {
+                console.warn('[PWA] Service Worker registration failed:', err);
+            });
+        });
     }
 </script>
-t>
+<script src="js/hybrid-tile-switch.js"></script>
+</body>
+</html>

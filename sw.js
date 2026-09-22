@@ -183,7 +183,15 @@
 //   with no bar and no buttons under it. The left icon stack (zoom, measure,
 //   coordinates, trail, offline maps, magnifier), the compass / rotation-lock /
 //   Detect column and the "© Leafleet" tag are untouched.
-const CACHE_NAME = 'detectlab-v124-mirrored-light-shade';
+// v125: PWA shell refresh — index.html now re-checks for a new sw.js after
+//   load, on pageshow, on foregrounding and every minute, and reloads once a
+//   NEW worker takes control over an OLD one. Installed apps used to keep
+//   running their opening shell (WebView snapshot) for days, so map changes
+//   already shipped — two layer sliders on screen (v122) and the layer title
+//   written beside the vertical mirror (v121) — never surfaced in the PWA
+//   even after deploy. The corrupt trailing bytes after index.html's </html>
+//   are gone as well, so the document parses as one clean unit again.
+const CACHE_NAME = 'detectlab-v125-pwa-shell-refresh';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
