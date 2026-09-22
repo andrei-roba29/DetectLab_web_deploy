@@ -2480,6 +2480,13 @@
             var api = window.DetectLabVerticalOpacity;
             if (!api) return;
             if (on) { if (!api.isActiveFor('archReportDistance')) api.select('archReportDistance'); }
+            /* La oprire se închide DOAR oglinda acestui strat (closeFor):
+               api.close() le închide pe TOATE, deci un slider de raport adăugat
+               al doilea pe ecran și apoi închis stinge și sliderul stratului
+               alăturat + stratul său. Fallback-ul păstrează vechiul
+               comportament dacă controalele verticale vin dintr-un shell mai
+               vechi, fără closeFor. */
+            else if (typeof api.closeFor === 'function') api.closeFor('archReportDistance');
             else if (api.isActiveFor('archReportDistance')) api.close();
         } catch (e) {}
     }

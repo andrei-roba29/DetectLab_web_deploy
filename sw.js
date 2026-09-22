@@ -210,7 +210,16 @@
 //   column, overlapping and off to the left of the slider. The selectors now
 //   key off the shared `.vertical-opacity-actions` container class. The bump
 //   matters for the installed PWA, which serves the shell from this cache.
-const CACHE_NAME = 'detectlab-v128-sole-mirror-activate';
+// v129: closing a DISTANCE mirror (LIDAR Scanner / Zone cu potențial
+//   arheologic / Raport arheologic) that sits on the map as the SECOND
+//   slider no longer closes the OTHER mirror and deactivates its layer.
+//   The analysis modules used to call the global mirror close()
+//   (closeAllControls) when their layer switched off — which happens INSIDE
+//   their own mirror's teardown, because clearSlot re-fires the layer
+//   switch's change event — so everything on the map went dark together.
+//   They now call the new single-slot closeFor(id) API, and isActiveFor(id)
+//   no longer reports the slot that is currently being torn down.
+const CACHE_NAME = 'detectlab-v129-distance-mirror-close';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -695,6 +704,13 @@ const PRECACHE_URLS = [
   // restoration (reload / back-forward) — the switch-on event fires regardless.
   'css/styles.css?v=20260922-sole-mirror-activate',
   'js/vertical-opacity-control.js?v=20260922-sole-mirror-activate',
+  // v129: single-slot distance-mirror close (see the CACHE_NAME note above).
+  // Both the control module and the three analysis layers ship together, so
+  // all four changed URLs are pre-cached for the installed PWA.
+  'js/vertical-opacity-control.js?v=20260922-distance-mirror-close',
+  'js/archeo-potential.js?v=20260922-distance-mirror-close',
+  'js/lidar-scanner.js?v=20260922-distance-mirror-close',
+  'js/archeo-report.js?v=20260922-distance-mirror-close',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
