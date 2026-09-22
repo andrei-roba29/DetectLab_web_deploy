@@ -183,7 +183,7 @@
 //   with no bar and no buttons under it. The left icon stack (zoom, measure,
 //   coordinates, trail, offline maps, magnifier), the compass / rotation-lock /
 //   Detect column and the "© Leafleet" tag are untouched.
-const CACHE_NAME = 'detectlab-v123-pwa-no-bottom-bar';
+const CACHE_NAME = 'detectlab-v124-mirrored-light-shade';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -642,6 +642,10 @@ const PRECACHE_URLS = [
   // that shipped alongside it.
   'css/styles.css?v=20260922-two-layer-mirrors',
   'js/vertical-opacity-control.js?v=20260922-two-layer-mirrors',
+  // Mirrored-layer rows lose the "PE HARTĂ" badge and keep only a slightly
+  // lighter panel shade instead (desktop + installed PWA share these files).
+  'css/styles.css?v=20260922-mirrored-light-shade',
+  'js/vertical-opacity-control.js?v=20260922-mirrored-light-shade',
   'js/auth.js?v=20260922-resend-confirm',
   'js/map-rotate.js?v=20260916-no-bottom-bar',
   'js/newsletter.js?v=20260916-newsletter',

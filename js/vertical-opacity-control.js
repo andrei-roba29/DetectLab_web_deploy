@@ -198,10 +198,6 @@
         }
     }
 
-    function mirroredRowLabel() {
-        return (window._currentLang && window._currentLang() === 'en') ? 'ON MAP' : 'PE HARTĂ';
-    }
-
     function refreshMirroredRows() {
         var mirroredOwners = [];
         for (var i = 0; i < mirrorSlots.length; i++) {
@@ -211,7 +207,7 @@
             }
         }
 
-        /* Clear both classes first so a layer closed from the map immediately
+        /* Clear the class first so a layer closed from the map immediately
            returns to its normal panel colour. */
         var rows = document.querySelectorAll('#transpPanel .opacity-layer-selectable');
         for (var r = 0; r < rows.length; r++) {
@@ -225,7 +221,6 @@
             var owner = mirroredOwners[m];
             if (!owner.classList) continue;
             owner.classList.add('opacity-layer-mirrored');
-            if (owner.setAttribute) owner.setAttribute('data-vo-mirrored-label', mirroredRowLabel());
             if (owner === activeOwner) owner.classList.add('opacity-layer-selected');
         }
     }

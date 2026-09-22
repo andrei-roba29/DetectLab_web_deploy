@@ -5223,33 +5223,15 @@
             box-shadow: 0 0 0 1px rgba(160,112,232,0.68), 0 0 18px rgba(107,63,160,0.22);
         }
 
-        /* A mirrored layer stays recognisable in the panel, but its colours
-           soften so it is obvious that the layer is already represented on the
-           map. Multiple rows can carry this state; the focused one keeps the
-           stronger outline above. */
+        /* A mirrored layer stays recognisable in the panel and is marked only
+           by a slightly lighter shade than a resting row (the old "PE HARTĂ"
+           badge under the slider is gone). Multiple rows can carry this state;
+           the focused one keeps the stronger outline above. */
         #transpPanel .opacity-layer-selectable.opacity-layer-mirrored {
-            filter: saturate(0.58);
-            opacity: 0.72;
-            background-color: rgba(8, 20, 41, 0.34);
-            transition: filter 0.2s ease, opacity 0.2s ease,
-                background-color 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        #transpPanel .opacity-layer-selectable.opacity-layer-mirrored::after {
-            content: attr(data-vo-mirrored-label);
-            float: right;
-            margin: -5px 4px 0 8px;
-            padding: 2px 5px;
-            color: rgba(184,216,240,0.72);
-            border: 1px solid rgba(184,216,240,0.2);
-            border-radius: 5px;
-            font: 600 0.48rem/1 'Outfit', sans-serif;
-            letter-spacing: 0.08em;
-            pointer-events: none;
-        }
-
-        #transpPanel .opacity-layer-selectable.opacity-layer-selected {
-            opacity: 0.82;
+            background-color: rgba(184,216,240,0.09);
+            border-color: rgba(184,216,240,0.16);
+            transition: background-color 0.2s ease, border-color 0.2s ease,
+                box-shadow 0.2s ease;
         }
 
         @media (prefers-reduced-motion: reduce) {
