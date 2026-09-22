@@ -3507,6 +3507,27 @@
         return out;
     }
 
+    /* Oglinda verticală a sliderului de rază + dock-ul de acțiune centrat jos
+       sunt gestionate de vertical-opacity-control.js; aici le anunțăm când
+       stratul pornește/se oprește PROGRAMATIC (din catalog, din gating-ul de
+       abonament etc.), caz în care evenimentul „change” al comutatorului nu
+       se declanșează și oglinda nu ar urma starea stratului. */
+    function notifyDistanceMirror(on) {
+        try {
+            var api = window.DetectLabVerticalOpacity;
+            if (!api) return;
+            if (on) { if (!api.isActiveFor('archeoPotDistance')) api.select('archeoPotDistance'); }
+            /* La oprire se închide DOAR oglinda acestui strat (closeFor):
+               api.close() le închide pe TOATE, deci un slider de potențial
+               adăugat al doilea pe ecran și apoi închis stinge și sliderul
+               stratului alăturat + stratul său. Fallback-ul păstrează vechiul
+               comportament dacă controalele verticale vin dintr-un shell mai
+               vechi, fără closeFor. */
+            else if (typeof api.closeFor === 'function') api.closeFor('archeoPotDistance');
+            else if (api.isActiveFor('archeoPotDistance')) api.close();
+        } catch (e) {}
+    }
+
     function toggleArcheoPotentialLayer(on) {
         _resultsVisible = !!on;
         // Logica de punct pe hartă urmează comutatorul mare al stratului:
@@ -3514,7 +3535,11 @@
         // pornit → tap-ul pe hartă e din nou activ.
         setPinMode(_resultsVisible);
         var map = window._dlMap;
-        if (!map) { updateRunButtonVisibility(_resultsVisible); return; }
+        if (!map) {
+            updateRunButtonVisibility(_resultsVisible);
+            notifyDistanceMirror(_resultsVisible);
+            return;
+        }
         layerList().forEach(function (layer) {
             try {
                 var has = (typeof map.hasLayer === 'function') ? map.hasLayer(layer) : false;
@@ -3527,6 +3552,7 @@
             } catch (e) { /* DOM-only tests */ }
         });
         updateRunButtonVisibility(_resultsVisible);
+        notifyDistanceMirror(_resultsVisible);
     }
 
     /* ═══════════════════════════════════════════════════════════════════════

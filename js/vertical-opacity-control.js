@@ -511,7 +511,19 @@
 
     function isVerticalActiveFor(sliderId) {
         try {
-            return !!(activeSource && activeSource.id === sliderId && control && control.classList.contains('visible'));
+            if (!(activeSource && activeSource.id === sliderId &&
+                control && control.classList.contains('visible'))) {
+                return false;
+            }
+            /* Un slot în curs de DEMOLARE nu mai e activ: la închiderea cu
+               „×”/Escape slotul e scos din mirrorSlots ÎNAINTE ca stratul lui
+               să fie oprit (clearSlot dispatch-uiește „change” pe comutator),
+               iar modulele de analiză care verifică această funcție chiar în
+               timpul acelei închideri nu trebuie să-și mai vadă oglinda moartă
+               ca prezentă — altfel ar putea decide că a lor e ultima oglindă
+               și să închidă (și) oglinzile celorlalte straturi. */
+            var source = document.getElementById(sliderId);
+            return !!(source && slotForSource(source));
         } catch (e) {
             return false;
         }
@@ -1524,6 +1536,25 @@
                 if (source) selectSource(source, false);
             },
             close: closeAllControls,
+            /* Închide DOAR oglinda sliderului dat, lăsând celelalte oglinzi
+               (și straturile lor) neatinse. Modulele de analiză (LIDAR
+               Scanner, Zone cu potențial arheologic, Raport arheologic) o
+               apelează când stratul lor se oprește programatic, fără
+               eveniment „change” pe comutator; vechiul api.close() închidea
+               TOATE oglinzile de pe ecran, deci închiderea sliderului adăugat
+               al doilea stinge și sliderul + stratul alăturat. No-op dacă
+               oglinda nu e pe ecran. */
+            closeFor: function (sliderId) {
+                var source = null;
+                try { source = document.getElementById(sliderId); } catch (e) { source = null; }
+                if (!source) return;
+                var slot = slotForSource(source);
+                if (slot) { hideControl(slot); return; }
+                /* Perechea Satellite: oglinda de ISTORIC nu are slot propriu în
+                   mirrorSlots; „închiderea” pe id-ul ei înseamnă închiderea
+                   întregii perechi, exact ca butonul „×” al oglinzii ei. */
+                if (isSatellitePairId(sliderId) && pairActive) hideControl();
+            },
             getActiveSliderId: function () {
                 return activeSource ? activeSource.id : null;
             },
