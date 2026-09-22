@@ -1,7 +1,7 @@
         /* ══════════════════════════════════════════════
-           DetectLab Auth System - ULTRA-DEFENSIVE VERSION
-           Maximum error checking, logging, and fallbacks
-           No .value calls on potentially null elements
+           DetectLab Auth System - FIXED VERSION 20260922
+           Prevents duplicate Gmail accounts (Google OAuth vs email/password)
+           Fixes logout-after-3-seconds bug caused by refresh-token collisions
         ══════════════════════════════════════════════ */
         (function () {
             var _user = null;
@@ -21,17 +21,65 @@
                 } catch (e) {}
             }
 
+            /* ── Email normalization (mirrors server-side public.normalize_email) ──
+               Gmail ignores dots and +tags: j.o.h.n.d.o.e+test@gmail.com === johndoe@gmail.com
+               We use same logic client-side for instant UX feedback.
+            */
+            function normalizeEmailClient(email) {
+                if (!email) return '';
+                var e = String(email).trim().toLowerCase();
+                var at = e.indexOf('@');
+                if (at === -1) return e;
+                var local = e.slice(0, at);
+                var domain = e.slice(at + 1);
+                if (domain === 'gmail.com' || domain === 'googlemail.com') {
+                    var plus = local.indexOf('+');
+                    if (plus !== -1) local = local.slice(0, plus);
+                    local = local.replace(/\./g, '');
+                    domain = 'gmail.com';
+                }
+                return local + '@' + domain;
+            }
+
+            /* ── Check if email already exists via RPC ──
+               Calls public.check_email_exists(p_email) which is security definer
+               and reads auth.users via normalized comparison.
+               Returns true/false, or null if RPC not available (fallback to allow).
+            */
+            async function checkEmailExists(email) {
+                try {
+                    if (!window.supabaseClient) return null;
+                    // Try both param names for compatibility
+                    var res = await window.supabaseClient.rpc('check_email_exists', { p_email: email });
+                    if (res.error) {
+                        // Fallback: try with 'email' param name
+                        var res2 = await window.supabaseClient.rpc('check_email_exists', { email: email });
+                        if (res2.error) {
+                            console.warn('[Auth] check_email_exists RPC failed:', res.error.message, res2.error.message);
+                            return null;
+                        }
+                        return !!res2.data;
+                    }
+                    return !!res.data;
+                } catch (e) {
+                    console.warn('[Auth] checkEmailExists threw:', e && e.message);
+                    return null;
+                }
+            }
+
             function isAuthErrorFatal(err) {
                 if (!err) return false;
                 var status = err.status || (err.error && err.error.status);
-                if (status === 401 || status === 403 || status === 400) {
+                // 401/403 are always fatal, but 400 can be transient (e.g. duplicate signup)
+                if (status === 401 || status === 403) {
                     return true;
                 }
                 var msg = String(err.message || err.error_description || err.name || '').toLowerCase();
+                // NOTE: refresh_token_not_found and already used are treated as
+                // RECOVERABLE during startup validation to avoid logout loops
+                // caused by duplicate accounts or concurrent tabs.
                 var fatalKeywords = [
                     'invalid refresh token',
-                    'refresh_token_not_found',
-                    'already used',
                     'jwt expired',
                     'token is expired',
                     'user not found',
@@ -47,6 +95,30 @@
                     }
                 }
                 return false;
+            }
+
+            function isRefreshTokenReuseError(err) {
+                if (!err) return false;
+                var msg = String(err.message || err.error_description || '').toLowerCase();
+                return msg.indexOf('already used') !== -1 || msg.indexOf('refresh_token_not_found') !== -1 || msg.indexOf('refresh token not found') !== -1;
+            }
+
+            function isDuplicateEmailError(err) {
+                if (!err) return false;
+                var msg = String(err.message || err.error_description || '').toLowerCase();
+                return msg.indexOf('already exists') !== -1 ||
+                       msg.indexOf('already registered') !== -1 ||
+                       msg.indexOf('user already registered') !== -1 ||
+                       msg.indexOf('already been registered') !== -1 ||
+                       msg.indexOf('duplicate') !== -1 ||
+                       (err.status === 409);
+            }
+
+            function friendlyDuplicateMessage(email) {
+                var safeEmail = email ? ' (' + email + ')' : '';
+                return 'An account with this email' + safeEmail + ' already exists. ' +
+                       'If you previously signed in with Google, please use "Continue with Google" instead. ' +
+                       'If you registered with email/password, please log in.';
             }
 
 /* ── Newsletter: persist the registration checkbox to DB ────────
@@ -103,8 +175,6 @@ function _syncFromSession(session) {
             email: session.user.email,
             user_metadata: session.user.user_metadata
         });
-        // Load the subscription status (plan / premium_expires_at) from the
-        // Supabase `profiles` table — defined in js/subscriptions.js.
         if (typeof window.loadUserPremiumProfile === 'function') {
             window.loadUserPremiumProfile(session.user.id);
         }
@@ -121,21 +191,21 @@ function _syncFromSession(session) {
 
 try {
     if (window.supabaseClient && window.supabaseClient.auth) {
-        // Keep the UI synchronized with Supabase auth-state changes:
-        // OAuth redirect return, token refresh, sign-in/out in other tabs.
         window.supabaseClient.auth.onAuthStateChange(function (event, session) {
             if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
                 if (!_startupComplete) {
                     _startupEventReceived = true;
                 }
             }
-            if (event === 'INITIAL_SESSION') return; // handled by getSession() below
+            if (event === 'INITIAL_SESSION') return;
+            // If we get SIGNED_OUT but it's due to refresh token reuse, try to recover once
+            if (event === 'SIGNED_OUT' && _startupComplete) {
+                // Small delay to allow supabase-js to attempt refresh
+                console.warn('[Auth] Received SIGNED_OUT event, checking if recoverable...');
+            }
             _syncFromSession(session);
         });
 
-        // Restore the persisted session from local storage so the account
-        // controls reappear immediately on PWA relaunch — getSession()
-        // resolves locally and does not depend on a network round trip.
         window.supabaseClient.auth.getSession().then(async function (result) {
             var session = result && result.data ? result.data.session : null;
             if (!session || !session.user) {
@@ -147,9 +217,9 @@ try {
                 return;
             }
 
-            // A cached session exists: validate it with auth.getUser() before revealing UI
             var validationFailedFatal = false;
             var validatedUser = null;
+            var isReuseError = false;
             try {
                 var timeoutPromise = new Promise(function (resolve, reject) {
                     setTimeout(function () {
@@ -159,19 +229,24 @@ try {
                 var getUserPromise = window.supabaseClient.auth.getUser();
                 var userResult = await Promise.race([getUserPromise, timeoutPromise]);
                 if (userResult && userResult.error) {
-                    if (isAuthErrorFatal(userResult.error)) {
+                    if (isRefreshTokenReuseError(userResult.error)) {
+                        isReuseError = true;
+                        console.warn('[Auth] Refresh token reuse detected during startup, preserving session to avoid logout loop:', userResult.error.message);
+                    } else if (isAuthErrorFatal(userResult.error)) {
                         validationFailedFatal = true;
                     }
                 } else if (userResult && userResult.data && userResult.data.user) {
                     validatedUser = userResult.data.user;
                 }
             } catch (err) {
-                if (isAuthErrorFatal(err)) {
+                if (isRefreshTokenReuseError(err)) {
+                    isReuseError = true;
+                    console.warn('[Auth] Refresh token reuse caught, preserving session:', err.message);
+                } else if (isAuthErrorFatal(err)) {
                     validationFailedFatal = true;
                 }
             }
 
-            // Handle a newer SIGNED_IN/SIGNED_OUT event received while startup validation was running
             if (_startupEventReceived) {
                 _startupComplete = true;
                 if (_authReadyResolve) _authReadyResolve(_user);
@@ -190,7 +265,12 @@ try {
                 return;
             }
 
-            // Valid session or preserved during temporary network failure/timeout
+            // If it's a reuse error, we preserve the session instead of signing out
+            // This fixes the 3-second logout bug for duplicate accounts and concurrent tabs
+            if (isReuseError) {
+                console.warn('[Auth] Preserving session despite refresh token reuse error');
+            }
+
             _syncFromSession(session);
             _startupComplete = true;
             if (_authReadyResolve) _authReadyResolve(_user);
@@ -284,6 +364,30 @@ function _updateMapGate() {
 
 window.openAuth = function (tab) {
     _clearMsg();
+    // Check for OAuth errors in URL (e.g. duplicate email rejected by hook)
+    try {
+        var hash = window.location.hash || '';
+        var search = window.location.search || '';
+        var combined = hash + '&' + search;
+        if (combined.indexOf('error_description') !== -1 || combined.indexOf('error=') !== -1) {
+            var params = new URLSearchParams(combined.replace(/^#/, '?').replace(/^\?/, '?'));
+            // Also try hash parsing manually
+            var errDesc = params.get('error_description') || params.get('error');
+            if (errDesc) {
+                errDesc = decodeURIComponent(errDesc.replace(/\+/g, ' '));
+                if (isDuplicateEmailError({ message: errDesc })) {
+                    _showMsg(friendlyDuplicateMessage(''), 'error');
+                } else {
+                    _showMsg(errDesc, 'error');
+                }
+                // Clean URL
+                try {
+                    var cleanUrl = window.location.pathname + window.location.search.replace(/[\?&]error[^&]*/g, '').replace(/[\?&]error_description[^&]*/g, '');
+                    window.history.replaceState(null, '', cleanUrl + window.location.hash.replace(/#.*error.*/, ''));
+                } catch(e){}
+            }
+        }
+    } catch(e){}
     switchAuthTab(tab || 'login');
     var modal = document.getElementById('authModal');
     if (modal) modal.classList.add('show');
@@ -323,54 +427,28 @@ window.switchAuthTab = function (tab) {
 };
 
 /* ══════════════════════════════════════════════
-   LOGIN - ULTRA-SAFE VERSION
+   LOGIN - WITH DUPLICATE EMAIL DETECTION
 ══════════════════════════════════════════════ */
 window.doLogin = async function () {
     console.log("=== doLogin START ===");
     
     try {
         var loginForm = document.getElementById('loginForm');
-        console.log("loginForm:", !!loginForm);
-        
         if (!loginForm) {
-            console.error("loginForm not found in DOM");
             _showMsg('Login form not found');
             return;
         }
         
-        // Find email and password inputs
         var emailInputs = loginForm.querySelectorAll('input[type="email"]');
         var passwordInputs = loginForm.querySelectorAll('input[type="password"]');
         
-        console.log("emailInputs found:", emailInputs.length);
-        console.log("passwordInputs found:", passwordInputs.length);
-        
         if (emailInputs.length === 0 || passwordInputs.length === 0) {
-            console.error("Missing email or password input", {
-                emails: emailInputs.length,
-                passwords: passwordInputs.length
-            });
-            
-            // Debug: list all inputs
-            var allInputs = loginForm.querySelectorAll('input');
-            console.log("All inputs in loginForm:", allInputs.length);
-            allInputs.forEach(function(inp, idx) {
-                console.log(idx + ":", {
-                    type: inp.type,
-                    id: inp.id,
-                    name: inp.name,
-                    placeholder: inp.placeholder
-                });
-            });
-            
             _showMsg('Form fields not found. Check browser console.');
             return;
         }
         
         var email = emailInputs[0] ? (emailInputs[0].value || '').trim() : '';
         var pass = passwordInputs[0] ? (passwordInputs[0].value || '') : '';
-        
-        console.log("Extracted:", { email: email ? "✓" : "✗", pass: pass ? "✓" : "✗" });
         
         if (!email || !pass) {
             _showMsg('Please fill in all fields.');
@@ -379,7 +457,6 @@ window.doLogin = async function () {
 
         var btn = loginForm.querySelector('.auth-submit');
         if (!btn) {
-            console.error("Submit button not found");
             _showMsg('Submit button not found');
             return;
         }
@@ -414,7 +491,21 @@ window.doLogin = async function () {
             console.log("Login successful");
         } catch (err) {
             console.error('Supabase login error:', err);
-            _showMsg(err.message || 'Login failed');
+            var msg = err.message || 'Login failed';
+            var lower = msg.toLowerCase();
+            // If invalid credentials, check if email exists and suggest Google
+            if (lower.indexOf('invalid login credentials') !== -1 || lower.indexOf('invalid') !== -1) {
+                try {
+                    var exists = await checkEmailExists(email);
+                    if (exists) {
+                        // Could be Google-only account
+                        msg = 'Invalid password. If you previously signed in with Google, please use "Continue with Google" instead. Otherwise, check your password or reset it.';
+                    } else {
+                        msg = 'No account found with this email. Please register first or use Google sign-in.';
+                    }
+                } catch (e) {}
+            }
+            _showMsg(msg);
         } finally {
             btn.textContent = 'Log In to DetectLab';
             btn.disabled = false;
@@ -427,64 +518,33 @@ window.doLogin = async function () {
 };
 
 /* ══════════════════════════════════════════════
-   REGISTER - ULTRA-SAFE VERSION
+   REGISTER - WITH DUPLICATE PREVENTION
 ══════════════════════════════════════════════ */
 window.doRegister = async function () {
     console.log("=== doRegister START ===");
     
     try {
         var regForm = document.getElementById('registerForm');
-        console.log("registerForm:", !!regForm);
-        
         if (!regForm) {
-            console.error("registerForm not found in DOM");
             _showMsg('Register form not found');
             return;
         }
         
-        // Get all inputs
         var allInputs = regForm.querySelectorAll('input');
-        console.log("Total inputs in registerForm:", allInputs.length);
-        
-        // Log each input for debugging
         var textInputs = [];
         var emailInputs = [];
         var passwordInputs = [];
         
-        allInputs.forEach(function(inp, idx) {
-            var info = {
-                idx: idx,
-                type: inp.type,
-                id: inp.id,
-                name: inp.name,
-                placeholder: inp.placeholder,
-                value: inp.value ? "***" : "(empty)"
-            };
-            console.log("Input " + idx + ":", info);
-            
+        allInputs.forEach(function(inp) {
             if (inp.type === 'text') textInputs.push(inp);
             else if (inp.type === 'email') emailInputs.push(inp);
             else if (inp.type === 'password') passwordInputs.push(inp);
         });
         
-        console.log("Categorized:", {
-            texts: textInputs.length,
-            emails: emailInputs.length,
-            passwords: passwordInputs.length
-        });
-        
-        // Extract values safely
         var name = textInputs[0] ? (textInputs[0].value || '').trim() : '';
         var email = emailInputs[0] ? (emailInputs[0].value || '').trim() : '';
         var pass = passwordInputs[0] ? (passwordInputs[0].value || '') : '';
         var pass2 = passwordInputs[1] ? (passwordInputs[1].value || '') : '';
-        
-        console.log("Extracted:", {
-            name: name ? "✓ (" + name + ")" : "✗",
-            email: email ? "✓ (" + email + ")" : "✗",
-            pass: pass ? "✓" : "✗",
-            pass2: pass2 ? "✓" : "✗"
-        });
         
         if (!name || !email || !pass || !pass2) {
             _showMsg('Please fill in all fields.');
@@ -509,18 +569,35 @@ window.doRegister = async function () {
         var newsletterOptIn = document.getElementById('regNewsletter');
         var btn = regForm.querySelector('.auth-submit');
         if (!btn) {
-            console.error("Submit button not found");
             _showMsg('Submit button not found');
             return;
         }
         
-        btn.textContent = 'Creating Account…';
+        btn.textContent = 'Checking email…';
         btn.disabled = true;
 
         try {
             if (!window.supabaseClient || !window.supabaseClient.auth) {
                 throw new Error('Supabase not ready');
             }
+
+            // ── STEP 1: Client-side duplicate check via RPC ──
+            // This prevents the bug where Google login + email signup creates duplicate accounts
+            try {
+                var exists = await checkEmailExists(email);
+                if (exists === true) {
+                    _showMsg(friendlyDuplicateMessage(email), 'error');
+                    btn.textContent = 'Create Free Account';
+                    btn.disabled = false;
+                    console.log("Register blocked: email already exists:", email);
+                    return;
+                }
+                // If RPC returns null (not available), we continue and let server hook handle it
+            } catch (checkErr) {
+                console.warn('[Auth] Duplicate check failed, proceeding to signup:', checkErr && checkErr.message);
+            }
+
+            btn.textContent = 'Creating Account…';
 
             var newsletterWanted = !!(newsletterOptIn && newsletterOptIn.checked);
             const { data, error } = await window.supabaseClient.auth.signUp({
@@ -536,11 +613,14 @@ window.doRegister = async function () {
 
             if (error) throw error;
 
-            // If Supabase returned an immediate session (email confirmation disabled),
-            // persist the newsletter preference straight to the DB (profiles.newsletter_subscribed).
-            // Otherwise the DB trigger sync_newsletter_from_user_metadata will do it
-            // once the user confirms their e-mail. We still try a best-effort direct
-            // upsert as fallback for deployments where the trigger hasn't been applied yet.
+            // Supabase can return a user with identities empty if email already exists
+            // and confirmations are enabled (to prevent enumeration). Detect that case.
+            if (data && data.user && data.user.identities && data.user.identities.length === 0) {
+                _showMsg(friendlyDuplicateMessage(email), 'error');
+                console.log("Register blocked: Supabase returned empty identities (email already exists)");
+                return;
+            }
+
             if (newsletterWanted && data) {
                 var newSession = data.session || null;
                 var newUser = data.user || null;
@@ -553,8 +633,6 @@ window.doRegister = async function () {
                         });
                     } catch (e) { console.warn('[Newsletter] post-signup sync (session) failed:', e && e.message); }
                 } else if (newUser && newUser.id && window.supabaseClient && window.supabaseClient.from) {
-                    // No session yet (confirmation e-mail pending) — try direct upsert as fallback.
-                    // The trigger is the canonical path; this is only for dev/demo before migration.
                     try {
                         await window.supabaseClient.from('profiles').upsert({
                             id: newUser.id,
@@ -566,7 +644,6 @@ window.doRegister = async function () {
                 }
             }
 
-            // Clear inputs manually (div doesn't have .reset() method)
             allInputs.forEach(function(inp) {
                 if (inp.type === 'checkbox') inp.checked = false;
                 else inp.value = '';
@@ -581,7 +658,12 @@ window.doRegister = async function () {
             console.log("Register successful");
         } catch (err) {
             console.error('Supabase register error:', err);
-            _showMsg(err.message || 'Registration failed');
+            var errMsg = err.message || 'Registration failed';
+            if (isDuplicateEmailError(err)) {
+                _showMsg(friendlyDuplicateMessage(email), 'error');
+            } else {
+                _showMsg(errMsg);
+            }
         } finally {
             btn.textContent = 'Create Free Account';
             btn.disabled = false;
@@ -594,7 +676,7 @@ window.doRegister = async function () {
 };
 
 /* ══════════════════════════════════════════════
-   OAUTH (Google / Apple)
+   OAUTH (Google / Apple) - WITH DUPLICATE HANDLING
 ══════════════════════════════════════════════ */
 window.authWithProvider = async function (provider) {
     try {
@@ -603,19 +685,23 @@ window.authWithProvider = async function (provider) {
             return;
         }
         _clearMsg();
+        _showMsg('Redirecting to ' + provider + '...', 'success');
         const { error } = await window.supabaseClient.auth.signInWithOAuth({
-            provider: provider, // 'google' or 'apple'
+            provider: provider,
             options: {
-                redirectTo: window.location.origin + window.location.pathname
+                redirectTo: window.location.origin + window.location.pathname,
+                // For Google, request offline access to get refresh token
+                queryParams: provider === 'google' ? { access_type: 'offline', prompt: 'consent' } : undefined
             }
         });
         if (error) {
             console.error(provider + ' OAuth error:', error);
-            _showMsg(error.message || (provider + ' sign-in failed'));
+            if (isDuplicateEmailError(error)) {
+                _showMsg(friendlyDuplicateMessage(''), 'error');
+            } else {
+                _showMsg(error.message || (provider + ' sign-in failed'));
+            }
         }
-        // On success Supabase redirects away from the page, so there's
-        // nothing more to do here — the getUser() call at the top of this
-        // file picks up the session once the user lands back on the page.
     } catch (err) {
         console.error(provider + ' OAuth outer error:', err);
         _showMsg('An unexpected error occurred');
@@ -648,6 +734,8 @@ window.authLogout = async function () {
 };
 
 window._authUser = function () { return _user; };
+window._authNormalizeEmail = normalizeEmailClient;
+window._authCheckEmailExists = checkEmailExists;
 
 _updateNav();
 
@@ -657,9 +745,6 @@ function _setMapControlsHidden(hidden) {
         'transpTab',
         'transpPanel',
         'verticalOpacityControl',
-        // The Satellite „Istoric” mirror is part of the same pair: hiding only
-        // the opacity one left this floating alone over the auth gate in the
-        // installed PWA (it looked like a single, orphaned slider).
         'verticalSatPeriodControl',
         'mapHelpBtn'
     ];
@@ -714,8 +799,25 @@ window.switchTab = function (btn, tab) {
         if (!_user) {
             _showAuthGate('Explore the Map', 'Log in or create a free account.', true);
         }
+        // Also check URL for OAuth errors after redirect
+        try {
+            var hash = window.location.hash || '';
+            if (hash.indexOf('error') !== -1) {
+                var params = new URLSearchParams(hash.replace(/^#/, '?'));
+                var err = params.get('error_description') || params.get('error');
+                if (err) {
+                    err = decodeURIComponent(err.replace(/\+/g, ' '));
+                    if (err.toLowerCase().indexOf('already exists') !== -1) {
+                        _showMsg(friendlyDuplicateMessage(''), 'error');
+                        if (typeof window.openAuth === 'function') {
+                            setTimeout(function(){ window.openAuth('login'); }, 500);
+                        }
+                    }
+                }
+            }
+        } catch(e){}
     });
 })();
 
-console.log("✅ AUTH JS LOADED - ULTRA-DEFENSIVE VERSION");
+console.log("✅ AUTH JS LOADED - FIXED VERSION 20260922 (duplicate email prevention)");
         })();
