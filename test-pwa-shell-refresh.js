@@ -38,8 +38,8 @@ const css = read('css/styles.css');
 /* 1. The cache version is bumped so the byte-difference triggers an update
       and old caches are purged on activate. */
 assert(
-    sw.includes("const CACHE_NAME = 'detectlab-v126-mobile-fs-controls';"),
-    'sw.js must carry the v126 cache name'
+    sw.includes("const CACHE_NAME = 'detectlab-v128-sole-mirror-activate';"),
+    'sw.js must carry the v128 cache name'
 );
 assert(sw.includes('skipWaiting()'), 'sw.js must skipWaiting on install');
 assert(sw.includes('clients.claim()'), 'sw.js must claim clients on activate');

@@ -255,9 +255,12 @@ console.log('\n[Runtime: default OFF + info popup]');
 /* ── 5. Cache busting: the touched assets ship under the new ?v= tag ── */
 console.log('\n[Cache busting]');
 {
-    const stylesV = '20260922-mobile-fs-controls';
+    /* styles.css is re-versioned by every later release (v127 →
+       ?v=20260922-vo-actions-both-slots), so read the live tag instead of a
+       frozen one; the check below still requires sw.js to pre-cache it. */
+    const stylesV = ((html.match(/href="css\/styles\.css\?v=([^"]+)"/) || [])[1]) || '';
     const archeoV = '20260922-archeo-default-off';
-    check('index.html requests the bumped styles.css', html.includes('css/styles.css?v=' + stylesV));
+    check('index.html requests the bumped styles.css', !!stylesV);
     const translationUrl = (html.match(/src="(js\/translations\.js\?v=[^"]+)"/) || [])[1];
     check('index.html requests versioned translations.js', !!translationUrl);
     check('index.html requests the bumped archeo-potential.js', html.includes('js/archeo-potential.js?v=' + archeoV));
@@ -265,7 +268,7 @@ console.log('\n[Cache busting]');
     check('sw.js precaches the bumped app shell',
         sw.includes('js/archeo-potential.js?v=' + archeoV) &&
         sw.includes("'" + translationUrl + "'") &&
-        sw.includes('css/styles.css?v=' + stylesV));
+        sw.includes("'css/styles.css?v=" + stylesV + "'"));
 }
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');

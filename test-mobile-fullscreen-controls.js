@@ -120,14 +120,19 @@ assert(/top:\s*calc\(14px \+ env\(safe-area-inset-top, 0px\)\)/.test(mobileFsHel
     'the "?" keeps the same top offset as the normal map');
 ok('"?" quick guide stays pinned in the top-right corner in mobile fullscreen');
 
-/* ── 4. Cache busting: the touched stylesheets ship under the new ?v= tag ── */
+/* ── 4. Cache busting: the touched stylesheets ship under a ?v= tag ──
+   styles.css is re-versioned by every later release (v127 bumped it to
+   ?v=20260922-vo-actions-both-slots), so assert the LIVE relationship — the
+   exact URL the page requests must be in PRECACHE_URLS — instead of one
+   frozen tag. tutorial.css keeps this release's tag. */
+const stylesUrl = (html.match(/href="(css\/styles\.css\?v=[^"]+)"/) || [])[1];
+assert(stylesUrl, 'index.html requests a cache-busted styles.css');
+assert(sw.includes("'" + stylesUrl + "'"), 'sw.js pre-caches the live styles.css URL (' + stylesUrl + ')');
 const TAG = '20260922-mobile-fs-controls';
-assert(html.includes('css/styles.css?v=' + TAG), 'index.html requests the bumped styles.css');
 assert(html.includes('css/tutorial.css?v=' + TAG), 'index.html requests the bumped tutorial.css');
-assert(sw.includes("'css/styles.css?v=" + TAG + "'"), 'sw.js pre-caches the bumped styles.css');
 assert(sw.includes("'css/tutorial.css?v=" + TAG + "'"), 'sw.js pre-caches the bumped tutorial.css');
 const cacheNum = Number((sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1] || 0);
 assert(cacheNum >= 126, 'sw.js CACHE_NAME must be bumped past v125 (got v' + cacheNum + ')');
-ok('both stylesheets are cache-busted and pre-cached under ' + TAG);
+ok('both stylesheets are cache-busted and pre-cached (' + stylesUrl + ', tutorial.css?v=' + TAG + ')');
 
 console.log('\n' + passed + ' checks passed — ALL MOBILE FULLSCREEN CONTROL TESTS PASSED');

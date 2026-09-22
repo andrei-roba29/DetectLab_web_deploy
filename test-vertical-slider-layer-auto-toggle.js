@@ -343,4 +343,31 @@ assert.strictEqual(austrian.toggle.checked, false, 'evicted by the satellite pai
 close.click();
 assert(!control.classList.contains('visible'), 'satellite pair closed');
 
-console.log('✅ test-vertical-slider-layer-auto-toggle.js passed: adding a slider on screen auto-activates its layer; the „×” button auto-deactivates it.');
+/* 9. A switch left „checked” by browser form restoration (reload /
+      back-forward) must not swallow the auto-activation: the checkbox is
+      checked but the layer is NOT on the map, so the slider appearing on
+      screen has to fire a real switch-on event regardless. */
+uat.toggle.checked = true;               // stale state — no change event fired
+const uatBefore = uatHits.length;
+windowMock.DetectLabVerticalOpacity.select('uatOpacitySlider');
+assert.strictEqual(uat.toggle.checked, true);
+assert.strictEqual(uatHits.length, uatBefore + 1,
+    'a restored-checked switch still receives its real switch-on event');
+assert.strictEqual(uatHits[uatHits.length - 1], true);
+close.click();
+assert.strictEqual(uat.toggle.checked, false, 'the mirror still turns the layer back off');
+
+/* 10. Same for the LIDAR master switch: without its start event,
+       toggleLidarSub would leave the sub-layer parked (its internal visible
+       flag stays false) while the panel shows everything as on. */
+lidarMaster.checked = true;              // restored state — layer not started
+const lidarBefore = lidarMasterHits.length;
+const subsBefore = windowMock.toggleLidarSubCalls.length;
+windowMock.DetectLabVerticalOpacity.select('lidarHdOpacitySlider');
+assert.strictEqual(lidarMasterHits.length, lidarBefore + 1,
+    'restored LIDAR master still gets its switch-on event');
+assert.strictEqual(windowMock.toggleLidarSubCalls.length, subsBefore + 1,
+    'and the sub-layer is enabled exactly once');
+windowMock.DetectLabVerticalOpacity.close();
+
+console.log('✅ test-vertical-slider-layer-auto-toggle.js passed: adding a slider on screen auto-activates its layer; the „×” button auto-deactivates it; a restored-on switch still starts its layer.');

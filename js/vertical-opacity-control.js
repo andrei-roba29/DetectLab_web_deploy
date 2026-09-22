@@ -288,6 +288,36 @@
             owner.classList.add('opacity-layer-mirrored');
             if (owner === activeOwner) owner.classList.add('opacity-layer-selected');
         }
+        refreshSoleMirrorAnchor();
+    }
+
+    /* ── O SINGURĂ OGLINDĂ = MEREU ÎN CEA MAI DIN DREAPTA POZIȚIE ──
+       Cele două sloturi au ancore fixe: primul lipit de marginea din dreapta
+       a hărții, al doilea la un pas spre stânga (50px card + 14px spațiu;
+       46 + 10 pe mobil), ca să poată sta simultan pe ecran. Când oglinda din
+       dreapta e închisă, cea rămasă ar rămâne pe ancora secundară, adică
+       singură pe ecran dar decalat spre stânga, cu o bandă goală lângă
+       margine. Clasa „mirror-sole” mută oglinda rămasă singură pe ancora
+       primului slot, deci cu un singur slider pe ecran el e mereu cel mai din
+       dreapta; la a doua selecție clasa dispare și cele două revin la
+       pozițiile lor de pereche. Perechea Satellite (opacitate + ISTORIC) are
+       întotdeauna două controale vizibile, deci nu primește niciodată clasa. */
+    function refreshSoleMirrorAnchor() {
+        var visible = [];
+        for (var i = 0; i < mirrorSlotPool.length; i++) {
+            var slot = mirrorSlotPool[i];
+            try {
+                if (slot && slot.control && slot.control.classList &&
+                    slot.control.classList.contains('visible')) {
+                    visible.push(slot.control);
+                }
+            } catch (e) { /* DOM-only tests */ }
+        }
+        for (var v = 0; v < mirrorSlotPool.length; v++) {
+            var control2 = mirrorSlotPool[v] && mirrorSlotPool[v].control;
+            if (!control2 || !control2.classList) continue;
+            control2.classList.toggle('mirror-sole', visible.length === 1 && visible[0] === control2);
+        }
     }
 
     /* Mută butoanele stratului activ în slotul de acțiuni de sub oglinda
@@ -346,11 +376,24 @@
         /* Panoul „Setări detecție” se ancorează în stânga sliderului cât timp
            stratul Josephine Map + e selectat (vezi body.vo-josephine-docked);
            când ancora dispare (alt strat / oglindă închisă), panoul se închide
-           ca să nu rămână orfan bottom-center. */
+           ca să nu rămână orfan bottom-center. Oglinda stratului poate sta în
+           oricare dintre cele două sloturi, iar ancora panoului e derivată din
+           poziția oglinzii: clasa suplimentară …-secondary mută ancora cu un
+           pas de oglindă (50px card + 14px spațiu, 46 + 10 pe mobil) spre
+           stânga, altfel panoul de 300px s-ar întinde exact peste oglinda
+           secundară și peste rândul de iconițe de sub ea. */
         var josephineDocked = activeId === 'josephineOpacitySlider' && controlVisible;
+        /* O oglindă rămasă singură pe ecran stă pe ancora cea mai din dreapta
+           (clasa „mirror-sole”), deci și panoul se ancorează ca pentru prima
+           oglindă — fără clasa …-secondary. */
+        var josephineSole = !!(activeSlot && activeSlot.control && activeSlot.control.classList &&
+            activeSlot.control.classList.contains('mirror-sole'));
+        var josephineSecondary = josephineDocked && !josephineSole && !!activeSlot &&
+            mirrorSlotPool.length > 1 && activeSlot === mirrorSlotPool[1];
         try {
             if (document.body && document.body.classList) {
                 document.body.classList.toggle('vo-josephine-docked', josephineDocked);
+                document.body.classList.toggle('vo-josephine-docked-secondary', josephineSecondary);
             }
         } catch (e) { /* DOM-only tests */ }
         if (!josephineDocked) {
@@ -759,11 +802,19 @@
        js/map-app.js la mișcarea sliderului de opacitate), apoi substratul —
        toggleLidarSub îl pune pe hartă imediat dacă masterul e vizibil, sau la
        următoarea pornire a masterului; oprit → doar substratul se stinge,
-       masterul rămâne aprins pentru restul substraturilor de pe ecran. */
+       masterul rămâne aprins pentru restul substraturilor de pe ecran.
+
+       La pornire evenimentul masterului e trimis ÎNTOTDEAUNA, nu doar când
+       checkbox-ul era debifat: window.toggleLidarSub (js/map-app.js) iese
+       devreme cât timp starea lui internă _lidarVisible e falsă, iar un
+       checkbox bifat nu înseamnă că stratul e pe hartă — browserele restaurează
+       starea bifată la reload / back-forward (form restoration), deci
+       „master.checked === true” fără eveniment lăsa substratul activat în
+       configurație, dar invizibil. */
     function setLidarSubActive(subKey, on) {
         var master = null;
         try { master = document.getElementById('lidarToggle'); } catch (e) { master = null; }
-        if (on && master && master.checked !== true) {
+        if (on && master) {
             master.checked = true;
             dispatchToggleChange(master);
         }
@@ -779,8 +830,19 @@
        numele oglinzii de pe ecran. Apelat cu on=true la APARIȚIA oglinzii pe
        ecran (selectSource / showSatellitePair, după înregistrarea slotului) și
        cu on=false la ȘTERGEREA ei de pe ecran (clearSlot: butonul „×”,
-       Escape, înlocuirea oglinzii). */
-    function setLayerActiveForSource(sliderId, on) {
+       Escape, înlocuirea oglinzii).
+
+       force=true (doar la pornire) trimite evenimentul „change” chiar dacă
+       comutatorul e deja bifat. Fără asta, un comutator rămas bifat dintr-o
+       stare veche — cel mai des form restoration la reload / back-forward,
+       caz în care stratul NU mai e pe hartă — făcea ca adăugarea sliderului pe
+       ecran să nu pornească nimic: oglinda apărea, stratul rămânea stins.
+       Re-trimiterea e inofensivă: funcțiile toggle din js/map-app.js folosesc
+       map.hasLayer(...) înainte de addTo, iar modulele de analiză își apără
+       oglinda cu isActiveFor(...) înainte de api.select(...), deci nu se
+       creează bucle. La oprire (force fals) evenimentul rămâne condiționat de
+       o tranziție reală de stare, ca să nu stingem straturi de două ori. */
+    function setLayerActiveForSource(sliderId, on, force) {
         if (!sliderId) return;
         var subKey = LIDAR_SUB_TOGGLE_KEYS[sliderId];
         if (subKey) {
@@ -792,7 +854,7 @@
         var toggle = null;
         try { toggle = document.getElementById(toggleId); } catch (e) { toggle = null; }
         if (!toggle) return;
-        if (toggle.checked === on) return; // deja în starea cerută — fără eveniment redundant
+        if (toggle.checked === on && !(force && on)) return; // deja în starea cerută — fără eveniment redundant
         toggle.checked = on;
         dispatchToggleChange(toggle);
     }
@@ -959,7 +1021,7 @@
         /* Oglinda de opacitate Satellite a ajuns pe ecran → stratul aferent
            pornește automat (Satellite e strat de bază fără comutator, deci
            apelul rămâne un no-op intenționat — vezi LAYER_TOGGLE_MAP). */
-        setLayerActiveForSource(opacitySource.id, true);
+        setLayerActiveForSource(opacitySource.id, true, true);
 
         /* The current percentage peeks briefly when the mirror opens, then
            fades — it only stays up while the value is actually changed. */
@@ -1024,8 +1086,11 @@
                clic manual (checked + „change”). Apelat după înregistrarea
                slotului, ca o reintrare în selectSource declanșată de
                comutator (straturile de distanță) să găsească oglinda deja
-               existentă în loc să configureze un al doilea slot. */
-            setLayerActiveForSource(source.id, true);
+               existentă în loc să configureze un al doilea slot. Al treilea
+               argument (force) trimite „change” și când comutatorul era deja
+               bifat dintr-o stare veche (form restoration la reload), altfel
+               sliderul apărea pe ecran cu stratul stins. */
+            setLayerActiveForSource(source.id, true, true);
         }
 
         setActiveSlot(slot);
