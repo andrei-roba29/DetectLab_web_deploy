@@ -251,7 +251,10 @@
 //   derulare (deplasare peste prag, panou derulat între apăsare și ridicare,
 //   tap care doar oprește o derulare, al doilea deget, apăsare lungă). Pe
 //   desktop, în afara modului PWA, comportamentul rămâne neschimbat.
-const CACHE_NAME = 'detectlab-v132-deliberate-tap';
+// v133: readuce butonul 🎯 de locație live în PWA ca un control fix separat
+//   în dreapta-jos (safe-area + 28px), fără să readucă meniul contului din
+//   vechea stivă de jos; site-ul păstrează butonul în coloana din stânga.
+const CACHE_NAME = 'detectlab-v133-pwa-live-location';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -694,13 +697,11 @@ const PRECACHE_URLS = [
   // așteaptă răspunsul înainte să publice prezența sau să pornească locația
   // live, iar „Nu” doar te ține ascuns — căutarea merge înainte.
   'js/map-app.js?v=20260921-nearby-visibility-prompt',
-  // Bara de jos a PWA-ului a fost scoasă complet: #pwa-br-stack (butonul de
-  // geolocație + butonul contului cu inițialele „AN” / „Log In” și meniul lui)
-  // e display:none !important și remove() din DOM în modul standalone, iar
-  // js/map-app.js nu mai creează butonul de locație live în aplicația
-  // instalată. Harta merge acum până la marginea de jos a ecranului.
-  'js/map-app.js?v=20260922-pwa-no-bottom-bar',
-  'js/tutorial.js?v=20260922-pwa-no-bottom-bar',
+  // În aplicația instalată, meniul contului din #pwa-br-stack rămâne eliminat.
+  // Butonul 🎯 de locație live revine ca un control fix separat în dreapta-jos;
+  // pe site rămâne sub controlul de zoom, în stiva din stânga.
+  'js/map-app.js?v=20260923-pwa-live-location',
+  'js/tutorial.js?v=20260923-pwa-live-location',
   // These four were referenced by index.html with a cache-busted query string
   // but never added here, so an already-installed PWA kept serving whatever
   // older copy it had cached under the un-versioned URL instead of picking up

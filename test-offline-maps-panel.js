@@ -60,7 +60,7 @@ assert(/max-height:/.test(layerOptionsRule) && /overflow-y:\s*auto/.test(layerOp
 
 const pwaPanelRule = ruleBody(CSS, 'body.is-pwa .offline-map-panel');
 assert(/bottom:\s*calc\(8px \+ var\(--pwa-bottom-controls-clearance/.test(pwaPanelRule),
-    'in the installed app the panel must sit above the fixed PWA bottom bar');
+    'in the installed app the panel must keep its published bottom-controls clearance');
 assert(/max-height:[^;]*--pwa-bottom-controls-clearance/.test(pwaPanelRule),
     'the PWA panel height must subtract the bottom-bar clearance');
 

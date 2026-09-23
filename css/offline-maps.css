@@ -273,9 +273,9 @@
 }
 
 /* ── Installed app (PWA / standalone) ────────────────────────────────────────
-   The map paints edge to edge and the PWA bottom stacks (account stack,
-   compass column) sit over the bottom of the viewport, so the panel — and
-   with it the download button — used to end up behind them. The panel is
+   The map paints edge to edge and the PWA bottom controls (live-location
+   button, compass / Detect column) sit over the viewport edge, so the panel —
+   and with it the download button — needs its own clearance. The panel is
    lifted by the clearance the app already publishes as
    --pwa-bottom-controls-clearance.
    The saved-maps library sits at the opposite edge: in standalone mode the

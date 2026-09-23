@@ -63,17 +63,15 @@ check('every targeted id exists in the shipped UI', missing.length === 0, 'missi
     check('tutorial copy mentions "' + snippet + '"', TUT_SRC.indexOf(snippet) !== -1);
 });
 
-/* The PWA bottom bar is gone: the guide must no longer describe controls that
-   sit at the bottom-right of the installed app, and it must say so instead. */
-['dreapta-jos, deasupra iconiței contului', 'at the bottom-right, above the account icon'].forEach(function (stale) {
-    check('the guide no longer points at the removed bottom bar ("' + stale + '")',
-        TUT_SRC.indexOf(stale) === -1);
+/* The installed PWA has a separate bottom-right GPS action, but no account
+   menu there. The walkthrough must distinguish the two controls. */
+['în dreapta-jos', 'at the bottom-right'].forEach(function (snippet) {
+    check('the live-location slide documents "' + snippet + '"', TUT_SRC.indexOf(snippet) !== -1);
 });
-['nu mai există nicio bară jos', 'has no bottom bar any more',
- 'bara de jos a fost scoasă', 'had its bottom bar removed'].forEach(function (snippet) {
-    check('tutorial copy mentions "' + snippet + '"', TUT_SRC.indexOf(snippet) !== -1);
+['nu deschide meniul contului', 'does not open the account menu'].forEach(function (snippet) {
+    check('the account slide distinguishes live location: "' + snippet + '"', TUT_SRC.indexOf(snippet) !== -1);
 });
-check('the account slide points at the website nav pill, not only at the removed PWA button',
+check('the account slide points at the website nav pill, not the removed PWA account trigger',
     /sel: \['#navUser', '#pwaUserItem'\]/.test(TUT_SRC));
 
 /* ── 5. Friends slide mechanics ────────────────────────────────────────── */

@@ -1303,7 +1303,7 @@
                 var locationCircle = null;
                 var watchId = null;
 
-                // Build button and inject after zoom control
+                // Build the shared live-location control wrapper.
                 var btn = document.createElement('div');
                 btn.className = 'leaflet-control leaflet-bar';
                 btn.style.cssText = 'margin-top:8px;border:none;box-shadow:none;background:none;';
@@ -1316,35 +1316,39 @@
                     '</svg>' +
                     '</button>';
 
-                // The bottom bar of the installed PWA is gone (see the
-                // "#pwa-br-stack" rules in index.html): this button used to be
-                // prepended into that bottom-right stack, above the account
-                // trigger. In standalone mode it is therefore never inserted —
-                // no geolocation button anywhere on the bottom edge. The live
-                // location itself keeps working headless: the Detect switch,
-                // the trail recorder and the nearby-detectorists search all go
-                // through window._startLiveLocation / _showLiveLocation.
-                // Desktop keeps the button in the left icon stack.
+                // In the installed PWA, keep the live-location action as one
+                // independent floating button at the bottom-right. The account
+                // stack that used to host it remains removed. On the website,
+                // keep the existing position below zoom in the left icon stack.
                 // NOTE: documentElement (set by the <head> script) is used on
                 // purpose — initMap runs before the footer script adds .is-pwa
                 // to <body>.
                 var isPwaMode = !!(document.documentElement &&
                     document.documentElement.classList.contains('is-pwa'));
 
-                // Wait for DOM to be ready then insert below zoom buttons
+                // Wait for the map/DOM to settle, then place the control for
+                // this presentation mode and attach the direct click handler.
                 setTimeout(function () {
                     if (isPwaMode) {
-                        // Nothing to insert: the bottom bar that hosted this
-                        // button was removed, and the left stack must not gain
-                        // it either.
-                        return;
+                        // Its fixed bottom-right geometry is supplied by the
+                        // .pwa-live-location-control rule in index.html.
+                        btn.classList.add('pwa-live-location-control');
+                        if (!document.body) return;
+                        document.body.appendChild(btn);
+                    } else {
+                        var zoomCtrl = document.querySelector('#detectlab-map .leaflet-top.leaflet-left');
+                        if (zoomCtrl) zoomCtrl.appendChild(btn);
                     }
-                    var zoomCtrl = document.querySelector('#detectlab-map .leaflet-top.leaflet-left');
-                    if (zoomCtrl) zoomCtrl.appendChild(btn);
                     // Attach listener directly on the button (not delegated) so Leaflet's
                     // internal stopPropagation on control containers can't swallow clicks.
                     var btnEl = document.getElementById('btnLiveLocation');
                     if (btnEl) {
+                        // A programmatic start can precede this delayed mount;
+                        // sync the button to the watcher's source-of-truth state.
+                        if (watchId !== null) {
+                            btnEl.classList.add('active');
+                            btnEl.title = 'Stop tracking';
+                        }
                         L.DomEvent.on(btnEl, 'click', function (e) {
                             L.DomEvent.stopPropagation(e);  // prevent map click firing underneath
                             if (watchId !== null) { stopTracking(); return; }
@@ -1402,8 +1406,8 @@
                         return;
                     }
                     // watchId is the single source of truth — already guarded by the click handler.
-                    // The button itself is gone in the installed PWA (the bottom
-                    // bar was removed), so the visual "active" state is optional.
+                    // Keep the visual state optional for programmatic/headless
+                    // starts that can happen before the button has mounted.
                     var liveBtn = document.getElementById('btnLiveLocation');
                     if (liveBtn) {
                         liveBtn.classList.add('active');
@@ -6634,11 +6638,10 @@
 
             // ── TRANSPARENCY PANEL ──
             // The open state is also published on <body>: the panel stretches to
-            // the bottom of the screen in the installed PWA. The floating
-            // bottom-right stack (live location + account) that used to have to
-            // step aside is gone — the whole bottom bar was removed — but the
-            // body flag stays: it is what the CSS hides-in-place rule keys on,
-            // and other code reads it to know the window is open.
+            // the bottom of the screen in the installed PWA. The account stack
+            // stays removed, while the separate bottom-right live-location
+            // button hides in place under the panel; the body flag drives that
+            // CSS rule and lets other code know the window is open.
             var transpPanelOpen = false;
             // Both the panel element and a body-level flag follow the open state,
             // so no path may set one without the other — hence one tiny setter
@@ -7204,7 +7207,7 @@
             };
 
             // 1) Cold start / app restart — after full load so every panel, the PWA
-            //    bottom bar and the service worker are wired up.  (Geolocation was
+            //    controls and the service worker are wired up.  (Geolocation was
             //    already authorised when the user first enabled the switch, so the
             //    GPS watchers resume silently.)
             window.addEventListener('load', function () {

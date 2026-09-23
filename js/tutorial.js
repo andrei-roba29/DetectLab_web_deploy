@@ -70,8 +70,8 @@
                     sel: '#btnLiveLocation',
                     title: { ro: 'Locația mea', en: 'My location' },
                     desc: {
-                        ro: 'Pornește / oprește urmărirea GPS în timp real și centrează harta pe poziția ta. Butonul există doar pe site, în coloana din stânga; în aplicația instalată nu mai există nicio bară jos, iar locația live pornește singură din comutatorul Detectare sau din lupa „Detectoriști din zonă”.',
-                        en: 'Start / stop real-time GPS tracking and centre the map on your position. The button only exists on the website, in the left-hand column; the installed app has no bottom bar any more — live location starts on its own from the Detect switch or from the "Detectorists nearby" magnifier.'
+                        ro: 'Pornește / oprește urmărirea GPS în timp real și centrează harta pe poziția ta. Pe site, butonul stă în coloana din stânga; în aplicația instalată îl găsești separat, în dreapta-jos. Nu mai există meniul de cont din bara de jos. Locația live poate porni și din comutatorul Detectare sau din lupa „Detectoriști din zonă”.',
+                        en: 'Start / stop real-time GPS tracking and centre the map on your position. On the website, the button is in the left-hand column; in the installed app it appears separately at the bottom-right. The account menu is no longer in a bottom bar. Live location can also start from the Detect switch or the "Detectorists nearby" magnifier.'
                     }
                 },
                 {
@@ -170,8 +170,8 @@
                     sel: ['#navUser', '#pwaUserItem'],
                     title: { ro: 'Contul tău', en: 'Your account' },
                     desc: {
-                        ro: 'Autentificare, administrarea contului și a abonamentului, evenimente și delogare, plus Limbă (română / engleză), Stocare (pin-uri, trasee și hărți salvate) și intrarea spre Prieteni (căutare, cereri, chat). Meniul contului stă în bara de sus a site-ului: în aplicația instalată bara de jos a fost scoasă, deci nu mai există niciun buton acolo.',
-                        en: 'Log in, manage your account and subscription, events and log out, plus Language (Romanian / English), Storage (pins, trails and saved maps) and the entry to Friends (search, requests, chat). The account menu lives in the website\'s top bar: the installed app had its bottom bar removed, so there is no button down there any more.'
+                        ro: 'Autentificare, administrarea contului și a abonamentului, evenimente și delogare, plus Limbă (română / engleză), Stocare (pin-uri, trasee și hărți salvate) și intrarea spre Prieteni (căutare, cereri, chat). Meniul contului stă în bara de sus a site-ului; în aplicația instalată a fost scos din dreapta-jos. Butonul 🎯 din dreapta-jos pornește doar locația live, nu deschide meniul contului.',
+                        en: 'Log in, manage your account and subscription, events and log out, plus Language (Romanian / English), Storage (pins, trails and saved maps) and the entry to Friends (search, requests, chat). The account menu lives in the website\'s top bar and is not available from the installed app. Its bottom-right 🎯 button controls live location only; it does not open the account menu.'
                     }
                 },
                 {

@@ -26,20 +26,20 @@ marginea fizică a ecranului, pictată de fundalul paginii
 `#map-section { background:#060E1E }`).
 
 Așadar banda nu este o bară rămasă în DOM. Bara veche, pe toată lățimea, a fost
-scoasă în `b319558` („PWA bottom bar removal”) și nu mai există nicio referință
-`pwaBottomBar` / `.pwa-bottom-bar` în cod.
+scoasă în `b319558` („PWA bottom bar removal”); nu mai există markup-ul
+`.pwa-bottom-bar`. Variabila locală `pwaBottomBar` este folosită în scriptul
+standalone pentru a elimina doar vechea stivă de cont.
 
-> **Update (v123).** Ce mai rămăsese jos — stiva plutitoare din dreapta-jos
-> `#pwa-br-stack`, adică butonul de geolocație 🎯 peste butonul contului (cel cu
-> inițialele din e-mail, „AN”, sau pastila „Log In” când ești delogat, cu
-> meniul care se desfășoară în sus) — a fost **șters complet** la cererea
-> utilizatorului: `display:none !important` în CSS, `removeChild()` în scriptul
-> de standalone, iar `js/map-app.js` nu mai creează butonul de locație live în
-> aplicația instalată. Josul ecranului nu mai conține niciun buton; harta merge
-> până la marginea de jos. Vezi `PWA_NO_BOTTOM_BAR.md` și
-> `test-pwa-no-bottom-bar.js`. Contractul de offset-uri de mai jos rămâne
-> publicat neschimbat sub `display:none` (geometria veche e păstrată literal,
-> ca să poată fi restaurată dacă bara revine vreodată). Un audit al tuturor regulilor
+> **Istoric (v123) și stare curentă (v133).** În v123 a fost eliminată
+> `#pwa-br-stack`, care conținea butonul 🎯 și meniul de cont („AN” / „Log In”).
+> Ulterior, butonul 🎯 a fost readus separat: `js/map-app.js` îl montează în PWA
+> ca element fix în dreapta-jos, cu același `right: max(10px, safe-area)` și
+> `bottom: safe-area + 28px`; meniul de cont rămâne eliminat din DOM. Așadar
+> utilizatorul are din nou controlul de locație live, dar nu reapare vechea
+> stivă de cont. Vezi `PWA_NO_BOTTOM_BAR.md` și `test-pwa-no-bottom-bar.js`.
+> Geometria de jos a hărții rămâne neschimbată: butonul este plutitor și nu
+> creează o bandă care să împiedice harta să ajungă la marginea ecranului. Un
+> audit al tuturor regulilor
 `position:fixed|absolute` + `bottom:0` + `background` din `index.html`,
 `css/styles.css`, `css/offline-maps.css` și restul fișierelor CSS nu găsește
 niciun element care să picteze o bandă jos: `body::before` este doar sus și e
@@ -268,7 +268,7 @@ din `sw.js` → `const CACHE_NAME = 'detectlab-vNNN-…'`.
 | `node test-pwa-no-bottom-strip.js` | testul v109, încă verde |
 | `node test-pwa-layer-panel.js` | fereastra de straturi, încă verde |
 | `node test-offline-maps-panel.js` · `node test-tutorial.js` | încă verzi |
-| `node test-pwa-no-bottom-bar.js` | **v123**: bara de jos (stiva `#pwa-br-stack` cu butonul de geolocație și butonul contului „AN”) e ștearsă complet, iar restul UI-ului nu s-a mișcat — vezi `PWA_NO_BOTTOM_BAR.md` |
+| `node test-pwa-no-bottom-bar.js` | verifică în v133 că stiva contului `#pwa-br-stack` rămâne scoasă, în timp ce butonul 🎯 revine separat în dreapta-jos cu safe-area clearance — vezi `PWA_NO_BOTTOM_BAR.md` |
 
 `test-gmaps-directions.js` eșua la momentul analizei de mai sus, dintr-un motiv
 preexistent și fără legătură (aștepta `CACHE_NAME = 'detectlab-v10[6-9]-gmaps-directions`);

@@ -1,40 +1,12 @@
-// Regression test — the installed PWA must show NO bottom bar at all.
+// Regression test — the PWA account bar stays removed, while the live-location
+// button is available as a separate control at the bottom-right.
 //
-// What the user reported
-// ----------------------
-// A horizontal strip at the bottom of the screen in the installed app, holding
-// the account button (the one showing the e-mail initials — "AN") and the
-// geolocation button. Request: delete the whole bar, every element in it, and
-// let the map run to the bottom edge. The LEFT controls (zoom, measure,
-// coordinates, trail, offline maps, magnifier, compass / rotation-lock /
-// Detect) must stay exactly as they are.
-//
-// What the bar actually was
-// -------------------------
-// #pwa-br-stack — position:fixed at the bottom-right, z-index 2000:
-//   • #btnLiveLocation  (🎯 geolocation / live location), prepended into the
-//     stack by js/map-app.js ~200 ms after initMap;
-//   • #pwaUserTrigger   (the "AN" / initials button, 38×38) with #pwaAvatar
-//     inside and #pwaUserDropdown expanding upwards (Manage Account / Events /
-//     Friends / Language / Storage / Log Out);
-//   • #pwaLoginTrigger  (the "Log In" pill shown when signed out).
-// The earlier full-width bar (.pwa-bottom-bar) had already been removed; this
-// stack was what remained at the bottom of the screen.
-//
-// The fix, in three layers (any one of them alone could be undone)
-// ----------------------------------------------------------------
-//   1. CSS  — #pwa-br-stack is display:none !important + visibility:hidden +
-//             pointer-events:none, and a body.is-pwa rule hides the container
-//             and every button inside it with !important. That !important
-//             matters: updatePwaUserStack() writes
-//             `userTrigger.style.display = 'flex'` inline every 500 ms, and an
-//             inline display beats any stylesheet rule without it.
-//   2. DOM  — the standalone script in index.html removes the container with
-//             removeChild(), so nothing can re-show it.
-//   3. JS   — js/map-app.js no longer inserts the live-location button in PWA
-//             mode (it returns before touching the DOM), and the tracking
-//             helpers are null-guarded so the headless live location started by
-//             the Detect switch / the magnifier / trail recording still works.
+// The old #pwa-br-stack combined the 🎯 location button with the account
+// initials / Log In menu. Removing that whole stack also removed the user's
+// direct way to toggle live location. The current contract is narrower:
+//   • remove the account stack from standalone mode;
+//   • keep the 🎯 button, fixed at the bottom-right with safe-area clearance;
+//   • keep the website button in the left Leaflet control column.
 //
 // Run: node test-pwa-no-bottom-bar.js
 
@@ -46,16 +18,13 @@ const path = require('path');
 
 const read = (rel) => fs.readFileSync(path.join(__dirname, rel), 'utf8');
 const html = read('index.html');
-const flat = html.replace(/\n\s*/g, ' ');
-// CSS blocks only, with the (very verbose) comments stripped: the selectors
-// below are matched structurally, and a comment between two rules would
-// otherwise break the "start of rule" anchor.
 const cssOnly = (html.match(/<style>([\s\S]*?)<\/style>/g) || []).join('\n')
     .replace(/<\/?style>/g, '')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\s+/g, ' ');
 const mapApp = read('js/map-app.js');
 const styles = read('css/styles.css');
+const tutorial = read('js/tutorial.js');
 const sw = read('sw.js');
 
 let passed = 0;
@@ -68,9 +37,6 @@ function ruleOf(source, selector, label) {
     return m[1];
 }
 
-/* Like ruleOf, but the selector must start the rule: `#pwa-br-stack` also
-   appears inside the selector list of the touch-action block, and "first match
-   wins" would grab that one instead. */
 function ownRuleOf(source, selector, label) {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const m = new RegExp('(?:^|\\})\\s*' + escaped + '\\s*\\{([^}]*)\\}').exec(source);
@@ -78,128 +44,82 @@ function ownRuleOf(source, selector, label) {
     return m[1];
 }
 
-/* ── 1. The container of the whole bar is hidden, hard ─────────────────── */
-const stack = ownRuleOf(cssOnly, '#pwa-br-stack', '#pwa-br-stack (the bottom bar)');
+/* ── 1. The account stack is hidden/removed, but not confused with GPS ──── */
+const stack = ownRuleOf(cssOnly, '#pwa-br-stack', '#pwa-br-stack (account menu)');
 assert(/display:\s*none\s*!important/.test(stack),
-    '#pwa-br-stack must be display:none !important — an inline display from '
-    + 'updatePwaUserStack() would otherwise win');
+    'the legacy account stack stays hidden in the base layout');
 assert(/visibility:\s*hidden/.test(stack) && /pointer-events:\s*none/.test(stack),
-    'the bar must also be invisible and click-through, so nothing can be tapped '
-    + 'where it used to be');
+    'the legacy account stack must remain invisible and click-through');
+const accountHide = (cssOnly.match(/body\.is-pwa #pwa-br-stack,[^{]*\{[^}]*display:\s*none !important;[^}]*\}/) || [])[0] || '';
+assert(accountHide, 'standalone CSS must hard-hide the account stack');
+['#pwa-br-stack', '#pwaUserItem', '#pwaUserTrigger', '#pwaLoginTrigger', '#pwaUserDropdown']
+    .forEach(sel => assert(accountHide.includes(sel), 'the PWA account hide rule must cover ' + sel));
+assert(!accountHide.includes('#btnLiveLocation') && !accountHide.includes('.btn-live-location'),
+    'the PWA account hide rule must not hide the live-location button');
+assert(!/body\.is-pwa \.btn-live-location\s*\{[^}]*display:\s*none/.test(cssOnly),
+    'no standalone rule may hide the 🎯 button');
+ok('the account/menu stack is hidden, independently of the live-location control');
 
-/* The rule that used to put the bar on screen must not exist any more. */
-assert(!/body\.is-pwa #pwa-br-stack\s*\{\s*display:\s*flex/.test(cssOnly),
-    'body.is-pwa #pwa-br-stack { display: flex } is the rule that showed the bar');
-assert(!/body\.is-pwa #pwa-br-stack\s*\{\s*display:\s*(flex|block|grid)/.test(cssOnly),
-    'no PWA rule may re-open the bottom bar');
+/* ── 2. The standalone script removes the account menu only ────────────── */
+assert(/getElementById\('pwa-br-stack'\)/.test(html)
+    && /pwaBottomBar\.parentNode\.removeChild\(pwaBottomBar\)/.test(html),
+    'standalone mode must remove the account stack from the DOM');
+assert(!/removeChild\([^)]*btnLiveLocation/.test(html)
+    && !/\['btnLiveLocation'\]/.test(html),
+    'the standalone script must not remove the live-location button');
+assert(/classList\.add\('is-pwa'\);[\s\S]{0,1800}?removeChild\(pwaBottomBar\)/.test(html),
+    'account-stack removal must stay scoped to standalone mode');
+ok('standalone mode removes the account menu without deleting the GPS button');
 
-/* Every part of the bar is hidden individually, so a stray inline style on one
-   button cannot bring a piece of the bar back. (#pwa-br-stack also heads the
-   touch-action rule, so pick the block that actually hides something.) */
-const hidden = (cssOnly.match(/body\.is-pwa #pwa-br-stack,[^{]*\{[^}]*display:\s*none !important;[^}]*\}/) || [])[0] || '';
-assert(hidden, 'a body.is-pwa rule must list the bar and its buttons');
-['#pwa-br-stack', '#pwaUserItem', '#pwaUserTrigger', '#pwaLoginTrigger',
- '#pwaUserDropdown', '#btnLiveLocation', '.btn-live-location'].forEach(function (sel) {
-    assert(hidden.indexOf(sel) !== -1, 'the PWA hide rule must cover ' + sel);
-});
-assert(/display:\s*none\s*!important/.test(hidden),
-    'the PWA hide rule must use display:none !important');
-ok('CSS hides the bar container and every control inside it (!important)');
+/* ── 3. The live-location control is restored at bottom-right in PWA ───── */
+assert(/if \(isPwaMode\) \{[\s\S]{0,280}?btn\.classList\.add\('pwa-live-location-control'\);[\s\S]{0,150}?document\.body\.appendChild\(btn\);/.test(mapApp),
+    'js/map-app.js must insert the PWA location control into the document body');
+assert(/else\s*\{\s*var zoomCtrl = document\.querySelector\('#detectlab-map \.leaflet-top\.leaflet-left'\);\s*if \(zoomCtrl\) zoomCtrl\.appendChild\(btn\);/.test(mapApp),
+    'the website still inserts the 🎯 button below zoom in the left stack');
+const pwaControl = ruleOf(cssOnly, 'html.is-pwa .pwa-live-location-control');
+assert(/position:\s*fixed\s*!important/.test(pwaControl)
+    && /right:\s*max\(10px, env\(safe-area-inset-right, 0px\)\)\s*!important/.test(pwaControl)
+    && /bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 28px\)\s*!important/.test(pwaControl),
+    'the PWA location button must sit at the former bottom-right offset and clear safe areas');
+assert(/z-index:\s*2000\s*!important/.test(pwaControl)
+    && /pointer-events:\s*auto\s*!important/.test(pwaControl),
+    'the fixed PWA button must stay tappable above the map');
+assert(/btnLiveLocation/.test(mapApp) && /L\.DomEvent\.on\(btnEl, 'click'/.test(mapApp),
+    'the restored button must keep its existing live-location click handler');
+ok('the 🎯 button is fixed at bottom-right in PWA and remains left-side on the website');
 
-/* ── 2. The bar is removed from the DOM in standalone mode ─────────────── */
-assert(/getElementById\('pwa-br-stack'\)/.test(html),
-    'the standalone script must look the bar up by id');
-assert(/pwaBottomBar\.parentNode\.removeChild\(pwaBottomBar\)/.test(html),
-    'the bar must be remove()d from the DOM, not only hidden');
-const removal = /classList\.add\('is-pwa'\);[\s\S]{0,2200}?removeChild\(pwaBottomBar\)/.test(html);
-assert(removal,
-    'the removal must happen inside the is-pwa branch (the website keeps its markup)');
-assert(/classList\.contains\('is-pwa'\)|classList\.add\('is-pwa'\)/.test(html),
-    'the PWA layout class still gates the standalone behaviour');
-ok('the standalone script removes the bar from the DOM (inline styles cannot bring it back)');
-
-/* ── 3. The geolocation button is never inserted in PWA mode ───────────── */
-assert(/if \(isPwaMode\) \{\s*\/\/ Nothing to insert[\s\S]{0,220}?return;\s*\}/.test(mapApp),
-    'js/map-app.js must return before inserting the live-location button in PWA mode');
-assert(!/stack\.prepend\(liveBtn\)/.test(mapApp),
-    'the 🎯 button must no longer be prepended into the bottom bar');
-assert(/var zoomCtrl = document\.querySelector\('#detectlab-map \.leaflet-top\.leaflet-left'\);\s*if \(zoomCtrl\) zoomCtrl\.appendChild\(btn\);/.test(mapApp),
-    'the website still gets the 🎯 button in the LEFT icon stack (unchanged)');
-ok('js/map-app.js no longer builds the geolocation button in the installed app');
-
-/* The live location itself must keep working headless: the Detect switch, the
-   trail recorder and the nearby search all call these, and none of them may
-   crash on the missing button. */
+/* Programmatic location starts remain safe before the control is mounted. */
 assert(/window\._startLiveLocation = startTracking;/.test(mapApp)
     && /window\._stopLiveLocation = stopTracking;/.test(mapApp)
     && /window\._isLiveLocationActive = function/.test(mapApp)
     && /window\._showLiveLocation = showLiveLocation;/.test(mapApp),
-    'the headless live-location bridge must stay exposed');
-assert(!/document\.getElementById\('btnLiveLocation'\)\.classList/.test(mapApp),
-    'startTracking() must null-guard the button: it no longer exists in the PWA, '
-    + 'and an exception there would kill GPS tracking for the Detect switch');
-const guard = /var liveBtn = document\.getElementById\('btnLiveLocation'\);\s*if \(liveBtn\) \{/.test(mapApp);
-assert(guard, 'the "active" state of the 🎯 button must be optional');
-ok('live location keeps working with no button (Detect switch / magnifier / trail)');
+    'the shared live-location bridge must stay exposed');
+assert(/var liveBtn = document\.getElementById\('btnLiveLocation'\);\s*if \(liveBtn\) \{/.test(mapApp),
+    'programmatic GPS starts must be safe if the button is not mounted yet');
+ok('the Detect switch / nearby search / trail recorder can still use live-location APIs');
 
-/* ── 4. The content now reaches the bottom edge ────────────────────────── */
+/* ── 4. The map still reaches the bottom edge ──────────────────────────── */
 const section = ruleOf(cssOnly, 'body.is-pwa #map-section');
-assert(/position:\s*fixed/.test(section) && /top:\s*0/.test(section) && /bottom:\s*0/.test(section),
-    'the map section must stay stretched to both viewport edges');
-assert(/min-height:\s*100vh/.test(section),
-    'the 100vh floor must stay — without it iOS leaves the navy band under the map');
-assert(!/padding-bottom/.test(section),
-    'no bottom padding may shorten the map again');
+assert(/position:\s*fixed/.test(section) && /top:\s*0/.test(section) && /bottom:\s*0/.test(section)
+    && /min-height:\s*100vh/.test(section) && !/padding-bottom/.test(section),
+    'the map section stays stretched to the bottom edge with no shortening padding');
 const leafletBottom = ruleOf(cssOnly, 'body.is-pwa .leaflet-bottom');
 assert(/bottom:\s*env\(safe-area-inset-bottom, 0px\) !important/.test(leafletBottom),
-    'the Leaflet bottom corners keep anchoring to the real bottom edge');
-ok('the map runs to the bottom edge (stretch + 100vh floor, no padding)');
+    'the compass column still clears the home indicator');
+ok('the map edge and bottom-left compass geometry remain unchanged');
 
-/* ── 5. The LEFT controls are untouched ────────────────────────────────── */
-['#btnMeasure', '#btnCoord', '#btnTrack', '#btnOfflineMaps', '#savedLocationsBtn',
- '#pwaNearbyBtn', 'pwaDetectBtn'].forEach(function (id) {
-    assert(html.indexOf(id.replace('#', '')) !== -1 || mapApp.indexOf(id.replace('#', '')) !== -1,
-        id + ' must still exist in the shipped UI');
-});
-assert(!/body\.is-pwa #btnMeasure|body\.is-pwa #btnCoord|body\.is-pwa #btnTrack|body\.is-pwa #pwaNearbyBtn/.test(cssOnly),
-    'no left-stack button may be hidden by the bottom-bar removal');
-const compass = ruleOf(styles.replace(/\n\s*/g, ' '), '#detectlab-map .detectlab-compass');
-assert(/margin:\s*0 0 10px 10px !important/.test(compass),
-    'the compass / rotation-lock / Detect column keeps its bottom-left position');
-const leafletTop = (cssOnly.match(/body\.is-pwa \.leaflet-top\s*\{[^}]*\}/g) || []).pop() || '';
-assert(/top:\s*calc\(14px \+ env\(safe-area-inset-top, 0px\)\) !important/.test(leafletTop),
-    'the left icon stack keeps its top offset');
-const tag = ruleOf(styles.replace(/\n\s*/g, ' '), '.leaflet-container::after');
-assert(/bottom:\s*4px/.test(tag) && /right:\s*6px/.test(tag),
-    'the "© Leafleet" tag keeps its offset (it is the reference point of PWA_BOTTOM_BAND.md)');
-ok('left stack, compass column and the © Leafleet tag did not move');
-
-/* ── 6. Nothing else paints a bar along the bottom ─────────────────────── */
-/* (The removal code in index.html deliberately uses a local `pwaBottomBar`
-   variable for the node it deletes — that is not a stranded reference to the
-   old `.pwa-bottom-bar` markup, which is long gone.) */
-['.pwa-bottom-bar', 'bottom-tab-bar', '#bottomBar', 'pwa-bottom-bar"'].forEach(function (stale) {
-    assert(html.indexOf(stale) === -1, 'stranded reference to ' + stale);
-});
-assert(/body\.is-pwa \.map-controls\s*\{[^}]*display:\s*none/.test(cssOnly),
-    'the .map-controls row under the map frame stays hidden in the PWA');
-assert(/body\.is-pwa \.map-header\s*\{[^}]*display:\s*none/.test(cssOnly),
-    'the bottom tab pill (map-header) stays hidden in the PWA');
-assert(/body\.is-pwa footer,\s*body\.is-pwa #get-mobile/.test(cssOnly),
-    'the page footer stays hidden in the PWA');
-ok('no other element paints a strip along the bottom edge');
-
-/* ── 7. Installed PWAs must actually receive it ────────────────────────── */
+/* ── 5. Installed PWAs receive fresh, matching assets ──────────────────── */
 const cacheName = (sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1];
-assert(Number(cacheName) >= 123, 'the SW cache must be bumped to v123+ (got v' + cacheName + ')');
-assert(/\/\/ v123:/.test(sw), 'the v123 change must be described in the sw.js changelog');
+assert(Number(cacheName) >= 133, 'the SW cache must be bumped to v133+ (got v' + cacheName + ')');
+assert(/\/\/ v133:/.test(sw), 'the live-location restoration must be described in sw.js');
 ['js/map-app.js', 'js/tutorial.js'].forEach(function (file) {
     const tag = (html.match(new RegExp('src="(' + file.replace('/', '\\/') + '\\?v=[^"]+)"')) || [])[1];
     assert(tag, file + ' must be cache-busted on the page');
-    assert(sw.indexOf("'" + tag + "'") !== -1, file + ' must be pre-cached under that exact URL');
+    assert(sw.includes("'" + tag + "'"), file + ' must be pre-cached under that exact URL');
 });
-ok('the service worker is bumped and pre-caches the changed scripts');
+assert(tutorial.includes('dreapta-jos') && tutorial.includes('bottom-right'),
+    'the tutorial must document the restored PWA button position in both languages');
+ok('the service worker cache-busts and pre-caches the restored PWA control');
 
 console.log('\n' + passed + ' groups passed.');
-console.log('OK — the installed PWA has no bottom bar: no "AN" account button, '
-    + 'no geolocation button, nothing under the map.');
+console.log('OK — the PWA account bar is still gone, and the live-location button is back at bottom-right.');

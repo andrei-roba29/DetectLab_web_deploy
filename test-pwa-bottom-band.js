@@ -77,27 +77,31 @@ assert(/name="apple-mobile-web-app-status-bar-style"\s+content="black-translucen
     'black-translucent must stay: dropping it would move the top controls and '
     + 'hand the status-bar strip to iOS');
 
-/* ── 2. THE CONTRACT — not one control may move ────────────────────────── */
-/* The bottom-right stack (live-location 🎯 + the account "AN" / initials
-   button) IS the bottom bar the app used to show, so it is gone: hidden by
-   CSS and removed() from the DOM in standalone mode. Its old geometry is kept
-   verbatim under the display:none so the numbers stay published, and nothing
-   else at the bottom of the screen may move. */
+/* ── 2. THE CONTRACT — no account bar; live location stays bottom-right ─ */
+/* The account stack is removed from the standalone PWA, but its former GPS
+   control is now an independent fixed button in the same right-bottom position.
+   The home-indicator and compass/action-dock offsets stay unchanged. */
 const stack = (html.match(/#pwa-br-stack\s*\{\s*display:\s*none !important;\s*position:\s*fixed;[^}]*\}/) || [])[0] || '';
-assert(stack, 'the #pwa-br-stack rule must stay readable (display:none !important + position:fixed)');
-assert(/right:\s*max\(10px, env\(safe-area-inset-right, 0px\)\)/.test(stack),
-    'live-location + account stack: right edge offset changed');
-assert(/bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 28px\)/.test(stack),
-    'live-location + account stack: bottom offset changed');
+assert(stack, 'the #pwa-br-stack account menu stays display:none !important');
 assert(/visibility:\s*hidden/.test(stack) && /pointer-events:\s*none/.test(stack),
-    'the bottom bar must also be invisible and click-through, not only display:none');
-assert(!/body\.is-pwa #pwa-br-stack\s*\{\s*display:\s*flex/.test(html),
-    'the rule that put the bottom bar on screen (display:flex in PWA) must be gone');
+    'the account stack must remain invisible and click-through');
 assert(/body\.is-pwa #pwa-br-stack,[\s\S]{0,400}?display:\s*none !important;/.test(html),
-    'a PWA rule must hide the whole bottom bar and its buttons with !important '
-    + '(updatePwaUserStack writes inline display:flex on #pwaUserTrigger every 500 ms)');
+    'standalone CSS must hard-hide the account stack against inline auth styles');
 assert(/getElementById\('pwa-br-stack'\)/.test(html) && /removeChild\(pwaBottomBar\)/.test(html),
-    'the standalone script must remove the bottom bar from the DOM, not just hide it');
+    'the standalone script must remove the account stack from the DOM');
+
+const liveControl = ruleOf(html, 'html.is-pwa .pwa-live-location-control');
+assert(/position:\s*fixed\s*!important/.test(liveControl),
+    'the live-location button must be positioned independently of Leaflet');
+assert(/right:\s*max\(10px, env\(safe-area-inset-right, 0px\)\)\s*!important/.test(liveControl),
+    'the live-location button must keep its right edge offset');
+assert(/bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 28px\)\s*!important/.test(liveControl),
+    'the live-location button must clear the home indicator and © Leafleet tag');
+assert(/z-index:\s*2000\s*!important/.test(liveControl)
+    && /pointer-events:\s*auto\s*!important/.test(liveControl),
+    'the location button must stay tappable above the map');
+assert(!/body\.is-pwa #btnLiveLocation|body\.is-pwa \.btn-live-location/.test(html),
+    'no PWA rule may hide the restored 🎯 control');
 
 const leafletBottom = ruleOf(html, 'body.is-pwa .leaflet-bottom');
 assert(/bottom:\s*env\(safe-area-inset-bottom, 0px\) !important/.test(leafletBottom),
@@ -154,7 +158,7 @@ assert(/\/\/ v112:/.test(sw), 'the v112 change must be described in the sw.js ch
 console.log('✓ #map-section + .transp-panel carry the min-height:100vh floor '
     + '(the ICB is safe-area-inset-top short under viewport-fit=cover + black-translucent)');
 console.log('✓ the meta tags stay untouched — the top controls keep their clearance');
-console.log('✓ contract intact: bottom-right stack, compass column, clearances, '
-    + 'action dock, offline panel, © Leafleet tag');
+console.log('✓ account stack removed; live-location button fixed at bottom-right; compass, clearances, '
+    + 'action dock, offline panel and © Leafleet tag remain intact');
 console.log('✓ the on-device probe is gated, pre-cached and measures ICB / vh / dvh / svh / env()');
 console.log('OK — the band under the map is closed at the source, and nothing moved.');

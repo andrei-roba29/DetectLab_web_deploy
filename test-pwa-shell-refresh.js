@@ -1,4 +1,4 @@
-// Regression test — v125: the installed PWA must pick up the latest app shell.
+// Regression test — the installed PWA must pick up the latest app shell.
 //
 // What was broken
 // ---------------
@@ -38,8 +38,8 @@ const css = read('css/styles.css');
 /* 1. The cache version is bumped so the byte-difference triggers an update
       and old caches are purged on activate. */
 assert(
-    sw.includes("const CACHE_NAME = 'detectlab-v132-deliberate-tap';"),
-    'sw.js must carry the v132 cache name'
+    sw.includes("const CACHE_NAME = 'detectlab-v133-pwa-live-location';"),
+    'sw.js must carry the v133 cache name'
 );
 assert(sw.includes('skipWaiting()'), 'sw.js must skipWaiting on install');
 assert(sw.includes('clients.claim()'), 'sw.js must claim clients on activate');
