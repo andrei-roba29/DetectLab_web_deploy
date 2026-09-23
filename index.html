@@ -1262,6 +1262,12 @@
                 <!-- Selected-layer opacity control. Clicking any layer card that owns an
                      opacity slider mirrors that slider here, vertically, so the map can
                      remain visible while opacity is adjusted (desktop and installed PWA).
+                     In the installed PWA / on touch the mirror is added ONLY by a
+                     deliberate tap on the card („tap concret pe strat”): touching or
+                     dragging a panel range no longer adds a mirror and no longer
+                     switches its layer on, and scroll-shaped gestures on a card are
+                     ignored — see the TAP CONCRET block in
+                     js/vertical-opacity-control.js and SLIDER_DELIBERATE_TAP.md.
                      The card is a slim semi-transparent frosted-glass box; above
                      the slider stand ONLY the layer's initials — max 3 letters,
                      without years (js/vertical-opacity-control.js reduces
@@ -3840,7 +3846,7 @@
     <script src="js/map-app.js?v=20260922-pwa-no-bottom-bar"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
-    <script src="js/vertical-opacity-control.js?v=20260922-distance-mirror-close"></script>
+    <script src="js/vertical-opacity-control.js?v=20260923-deliberate-tap"></script>
     <!-- leaflet-heat rămâne în shell (pre-cache), dar nu mai e folosit de
          „Archeological Potential Sites": heatmap-ul de acolo e propriul raster de
          scoruri ancorat geografic, ca să nu alunece la zoom. -->

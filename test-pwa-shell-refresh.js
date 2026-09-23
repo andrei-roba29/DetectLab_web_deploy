@@ -38,8 +38,8 @@ const css = read('css/styles.css');
 /* 1. The cache version is bumped so the byte-difference triggers an update
       and old caches are purged on activate. */
 assert(
-    sw.includes("const CACHE_NAME = 'detectlab-v131-close-hit-area';"),
-    'sw.js must carry the v131 cache name'
+    sw.includes("const CACHE_NAME = 'detectlab-v132-deliberate-tap';"),
+    'sw.js must carry the v132 cache name'
 );
 assert(sw.includes('skipWaiting()'), 'sw.js must skipWaiting on install');
 assert(sw.includes('clients.claim()'), 'sw.js must claim clients on activate');
@@ -87,8 +87,10 @@ assert(css.includes('.vertical-opacity-control.vertical-opacity-secondary'),
     'the second mirror anchor is missing from styles.css');
 assert(sw.includes('css/styles.css?v=20260922-mobile-fs-controls'),
     'sw.js must precache the current styles.css');
-assert(sw.includes('js/vertical-opacity-control.js?v=20260922-mirrored-light-shade'),
+assert(sw.includes('js/vertical-opacity-control.js?v=20260923-deliberate-tap'),
     'sw.js must precache the current vertical-opacity-control.js');
+assert(html.includes('js/vertical-opacity-control.js?v=20260923-deliberate-tap'),
+    'index.html must request the same versioned module the shell pre-caches');
 
 console.log('OK — the installed PWA re-checks sw.js, reloads onto the newest shell once,');
 console.log('    and the document tail is clean; the two-slider + side-title shell ships intact.');
