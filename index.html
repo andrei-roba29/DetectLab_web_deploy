@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260923-raza-perioada-always-visible">
+    <link rel="stylesheet" href="css/styles.css?v=20260923-pwa-br-stack-account">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260922-mobile-fs-controls">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -300,12 +300,10 @@
             top: calc(14px + env(safe-area-inset-top, 0px)) !important;
         }
 
-        /* The account stack stays removed in the installed app; the live-
-           location action is a separate, single floating control. Keep the
-           legacy account-stack geometry here for the account-related scripts
-           and tests that still inspect its markup, but do not display it. */
+        /* PWA bottom-right stack: live-location on top, account trigger below.
+           On the website the stack stays hidden — nav holds the account. */
         #pwa-br-stack {
-            display: none !important;
+            display: none;
             position: fixed;
             right: max(10px, env(safe-area-inset-right, 0px));
             bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
@@ -313,8 +311,38 @@
             flex-direction: column;
             align-items: flex-end;
             gap: 8px;
-            visibility: hidden;
-            pointer-events: none;
+        }
+        body.is-pwa #pwa-br-stack {
+            display: flex !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+        }
+        /* Inside the stack the leaflet control wrapper must not add its own
+           margin / shadow / background — the button itself paints the map-button theme. */
+        #pwa-br-stack .leaflet-control {
+            margin: 0 !important;
+            border: none !important;
+            background: none !important;
+            box-shadow: none !important;
+            float: none !important;
+            clear: none !important;
+        }
+        /* When the live-location control lives inside the stack it is
+           positioned relatively (stack itself is fixed). Fallback when it is
+           appended directly to body (no stack) stays fixed. */
+        #pwa-br-stack .pwa-live-location-control {
+            position: relative !important;
+            right: auto !important;
+            bottom: auto !important;
+            z-index: auto !important;
+        }
+        html.is-pwa .pwa-live-location-control {
+            position: fixed !important;
+            right: max(10px, env(safe-area-inset-right, 0px)) !important;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 28px) !important;
+            z-index: 2000 !important;
+            margin: 0 !important;
+            pointer-events: auto !important;
         }
         body.is-pwa {
             /* Bottom-anchored overlays (toasts, zoom hints, panels) still lift
@@ -326,28 +354,6 @@
         }
         body.is-pwa #mapAuthGate {
             display: none !important;
-        }
-        /* The account/menu stack remains gone. js/map-app.js creates the
-           🎯 control separately in PWA mode so it remains available at the
-           bottom-right without restoring the account bar. */
-        body.is-pwa #pwa-br-stack,
-        body.is-pwa #pwaUserItem,
-        body.is-pwa #pwaUserTrigger,
-        body.is-pwa #pwaLoginTrigger,
-        body.is-pwa #pwaUserDropdown {
-            display: none !important;
-        }
-
-        /* Standalone live-location button: keep its former bottom-right
-           position and clear the home indicator, independently of the removed
-           account stack. The full-screen layer panel sits above it. */
-        html.is-pwa .pwa-live-location-control {
-            position: fixed !important;
-            right: max(10px, env(safe-area-inset-right, 0px)) !important;
-            bottom: calc(env(safe-area-inset-bottom, 0px) + 28px) !important;
-            z-index: 2000 !important;
-            margin: 0 !important;
-            pointer-events: auto !important;
         }
 
         #pwa-br-stack .pwa-bar-item {
@@ -898,14 +904,12 @@
         </div>
     </nav>
 
-    <!-- PWA ACCOUNT STACK — REMOVED FROM THE INSTALLED APP.
-         This container holds only the account trigger ("AN" / initials, or
-         "Log In") and its upward dropdown. It is removed from the standalone
-         DOM; the live-location 🎯 button is created separately by js/map-app.js
-         and remains pinned at the bottom-right. The markup stays here for the
-         website's badge/language/storage scripts, which safely null-check it.
-         The account menu remains available in the website's top navigation. -->
-    <div id="pwa-br-stack" aria-hidden="true">
+    <!-- PWA ACCOUNT STACK — bottom-right: 🎯 live-location on top,
+         account trigger (initials / Log In) + dropdown below. On the
+         website this container is display:none — the top nav holds the
+         account. In PWA standalone js/map-app.js mounts the live-location
+         control as the first child of this stack. -->
+    <div id="pwa-br-stack" aria-hidden="false">
         <!-- User Menu (expands up) -->
         <div class="pwa-bar-item" id="pwaUserItem">
             <!-- Logged-in trigger -->
@@ -3829,7 +3833,7 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260923-pwa-live-location"></script>
+    <script src="js/map-app.js?v=20260923-pwa-br-stack-account"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20260923-deliberate-tap"></script>
@@ -3846,7 +3850,7 @@
     <script src="js/pdf-writer.js?v=20260827-arch-report"></script>
     <script src="js/archeo-report-pdf.js?v=20260918-report-evidence"></script>
     <script src="js/archeo-report.js?v=20260922-distance-mirror-close"></script>
-    <script src="js/tutorial.js?v=20260923-pwa-live-location"></script>
+    <script src="js/tutorial.js?v=20260923-pwa-br-stack-account"></script>
 
     <!-- AUTH MODAL -->
     <style>
@@ -4371,18 +4375,15 @@
                 document.body.classList.add('is-pwa');
                 document.documentElement.classList.add('is-pwa');
 
-                // ── REMOVE THE PWA ACCOUNT STACK FROM THE DOM ──
-                // #pwa-br-stack contains the account trigger ("AN" / initials,
-                // or the Log In pill) and its dropdown. Auth sync writes inline
-                // display styles every 500 ms, so the entire account container
-                // is removed instead of merely hidden. The 🎯 live-location
-                // control is built separately by js/map-app.js and stays at the
-                // bottom-right; this removal cannot remove or hide it.
-                // Consumers of account ids are null-guarded, and the website
-                // is unchanged because it never enters this branch.
+                // ── PWA ACCOUNT STACK RESTORED ──
+                // #pwa-br-stack holds the account trigger (initials / Log In)
+                // and its dropdown. It now stays in the DOM and is shown as a
+                // flex column in PWA mode, with the 🎯 live-location button
+                // mounted as its first child by js/map-app.js so both controls
+                // are stacked bottom-right.
                 var pwaBottomBar = document.getElementById('pwa-br-stack');
-                if (pwaBottomBar && pwaBottomBar.parentNode) {
-                    pwaBottomBar.parentNode.removeChild(pwaBottomBar);
+                if (pwaBottomBar) {
+                    pwaBottomBar.setAttribute('aria-hidden', 'false');
                 }
 
                 // Keep browser/page zoom disabled in standalone mode while

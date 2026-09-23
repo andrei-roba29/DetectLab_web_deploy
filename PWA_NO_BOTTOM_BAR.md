@@ -1,68 +1,73 @@
-# PWA: meniu de cont eliminat, butonul de locație live păstrat
+# PWA: stivă dreapta-jos restaurată — 🎯 deasupra, cont dedesubt (v136)
 
-## Starea curentă
+## Starea curentă (v136)
 
-În PWA, vechea stivă din dreapta-jos `#pwa-br-stack` nu mai este folosită:
-conținea atât butonul de locație 🎯, cât și butonul de cont („AN” / inițiale sau
-„Log In”) cu meniul lui. Eliminarea stivei a făcut să dispară și controlul GPS;
-acesta a fost readus separat, fără să readucă meniul de cont.
+În PWA instalată, stiva din dreapta-jos `#pwa-br-stack` este din nou vizibilă:
+conține butonul de locație live 🎯 deasupra și triggerul de cont („AN” / inițiale
+sau „Log In” + dropdown Manage Account / Events / Friends / Language / Storage /
+Log Out) dedesubt. Pe site containerul rămâne `display:none` — contul e în nav.
 
-- **PWA instalată:** butonul 🎯 de locație live este un control plutitor
-  independent, în dreapta-jos: `right: max(10px, env(safe-area-inset-right))`,
-  `bottom: calc(env(safe-area-inset-bottom) + 28px)`, `z-index: 2000`. Când
-  panoul de straturi este deschis, controlul rămâne sub panou și nu poate fi
-  apăsat.
-- **Site:** butonul rămâne sub zoom, în coloana de controale din stânga.
-- **Cont:** meniul de cont, inițialele, pastila Log In și dropdown-ul din vechea
-  stivă continuă să fie eliminate din DOM în standalone. Nu sunt readuse odată
-  cu butonul GPS.
+- **PWA instalată:** `#pwa-br-stack` este `position:fixed`,
+  `right: max(10px, env(safe-area-inset-right))`,
+  `bottom: calc(env(safe-area-inset-bottom)+28px)`, `z-index:2000`,
+  `flex-direction:column`, `gap:8px`. În interior,
+  `.pwa-live-location-control` este `position:relative !important` (stack-ul
+  însuși e fix). Fallback-ul `html.is-pwa .pwa-live-location-control` rămâne
+  fixed pentru shell-uri vechi fără stack. Când `transp-panel-open`, întreaga
+  stivă e `visibility:hidden` / `opacity:0` / `pointer-events:none`.
+- **Site:** `#pwa-br-stack` rămâne `display:none`; butonul 🎯 rămâne sub zoom,
+  în coloana stânga.
+- **Cont:** triggerul și dropdown-ul sunt din nou în DOM în PWA; inițialele se
+  actualizează din `updatePwaUserStack`, overlay-ul contului (`pwaAccountOverlay`)
+  funcționează.
 
 ## Implementare
 
-`js/map-app.js` detectează modul PWA prin clasa `is-pwa` pusă devreme pe
-`<html>`. După inițializarea hărții, același buton `#btnLiveLocation` este
-montat astfel:
+`js/map-app.js` detectează modul PWA prin clasa `is-pwa` pe `<html>`. Butonul
+`#btnLiveLocation` este montat în PWA ca prim copil al stivei:
 
 ```js
 if (isPwaMode) {
     btn.classList.add('pwa-live-location-control');
-    document.body.appendChild(btn);
+    var pwaStack = document.getElementById('pwa-br-stack');
+    if (pwaStack) {
+        if (pwaStack.firstChild) pwaStack.insertBefore(btn, pwaStack.firstChild);
+        else pwaStack.appendChild(btn);
+    } else {
+        document.body.appendChild(btn); // fallback
+    }
 } else {
     zoomCtrl.appendChild(btn);
 }
 ```
 
-Regula `html.is-pwa .pwa-live-location-control` din `index.html` îl fixează în
-colțul dreapta-jos și păstrează spațiul pentru safe area / home indicator.
-Handlerul existent rămâne neschimbat: toggle GPS, centrare pe poziție și
-întrebarea de vizibilitate. Detectare, lupa „Detectoriști din zonă” și
-înregistrarea traseului pot porni locația prin API-urile
-`window._startLiveLocation`, `_stopLiveLocation`, `_isLiveLocationActive` și
-`_showLiveLocation`; butonul nu este o condiție pentru watcher.
+CSS din `index.html`:
 
-Scriptul PWA din `index.html` elimină `#pwa-br-stack`, dar nu mai șterge
-`#btnLiveLocation`. CSS-ul ascunde numai stiva și controalele de cont — nu
-clasa `.btn-live-location`.
+- `#pwa-br-stack` — base `display:none; position:fixed; right:max(...); bottom:calc(...)+28px; flex column`
+- `body.is-pwa #pwa-br-stack` — `display:flex !important; visibility:visible !important; pointer-events:auto !important`
+- `#pwa-br-stack .leaflet-control` — reset margin/border/shadow
+- `#pwa-br-stack .pwa-live-location-control` — `position:relative !important; right:auto !important; bottom:auto !important`
+
+Scriptul PWA din `index.html` NU mai face `removeChild(pwaBottomBar)`; doar
+`setAttribute('aria-hidden','false')`. Handlerul GPS rămâne neschimbat; API-urile
+`window._startLiveLocation` etc. rămân expuse.
 
 ## Cache PWA
 
-Schimbarea este livrată prin **Service Worker v133**. `index.html` și lista de
-precache din `sw.js` folosesc aceleași URL-uri:
+Livrat prin **Service Worker v136** `detectlab-v136-pwa-br-stack-account`.
+URL-uri versionate:
 
-- `js/map-app.js?v=20260923-pwa-live-location`
-- `js/tutorial.js?v=20260923-pwa-live-location`
+- `css/styles.css?v=20260923-pwa-br-stack-account`
+- `js/map-app.js?v=20260923-pwa-br-stack-account`
+- `js/tutorial.js?v=20260923-pwa-br-stack-account`
 
-Tutorialul descrie acum butonul PWA separat în dreapta-jos și clarifică faptul
-că butonul de cont nu mai este acolo.
+Toate trei sunt în `PRECACHE_URLS`.
 
 ## Teste
 
-- `node test-pwa-no-bottom-bar.js` — contul rămâne eliminat; butonul GPS este
-  montat separat la dreapta-jos în PWA și în stânga pe site; API-urile live
-  location rămân expuse; shell-ul PWA este versionat și pre-cache-uit.
-- `node test-pwa-bottom-bar-removal.js` — cu `jsdom`, scriptul standalone
-  elimină stiva contului, dar nu șterge controlul GPS; site-ul rămâne neatins.
-- `node test-pwa-bottom-band.js` și `node test-pwa-no-bottom-strip.js` — harta,
-  safe-area și offset-urile de jos nu regresează.
-- `node test-tutorial.js` — ghidul reflectă poziția actuală a butonului și
-  distinge funcția GPS de meniul de cont.
+- `node test-pwa-no-bottom-bar.js` — stiva e ascunsă pe site, flex vizibilă în PWA cu safe-area; 🎯 e relative în stivă, fallback fixed; map-app.js inserează ca firstChild; transp-panel-open ascunde stiva; cont + dropdown prezente; SW v136 pre-cache.
+- `node test-pwa-bottom-bar-removal.js` — cu jsdom, scriptul standalone păstrează stiva în DOM (aria-hidden=false), nu șterge GPS; site neatins.
+- `node test-pwa-bottom-band.js` — harta, safe-area, offset-uri jos, 100vh floor, fără regresie; assert nou pentru stivă restaurată.
+- `node test-pwa-shell-refresh.js` — SW v136, re-check la load/pageshow/visibility/interval, controllerchange → reload unic.
+- `node test-mobile-fullscreen-controls.js` — compass fix deasupra browser bar, ? rămâne top-right.
+

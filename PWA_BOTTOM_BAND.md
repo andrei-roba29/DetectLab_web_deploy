@@ -30,22 +30,20 @@ scoasă în `b319558` („PWA bottom bar removal”); nu mai există markup-ul
 `.pwa-bottom-bar`. Variabila locală `pwaBottomBar` este folosită în scriptul
 standalone pentru a elimina doar vechea stivă de cont.
 
-> **Istoric (v123) și stare curentă (v133).** În v123 a fost eliminată
-> `#pwa-br-stack`, care conținea butonul 🎯 și meniul de cont („AN” / „Log In”).
-> Ulterior, butonul 🎯 a fost readus separat: `js/map-app.js` îl montează în PWA
-> ca element fix în dreapta-jos, cu același `right: max(10px, safe-area)` și
-> `bottom: safe-area + 28px`; meniul de cont rămâne eliminat din DOM. Așadar
-> utilizatorul are din nou controlul de locație live, dar nu reapare vechea
-> stivă de cont. Vezi `PWA_NO_BOTTOM_BAR.md` și `test-pwa-no-bottom-bar.js`.
-> Geometria de jos a hărții rămâne neschimbată: butonul este plutitor și nu
-> creează o bandă care să împiedice harta să ajungă la marginea ecranului. Un
-> audit al tuturor regulilor
+> **Istoric (v123) → v133 → v136.** În v123 a fost eliminată
+> `#pwa-br-stack` (🎯 + cont). În v133 🎯 a fost readus separat ca element fix
+> dreapta-jos. În **v136** stiva a fost restaurată complet: `#pwa-br-stack`
+> conține 🎯 deasupra și triggerul de cont („AN” / „Log In” + dropdown) dedesubt,
+> ambele fix dreapta-jos cu safe-area; ascunsă la `transp-panel-open`. Vezi
+> `PWA_NO_BOTTOM_BAR.md` (acum documentează restaurarea) și `test-pwa-no-bottom-bar.js`.
+> Geometria de jos a hărții rămâne neschimbată: stiva e plutitoare (`position:fixed`
+> pe container, `relative` pe 🎯 în interior) și nu creează bandă care să împiedice
+> harta să ajungă la margine. Un audit al regulilor
 `position:fixed|absolute` + `bottom:0` + `background` din `index.html`,
-`css/styles.css`, `css/offline-maps.css` și restul fișierelor CSS nu găsește
-niciun element care să picteze o bandă jos: `body::before` este doar sus și e
-dezactivat în PWA, `.pwa-install-banner` / `#siteAlert` / overlay-urile sunt
+`css/styles.css`, `css/offline-maps.css` nu găsește bandă pictată jos:
+`body::before` e doar sus și dezactivat în PWA, bannere/overlay-uri sunt
 `display:none`, atribuirea Leaflet e ascunsă, `footer` / `#pricing` /
-`#get-mobile` sunt ascunse în PWA.
+`#get-mobile` ascunse în PWA.
 
 Problema este geometrică: **containerul hărții se termină deasupra marginei
 fizice a ecranului.**
@@ -268,7 +266,7 @@ din `sw.js` → `const CACHE_NAME = 'detectlab-vNNN-…'`.
 | `node test-pwa-no-bottom-strip.js` | testul v109, încă verde |
 | `node test-pwa-layer-panel.js` | fereastra de straturi, încă verde |
 | `node test-offline-maps-panel.js` · `node test-tutorial.js` | încă verzi |
-| `node test-pwa-no-bottom-bar.js` | verifică în v133 că stiva contului `#pwa-br-stack` rămâne scoasă, în timp ce butonul 🎯 revine separat în dreapta-jos cu safe-area clearance — vezi `PWA_NO_BOTTOM_BAR.md` |
+| `node test-pwa-no-bottom-bar.js` | verifică în v136 că `#pwa-br-stack` e vizibilă în PWA (flex, safe-area), 🎯 e primul copil (relative) deasupra contului, ascunsă la transp-panel-open — vezi `PWA_NO_BOTTOM_BAR.md` |
 
 `test-gmaps-directions.js` eșua la momentul analizei de mai sus, dintr-un motiv
 preexistent și fără legătură (aștepta `CACHE_NAME = 'detectlab-v10[6-9]-gmaps-directions`);

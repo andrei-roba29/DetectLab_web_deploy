@@ -1316,10 +1316,10 @@
                     '</svg>' +
                     '</button>';
 
-                // In the installed PWA, keep the live-location action as one
-                // independent floating button at the bottom-right. The account
-                // stack that used to host it remains removed. On the website,
-                // keep the existing position below zoom in the left icon stack.
+                // In the installed PWA, the live-location button lives inside
+                // #pwa-br-stack (bottom-right) as the first child, with the
+                // account trigger below it. On the website it stays below zoom
+                // in the left icon stack.
                 // NOTE: documentElement (set by the <head> script) is used on
                 // purpose — initMap runs before the footer script adds .is-pwa
                 // to <body>.
@@ -1330,11 +1330,20 @@
                 // this presentation mode and attach the direct click handler.
                 setTimeout(function () {
                     if (isPwaMode) {
-                        // Its fixed bottom-right geometry is supplied by the
-                        // .pwa-live-location-control rule in index.html.
                         btn.classList.add('pwa-live-location-control');
-                        if (!document.body) return;
-                        document.body.appendChild(btn);
+                        var pwaStack = document.getElementById('pwa-br-stack');
+                        if (pwaStack) {
+                            // Live-location on top, account below — prepend as first child.
+                            if (pwaStack.firstChild) {
+                                pwaStack.insertBefore(btn, pwaStack.firstChild);
+                            } else {
+                                pwaStack.appendChild(btn);
+                            }
+                        } else {
+                            // Fallback when stack is missing (tests / older shells)
+                            if (!document.body) return;
+                            document.body.appendChild(btn);
+                        }
                     } else {
                         var zoomCtrl = document.querySelector('#detectlab-map .leaflet-top.leaflet-left');
                         if (zoomCtrl) zoomCtrl.appendChild(btn);
