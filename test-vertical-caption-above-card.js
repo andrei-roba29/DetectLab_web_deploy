@@ -1,7 +1,8 @@
-// Regression test — the DISTANȚĂ / RAZĂ (analysis layers) and ISTORIC
-// (Satellite) caption chip of the map-side vertical slider floats ABOVE the
-// card in every mode, the installed PWA included; and the panel rows of the
-// layers mirrored on the map never grow a „PE HARTĂ / ON MAP” badge again.
+// Regression test — the DISTANȚĂ / RAZĂ (analysis layers), ISTORIC
+// (Satellite) and PERIOADĂ (Battles) caption chip of the map-side vertical
+// slider floats ABOVE the card in every mode, the installed PWA included;
+// and the panel rows of the layers mirrored on the map never grow a
+// „PE HARTĂ / ON MAP” badge again.
 //
 // The chip used to live INSIDE .vertical-opacity-title. On desktop that
 // wrapper is a static grid cell, so the chip's `position:absolute;
@@ -146,16 +147,22 @@ const pwaTitle = ruleBody(css, /body\.is-pwa \.vertical-opacity-title/);
 ok(pwaTitle && /position:\s*absolute/.test(pwaTitle),
     'the PWA title wrapper is absolutely positioned — the chip must therefore be its sibling');
 
-// Phones in portrait keep the chip: the ≤600px block must not hide it. Only
-// the short-viewport (landscape) block may, where the chip would meet the
-// "?" help button pinned in the top-right corner.
+// Phones in portrait keep the chip: the ≤600px block must not hide it.
+// Short (landscape) viewports MUST ALSO keep the chip visible — user
+// requirement: „cuvântul raza … trebuie să apară deasupra lor când sunt
+// adăugate pe ecran” + „perioada din cadrul stratului Bătălii”. The chip
+// has pointer-events:none so the „?” help button underneath remains
+// tappable; the card is given z-index:1001 so the chip paints above it.
 const narrow = mediaBlock(css, '(max-width: 600px)');
 ok(narrow !== null, 'the ≤600px media block exists');
-ok(!/\.vertical-opacity-caption\s*\{[^}]*display\s*:\s*none/.test(narrow),
-    'portrait phones (≤600px) must keep the DISTANȚĂ / RAZĂ chip visible');
+ok(!/\.vertical-opacity-caption[^{]*\{[^}]*display\s*:\s*none/.test(narrow),
+    'portrait phones (≤600px) must keep the DISTANȚĂ / RAZĂ / PERIOADĂ chip visible');
 const short = mediaBlock(css, '(max-height: 500px)');
-ok(short !== null && /\.vertical-opacity-caption\s*\{[^}]*display\s*:\s*none/.test(short),
-    'short (landscape) viewports hide the chip, as before');
+ok(short !== null, 'the max-height:500px media block exists');
+ok(!/\.vertical-opacity-caption[^{]*\{[^}]*display\s*:\s*none/.test(short),
+    'short (landscape) viewports must keep the DISTANȚĂ / RAZĂ / PERIOADĂ chip visible — user requires RAZĂ and PERIOADĂ above the slider whenever on screen');
+ok(/\.vertical-opacity-caption[^{]*\{[^}]*display\s*:\s*block/.test(short),
+    'short (landscape) block must force the chip to display:block (or :not(:empty))');
 
 /* ── 3. JS: the module addresses the chips by id, never through the title ── */
 
@@ -167,9 +174,12 @@ ok(!/querySelector\(\s*['"]\.vertical-opacity-caption/.test(voSrc),
     'the module must not look the chip up relative to the title wrapper');
 
 // Distance sources still carry their caption keys → DISTANȚĂ / RAZĂ text.
+// Battles period source carries PERIOADĂ / PERIOD.
 ok(/id:\s*'lidarScannerDistance'[^}]*caption:\s*'distance'/.test(voSrc), 'LIDAR Scanner mirror is captioned DISTANȚĂ');
 ok(/id:\s*'archeoPotDistance'[^}]*caption:\s*'radius'/.test(voSrc), 'archaeological potential mirror is captioned RAZĂ');
 ok(/id:\s*'archReportDistance'[^}]*caption:\s*'radius'/.test(voSrc), 'archaeological report mirror is captioned RAZĂ');
+ok(/battlesPeriodSlider/.test(voSrc) && /PERIOADĂ/.test(voSrc) && /PERIOD/.test(voSrc),
+    'Battles period mirror is captioned PERIOADĂ / PERIOD');
 ok(/'DISTANȚĂ'/.test(voSrc) && /'DISTANCE'/.test(voSrc) && /'RAZĂ'/.test(voSrc) && /'RADIUS'/.test(voSrc),
     'bilingual caption wording is intact');
 
@@ -198,5 +208,5 @@ const cacheVersion = Number((sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) |
 ok(cacheVersion >= 130,
     'CACHE_NAME must be bumped to v130 or later so installed apps swap to the shell with the chip above the card (got v' + cacheVersion + ')');
 
-console.log('OK — ' + checks + ' checks: the DISTANȚĂ / RAZĂ / ISTORIC chip is a direct child of the');
+console.log('OK — ' + checks + ' checks: the DISTANȚĂ / RAZĂ / ISTORIC / PERIOADĂ chip is a direct child of the');
 console.log('    card and floats above it in the PWA too; no PE HARTĂ badge; shell re-versioned.');

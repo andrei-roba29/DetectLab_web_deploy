@@ -254,7 +254,13 @@
 // v133: readuce butonul 🎯 de locație live în PWA ca un control fix separat
 //   în dreapta-jos (safe-area + 28px), fără să readucă meniul contului din
 //   vechea stivă de jos; site-ul păstrează butonul în coloana din stânga.
-const CACHE_NAME = 'detectlab-v133-pwa-live-location';
+// v134: RAZĂ / DISTANȚĂ / ISTORIC rămâne vizibil deasupra oglinzii verticale
+//   și în landscape (max-height ≤500px) — regula display:none care ascundea
+//   cipul pe ecrane scurte e scoasă, la cererea explicită a utilizatorului
+//   („cuvântul raza ... trebuie să apară deasupra lor când sunt adăugate”).
+// v135: extinde v134 și pentru PERIOADĂ din stratul Bătălii — același
+//   tratament: cip-ul rămâne vizibil în landscape, deasupra oglinzii.
+const CACHE_NAME = 'detectlab-v135-raza-perioada-always-visible';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -756,6 +762,13 @@ const PRECACHE_URLS = [
   // Touching or dragging a panel range no longer adds a mirror and no longer
   // switches its layer on, and scroll-shaped gestures on a card are ignored.
   'js/vertical-opacity-control.js?v=20260923-deliberate-tap',
+  // v134: RAZĂ / DISTANȚĂ / ISTORIC stays above the vertical mirror in
+  // landscape too — the max-height:500px display:none is removed per user
+  // request that the word must appear above its slider whenever on screen.
+  'css/styles.css?v=20260923-raza-always-visible',
+  // v135: same fix extended to PERIOADĂ (Battles layer) — user asked for
+  // „perioada” in Bătălii as well.
+  'css/styles.css?v=20260923-raza-perioada-always-visible',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
