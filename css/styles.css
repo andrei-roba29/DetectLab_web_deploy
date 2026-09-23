@@ -5686,6 +5686,28 @@
             white-space: normal;
             letter-spacing: 0;
         }
+        /* PWA (aplicația instalată): index.html ridică variantele FLOTANTE ale
+           acelorași butoane deasupra indicatorului de acasă cu
+           `body.is-pwa #apm20SearchHelpBtn { bottom: calc(36px + …) !important }`
+           (Iosefină Premium: `76px + …`). Acel selector are specificitatea
+           (1,1,1) și, fiind și el !important, bate `bottom: auto !important`
+           de mai sus (1,1,0). Pe un buton deja `position: relative` un
+           `bottom` de ~80px / ~120px îl împinge ÎN SUS cu atât — adică peste
+           sliderul de care e andocat — în loc să stea în coloana de sub el.
+           Aceeași clasă de pe body în selector (1,2,1) readuce geometria
+           andocată în PWA; pe site regula nu se potrivește cu nimic. Sunt
+           re-afirmate toate cele patru proprietăți de geometrie flotantă, ca
+           o viitoare ridicare PWA pe `left` / `transform` să nu redeschidă
+           același defect. */
+        body.is-pwa .vertical-opacity-actions #apm20SearchHelpBtn,
+        body.is-pwa .vertical-opacity-actions #iosBldSearchHelpBtn,
+        body.is-pwa .vertical-opacity-actions #iosBldSettingsBtn,
+        body.is-pwa .vertical-opacity-actions #iosBldSuggestBtn {
+            position: relative !important;
+            bottom: auto !important;
+            left: auto !important;
+            transform: none !important;
+        }
         .vertical-opacity-actions #apm20SearchHelpBtn:hover,
         .vertical-opacity-actions #iosBldSearchHelpBtn:hover,
         .vertical-opacity-actions #iosBldSettingsBtn:hover,
@@ -5798,7 +5820,13 @@
         }
         body.is-pwa.vo-josephine-docked #iosBldSettingsPanel {
             top: calc(50% - var(--pwa-bottom-controls-half-clearance, 22px));
-            bottom: auto;
+            /* !important obligatoriu: index.html ridică panoul flotant cu
+               `body.is-pwa #iosBldSettingsPanel { bottom: calc(124px + …) !important }`,
+               care bătea `bottom: auto` simplu de aici. Panoul ancorat primea
+               atunci top ȘI bottom simultan și era strivit între ele (cutie de
+               ~290px pentru ~380px de conținut — câmpurile de jos ieșeau din
+               panou). Cu ancora doar pe `top`, înălțimea revine la auto. */
+            bottom: auto !important;
         }
         body.vo-josephine-docked .map-frame.is-fullscreen #iosBldSettingsPanel {
             position: fixed;
@@ -5820,6 +5848,13 @@
             }
             body.vo-josephine-docked.vo-josephine-docked-secondary #iosBldSettingsPanel {
                 right: calc(34px + 46px + 10px + 46px + 10px + env(safe-area-inset-right, 0px));
+                /* Aceeași margine stângă de 50px ca la ancora primară
+                   (100vw − 140px = 90px dreapta + 50px stânga): ancora secundară
+                   e cu un pas de oglindă (46 + 10) mai la stânga, deci lățimea
+                   scade cu tot atât. Altfel panoul de 272px pornea cu 6px în
+                   afara ecranului la 412px lățime, sub coloana de butoane din
+                   stânga hărții. */
+                width: min(280px, calc(100vw - 196px));
             }
         }
 
