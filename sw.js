@@ -263,7 +263,15 @@
 // v136: PWA bottom-right stack restabilit — 🎯 live-location deasupra,
 //   trigger cont (AN / Log In + dropdown) dedesubt, ambele în
 //   #pwa-br-stack fix dreapta-jos cu safe-area; ascuns la transp-panel-open.
-const CACHE_NAME = 'detectlab-v136-pwa-br-stack-account';
+// v137: PWA — iconițele stratului (APM 2.0 „Ajutor de căutare”, Iosefină
+//   Premium căutare / setări / sugerează) stau în coloană SUB sliderul lor
+//   și în aplicația instalată. Ridicarea PWA din index.html
+//   (`body.is-pwa #id { bottom: … !important }`, specificitate 1,1,1) bătea
+//   `bottom: auto !important` al regulii andocate (1,1,0) și împingea
+//   butoanele relative în sus, peste slider; același lucru strivea panoul
+//   „Setări detecție” între top și bottom. css/styles.css re-afirmă geometria
+//   andocată cu body.is-pwa în selector (1,2,1).
+const CACHE_NAME = 'detectlab-v137-pwa-docked-actions';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -777,6 +785,11 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20260923-pwa-br-stack-account',
   'js/map-app.js?v=20260923-pwa-br-stack-account',
   'js/tutorial.js?v=20260923-pwa-br-stack-account',
+  // v137: PWA — layer quick actions (APM 2.0 / Iosefină Premium) dock in a
+  // column UNDER their slider in the installed app too; the index.html PWA
+  // lift (`body.is-pwa #id { bottom: … !important }`) no longer beats the
+  // docked geometry, and the „Setări detecție” panel keeps its auto height.
+  'css/styles.css?v=20260923-pwa-docked-actions',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
