@@ -5414,14 +5414,22 @@
         @media (max-height: 500px) {
             .vertical-opacity-control {
                 height: 222px;
+                /* Must paint above the "?" help button (z-index 1000) when the
+                   RAZĂ / DISTANȚĂ chip floats above the card in landscape. The
+                   chip itself has pointer-events:none, so the help button
+                   remains tappable even where the two overlap. */
+                z-index: 1001;
             }
 
-            /* Landscape phones: the chip floating above the card would meet
-               the "?" help button pinned in the top-right corner, and the
-               card already fills the short viewport — hide the chip here
-               (the value bubble still shows km / years). */
-            .vertical-opacity-caption {
-                display: none;
+            /* RAZĂ / DISTANȚĂ / ISTORIC must stay visible even in landscape
+               (user requirement: the word "RAZĂ" must appear above its slider
+               whenever the mirror is on screen). The previous display:none hid
+               the chip on every short viewport; the value bubble alone is not
+               enough — the user explicitly asked for the caption. */
+            .vertical-opacity-caption:not(:empty) {
+                display: block !important;
+                bottom: calc(100% + 4px);
+                z-index: 3;
             }
 
             /* The title runs vertically along the card's left side, so on a

@@ -146,16 +146,22 @@ const pwaTitle = ruleBody(css, /body\.is-pwa \.vertical-opacity-title/);
 ok(pwaTitle && /position:\s*absolute/.test(pwaTitle),
     'the PWA title wrapper is absolutely positioned — the chip must therefore be its sibling');
 
-// Phones in portrait keep the chip: the ≤600px block must not hide it. Only
-// the short-viewport (landscape) block may, where the chip would meet the
-// "?" help button pinned in the top-right corner.
+// Phones in portrait keep the chip: the ≤600px block must not hide it.
+// Short (landscape) viewports MUST ALSO keep the chip visible — user
+// requirement: „cuvântul raza … trebuie să apară deasupra lor când sunt
+// adăugate pe ecran”. The chip has pointer-events:none so the „?” help
+// button underneath remains tappable; the card is given z-index:1001 so the
+// chip paints above it.
 const narrow = mediaBlock(css, '(max-width: 600px)');
 ok(narrow !== null, 'the ≤600px media block exists');
-ok(!/\.vertical-opacity-caption\s*\{[^}]*display\s*:\s*none/.test(narrow),
+ok(!/\.vertical-opacity-caption[^{]*\{[^}]*display\s*:\s*none/.test(narrow),
     'portrait phones (≤600px) must keep the DISTANȚĂ / RAZĂ chip visible');
 const short = mediaBlock(css, '(max-height: 500px)');
-ok(short !== null && /\.vertical-opacity-caption\s*\{[^}]*display\s*:\s*none/.test(short),
-    'short (landscape) viewports hide the chip, as before');
+ok(short !== null, 'the max-height:500px media block exists');
+ok(!/\.vertical-opacity-caption[^{]*\{[^}]*display\s*:\s*none/.test(short),
+    'short (landscape) viewports must keep the DISTANȚĂ / RAZĂ chip visible — user requires RAZĂ above the slider whenever on screen');
+ok(/\.vertical-opacity-caption[^{]*\{[^}]*display\s*:\s*block/.test(short),
+    'short (landscape) block must force the chip to display:block (or :not(:empty))');
 
 /* ── 3. JS: the module addresses the chips by id, never through the title ── */
 
