@@ -38,8 +38,8 @@ const css = read('css/styles.css');
 /* 1. The cache version is bumped so the byte-difference triggers an update
       and old caches are purged on activate. */
 assert(
-    /const CACHE_NAME = 'detectlab-v137-pwa-docked-actions'/.test(sw),
-    'sw.js must carry the v137 cache name'
+    /const CACHE_NAME = 'detectlab-v138-archeo-clickthrough'/.test(sw),
+    'sw.js must carry the v138 cache name'
 );
 assert(sw.includes('skipWaiting()'), 'sw.js must skipWaiting on install');
 assert(sw.includes('clients.claim()'), 'sw.js must claim clients on activate');

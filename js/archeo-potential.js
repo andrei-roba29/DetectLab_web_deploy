@@ -2134,6 +2134,7 @@
     var _heatLayer = null;       // canvas heatmap (pane_archeo_heat)
     var _maskGroup = null;       // mască roșie: UAT + raze patrimoniu (pane_archeo_mask)
     var _bubbleRenderer = null;  // renderer canvas partajat pentru bule
+    var _maskRenderer = null;    // renderer canvas al măștii (scos de pe hartă la oprire)
     var _heatRaster = null;      // rasterul de scoruri al ultimei rulări (debug)
     var _currentResults = null;  // celulele scorate la ultima rulare (API public)
     var _currentField = null;    // câmpul complet (debug / teste)
@@ -2168,10 +2169,24 @@
     }
 
     // Paneele stratului: heatmap sub mască, masca sub bule, bulele sub pin.
+    //
+    // pane_archeo stă la z-index 660, DEASUPRA marker pane (600), unde trăiesc
+    // pin-urile detectoriștilor. Rendererul L.canvas e UN <canvas> cât tot
+    // viewport-ul, iar foaia Leaflet neutralizează pointer-events doar pentru
+    // `.leaflet-pane > svg path`, niciodată pentru `<canvas>`. Cu pointer-events
+    // lăsate pe auto, canvas-ul câștigă hit-test-ul pe toată harta: tap-ul nu
+    // mai ajunge la pin, deci nu se deschid detaliile și nici cererea de
+    // prietenie. Și rămâne așa după oprirea stratului — Leaflet nu scoate
+    // rendererul de pe hartă când i se golesc path-urile (Path.onRemove face
+    // doar _removePath), iar canvas-ul poartă `_leaflet_disable_events`, deci
+    // înghițea click-ul și după ce bulele dispăreau vizual.
+    // Aceeași regulă ca la LIDAR Scanner / patrimoniu: pane-ul e click-through.
+    // Popup-ul bulelor se redeschide din click-ul hărții (vezi onMapClick),
+    // pe care Leaflet îl cheamă doar dacă tap-ul n-a nimerit deja un marker.
     var PANE_DEFS = [
         ['pane_archeo_heat', function () { return CONFIG.PANE_Z_HEAT; }, 'none'],
         ['pane_archeo_mask', function () { return CONFIG.PANE_Z_MASK; }, 'none'],
-        ['pane_archeo', function () { return CONFIG.PANE_Z_INDEX; }, ''],
+        ['pane_archeo', function () { return CONFIG.PANE_Z_INDEX; }, 'none'],
         ['pane_archeo_pin', function () { return CONFIG.PANE_Z_PIN; }, '']
     ];
 
@@ -2199,13 +2214,37 @@
         return options;
     }
 
+    // L.canvas nu pune pointer-events:none pe element. Îl scriem noi pe
+    // <canvas> în momentul în care Leaflet îl creează (evenimentul „add”,
+    // după onAdd), ca să nu depindem doar de moștenirea de pe pane — un
+    // canvas rămas după oprirea stratului tot n-are voie să primească tap-ul.
+    function armClickThrough(renderer) {
+        if (!renderer || renderer._dlClickThrough) return renderer;
+        renderer._dlClickThrough = true;
+        function silence() {
+            var canvas = renderer._container;
+            if (canvas && canvas.style) canvas.style.pointerEvents = 'none';
+        }
+        if (typeof renderer.on === 'function') renderer.on('add', silence);
+        silence();
+        return renderer;
+    }
+
+    function clickThroughCanvas(map, paneName, padding) {
+        if (typeof L === 'undefined' || typeof L.canvas !== 'function') return null;
+        return armClickThrough(L.canvas(assignPane(map, { padding: padding }, paneName)));
+    }
+
     // Renderer canvas pentru bule: cu câteva sute/mii de cercuri, SVG-ul ar
     // muta un nod DOM la fiecare repaint; canvas-ul doar redesenează pixeli.
     function bubbleRendererOption(map) {
-        if (!_bubbleRenderer && typeof L !== 'undefined' && L.canvas) {
-            _bubbleRenderer = L.canvas(assignPane(map, { padding: 0.25 }, 'pane_archeo'));
-        }
+        if (!_bubbleRenderer) _bubbleRenderer = clickThroughCanvas(map, 'pane_archeo', 0.25);
         return _bubbleRenderer;
+    }
+
+    function maskRendererOption(map) {
+        if (!_maskRenderer) _maskRenderer = clickThroughCanvas(map, 'pane_archeo_mask', 0.2);
+        return _maskRenderer;
     }
 
     // ── Score → culoare: O SINGURĂ rampă pentru tot stratul ─────────────────
@@ -2724,10 +2763,7 @@
     function renderExclusionMask(map, field, ctx) {
         var M = CONFIG.MASK || {};
         var group = L.layerGroup([]);
-        var renderer = null;
-        if (typeof L.canvas === 'function') {
-            renderer = L.canvas(assignPane(map, { padding: 0.2 }, 'pane_archeo_mask'));
-        }
+        var renderer = maskRendererOption(map);
 
         // 1. intravilan UAT (celule picate pe rasterul non-roșu)
         uatMaskRectangles(field).forEach(function (bounds) {
@@ -3107,9 +3143,7 @@
     }
 
     function pinRendererOption(map) {
-        if (!_pinRenderer && typeof L !== 'undefined' && L.canvas) {
-            _pinRenderer = L.canvas(assignPane(map, { padding: 0.3 }, 'pane_archeo'));
-        }
+        if (!_pinRenderer) _pinRenderer = clickThroughCanvas(map, 'pane_archeo', 0.3);
         return _pinRenderer;
     }
 
@@ -3187,10 +3221,58 @@
         clearPinCircle();
     }
 
+    function clickLayerPoint(map, e) {
+        if (!e) return null;
+        if (e.layerPoint && e.layerPoint.x != null && e.layerPoint.y != null) return e.layerPoint;
+        if (e.latlng && map && typeof map.latLngToLayerPoint === 'function') {
+            try { return map.latLngToLayerPoint(e.latlng); } catch (err) { return null; }
+        }
+        return null;
+    }
+
+    // Bulele sunt interactive (au popup), dar canvas-ul lor e click-through ca
+    // să nu acopere pin-urile detectoriștilor. Leaflet cheamă click-ul hărții
+    // doar dacă tap-ul n-a nimerit deja un marker, deci un pin de detectorist
+    // din interiorul unei bule rămâne ținta. Aici reconstituim hit-test-ul pe
+    // care rendererul nu-l mai primește: ultima bulă care conține punctul
+    // (cea pictată deasupra), la fel ca Canvas._onClick.
+    function bubbleUnderClick(e) {
+        var map = window._dlMap;
+        if (!_resultsVisible || !_layerGroup || !map) return null;
+        if (typeof map.hasLayer === 'function' && !map.hasLayer(_layerGroup)) return null;
+        if (typeof map._draggableMoved === 'function' && map._draggableMoved(map)) return null;
+        if (typeof _layerGroup.eachLayer !== 'function') return null;
+        var point = clickLayerPoint(map, e);
+        if (!point) return null;
+        var hit = null;
+        _layerGroup.eachLayer(function (layer) {
+            if (!layer || (layer.options && layer.options.interactive === false)) return;
+            if (typeof layer._containsPoint !== 'function') return;
+            try {
+                if (layer._containsPoint(point)) hit = layer;
+            } catch (err) {}
+        });
+        return hit;
+    }
+
+    function openArcheoBubble(layer, latlng) {
+        if (!layer || typeof layer.openPopup !== 'function') return false;
+        try {
+            layer.openPopup(latlng);
+            return true;
+        } catch (err) {
+            return false;
+        }
+    }
+
     function onMapClick(e) {
         if (!_pinMode || _runInFlight) return;
         // taps belong to the offline polygon while that is being drawn
         try { if (window._dlOfflineDrawActive) return; } catch (err) {}
+        // Popup de bulă, nu mutare de pin: tap-ul a nimerit o zonă scorată.
+        // Pin-urile detectoriștilor nu ajung aici (Leaflet nu propagă click-ul
+        // de pe un marker interactiv până la hartă).
+        if (openArcheoBubble(bubbleUnderClick(e), e && e.latlng)) return;
         var latlng = e && e.latlng ? e.latlng : null;
         if (!latlng) return;
         drawPin(latlng);
@@ -3507,6 +3589,44 @@
         return out;
     }
 
+    function detachRenderer(map, renderer) {
+        if (!map || !renderer || typeof map.removeLayer !== 'function') return;
+        try {
+            if (typeof map.hasLayer === 'function' && !map.hasLayer(renderer)) return;
+            map.removeLayer(renderer);
+        } catch (e) {}
+    }
+
+    // Canvas-uri rămase în pane după ce path-urile au fost scoase. Leaflet nu
+    // le dezlipește singur; cât stau deasupra markerelor, un tap pe un pin de
+    // detectorist din zona analizată nu mai ajunge la pin.
+    function dropLeftoverCanvases(map, paneName) {
+        var pane = map && map.getPane && map.getPane(paneName);
+        if (!pane) return;
+        var kids = [];
+        if (pane.children && pane.children.length) {
+            for (var i = 0; i < pane.children.length; i++) kids.push(pane.children[i]);
+        }
+        for (var j = 0; j < kids.length; j++) {
+            var node = kids[j];
+            var tag = String((node && (node.tagName || node.nodeName)) || '').toLowerCase();
+            if (tag !== 'canvas') continue;
+            if (node.style) node.style.pointerEvents = 'none';
+            var parent = node.parentNode || node.parentElement;
+            if (parent && typeof parent.removeChild === 'function') {
+                try { parent.removeChild(node); } catch (e) {}
+            }
+        }
+    }
+
+    function releaseArcheoCanvases(map) {
+        detachRenderer(map, _bubbleRenderer);
+        detachRenderer(map, _pinRenderer);
+        detachRenderer(map, _maskRenderer);
+        dropLeftoverCanvases(map, 'pane_archeo');
+        dropLeftoverCanvases(map, 'pane_archeo_mask');
+    }
+
     /* Oglinda verticală a sliderului de rază + dock-ul de acțiune centrat jos
        sunt gestionate de vertical-opacity-control.js; aici le anunțăm când
        stratul pornește/se oprește PROGRAMATIC (din catalog, din gating-ul de
@@ -3551,6 +3671,10 @@
                 }
             } catch (e) { /* DOM-only tests */ }
         });
+        // După removeLayer, rendererul L.canvas rămâne pe hartă (canvas gol,
+        // cât viewport-ul, deasupra pin-urilor). Îl scoatem explicit, altfel
+        // dezactivarea stratului lasă pin-urile detectoriștilor neapăsabile.
+        if (!_resultsVisible) releaseArcheoCanvases(map);
         updateRunButtonVisibility(_resultsVisible);
         notifyDistanceMirror(_resultsVisible);
     }
@@ -3765,6 +3889,9 @@
         radiusKm: radiusKm,
         currentRadiusM: currentRadiusM,
         setPinMode: setPinMode,
+        bubbleUnderClick: bubbleUnderClick,
+        openArcheoBubble: openArcheoBubble,
+        releaseArcheoCanvases: releaseArcheoCanvases,
         state: function () { return window._archeoPotentialState(); }
     };
 })();

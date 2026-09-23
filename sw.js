@@ -271,7 +271,11 @@
 //   butoanele relative în sus, peste slider; același lucru strivea panoul
 //   „Setări detecție” între top și bottom. css/styles.css re-afirmă geometria
 //   andocată cu body.is-pwa în selector (1,2,1).
-const CACHE_NAME = 'detectlab-v137-pwa-docked-actions';
+// v138: „Zone cu potențial arheologic” — canvas-ul stratului (z 660, deasupra
+//   markerelor) nu mai înghite tap-ul pe pin-urile detectoriștilor după ce
+//   stratul e pornit și apoi oprit. Pane-ul e click-through, iar rendererul
+//   L.canvas e scos de pe hartă la dezactivare.
+const CACHE_NAME = 'detectlab-v138-archeo-clickthrough';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -758,6 +762,9 @@ const PRECACHE_URLS = [
   // all four changed URLs are pre-cached for the installed PWA.
   'js/vertical-opacity-control.js?v=20260922-distance-mirror-close',
   'js/archeo-potential.js?v=20260922-distance-mirror-close',
+  // v138: archeo potential canvas must not swallow detectorist pin taps after
+  // the layer is switched off (click-through pane + renderer detach).
+  'js/archeo-potential.js?v=20260923-archeo-clickthrough',
   'js/lidar-scanner.js?v=20260922-distance-mirror-close',
   'js/archeo-report.js?v=20260922-distance-mirror-close',
   // v130: caption chip (DISTANȚĂ / RAZĂ / ISTORIC) anchored to the card
