@@ -445,8 +445,10 @@ close.click();
       side of the slider; the percentage shows only while changing ───────── */
 {
     const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-    // One title wrapper per mirror: it now hosts the caption chip (floating
-    // above the card) and the layer name (vertical, along the left side).
+    // One title wrapper per mirror: it hosts the layer name (vertical, along
+    // the left side). The caption chip (DISTANȚĂ / RAZĂ / ISTORIC) is a
+    // sibling of the wrapper, anchored to the card itself — see
+    // test-vertical-caption-above-card.js for why it must not live inside.
     assert(/class="vertical-opacity-title"[^>]*id="verticalOpacityTitle"/.test(html) &&
         /class="vertical-opacity-title"[^>]*id="verticalSatPeriodTitle"/.test(html),
         'each mirror must keep its title wrapper');
