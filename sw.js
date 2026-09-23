@@ -240,7 +240,18 @@
 //   clear of the slider's top end), lights up as soon as the cursor enters
 //   the card, and scales up on hover/focus (disabled under
 //   prefers-reduced-motion). Stylesheet and shell re-versioned.
-const CACHE_NAME = 'detectlab-v131-close-hit-area';
+// v132: în aplicația instalată (și pe orice ecran tactil) oglinda unui strat
+//   se adaugă pe ecran DOAR la un tap deliberat pe cardul stratului. Înainte,
+//   orice atingere a unui range din panou — inclusiv degetul care aluneca
+//   peste el în timp ce derulai lista — selecta stratul prin pointerdown /
+//   focus, arunca oglinda pe hartă și aprindea stratul; la fel, orice clic pe
+//   card (chiar și cel produs la capătul unei derulări) închidea panoul și
+//   aprindea stratul. Acum atingerea unui slider doar alimentează o oglindă
+//   aflată deja pe ecran, iar tapul pe card este ignorat dacă gestul a fost o
+//   derulare (deplasare peste prag, panou derulat între apăsare și ridicare,
+//   tap care doar oprește o derulare, al doilea deget, apăsare lungă). Pe
+//   desktop, în afara modului PWA, comportamentul rămâne neschimbat.
+const CACHE_NAME = 'detectlab-v132-deliberate-tap';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -739,6 +750,11 @@ const PRECACHE_URLS = [
   // invisible hit halo — on desktop the 22px glyph target was nearly
   // impossible to hit with the mouse.
   'css/styles.css?v=20260923-close-hit-area',
+  // v132: „tap concret pe strat” — in the installed PWA / on touch, the layer
+  // mirror is added on screen only by a deliberate tap on the layer card.
+  // Touching or dragging a panel range no longer adds a mirror and no longer
+  // switches its layer on, and scroll-shaped gestures on a card are ignored.
+  'js/vertical-opacity-control.js?v=20260923-deliberate-tap',
   'js/supabase.js?v=20260811-event-sync'
 ];
 

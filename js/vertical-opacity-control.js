@@ -1169,6 +1169,175 @@
         ));
     }
 
+    /* ── TAP CONCRET PE STRAT (PWA / touch): fără oglinzi adăugate din greșeală ──
+       În aplicația instalată (și pe orice ecran tactil) oglinda unui strat se
+       adaugă pe ecran DOAR la un tap deliberat pe cardul stratului. Atingerea
+       sau glisarea unui slider din panou nu mai adaugă oglinda și nu mai
+       pornește stratul: ea doar alimentează o oglindă aflată DEJA pe ecran (o
+       aduce în față pentru dock-ul de acțiuni și pentru bula de valoare). Așa
+       dispare calea cea mai frecventă de „misclick” din PWA — degetul care
+       alunecă peste un range în timp ce derulezi panoul, sau o simplă atingere
+       a sliderului, care înainte aruncau pe hartă o oglindă și aprindeau
+       stratul.
+
+       Un tap pe card contează ca „concret” doar dacă gestul care l-a produs nu
+       a fost o derulare: deplasare peste prag între apăsare și ridicare, panou
+       derulat între ele, un tap care doar oprește o derulare în curs, al
+       doilea deget sau o apăsare lungă nu selectează nimic. Când nu există
+       niciun pointerdown înaintea click-ului (click sintetic — tastatură,
+       script, test) nu avem ce verifica și lăsăm click-ul să treacă.
+
+       Pe desktop, în afara modului PWA, comportamentul rămâne cel dinainte:
+       orice clic pe card sau atingere a unui slider selectează stratul. */
+    var TAP_MOVE_TOLERANCE = 12;    // px: peste asta gestul e scroll/drag, nu tap
+    var TAP_MAX_DURATION = 800;     // ms: doar pe touch — apăsarea lungă nu e tap
+    var SCROLL_QUIET_MS = 200;      // ms: un tap care oprește derularea nu selectează
+    /* GESTURE_TTL e intenționat mai mare decât TAP_MAX_DURATION: un gest ținut
+       minte prea puțin ar lăsa o apăsare lungă să treacă drept tap (n-am mai
+       avea cu ce compara durata). */
+    var GESTURE_TTL = 2500;         // ms: cât ținem minte un gest rămas fără click
+    var tapGesture = null;
+    var gestureTimer = null;
+    var lastPanelScrollAt = 0;
+
+    /* Modul PWA: clasa „is-pwa” e pusă de index.html pe <html> în <head> și pe
+       <body> imediat după — citim amândouă, ca să prindem și fereastra scurtă
+       de la pornire, și `?pwa=1`, care forțează același mod în browser. */
+    function pwaLayout() {
+        try {
+            if (document.documentElement && document.documentElement.classList &&
+                document.documentElement.classList.contains('is-pwa')) return true;
+        } catch (e) { /* DOM-only tests */ }
+        try {
+            if (document.body && document.body.classList &&
+                document.body.classList.contains('is-pwa')) return true;
+        } catch (e) { /* DOM-only tests */ }
+        return false;
+    }
+
+    function isTouchPointer(type) {
+        return type === 'touch' || type === 'pen';
+    }
+
+    /* Un gest cere tap deliberat pe touch sau în aplicația instalată. */
+    function strictTapMode(pointerType) {
+        return isTouchPointer(pointerType) || pwaLayout();
+    }
+
+    function panelElement() {
+        try { return document.getElementById('transpPanel'); } catch (e) { return null; }
+    }
+
+    function panelScrollTop() {
+        var panel = panelElement();
+        return (panel && typeof panel.scrollTop === 'number') ? panel.scrollTop : null;
+    }
+
+    function gesturePointerType() {
+        return tapGesture && tapGesture.type ? tapGesture.type : '';
+    }
+
+    /* Tipul de gest al evenimentului curent: pointerType-ul lui (dacă browserul
+       îl pune pe click) sau cel înregistrat la pointerdown. */
+    function strictEvent(event) {
+        return strictTapMode(event && event.pointerType ? String(event.pointerType) : gesturePointerType());
+    }
+
+    function dropGesture() {
+        if (gestureTimer !== null) {
+            window.clearTimeout(gestureTimer);
+            gestureTimer = null;
+        }
+        tapGesture = null;
+    }
+
+    function beginGesture(event) {
+        /* Al doilea deget în același gest (pinch / apăsare cu două degete) nu
+           e un tap pe strat. */
+        if (tapGesture && !tapGesture.ended && !tapGesture.cancelled) {
+            tapGesture.extra = true;
+            return;
+        }
+        if (gestureTimer !== null) {
+            window.clearTimeout(gestureTimer);
+            gestureTimer = null;
+        }
+        tapGesture = {
+            type: event && event.pointerType ? String(event.pointerType) : '',
+            x: (event && typeof event.clientX === 'number') ? event.clientX : null,
+            y: (event && typeof event.clientY === 'number') ? event.clientY : null,
+            t: Date.now(),
+            target: event ? event.target : null,
+            scrollTop: panelScrollTop(),
+            extra: false,
+            ended: false,
+            cancelled: false
+        };
+        gestureTimer = window.setTimeout(function () {
+            gestureTimer = null;
+            tapGesture = null;
+        }, GESTURE_TTL);
+    }
+
+    function endGesture(event) {
+        if (!tapGesture) return;
+        tapGesture.ended = true;
+        if (event && event.type === 'pointercancel') tapGesture.cancelled = true;
+    }
+
+    /* Decizia pentru un click sosit pe cardul stratului. */
+    function deliberateTap(event) {
+        if (!strictEvent(event)) return true; /* desktop clasic: ca înainte */
+        var gesture = tapGesture;
+        if (!gesture) return true; /* click sintetic — nimic de verificat */
+        if (gesture.cancelled || gesture.extra) return false;
+        if (gesture.target && isInteractiveTarget(gesture.target)) return false; /* a început pe slider/comutator */
+        if (typeof event.clientX === 'number' && typeof event.clientY === 'number' &&
+            typeof gesture.x === 'number' && typeof gesture.y === 'number') {
+            if (Math.abs(event.clientX - gesture.x) > TAP_MOVE_TOLERANCE ||
+                Math.abs(event.clientY - gesture.y) > TAP_MOVE_TOLERANCE) return false;
+        }
+        if (isTouchPointer(gesture.type) && gesture.t &&
+            (Date.now() - gesture.t) > TAP_MAX_DURATION) return false;
+        var scrollTop = panelScrollTop();
+        if (typeof scrollTop === 'number' && typeof gesture.scrollTop === 'number' &&
+            Math.abs(scrollTop - gesture.scrollTop) > 2) return false;
+        if (gesture.t && (Date.now() - lastPanelScrollAt) < SCROLL_QUIET_MS) return false;
+        return true;
+    }
+
+    /* Oglinda deja aflată pe ecran devine activă (dock de acțiuni, bulă,
+       highlight în panou) fără să creeze una nouă și fără să atingă
+       comutatorul stratului. Întoarce false când sursa nu are nicio oglindă
+       pe ecran — caz în care un gest tactil nu are voie să facă nimic. */
+    function activateExistingMirror(source) {
+        if (!source) return false;
+        var slot = slotForSource(source);
+        if (!slot && pairActive && isSatellitePairId(source.id)) {
+            /* Perechea Satellite: cea de-a doua oglindă (ISTORIC) nu are slot
+               propriu, deci atingerea ei readuce în față oglinda de opacitate
+               a perechii — exact slotul pe care îl activează și selectSource. */
+            try { slot = slotForSource(document.getElementById('satOpacitySlider')); }
+            catch (e) { slot = null; }
+        }
+        if (!slot) return false;
+        setActiveSlot(slot);
+        syncFromSource(slot);
+        syncLayerActions();
+        syncDistanceDock();
+        return true;
+    }
+
+    /* Atingerea unui slider (pointerdown / focus de tastatură) în modul strict
+       nu selectează stratul: doar readuce în față oglinda existentă. */
+    function sliderTouch(source, event) {
+        if (strictEvent(event)) {
+            activateExistingMirror(source);
+            return;
+        }
+        selectSource(source, false);
+    }
+
     function registerSource(source) {
         var owner = source.parentElement;
         if (!owner) return;
@@ -1179,13 +1348,18 @@
         owner.setAttribute('aria-label', 'Select ' + getLayerName(source, owner) + ' ' + sourceKind(source) + ' control');
 
         owner.addEventListener('click', function (event) {
-            /* Sliders/toggles retain their normal behaviour. Touching the
-               original horizontal range still selects it, but waits for the
-               user to close the panel before revealing the map-side mirror. */
+            /* Sliders/toggles retain their normal behaviour. On the desktop
+               site, touching the original horizontal range still selects it
+               (and waits for the user to close the panel before revealing the
+               map-side mirror). In the installed PWA / on touch the range only
+               drives an already-visible mirror — see the TAP CONCRET block. */
             if (isInteractiveTarget(event.target)) {
-                if (event.target === source) selectSource(source, false);
+                if (event.target === source) sliderTouch(source, event);
                 return;
             }
+            /* Only a deliberate tap on the layer card adds its slider on the
+               map (no scroll gesture, no drag, no second finger). */
+            if (!deliberateTap(event)) return;
             selectSource(source, true);
         });
 
@@ -1198,11 +1372,11 @@
             }
         });
 
-        source.addEventListener('pointerdown', function () {
-            selectSource(source, false);
+        source.addEventListener('pointerdown', function (event) {
+            sliderTouch(source, event);
         });
-        source.addEventListener('focus', function () {
-            selectSource(source, false);
+        source.addEventListener('focus', function (event) {
+            sliderTouch(source, event);
         });
         source.addEventListener('input', function () {
             var slot = slotForSource(source);
@@ -1243,9 +1417,10 @@
 
         owner.addEventListener('click', function (event) {
             if (isInteractiveTarget(event.target)) {
-                if (event.target === source) selectSource(source, false);
+                if (event.target === source) sliderTouch(source, event);
                 return;
             }
+            if (!deliberateTap(event)) return;
             selectSource(source, true);
         });
 
@@ -1258,8 +1433,8 @@
             }
         });
 
-        source.addEventListener('pointerdown', function () { selectSource(source, false); });
-        source.addEventListener('focus', function () { selectSource(source, false); });
+        source.addEventListener('pointerdown', function (event) { sliderTouch(source, event); });
+        source.addEventListener('focus', function (event) { sliderTouch(source, event); });
         source.addEventListener('input', function () {
             var slot = slotForSource(source);
             if (slot) syncFromSource(slot);
@@ -1310,11 +1485,11 @@
             owner.setAttribute('aria-label', 'Select ' + getLayerName(source, owner) + ' ' + sourceKind(source) + ' control');
         }
 
-        source.addEventListener('pointerdown', function () {
-            selectSource(source, false);
+        source.addEventListener('pointerdown', function (event) {
+            sliderTouch(source, event);
         });
-        source.addEventListener('focus', function () {
-            selectSource(source, false);
+        source.addEventListener('focus', function (event) {
+            sliderTouch(source, event);
         });
         source.addEventListener('input', function () {
             if (pairActive) syncPeriodFromSource();
@@ -1490,6 +1665,23 @@
             window.addEventListener('resize', function () {
                 if (activeSlot && activeSlot.output.classList.contains('visible')) positionPeriodTip();
             });
+        }
+
+        /* ── Urmărirea gestului (vezi blocul TAP CONCRET) ──
+           Înregistrate pe document, în faza de captură, ca un pointerdown
+           oprit de alt handler să nu ne scape; click-ul (faza de bule, adică
+           DUPĂ handler-ul cardului) închide gestul. */
+        if (typeof document.addEventListener === 'function') {
+            document.addEventListener('pointerdown', beginGesture, true);
+            document.addEventListener('pointerup', endGesture, true);
+            document.addEventListener('pointercancel', endGesture, true);
+            document.addEventListener('click', function () { dropGesture(); });
+        }
+        var panelScroller = panelElement();
+        if (panelScroller && typeof panelScroller.addEventListener === 'function') {
+            panelScroller.addEventListener('scroll', function () {
+                lastPanelScrollAt = Date.now();
+            }, { passive: true });
         }
 
         document.addEventListener('keydown', function (event) {
