@@ -1105,6 +1105,9 @@ console.log('\n[End-to-end pipeline]');
     check('pin mode on', sandbox.window._archeoPotentialState().pinMode === true);
     check('map click handler armed for the pin (exactly once)', (mapEvents.click || []).length === 1);
     check('row marked as on', dom.archeoPotentialRow.classList.contains('is-on'));
+    check('archeo bubble pane is click-through (cannot cover detectorist pins)',
+        panes.pane_archeo && panes.pane_archeo.style.pointerEvents === 'none',
+        panes.pane_archeo && JSON.stringify(panes.pane_archeo.style.pointerEvents));
 
     sandbox.window._archeoPotSetPoint(46.805, 23.605);
     check('pin stored in the state', (() => {
@@ -1148,10 +1151,18 @@ console.log('\n[End-to-end pipeline]');
         Math.abs(cf.centerLat - 46.8) < 1e-9 && Math.abs(cf.centerLng - 23.6) < 1e-9,
         cf.centerLat + ',' + cf.centerLng);
 
-    /* ── 5. comutatorul stratului ascunde rezultatele, pinul și oglinda ── */
+    /* ── 5. comutatorul stratului ascunde rezultatele, pinul și oglinda ──
+       și nu lasă canvas-ul stratului deasupra pin-urilor de detectoriști. */
+    const leftover = {
+        tagName: 'canvas', style: { pointerEvents: 'auto' },
+        parentNode: null, parentElement: null
+    };
+    panes.pane_archeo.appendChild(leftover);
     sandbox.window.toggleArcheoPotentialLayer(false);
     check('layer off hides the results', sandbox.window._archeoPotentialState().resultsVisible === false);
     check('layer off also closes the pin mode', sandbox.window._archeoPotentialState().pinMode === false);
+    check('layer off drops the archeo canvas that would swallow detectorist taps',
+        leftover.parentNode == null && leftover.style.pointerEvents === 'none');
     sandbox.window.toggleArcheoPotentialLayer(true);
     check('layer on restores the results', sandbox.window._archeoPotentialState().resultsVisible === true);
 
