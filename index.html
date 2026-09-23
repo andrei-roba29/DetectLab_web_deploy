@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260922-sole-mirror-activate">
+    <link rel="stylesheet" href="css/styles.css?v=20260922-caption-above-card">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260922-mobile-fs-controls">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -1274,12 +1274,20 @@
                      role="group" aria-label="Selected layer opacity" aria-hidden="true">
                     <button type="button" class="vertical-opacity-close" id="verticalOpacityClose"
                             title="Close opacity control" aria-label="Close opacity control">×</button>
-                    <!-- Title of the mirrored range: the small caption chip (RAZĂ /
-                         DISTANȚĂ / ISTORIC) floats above the card, while the layer's
-                         initials (max 3 letters, no years) run bottom-up along the
-                         left side of the slider. -->
+                    <!-- Caption chip of the mirrored range (DISTANȚĂ / RAZĂ / ISTORIC;
+                         empty for plain opacity): a DIRECT child of the card, so its
+                         absolute position is always measured from the card itself
+                         and the chip floats ABOVE the card in every mode. It used
+                         to sit inside .vertical-opacity-title; in the installed PWA
+                         that wrapper is itself absolutely positioned (the rotated
+                         side-title fallback), which turned it into the chip's
+                         containing block and dragged the chip down onto the top
+                         edge of the card, over the × button. -->
+                    <span class="vertical-opacity-caption" id="verticalOpacityCaption"></span>
+                    <!-- Title of the mirrored range: the layer's initials (max 3
+                         letters, no years) run bottom-up along the left side of
+                         the slider. -->
                     <span class="vertical-opacity-title" id="verticalOpacityTitle">
-                        <span class="vertical-opacity-caption" id="verticalOpacityCaption"></span>
                         <span class="vertical-opacity-layer" id="verticalOpacityLayer">Layer</span>
                     </span>
                     <div class="vertical-opacity-slider-wrap">
@@ -1315,8 +1323,11 @@
                      role="group" aria-label="Second selected layer opacity" aria-hidden="true">
                     <button type="button" class="vertical-opacity-close" id="verticalOpacityCloseSecondary"
                             title="Close opacity control" aria-label="Close opacity control">×</button>
+                    <!-- Same structure as the first mirror: the caption chip is a
+                         direct child of the card (floats above it), the title
+                         wrapper only carries the vertical layer initials. -->
+                    <span class="vertical-opacity-caption" id="verticalOpacityCaptionSecondary"></span>
                     <span class="vertical-opacity-title" id="verticalOpacityTitleSecondary">
-                        <span class="vertical-opacity-caption" id="verticalOpacityCaptionSecondary"></span>
                         <span class="vertical-opacity-layer" id="verticalOpacityLayerSecondary">Layer</span>
                     </span>
                     <div class="vertical-opacity-slider-wrap">
@@ -1339,8 +1350,10 @@
                      #satPeriodSlider (2016 / 2025) from js/map-app.js. -->
                 <div class="vertical-opacity-control vertical-period-control" id="verticalSatPeriodControl"
                      role="group" aria-label="Satellite imagery period" aria-hidden="true" data-kind="satperiod">
+                    <!-- ISTORIC chip: direct child of the card, like the other
+                         mirrors, so it floats above the card in the PWA too. -->
+                    <span class="vertical-opacity-caption" id="verticalSatPeriodCaption">ISTORIC</span>
                     <span class="vertical-opacity-title" id="verticalSatPeriodTitle">
-                        <span class="vertical-opacity-caption" id="verticalSatPeriodCaption">ISTORIC</span>
                         <span class="vertical-opacity-layer" id="verticalSatPeriodLayer">Satellite</span>
                     </span>
                     <div class="vertical-opacity-slider-wrap">

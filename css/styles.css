@@ -4841,9 +4841,10 @@
            the slim card (writing-mode vertical + 180° rotation), in a single
            column of text — js/vertical-opacity-control.js keeps them to 3
            letters at most, without years (the full layer name stays in the
-           title attribute). The small DISTANȚĂ / RAZĂ / ISTORIC caption
-           remains a chip floating above the card and collapses when the JS
-           leaves it empty (opacity mirrors carry no caption). */
+           title attribute). The small DISTANȚĂ / RAZĂ / ISTORIC caption is a
+           separate chip floating above the card (see .vertical-opacity-caption
+           below) and collapses when the JS leaves it empty (opacity mirrors
+           carry no caption). */
         .vertical-opacity-title {
             grid-column: 1;
             grid-row: 1 / -1;
@@ -4854,6 +4855,20 @@
             pointer-events: none;
         }
 
+        /* ── CAPTION CHIP: ALWAYS ABOVE THE CARD ──
+           DISTANȚĂ / RAZĂ (analysis layers) and ISTORIC (Satellite) float
+           7px above the top edge of the card, centred on it. The chip is a
+           DIRECT child of .vertical-opacity-control in index.html, so the
+           card — the nearest positioned ancestor in every mode (desktop,
+           browser fullscreen, installed PWA) — is its containing block and
+           `bottom: 100% + 7px` really means "above the card". It used to live
+           inside .vertical-opacity-title; in the installed PWA that wrapper is
+           itself absolutely positioned (rotated side-title fallback below),
+           which made IT the containing block: the chip was measured from the
+           title box (21px below the card's top, 14px wide) and landed on the
+           card's top edge, over the × button, instead of above the slider.
+           pointer-events: none keeps the (purely informative) chip from
+           swallowing map taps just above the card. */
         .vertical-opacity-caption {
             position: absolute;
             bottom: calc(100% + 7px);
@@ -4870,6 +4885,7 @@
             letter-spacing: 0.12em;
             white-space: nowrap;
             text-overflow: ellipsis;
+            pointer-events: none;
         }
 
         /* Opacity mirrors no longer carry the word "OPACITY" above the range, so
@@ -5275,7 +5291,12 @@
         /* PWA title fallback: render the initials as a rotated, explicit-size
            label instead of relying on vertical-writing grid measurement. The
            label remains on the slider's left side, but has a concrete box and
-           its own stacking level on iOS/Android standalone WebViews. */
+           its own stacking level on iOS/Android standalone WebViews.
+           NOTE: this wrapper is positioned, so it must contain ONLY the layer
+           initials — the caption chip (.vertical-opacity-caption) is a sibling
+           of the wrapper, anchored to the card, otherwise this box would
+           become the chip's containing block and pull DISTANȚĂ / RAZĂ /
+           ISTORIC down onto the card's top edge (over the × button). */
         body.is-pwa .vertical-opacity-title {
             position: absolute;
             left: 2px;
@@ -5360,6 +5381,10 @@
                 height: 222px;
             }
 
+            /* Landscape phones: the chip floating above the card would meet
+               the "?" help button pinned in the top-right corner, and the
+               card already fills the short viewport — hide the chip here
+               (the value bubble still shows km / years). */
             .vertical-opacity-caption {
                 display: none;
             }

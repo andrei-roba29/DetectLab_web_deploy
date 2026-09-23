@@ -219,7 +219,16 @@
 //   switch's change event — so everything on the map went dark together.
 //   They now call the new single-slot closeFor(id) API, and isActiveFor(id)
 //   no longer reports the slot that is currently being torn down.
-const CACHE_NAME = 'detectlab-v129-distance-mirror-close';
+// v130: the DISTANȚĂ / RAZĂ / ISTORIC caption chip floats ABOVE the vertical
+//   slider card in the installed PWA too. The chip lived inside
+//   .vertical-opacity-title; in the PWA that wrapper is absolutely positioned
+//   (rotated side-title fallback), so it became the chip's containing block
+//   and dragged DISTANȚĂ down onto the top edge of the card, over the ×
+//   button. The chip is now a direct child of the card (index.html) and the
+//   stylesheet is re-versioned. The bump also pushes every installed app onto
+//   a shell where the mirrored-row „PE HARTĂ / ON MAP” badge is gone (removed
+//   in v124 — a stale cached shell was the only way to still see it).
+const CACHE_NAME = 'detectlab-v130-caption-above-card';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -711,6 +720,9 @@ const PRECACHE_URLS = [
   'js/archeo-potential.js?v=20260922-distance-mirror-close',
   'js/lidar-scanner.js?v=20260922-distance-mirror-close',
   'js/archeo-report.js?v=20260922-distance-mirror-close',
+  // v130: caption chip (DISTANȚĂ / RAZĂ / ISTORIC) anchored to the card
+  // itself, so it floats above the slider in the PWA as well.
+  'css/styles.css?v=20260922-caption-above-card',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
