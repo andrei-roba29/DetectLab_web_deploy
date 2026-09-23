@@ -14,9 +14,8 @@
 // The fix stretches #map-section between the viewport edges (position:fixed +
 // top:0 + bottom:0, height:auto) — exact on every engine, no fallback ladder —
 // and re-measures Leaflet the frame the container reaches its true size
-// (delayed passes + ResizeObserver + load/pageshow). No control moves: the
-// floating right stack, the compass column and the bottom clearance variable
-// all keep their offsets.
+// (delayed passes + ResizeObserver + load/pageshow). The separate live-location
+// button and compass column keep their safe-area offsets.
 //
 // Run: node test-pwa-no-bottom-strip.js
 
@@ -65,16 +64,16 @@ assert(/addEventListener\('load', updatePwaMapLayout\)/.test(html)
     && /addEventListener\('pageshow', updatePwaMapLayout\)/.test(html),
     'load and pageshow (back/forward cache) must re-sync the layout too');
 
-/* 3. No control moved: the floating stacks keep their exact offsets.
-   (Targeted regexes: several earlier selectors end in the same element, e.g.
-   body.is-pwa.transp-panel-open #pwa-br-stack, so "first rule wins" would
-   grab the wrong block.)
-   The bottom-right stack is the bottom bar itself, so it is display:none
-   !important now — its published geometry is kept under the display so the
-   numbers stay auditable (see test-pwa-no-bottom-bar.js). */
-const stack = (html.match(/#pwa-br-stack\s*\{\s*display:\s*none !important;\s*position:\s*fixed;[^}]*\}/) || [])[0] || '';
-assert(/bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 28px\)/.test(stack),
-    'the bottom-right floating stack must keep its offset (no button may move)');
+/* 3. The live-location button and the other bottom controls keep their
+   published offsets. The account menu remains removed; the GPS button now
+   uses its own fixed wrapper at the same right-bottom position. */
+const liveControl = ruleOf(html, 'html.is-pwa .pwa-live-location-control');
+assert(/position:\s*fixed\s*!important/.test(liveControl),
+    'the PWA live-location button must stay independently fixed');
+assert(/right:\s*max\(10px, env\(safe-area-inset-right, 0px\)\)\s*!important/.test(liveControl),
+    'the bottom-right control must keep its right-side safe-area offset');
+assert(/bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 28px\)\s*!important/.test(liveControl),
+    'the live-location button must keep its bottom offset');
 const pwaVars = (html.match(/(?:^|\})\s*body\.is-pwa\s*\{[^}]*\}/) || [])[0] || '';
 assert(/--pwa-bottom-controls-clearance:\s*44px/.test(pwaVars),
     'the published bottom clearance must stay untouched for the overlays');

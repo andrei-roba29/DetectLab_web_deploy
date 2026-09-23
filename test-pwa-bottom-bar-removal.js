@@ -1,16 +1,16 @@
-// Functional test (jsdom) — the PWA bottom bar must be GONE from the document,
-// not merely hidden, and the website must keep its markup.
+// Functional test (jsdom) — the PWA account/menu stack is removed from the
+// document, while a live-location button is not removed with it.
 //
-// test-pwa-no-bottom-bar.js asserts the shipped source; this one runs the real
-// inline standalone script from index.html inside a DOM and checks the outcome:
+// test-pwa-no-bottom-bar.js asserts the full source contract (including the
+// fixed bottom-right position); this test runs the real inline standalone
+// script from index.html inside a DOM and checks that:
 //
-//   • ?pwa=1 / standalone  → #pwa-br-stack (geolocation 🎯 + the "AN" account
-//     button + Log In pill + account dropdown) is removed from the document,
-//     and the 500 ms account sync cannot put it back;
-//   • plain website        → nothing is removed (the bar was already
-//     display:none there, and the 🎯 button still belongs to the left stack);
-//   • the left icon stack, the compass column and the map container are never
-//     touched by the removal.
+//   • ?pwa=1 / standalone  → #pwa-br-stack (account initials, Log In pill and
+//     dropdown) is removed, and the 500 ms auth sync cannot put it back;
+//   • a live-location button outside the account stack survives that removal;
+//   • plain website        → no account markup is removed, and its 🎯 button
+//     stays in the left stack;
+//   • the compass column and map container are never touched.
 //
 // Run: node test-pwa-bottom-bar-removal.js      (npm i --no-save jsdom)
 
@@ -123,8 +123,7 @@ const $ = (win, id) => win.document.getElementById(id);
         assert.strictEqual(win.document.querySelectorAll('#pwa-br-stack *').length, 0,
             'no descendant of the bottom bar may survive');
         assert.deepStrictEqual(win.__errors, [], 'the removal must not throw');
-        console.log('✓ ?pwa=1: the whole bottom bar (account "AN" button, Log In pill, '
-            + 'dropdown, avatar) is removed from the document');
+        console.log('✓ ?pwa=1: the account stack ("AN" button, Log In pill, dropdown, avatar) is removed');
     }
 
     /* ── 2. display-mode: standalone behaves the same ───────────────────── */
@@ -138,15 +137,15 @@ const $ = (win, id) => win.document.getElementById(id);
         console.log('✓ display-mode: standalone removes the bar as well');
     }
 
-    /* ── 3. The geolocation button goes with it ─────────────────────────── */
+    /* ── 3. A standalone live-location control is not deleted with account ─ */
     {
         const win = boot('?pwa=1');
         await settle(60);
-        assert.strictEqual($(win, 'btnLiveLocation'), null,
-            'the 🎯 geolocation button must not remain anywhere in the installed app');
-        assert.strictEqual(win.document.querySelector('.btn-live-location'), null,
-            'nor may its styled wrapper survive');
-        console.log('✓ the geolocation button is gone from the installed app');
+        assert.ok($(win, 'btnLiveLocation'),
+            'the standalone script must not remove the live-location button');
+        assert.ok($(win, 'btnLiveLocation').closest('.leaflet-top.leaflet-left'),
+            'this shell placeholder survives the account-stack removal');
+        console.log('✓ the standalone script leaves the 🎯 location button untouched');
     }
 
     /* ── 4. The 500 ms account sync cannot bring the bar back ───────────── */
@@ -210,8 +209,8 @@ const $ = (win, id) => win.document.getElementById(id);
         console.log('✓ togglePwaUserDropdown / togglePwaLangSubmenu are safe with no bar');
     }
 
-    console.log('\nOK — in the installed app the bottom bar is removed from the DOM; '
-        + 'the website and the left controls are untouched.');
+    console.log('\nOK — the installed app removes the account stack without deleting the live-location control; '
+        + 'the website and left controls remain untouched.');
     process.exit(0);
 })().catch(function (e) {
     console.error('\n✗ ' + (e && e.message ? e.message : e));
