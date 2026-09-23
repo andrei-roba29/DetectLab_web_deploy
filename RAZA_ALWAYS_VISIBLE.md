@@ -1,7 +1,8 @@
-# RAZĂ / DISTANȚĂ / ISTORIC rămâne vizibil deasupra oglinzii și în landscape
+# RAZĂ / DISTANȚĂ / ISTORIC / PERIOADĂ rămâne vizibil deasupra oglinzii și în landscape
 
 Data: 2026-09-23 · Fișiere: `css/styles.css`, `index.html`, `sw.js`
 Test: `node test-vertical-caption-above-card.js` · Probe: `/tmp/probe/geo.js`
+Versiune: v134 → v135 (extins pentru PERIOADĂ Bătălii)
 
 ---
 
@@ -9,14 +10,17 @@ Test: `node test-vertical-caption-above-card.js` · Probe: `/tmp/probe/geo.js`
 
 > „cuvântul 'raza' aferent unor slideuri de opacitate, ar trebuie sa apara
 > deasupra lor cand sunt adaugate pe ecran”
+> + „modificarea trebuie facuta si pentru 'perioada' din cadrul stratului
+> 'Batalii'”
 
-Cuvântul **RAZĂ** (și prin extensie **DISTANȚĂ** / **ISTORIC**) aparține
-oglizilor verticale de pe hartă:
+Cuvântul **RAZĂ** (și prin extensie **DISTANȚĂ** / **ISTORIC** / **PERIOADĂ**)
+aparține oglizilor verticale de pe hartă:
 
 - `archeoPotDistance` – Zone cu potențial arheologic → RAZĂ / RADIUS
 - `archReportDistance` – Raport arheologic → RAZĂ / RADIUS
 - `lidarScannerDistance` – LIDAR Scanner → DISTANȚĂ / DISTANCE
 - `satPeriodSlider` / `satellitePeriod` – Satellite istoric → ISTORIC / HISTORIC
+- `battlesPeriodSlider` – Bătălii / Battles → PERIOADĂ / PERIOD
 
 Acceptanță:
 
@@ -81,10 +85,12 @@ După:
 ### Versiuni – `index.html` + `sw.js`
 
 - `index.html`: `css/styles.css?v=20260923-close-hit-area` →
-  `css/styles.css?v=20260923-raza-always-visible`
-- `sw.js`: `CACHE_NAME` `v133` → `v134-raza-always-visible`,
-  `PRECACHE_URLS` primește noul URL. Comentariul de la `CACHE_NAME`
-  documentează cerința.
+  `css/styles.css?v=20260923-raza-always-visible` →
+  `css/styles.css?v=20260923-raza-perioada-always-visible` (v135)
+- `sw.js`: `CACHE_NAME` `v133` → `v134-raza-always-visible` →
+  `v135-raza-perioada-always-visible`, `PRECACHE_URLS` primește ambele URL-uri
+  (v134 + v135) ca să acopere orice shell intermediar. Comentariul de la
+  `CACHE_NAME` documentează cerința extinsă pentru PERIOADĂ.
 
 ### Test – `test-vertical-caption-above-card.js`
 
@@ -125,6 +131,9 @@ măsoară `getBoundingClientRect`, `elementFromPoint`, overlaps.
 | 667×320 | fs | idem | 3px | true | [] | help, fsClose (vizual suprapus dar cip deasupra) |
 | 915×412 | pwa | lidarScannerDistance (DISTANȚĂ) | 3px | true | [] | [] |
 | 915×412 | pwa | satPeriodSlider (ISTORIC) | 3px | true | [] | [] |
+| 915×412 | pwa | battlesPeriodSlider (PERIOADĂ) | 3px | true | [] | [] |
+| 412×915 | pwa | battlesPeriodSlider (PERIOADĂ) | 6px | true | [] | [] |
+| 1280×800 | web | battlesPeriodSlider (PERIOADĂ) | 6px | true | [] | [] |
 
 Capturi:
 

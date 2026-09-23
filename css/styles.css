@@ -5421,11 +5421,12 @@
                 z-index: 1001;
             }
 
-            /* RAZĂ / DISTANȚĂ / ISTORIC must stay visible even in landscape
-               (user requirement: the word "RAZĂ" must appear above its slider
-               whenever the mirror is on screen). The previous display:none hid
-               the chip on every short viewport; the value bubble alone is not
-               enough — the user explicitly asked for the caption. */
+            /* RAZĂ / DISTANȚĂ / ISTORIC / PERIOADĂ must stay visible even in
+               landscape (user requirement: the word "RAZĂ" and "PERIOADĂ" for
+               Bătălii must appear above its slider whenever the mirror is on
+               screen). The previous display:none hid the chip on every short
+               viewport; the value bubble alone is not enough — the user
+               explicitly asked for the caption. */
             .vertical-opacity-caption:not(:empty) {
                 display: block !important;
                 bottom: calc(100% + 4px);

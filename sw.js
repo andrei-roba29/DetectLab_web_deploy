@@ -258,7 +258,9 @@
 //   și în landscape (max-height ≤500px) — regula display:none care ascundea
 //   cipul pe ecrane scurte e scoasă, la cererea explicită a utilizatorului
 //   („cuvântul raza ... trebuie să apară deasupra lor când sunt adăugate”).
-const CACHE_NAME = 'detectlab-v134-raza-always-visible';
+// v135: extinde v134 și pentru PERIOADĂ din stratul Bătălii — același
+//   tratament: cip-ul rămâne vizibil în landscape, deasupra oglinzii.
+const CACHE_NAME = 'detectlab-v135-raza-perioada-always-visible';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -764,6 +766,9 @@ const PRECACHE_URLS = [
   // landscape too — the max-height:500px display:none is removed per user
   // request that the word must appear above its slider whenever on screen.
   'css/styles.css?v=20260923-raza-always-visible',
+  // v135: same fix extended to PERIOADĂ (Battles layer) — user asked for
+  // „perioada” in Bătălii as well.
+  'css/styles.css?v=20260923-raza-perioada-always-visible',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
