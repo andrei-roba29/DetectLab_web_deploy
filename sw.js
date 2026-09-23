@@ -260,7 +260,10 @@
 //   („cuvântul raza ... trebuie să apară deasupra lor când sunt adăugate”).
 // v135: extinde v134 și pentru PERIOADĂ din stratul Bătălii — același
 //   tratament: cip-ul rămâne vizibil în landscape, deasupra oglinzii.
-const CACHE_NAME = 'detectlab-v135-raza-perioada-always-visible';
+// v136: PWA bottom-right stack restabilit — 🎯 live-location deasupra,
+//   trigger cont (AN / Log In + dropdown) dedesubt, ambele în
+//   #pwa-br-stack fix dreapta-jos cu safe-area; ascuns la transp-panel-open.
+const CACHE_NAME = 'detectlab-v136-pwa-br-stack-account';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -703,9 +706,8 @@ const PRECACHE_URLS = [
   // așteaptă răspunsul înainte să publice prezența sau să pornească locația
   // live, iar „Nu” doar te ține ascuns — căutarea merge înainte.
   'js/map-app.js?v=20260921-nearby-visibility-prompt',
-  // În aplicația instalată, meniul contului din #pwa-br-stack rămâne eliminat.
-  // Butonul 🎯 de locație live revine ca un control fix separat în dreapta-jos;
-  // pe site rămâne sub controlul de zoom, în stiva din stânga.
+  // PWA bottom-right stack: 🎯 live-location deasupra + cont dedesubt
+  // (restaurat în v136); ascuns la transp-panel-open.
   'js/map-app.js?v=20260923-pwa-live-location',
   'js/tutorial.js?v=20260923-pwa-live-location',
   // These four were referenced by index.html with a cache-busted query string
@@ -769,6 +771,12 @@ const PRECACHE_URLS = [
   // v135: same fix extended to PERIOADĂ (Battles layer) — user asked for
   // „perioada” in Bătălii as well.
   'css/styles.css?v=20260923-raza-perioada-always-visible',
+  // v136: PWA bottom-right stack restabilit — 🎯 live-location deasupra,
+  //   trigger cont (AN / Log In + dropdown) dedesubt, ambele în
+  //   #pwa-br-stack fix dreapta-jos cu safe-area; ascuns la transp-panel-open.
+  'css/styles.css?v=20260923-pwa-br-stack-account',
+  'js/map-app.js?v=20260923-pwa-br-stack-account',
+  'js/tutorial.js?v=20260923-pwa-br-stack-account',
   'js/supabase.js?v=20260811-event-sync'
 ];
 

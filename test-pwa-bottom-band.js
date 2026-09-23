@@ -77,18 +77,35 @@ assert(/name="apple-mobile-web-app-status-bar-style"\s+content="black-translucen
     'black-translucent must stay: dropping it would move the top controls and '
     + 'hand the status-bar strip to iOS');
 
-/* ── 2. THE CONTRACT — no account bar; live location stays bottom-right ─ */
-/* The account stack is removed from the standalone PWA, but its former GPS
-   control is now an independent fixed button in the same right-bottom position.
-   The home-indicator and compass/action-dock offsets stay unchanged. */
-const stack = (html.match(/#pwa-br-stack\s*\{\s*display:\s*none !important;\s*position:\s*fixed;[^}]*\}/) || [])[0] || '';
-assert(stack, 'the #pwa-br-stack account menu stays display:none !important');
-assert(/visibility:\s*hidden/.test(stack) && /pointer-events:\s*none/.test(stack),
-    'the account stack must remain invisible and click-through');
-assert(/body\.is-pwa #pwa-br-stack,[\s\S]{0,400}?display:\s*none !important;/.test(html),
-    'standalone CSS must hard-hide the account stack against inline auth styles');
-assert(/getElementById\('pwa-br-stack'\)/.test(html) && /removeChild\(pwaBottomBar\)/.test(html),
-    'the standalone script must remove the account stack from the DOM');
+/* ── 2. THE CONTRACT — restored bottom-right stack: 🎯 on top, account below ─ */
+/* #pwa-br-stack is now the fixed bottom-right container holding both controls.
+   It is hidden on website (display:none) and flex visible in PWA. */
+const stack = ruleOf(html, '#pwa-br-stack');
+assert(/display:\s*none/.test(stack),
+    '#pwa-br-stack must be display:none on website');
+assert(/position:\s*fixed/.test(stack),
+    '#pwa-br-stack base must be fixed');
+assert(/right:\s*max\(10px, env\(safe-area-inset-right, 0px\)\)/.test(stack),
+    '#pwa-br-stack must respect safe-area right');
+assert(/bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 28px\)/.test(stack),
+    '#pwa-br-stack must respect safe-area bottom + 28px');
+
+const stackPwa = ruleOf(html, 'body.is-pwa #pwa-br-stack');
+assert(/display:\s*flex\s*!important/.test(stackPwa),
+    'body.is-pwa #pwa-br-stack must be display:flex !important in standalone');
+assert(/visibility:\s*visible/.test(stackPwa) && /pointer-events:\s*auto/.test(stackPwa),
+    'PWA stack must be visible and tappable');
+
+assert(/getElementById\('pwa-br-stack'\)/.test(html),
+    'standalone script must reference #pwa-br-stack');
+assert(!/removeChild\(pwaBottomBar\)/.test(html),
+    'standalone script must NOT remove #pwa-br-stack');
+assert(/setAttribute\('aria-hidden',\s*'false'\)/.test(html),
+    'standalone script should keep stack aria-hidden=false');
+
+const insideStack = ruleOf(html, '#pwa-br-stack .pwa-live-location-control');
+assert(/position:\s*relative\s*!important/.test(insideStack),
+    'inside stack live-location must be relative');
 
 const liveControl = ruleOf(html, 'html.is-pwa .pwa-live-location-control');
 assert(/position:\s*fixed\s*!important/.test(liveControl),
@@ -158,7 +175,7 @@ assert(/\/\/ v112:/.test(sw), 'the v112 change must be described in the sw.js ch
 console.log('✓ #map-section + .transp-panel carry the min-height:100vh floor '
     + '(the ICB is safe-area-inset-top short under viewport-fit=cover + black-translucent)');
 console.log('✓ the meta tags stay untouched — the top controls keep their clearance');
-console.log('✓ account stack removed; live-location button fixed at bottom-right; compass, clearances, '
+console.log('✓ bottom-right stack restored: 🎯 on top, account below; compass, clearances, '
     + 'action dock, offline panel and © Leafleet tag remain intact');
 console.log('✓ the on-device probe is gated, pre-cached and measures ICB / vh / dvh / svh / env()');
-console.log('OK — the band under the map is closed at the source, and nothing moved.');
+console.log('OK — the band under the map is closed at the source, and PWA stack restored.');
