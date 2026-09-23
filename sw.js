@@ -228,7 +228,19 @@
 //   stylesheet is re-versioned. The bump also pushes every installed app onto
 //   a shell where the mirrored-row „PE HARTĂ / ON MAP” badge is gone (removed
 //   in v124 — a stale cached shell was the only way to still see it).
-const CACHE_NAME = 'detectlab-v130-caption-above-card';
+// v131: the ✕ that closes a map-side slider is finally hittable on desktop.
+//   ROOT CAUSE: without a z-index, the positioned .vertical-opacity-slider-
+//   wrap (later in the DOM) painted OVER the bottom half of the absolutely-
+//   positioned 22×22 transparent button and swallowed its clicks — only a
+//   thin strip above the card was ever clickable, so closing a mirror took
+//   several aim-and-click attempts. The button now paints above the wrap
+//   (z-index: 2), grew to 26×26 with a visible disc, carries an invisible
+//   ::before halo that grows the click target to ~40px (WCAG 2.5.8; the
+//   halo overhangs the card edge, which has no overflow:hidden, and stays
+//   clear of the slider's top end), lights up as soon as the cursor enters
+//   the card, and scales up on hover/focus (disabled under
+//   prefers-reduced-motion). Stylesheet and shell re-versioned.
+const CACHE_NAME = 'detectlab-v131-close-hit-area';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -723,6 +735,10 @@ const PRECACHE_URLS = [
   // v130: caption chip (DISTANȚĂ / RAZĂ / ISTORIC) anchored to the card
   // itself, so it floats above the slider in the PWA as well.
   'css/styles.css?v=20260922-caption-above-card',
+  // v131: the mirrors' ✕ close button grew a visible disc and a ~40px
+  // invisible hit halo — on desktop the 22px glyph target was nearly
+  // impossible to hit with the mouse.
+  'css/styles.css?v=20260923-close-hit-area',
   'js/supabase.js?v=20260811-event-sync'
 ];
 

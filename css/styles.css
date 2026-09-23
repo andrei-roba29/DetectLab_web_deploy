@@ -4812,28 +4812,63 @@
 
         .vertical-opacity-close {
             position: absolute;
-            top: 4px;
-            right: 5px;
-            width: 22px;
-            height: 22px;
+            top: 3px;
+            right: 4px;
+            /* Pictat DEASUPRA slider-wrap: fără z-index, wrap-ul (poziționat,
+               mai târziu în DOM) acoperea jumătatea de jos a butonului și
+               îi înghițea click-urile — doar o fâșie subțire de deasupra
+               era de fapt accesibilă. Asta făcea ✕ aproape de nimerit. */
+            z-index: 2;
+            width: 26px;
+            height: 26px;
             padding: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: rgba(184,216,240,0.68);
-            background: transparent;
-            border: 0;
+            color: rgba(184,216,240,0.75);
+            /* Disc vizibil și în repaus: fără el glifa „×” stinsă era aproape
+               imposibil de găsit și de nimerit cu mouse-ul pe desktop. */
+            background: rgba(8,20,41,0.45);
+            border: 1px solid rgba(184,216,240,0.22);
             border-radius: 50%;
             font: 400 17px/1 'Outfit', sans-serif;
             cursor: pointer;
-            transition: color 0.15s, background 0.15s;
+            touch-action: manipulation;
+            transition: color 0.15s, background 0.15s, border-color 0.15s, transform 0.15s;
+        }
+
+        /* Halou invizibil de ±7px în jurul butonului: ținta efectivă de click
+           ajunge la ~40px, deci mouse-ul nu mai trebuie să cadă exact pe
+           glifă. Cardul nu are overflow:hidden (chipul .vertical-opacity-
+           caption pluteste deja în afara lui), iar capătul de sus al
+           slider-ului începe la ~39px de la marginea cardului — sub halou —
+           deci trasarea opacității la 100% nu poate declanșa din greșeală
+           închiderea oglinzii. */
+        .vertical-opacity-close::before {
+            content: '';
+            position: absolute;
+            inset: -7px;
+            border-radius: 50%;
         }
 
         .vertical-opacity-close:hover,
         .vertical-opacity-close:focus-visible {
             color: #fff;
-            background: rgba(184,216,240,0.12);
+            background: rgba(184,216,240,0.24);
+            border-color: rgba(184,216,240,0.55);
+            transform: scale(1.1);
             outline: none;
+        }
+
+        .vertical-opacity-close:focus-visible {
+            box-shadow: 0 0 0 2px rgba(184,216,240,0.55);
+        }
+
+        /* Cursorul e oriunde pe card → X-ul se aprinde ușor, ca ținta să fie
+           vizibilă înainte ca mouse-ul să ajungă peste ea. */
+        .vertical-opacity-control:hover .vertical-opacity-close {
+            color: rgba(224,242,255,0.95);
+            border-color: rgba(184,216,240,0.4);
         }
 
         /* ── SLIDER TITLE: VERTICAL, ON THE LEFT SIDE OF THE SLIDER ──
@@ -5798,6 +5833,13 @@
         @media (prefers-reduced-motion: reduce) {
             .vertical-opacity-control {
                 transition: none;
+            }
+            .vertical-opacity-close {
+                transition: none;
+            }
+            .vertical-opacity-close:hover,
+            .vertical-opacity-close:focus-visible {
+                transform: none;
             }
             .vertical-opacity-actions .vo-action-tip {
                 transition: none;
