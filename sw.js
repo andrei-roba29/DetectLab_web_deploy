@@ -275,7 +275,11 @@
 //   markerelor) nu mai înghite tap-ul pe pin-urile detectoriștilor după ce
 //   stratul e pornit și apoi oprit. Pane-ul e click-through, iar rendererul
 //   L.canvas e scos de pe hartă la dezactivare.
-const CACHE_NAME = 'detectlab-v138-archeo-clickthrough';
+// v139: LIDAR Scanner — 12 site-uri noi în data/lidar_scanner_points.csv
+//   (10 fortificații, 1 tumul, 1 burgus). CSV-ul e refetch-uit prin noul
+//   ?v= din DATA_URL, iar scriptul rescris primește versiunea lui de
+//   cache-busting ca PWA-ul instalat să nu mai servească shell-ul vechi.
+const CACHE_NAME = 'detectlab-v139-lidar-12-sites';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -797,6 +801,9 @@ const PRECACHE_URLS = [
   // lift (`body.is-pwa #id { bottom: … !important }`) no longer beats the
   // docked geometry, and the „Setări detecție” panel keeps its auto height.
   'css/styles.css?v=20260923-pwa-docked-actions',
+  // v139: LIDAR Scanner — 12 site-uri noi în data/lidar_scanner_points.csv;
+  // DATA_URL din script a fost refăcut, deci PWA-ul trebuie să ia fișierul nou.
+  'js/lidar-scanner.js?v=20260924-lidar-12-sites',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
