@@ -3283,6 +3283,58 @@
         </div>
     </section>
 
+    <!-- iOS install walkthrough modal (desktop): steps + demo video -->
+    <div id="ios-install-modal" class="ios-modal" role="dialog" aria-modal="true" aria-labelledby="iosInstallModalTitle">
+        <div class="ios-modal-backdrop" onclick="closeIOSInstallModal()"></div>
+        <div class="ios-modal-card">
+            <button type="button" class="ios-modal-close" onclick="closeIOSInstallModal()" aria-label="Close">✕</button>
+            <div class="ios-modal-body">
+                <div class="ios-modal-text">
+                    <h3 class="ios-modal-title" id="iosInstallModalTitle"></h3>
+                    <p class="ios-modal-desc"></p>
+                    <ol class="ios-modal-steps"></ol>
+                    <p class="ios-modal-tip"></p>
+                </div>
+                <div class="ios-modal-video">
+                    <video id="iosInstallVideo" controls playsinline preload="metadata"
+                        src="https://pub-638f9319d3994d9ba6b7c4ce178867fd.r2.dev/WhatsApp%20Video%202026-09-24%20at%2008.39.01.mp4"></video>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .ios-modal { position: fixed; inset: 0; z-index: 100000; display: none; align-items: center; justify-content: center; padding: 24px; }
+        .ios-modal.visible { display: flex; }
+        .ios-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); }
+        .ios-modal-card {
+            position: relative; z-index: 1; width: min(980px, 100%); max-height: 88vh; overflow: auto;
+            background: #14151a; border: 1px solid rgba(255,255,255,0.14); border-radius: 14px;
+            box-shadow: 0 24px 70px rgba(0,0,0,0.6); padding: 26px 26px 22px;
+        }
+        .ios-modal-close {
+            position: absolute; top: 10px; right: 12px; width: 32px; height: 32px; border-radius: 50%;
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
+            color: rgba(245,240,235,0.8); font-size: 0.85rem; cursor: pointer;
+        }
+        .ios-modal-close:hover { background: rgba(196,43,43,0.5); color: #fff; }
+        .ios-modal-body { display: flex; gap: 26px; align-items: flex-start; }
+        .ios-modal-text { flex: 1 1 48%; min-width: 0; color: rgba(245,240,235,0.85); }
+        .ios-modal-video { flex: 1 1 52%; min-width: 0; }
+        .ios-modal-video video { width: 100%; max-height: 70vh; border-radius: 10px; background: #000; display: block; }
+        .ios-modal-title { margin: 0 0 10px; font-size: 1.25rem; color: #f5f0eb; }
+        .ios-modal-desc { margin: 0 0 12px; font-size: 0.92rem; line-height: 1.5; }
+        .ios-modal-steps { margin: 0 0 12px; padding-left: 20px; font-size: 0.92rem; line-height: 1.6; }
+        .ios-modal-steps li { margin-bottom: 6px; }
+        .ios-modal-tip { margin: 0; font-size: 0.82rem; opacity: 0.75; line-height: 1.5; }
+        .ios-modal-tip:empty { display: none; }
+        @media (max-width: 860px) {
+            .ios-modal { padding: 12px; }
+            .ios-modal-card { padding: 20px 16px 16px; }
+            .ios-modal-body { flex-direction: column; gap: 16px; }
+        }
+    </style>
+
     <!-- STICKY INSTALL BANNER — shown only when Chrome opens this page from the
          "Open in Chrome" flow (?pwa=install), so the install button is unmissable. -->
     <div id="pwa-install-banner" class="pwa-install-banner" role="region" aria-live="polite">
@@ -3639,8 +3691,73 @@
                     : 'For mobile app, open this page in Safari';
             }
 
-            showPWAToast(msg);
+            // On a real iPhone/iPad in Safari the steps are one tap away —
+            // keep the lightweight toast there. Everywhere else (desktop, other
+            // browsers) open the walkthrough modal with the demo video.
+            if (isIOS && isSafari) {
+                showPWAToast(msg);
+                return;
+            }
+
+            openIOSInstallModal();
         }
+
+        /* ── iOS install walkthrough modal (instructions + demo video) ── */
+        function renderIOSInstallModal() {
+            var modal = document.getElementById('ios-install-modal');
+            if (!modal) return null;
+
+            var isRo = (typeof window._currentLang === 'function' ? window._currentLang()
+                : (typeof currentLang !== 'undefined' ? currentLang : 'ro')) === 'ro';
+
+            var title = pwaT('ios_modal_title', isRo ? 'Instalează DetectLab pe iPhone / iPad' : 'Install DetectLab on iPhone / iPad');
+            var desc = pwaT('ios_modal_desc', isRo
+                ? 'Aplicația iOS se instalează direct din Safari, fără App Store. Urmărește videoclipul și urmează pașii de mai jos pe telefon.'
+                : 'The iOS app installs straight from Safari, no App Store needed. Watch the video and follow the steps below on your phone.');
+            var steps = [
+                pwaT('ios_modal_step_1', isRo ? 'Deschide <strong>detectlab.ro</strong> în <strong>Safari</strong> pe iPhone sau iPad.' : 'Open <strong>detectlab.ro</strong> in <strong>Safari</strong> on your iPhone or iPad.'),
+                pwaT('ios_modal_step_2', isRo ? 'Apasă butonul <strong>Distribuire</strong> (pătratul cu săgeată în sus) din bara de jos.' : 'Tap the <strong>Share</strong> button (square with an up arrow) in the bottom bar.'),
+                pwaT('ios_modal_step_3', isRo ? 'Derulează și alege <strong>Adaugă pe ecranul principal</strong>.' : 'Scroll down and choose <strong>Add to Home Screen</strong>.'),
+                pwaT('ios_modal_step_4', isRo ? 'Confirmă cu <strong>Adaugă</strong> — DetectLab apare pe ecranul principal și pornește pe tot ecranul.' : 'Confirm with <strong>Add</strong> — DetectLab appears on your home screen and opens full screen.')
+            ];
+            var tip = pwaT('ios_modal_tip', isRo
+                ? 'Notă: pe iOS pasul funcționează doar în Safari (nu în Chrome sau Firefox).'
+                : 'Note: on iOS this only works in Safari (not Chrome or Firefox).');
+
+            modal.querySelector('.ios-modal-title').innerHTML = title;
+            modal.querySelector('.ios-modal-desc').innerHTML = desc;
+            modal.querySelector('.ios-modal-steps').innerHTML = steps.map(function (s) { return '<li>' + s + '</li>'; }).join('');
+            modal.querySelector('.ios-modal-tip').innerHTML = tip;
+            return modal;
+        }
+
+        function openIOSInstallModal() {
+            var modal = renderIOSInstallModal();
+            if (!modal) return;
+            modal.classList.add('visible');
+            document.addEventListener('keydown', iosInstallModalKeyHandler);
+        }
+
+        function closeIOSInstallModal() {
+            var modal = document.getElementById('ios-install-modal');
+            if (!modal) return;
+            modal.classList.remove('visible');
+            document.removeEventListener('keydown', iosInstallModalKeyHandler);
+            var video = document.getElementById('iosInstallVideo');
+            if (video) { try { video.pause(); } catch (e) { /* ignore */ } }
+        }
+
+        function iosInstallModalKeyHandler(e) {
+            if (e.key === 'Escape' || e.keyCode === 27) closeIOSInstallModal();
+        }
+
+        window.openIOSInstallModal = openIOSInstallModal;
+        window.closeIOSInstallModal = closeIOSInstallModal;
+
+        document.addEventListener('detectlab:langchange', function () {
+            var modal = document.getElementById('ios-install-modal');
+            if (modal && modal.classList.contains('visible')) renderIOSInstallModal();
+        });
 
         /* ── Chrome landing page (?pwa=install) ──
            The "Open in Chrome" button sends users here with that marker: show
