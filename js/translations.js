@@ -45,6 +45,7 @@
                 prem_already: 'Your Premium month is still active. Thank you for supporting DetectLab!',
                 prem_feat_apm20: 'APM 2.0 — advanced archaeological prediction model',
                 prem_feat_hist: 'Historical maps — Josephine +, Bucovina 1861–1864, Austro-Hungarian, WWI, WWII',
+                prem_feat_vegfp: 'Vegetation Fingerprint — CLMS HR-VPP crop dynamics (PPI every 10 days; SGU/SMX/SGD season growth, peak & wilting rates)',
                 prem_feat_lidar: 'LIDAR Scanner — point-cloud analysis around any location',
                 prem_feat_archeo: 'Archeological Potential — automatic candidate zone analysis',
                 prem_feat_roman: 'Roman Empire layers — roads, forts and settlements',
@@ -264,6 +265,18 @@
                 layer_ww1: 'WWI',
                 layer_ww2: 'WWII',
                 layer_satellite60s: "Satellite imagery 60's",
+                layer_vegfp_group: 'Vegetation Fingerprint',
+                layer_vegfp_ppi: 'PPI',
+                layer_vegfp_date_label: 'Date',
+                layer_vegfp_prev_dekad: 'Previous 10-day period',
+                layer_vegfp_next_dekad: 'Next 10-day period',
+                layer_vegfp_smx: 'SMX',
+                layer_vegfp_sgu: 'SGU',
+                layer_vegfp_year_label: 'Year',
+                layer_vegfp_prev_year: 'Previous year',
+                layer_vegfp_next_year: 'Next year',
+                layer_vegfp_sgd: 'SGD',
+                layer_vegfp_ro_note: 'Tiles are fetched only for Romania',
                 /* Shown once when the tile governor switches the page to
                    conservation mode (too many dense layers open at once —
                    see js/tile-perf.js and MAP_LAYER_PERFORMANCE.md). */
@@ -559,6 +572,7 @@
                 prem_already: 'Luna ta de Premium este încă activă. Îți mulțumim că susții DetectLab!',
                 prem_feat_apm20: 'APM 2.0 — model avansat de predicție arheologică',
                 prem_feat_hist: 'Hărți istorice — Iosefină +, Bucovina 1861–1864, austro-ungară, WWI, WWII',
+                prem_feat_vegfp: 'Amprenta Vegetației — dinamica culturilor CLMS HR-VPP (PPI la fiecare 10 zile; SGU/SMX/SGD creșterea, vârful și ofilirea sezonului)',
                 prem_feat_lidar: 'LIDAR Scanner — analiza norului de puncte în jurul oricărei locații',
                 prem_feat_archeo: 'Potențial Arheologic — analiza automată a zonelor candidate',
                 prem_feat_roman: 'Straturile Imperiului Roman — drumuri, forturi și așezări',
@@ -779,6 +793,18 @@
                 layer_ww1: 'WWI',
                 layer_ww2: 'WWII',
                 layer_satellite60s: "Imagini satelitare anii 60'",
+                layer_vegfp_group: 'Amprenta Vegetației',
+                layer_vegfp_ppi: 'PPI',
+                layer_vegfp_date_label: 'Dată',
+                layer_vegfp_prev_dekad: 'Perioada de 10 zile anterioară',
+                layer_vegfp_next_dekad: 'Perioada de 10 zile următoare',
+                layer_vegfp_smx: 'SMX',
+                layer_vegfp_sgu: 'SGU',
+                layer_vegfp_year_label: 'An',
+                layer_vegfp_prev_year: 'Anul anterior',
+                layer_vegfp_next_year: 'Anul următor',
+                layer_vegfp_sgd: 'SGD',
+                layer_vegfp_ro_note: 'Tile-urile se încarcă doar pentru suprafața României',
                 /* Afișat o singură dată, când guvernorul de tile-uri trece
                    pagina în modul de conservare (prea multe straturi dense
                    active simultan — vezi js/tile-perf.js). */

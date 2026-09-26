@@ -2799,6 +2799,218 @@
 
                     </div><!-- /histPremium transp-layer-row -->
 
+                    <!-- Amprenta Vegetației / Vegetation Fingerprint (premium) —
+                         CLMS HR-VPP vegetation layers group. Substratul PPI
+                         (Plant Phenology Index) se încarcă prin WMTS doar pe
+                         suprafața României; PPI are selector de dekadă, SGU /
+                         SGD selector de an — vezi VEGETATION_FINGERPRINT.md. -->
+                    <div class="transp-layer-row" data-category="premium" id="vegfpRow">
+                        <!-- Group header: master toggle -->
+                        <div class="transp-layer-label" style="margin-bottom:6px">
+                            <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+                                    <path d="M6.5 11.6C6.5 7.2 9.1 3.6 11.6 1.4C11.6 6.1 9.5 9.6 6.5 11.6Z" fill="rgba(129,199,132,0.45)" stroke="#81c784" stroke-width="0.8" />
+                                    <path d="M6.5 11.6C6.5 7.6 4.4 4.5 1.6 3.0C2.0 7.6 4.0 10.1 6.5 11.6Z" fill="rgba(129,199,132,0.25)" stroke="#81c784" stroke-width="0.8" />
+                                    <path d="M6.5 11.6V5.8" stroke="#81c784" stroke-width="0.8" stroke-linecap="round" />
+                                </svg>
+                                <span class="t" data-key="layer_vegfp_group" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Amprenta Vegetației / Vegetation Fingerprint</span>
+                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();if (typeof showVegfpInfo === 'function') { showVegfpInfo(); } else { showLayerInfo('Amprenta Vegetației / Vegetation Fingerprint','&copy; European Union\'s Copernicus Land Monitoring Service information'); }" title="Layer info"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
+                                <button onclick="toggleVegfpSubLayers()" id="vegfpExpandBtn" title="Expand/Collapse sublayers" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:rgba(129,199,132,0.8);display:flex;align-items:center;transition:color 0.2s;" onmouseover="this.style.color='#81c784'" onmouseout="this.style.color='rgba(129,199,132,0.8)'">
+                                    <svg id="vegfpExpandIcon" width="12" height="12" viewBox="0 0 12 12" fill="none" style="transition:transform 0.25s ease;transform:rotate(-90deg)">
+                                        <polyline points="2,4 6,8 10,4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </button>
+                                <label class="apm-toggle-switch" title="Toggle Amprenta Vegetației / Vegetation Fingerprint">
+                                    <input type="checkbox" id="vegfpToggle" onchange="toggleVegfpLayer(this.checked)">
+                                    <span class="apm-toggle-track"></span>
+                                </label>
+                            </span>
+                        </div>
+
+                        <!-- Sub-layer switches -->
+                        <div id="vegfpSubLayers" style="margin-top:0;padding-left:6px;border-left:2px solid rgba(129,199,132,0.3);display:flex;flex-direction:column;gap:8px;overflow:hidden;transition:max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;max-height:0;opacity:0;">
+
+                            <!-- PPI (Plant Phenology Index) sub-layer -->
+                            <div id="vegfpPpiRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 9C5 5.8 6.9 3.2 8.9 1.6C8.9 5 7.4 7.5 5 9Z" fill="rgba(129,199,132,0.5)" stroke="#81c784" stroke-width="0.8"/><path d="M5 9C5 6.3 3.5 4.1 1.5 3C1.8 6.3 3.2 8.1 5 9Z" fill="rgba(129,199,132,0.3)" stroke="#81c784" stroke-width="0.8"/></svg>
+                                        <span class="t" data-key="layer_vegfp_ppi">PPI</span>
+                                        <span style="font-size:0.65rem;opacity:0.5;font-style:italic">Plant Phenology Index</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle PPI" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="vegfpPpiToggle" onchange="toggleVegfpPpiLayer(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+
+                                <!-- Dekad (date) selector — the service exposes a TIME
+                                     dimension with one image every 10 days. -->
+                                <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px;">
+                                    <span class="t" data-key="layer_vegfp_date_label" style="font-size:0.72rem;opacity:0.6;flex-shrink:0">Dată / Date</span>
+                                    <button type="button" id="vegfpPpiPrevBtn" onclick="vegfpPpiStepDekad(-1)" title="Perioada de 10 zile anterioară / Previous 10-day period" style="background:rgba(129,199,132,0.08);border:1px solid rgba(129,199,132,0.35);color:#81c784;cursor:pointer;padding:1px 8px;border-radius:4px;font-size:0.85rem;line-height:1.3;flex-shrink:0;transition:opacity 0.2s;">&lsaquo;</button>
+                                    <select id="vegfpPpiDateSelect" onchange="setVegfpPpiDate(this.value)" title="Plant Phenology Index — data satelit (la fiecare 10 zile)" style="flex:1;min-width:0;background:rgba(18,22,26,0.9);border:1px solid rgba(129,199,132,0.35);color:rgba(245,240,235,0.85);border-radius:4px;padding:3px 5px;font-size:0.72rem;font-family:inherit;cursor:pointer;outline:none;"></select>
+                                    <button type="button" id="vegfpPpiNextBtn" onclick="vegfpPpiStepDekad(1)" title="Perioada de 10 zile următoare / Next 10-day period" style="background:rgba(129,199,132,0.08);border:1px solid rgba(129,199,132,0.35);color:#81c784;cursor:pointer;padding:1px 8px;border-radius:4px;font-size:0.85rem;line-height:1.3;flex-shrink:0;transition:opacity 0.2s;">&rsaquo;</button>
+                                </div>
+
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="layer_opacity_label">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();if (typeof showVegfpPpiInfo === 'function') { showVegfpPpiInfo(); } else { showLayerInfo('PPI — Plant Phenology Index','&copy; European Union\'s Copernicus Land Monitoring Service information'); }" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="vegfpPpiPct">85%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="vegfpPpiOpacitySlider"
+                                       min="0" max="100" value="85"
+                                       oninput="setVegfpPpiOpacity(this.value)">
+
+                                <div style="font-size:0.62rem;opacity:0.55;font-style:italic;margin-top:4px;display:flex;align-items:center;gap:4px;">
+                                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style="flex-shrink:0"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1"/><path d="M4.5 6.2L1.5 9.2" stroke="currentColor" stroke-width="1"/></svg>
+                                    <span class="t" data-key="layer_vegfp_ro_note">Tile-urile se încarcă doar pentru suprafața României</span>
+                                </div>
+                            </div>
+
+                            <!-- SMX (Season Maximum value / VPP MAXV) sub-layer —
+                                 the VPP "time" dimension is annual (2017…2024). -->
+                            <div id="vegfpSmxRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 9C5 5.8 6.9 3.2 8.9 1.6C8.9 5 7.4 7.5 5 9Z" fill="rgba(129,199,132,0.5)" stroke="#81c784" stroke-width="0.8"/><path d="M5 9C5 6.3 3.5 4.1 1.5 3C1.8 6.3 3.2 8.1 5 9Z" fill="rgba(129,199,132,0.3)" stroke="#81c784" stroke-width="0.8"/></svg>
+                                        <span class="t" data-key="layer_vegfp_smx">SMX</span>
+                                        <span style="font-size:0.65rem;opacity:0.5;font-style:italic">Season Maximum value (MAXV)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle SMX" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="vegfpSmxToggle" onchange="toggleVegfpSmxLayer(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+
+                                <!-- Year selector — the VPP "time" dimension has one
+                                     value per year (2017-01-01 … 2024-01-01). -->
+                                <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px;">
+                                    <span class="t" data-key="layer_vegfp_year_label" style="font-size:0.72rem;opacity:0.6;flex-shrink:0">An / Year</span>
+                                    <button type="button" id="vegfpSmxPrevBtn" onclick="vegfpSmxStepYear(-1)" title="Anul anterior / Previous year" style="background:rgba(129,199,132,0.08);border:1px solid rgba(129,199,132,0.35);color:#81c784;cursor:pointer;padding:1px 8px;border-radius:4px;font-size:0.85rem;line-height:1.3;flex-shrink:0;transition:opacity 0.2s;">&lsaquo;</button>
+                                    <select id="vegfpSmxYearSelect" onchange="setVegfpSmxYear(this.value)" title="Valoarea maximă de vegetație — anul" style="flex:1;min-width:0;background:rgba(18,22,26,0.9);border:1px solid rgba(129,199,132,0.35);color:rgba(245,240,235,0.85);border-radius:4px;padding:3px 5px;font-size:0.72rem;font-family:inherit;cursor:pointer;outline:none;"></select>
+                                    <button type="button" id="vegfpSmxNextBtn" onclick="vegfpSmxStepYear(1)" title="Anul următor / Next year" style="background:rgba(129,199,132,0.08);border:1px solid rgba(129,199,132,0.35);color:#81c784;cursor:pointer;padding:1px 8px;border-radius:4px;font-size:0.85rem;line-height:1.3;flex-shrink:0;transition:opacity 0.2s;">&rsaquo;</button>
+                                </div>
+
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="layer_opacity_label">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();if (typeof showVegfpSmxInfo === 'function') { showVegfpSmxInfo(); } else { showLayerInfo('SMX — Season Maximum value','&copy; European Union\'s Copernicus Land Monitoring Service information'); }" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="vegfpSmxPct">85%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="vegfpSmxOpacitySlider"
+                                       min="0" max="100" value="85"
+                                       oninput="setVegfpSmxOpacity(this.value)">
+
+                                <div style="font-size:0.62rem;opacity:0.55;font-style:italic;margin-top:4px;display:flex;align-items:center;gap:4px;">
+                                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style="flex-shrink:0"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1"/><path d="M4.5 6.2L1.5 9.2" stroke="currentColor" stroke-width="1"/></svg>
+                                    <span class="t" data-key="layer_vegfp_ro_note">Tile-urile se încarcă doar pentru suprafața României</span>
+                                </div>
+                            </div>
+
+                            <!-- SGU (Season Green-Up rate / VPP LSLOPE) sub-layer —
+                                 the VPP "time" dimension is annual (2017…2024). -->
+                            <div id="vegfpSguRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 9C5 5.8 6.9 3.2 8.9 1.6C8.9 5 7.4 7.5 5 9Z" fill="rgba(129,199,132,0.5)" stroke="#81c784" stroke-width="0.8"/><path d="M5 9C5 6.3 3.5 4.1 1.5 3C1.8 6.3 3.2 8.1 5 9Z" fill="rgba(129,199,132,0.3)" stroke="#81c784" stroke-width="0.8"/></svg>
+                                        <span class="t" data-key="layer_vegfp_sgu">SGU</span>
+                                        <span style="font-size:0.65rem;opacity:0.5;font-style:italic">Season Green-Up rate (LSLOPE)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle SGU" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="vegfpSguToggle" onchange="toggleVegfpSguLayer(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+
+                                <!-- Year selector — the VPP "time" dimension has one
+                                     value per year (2017-01-01 … 2024-01-01). -->
+                                <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px;">
+                                    <span class="t" data-key="layer_vegfp_year_label" style="font-size:0.72rem;opacity:0.6;flex-shrink:0">An / Year</span>
+                                    <button type="button" id="vegfpSguPrevBtn" onclick="vegfpSguStepYear(-1)" title="Anul anterior / Previous year" style="background:rgba(129,199,132,0.08);border:1px solid rgba(129,199,132,0.35);color:#81c784;cursor:pointer;padding:1px 8px;border-radius:4px;font-size:0.85rem;line-height:1.3;flex-shrink:0;transition:opacity 0.2s;">&lsaquo;</button>
+                                    <select id="vegfpSguYearSelect" onchange="setVegfpSguYear(this.value)" title="Rata de creștere a vegetației la începutul sezonului — anul" style="flex:1;min-width:0;background:rgba(18,22,26,0.9);border:1px solid rgba(129,199,132,0.35);color:rgba(245,240,235,0.85);border-radius:4px;padding:3px 5px;font-size:0.72rem;font-family:inherit;cursor:pointer;outline:none;"></select>
+                                    <button type="button" id="vegfpSguNextBtn" onclick="vegfpSguStepYear(1)" title="Anul următor / Next year" style="background:rgba(129,199,132,0.08);border:1px solid rgba(129,199,132,0.35);color:#81c784;cursor:pointer;padding:1px 8px;border-radius:4px;font-size:0.85rem;line-height:1.3;flex-shrink:0;transition:opacity 0.2s;">&rsaquo;</button>
+                                </div>
+
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="layer_opacity_label">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();if (typeof showVegfpSguInfo === 'function') { showVegfpSguInfo(); } else { showLayerInfo('SGU — Season Green-Up rate','&copy; European Union\'s Copernicus Land Monitoring Service information'); }" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="vegfpSguPct">85%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="vegfpSguOpacitySlider"
+                                       min="0" max="100" value="85"
+                                       oninput="setVegfpSguOpacity(this.value)">
+
+                                <div style="font-size:0.62rem;opacity:0.55;font-style:italic;margin-top:4px;display:flex;align-items:center;gap:4px;">
+                                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style="flex-shrink:0"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1"/><path d="M4.5 6.2L1.5 9.2" stroke="currentColor" stroke-width="1"/></svg>
+                                    <span class="t" data-key="layer_vegfp_ro_note">Tile-urile se încarcă doar pentru suprafața României</span>
+                                </div>
+                            </div>
+
+                            <!-- SGD (Season Green-Down rate / VPP RSLOPE) sub-layer —
+                                 annual TIME dimension (2017…2024), the counterpart of SGU. -->
+                            <div id="vegfpSgdRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1C5 4.2 6.9 6.8 8.9 8.4C8.9 5 7.4 2.5 5 1Z" fill="rgba(129,199,132,0.5)" stroke="#81c784" stroke-width="0.8"/><path d="M5 1C5 3.7 3.5 5.9 1.5 7C1.8 3.7 3.2 1.9 5 1Z" fill="rgba(129,199,132,0.3)" stroke="#81c784" stroke-width="0.8"/></svg>
+                                        <span class="t" data-key="layer_vegfp_sgd">SGD</span>
+                                        <span style="font-size:0.65rem;opacity:0.5;font-style:italic">Season Green-Down rate (RSLOPE)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle SGD" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="vegfpSgdToggle" onchange="toggleVegfpSgdLayer(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+
+                                <!-- Year selector — the VPP "time" dimension has one
+                                     value per year (2017-01-01 … 2024-01-01). -->
+                                <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px;">
+                                    <span class="t" data-key="layer_vegfp_year_label" style="font-size:0.72rem;opacity:0.6;flex-shrink:0">An / Year</span>
+                                    <button type="button" id="vegfpSgdPrevBtn" onclick="vegfpSgdStepYear(-1)" title="Anul anterior / Previous year" style="background:rgba(129,199,132,0.08);border:1px solid rgba(129,199,132,0.35);color:#81c784;cursor:pointer;padding:1px 8px;border-radius:4px;font-size:0.85rem;line-height:1.3;flex-shrink:0;transition:opacity 0.2s;">&lsaquo;</button>
+                                    <select id="vegfpSgdYearSelect" onchange="setVegfpSgdYear(this.value)" title="Rata de ofilire a vegetației la finalul sezonului — anul" style="flex:1;min-width:0;background:rgba(18,22,26,0.9);border:1px solid rgba(129,199,132,0.35);color:rgba(245,240,235,0.85);border-radius:4px;padding:3px 5px;font-size:0.72rem;font-family:inherit;cursor:pointer;outline:none;"></select>
+                                    <button type="button" id="vegfpSgdNextBtn" onclick="vegfpSgdStepYear(1)" title="Anul următor / Next year" style="background:rgba(129,199,132,0.08);border:1px solid rgba(129,199,132,0.35);color:#81c784;cursor:pointer;padding:1px 8px;border-radius:4px;font-size:0.85rem;line-height:1.3;flex-shrink:0;transition:opacity 0.2s;">&rsaquo;</button>
+                                </div>
+
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="layer_opacity_label">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();if (typeof showVegfpSgdInfo === 'function') { showVegfpSgdInfo(); } else { showLayerInfo('SGD — Season Green-Down rate','&copy; European Union\'s Copernicus Land Monitoring Service information'); }" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="vegfpSgdPct">85%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="vegfpSgdOpacitySlider"
+                                       min="0" max="100" value="85"
+                                       oninput="setVegfpSgdOpacity(this.value)">
+
+                                <div style="font-size:0.62rem;opacity:0.55;font-style:italic;margin-top:4px;display:flex;align-items:center;gap:4px;">
+                                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style="flex-shrink:0"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1"/><path d="M4.5 6.2L1.5 9.2" stroke="currentColor" stroke-width="1"/></svg>
+                                    <span class="t" data-key="layer_vegfp_ro_note">Tile-urile se încarcă doar pentru suprafața României</span>
+                                </div>
+                            </div>
+
+                        </div><!-- /vegfpSubLayers -->
+
+                    </div><!-- /vegfp transp-layer-row -->
+
                     <!-- Satellite imagery 60's (CORONA) — standalone premium layer -->
                     <div class="transp-layer-row" data-category="premium" id="satellite60sRow">
                         <div class="transp-layer-label" style="margin-bottom:6px">
@@ -3898,7 +4110,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260918-report-evidence"></script>
+    <script src="js/translations.js?v=20260926-vegfp-smx"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -3950,10 +4162,10 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260923-pwa-br-stack-account"></script>
+    <script src="js/map-app.js?v=20260926-vegfp-smx"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
-    <script src="js/vertical-opacity-control.js?v=20260923-deliberate-tap"></script>
+    <script src="js/vertical-opacity-control.js?v=20260926-vegfp-smx"></script>
     <!-- leaflet-heat rămâne în shell (pre-cache), dar nu mai e folosit de
          „Archeological Potential Sites": heatmap-ul de acolo e propriul raster de
          scoruri ancorat geografic, ca să nu alunece la zoom. -->
@@ -4965,7 +5177,7 @@
     </div>
 
 <script src="js/account-legacy.js?v=20260814-promo"></script>
-<script src="js/subscriptions.js?v=20260819-sat60-premium-layer"></script>
+<script src="js/subscriptions.js?v=20260926-vegfp-smx"></script>
 
 
 
