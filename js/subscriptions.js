@@ -260,6 +260,7 @@
             '<div class="prem-features">' +
             '  <div class="prem-feature">🛰️ <span>' + esc(t('prem_feat_apm20')) + '</span></div>' +
             '  <div class="prem-feature">🗺️ <span>' + esc(t('prem_feat_hist')) + '</span></div>' +
+            '  <div class="prem-feature">🌱 <span>' + esc(t('prem_feat_vegfp')) + '</span></div>' +
             '  <div class="prem-feature">📡 <span>' + esc(t('prem_feat_lidar')) + '</span></div>' +
             '  <div class="prem-feature">🏛️ <span>' + esc(t('prem_feat_archeo')) + '</span></div>' +
             '  <div class="prem-feature">⚔️ <span>' + esc(t('prem_feat_roman')) + '</span></div>' +
@@ -691,7 +692,12 @@
         'toggleHistPremiumMap',      // safe no-op if absent
         'toggleSatellite60sMap',     // standalone premium layer (CORONA 60's)
         'toggleTransylvania1859Map', // Harta Transilvaniei 1859 (ArcGIS tiles)
-        'toggleGalicia1855Map'       // Galiția și Lodomeria 1855 (ArcGIS tiles)
+        'toggleGalicia1855Map',      // Galiția și Lodomeria 1855 (ArcGIS tiles)
+        'toggleVegfpLayer',          // Amprenta Vegetației (master premium group)
+        'toggleVegfpPpiLayer',       // Amprenta Vegetației — substratul PPI
+        'toggleVegfpSmxLayer',       // Amprenta Vegetației — substratul SMX (VPP MAXV)
+        'toggleVegfpSguLayer',       // Amprenta Vegetației — substratul SGU (VPP LSLOPE)
+        'toggleVegfpSgdLayer'        // Amprenta Vegetației — substratul SGD (VPP RSLOPE)
     ];
 
     function wrapPremiumToggles() {

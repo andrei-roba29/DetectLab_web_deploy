@@ -279,7 +279,21 @@
 //   (10 fortificații, 1 tumul, 1 burgus). CSV-ul e refetch-uit prin noul
 //   ?v= din DATA_URL, iar scriptul rescris primește versiunea lui de
 //   cache-busting ca PWA-ul instalat să nu mai servească shell-ul vechi.
-const CACHE_NAME = 'detectlab-v139-lidar-12-sites';
+// v140: „Amprenta Vegetației / Vegetation Fingerprint” — grup premium cu
+//   substraturi CLMS HR-VPP. Primul substrat, PPI (Plant Phenology Index,
+//   10 m, la fiecare 10 zile), se încarcă prin WMTS de la
+//   phenology.hrvpp2.vgt.vito.be cu tile-uri limitate la suprafața României
+//   (anvelopă + mască poligonală în js/map-app.js — vezi
+//   VEGETATION_FINGERPRINT.md). map-app.js, translations.js,
+//   subscriptions.js și vertical-opacity-control.js sunt re-versionate.
+// v141: substratul SGU (VPP LSLOPE SEASON1 — rata de creștere la începutul
+//   sezonului, „time” anual 2017–2024) se adaugă în același grup; cele
+//   patru scripturi modificate primesc din nou ?v= ca PWA-ul instalat să
+//   tragă shell-ul nou.
+// v142: substratul SGD (VPP RSLOPE SEASON1 — rata de ofilire la finalul
+//   sezonului, tot anual) al treilea strat din grup; aceleași patru
+//   scripturi re-versionate.
+const CACHE_NAME = 'detectlab-v143-vegfp-smx';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -804,6 +818,13 @@ const PRECACHE_URLS = [
   // v139: LIDAR Scanner — 12 site-uri noi în data/lidar_scanner_points.csv;
   // DATA_URL din script a fost refăcut, deci PWA-ul trebuie să ia fișierul nou.
   'js/lidar-scanner.js?v=20260924-lidar-12-sites',
+  // v140: „Amprenta Vegetației / Vegetation Fingerprint” (premium) — primul
+  // substrat PPI din CLMS HR-VPP, cu tile-uri WMTS limitate la România.
+  // v141: + substratul SGU (VPP LSLOPE, anual); v142: + SGD (VPP RSLOPE).
+  'js/map-app.js?v=20260926-vegfp-smx',
+  'js/translations.js?v=20260926-vegfp-smx',
+  'js/subscriptions.js?v=20260926-vegfp-smx',
+  'js/vertical-opacity-control.js?v=20260926-vegfp-smx',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
@@ -826,7 +847,8 @@ const PASSTHROUGH_HOSTS = [
   'cdn.jsdelivr.net',   // ONNX runtime CDN
   'ran.cimec.ro',       // Romanian cultural data
   'wikipedia.org',      // Wikipedia API
-  'openstreetmap.org'   // OSM tiles / API
+  'openstreetmap.org',  // OSM tiles / API
+  'hrvpp2.vgt.vito.be'  // CLMS HR-VPP vegetation WMTS (Amprenta Vegetației)
 ];
 
 // ── Install event: pre-cache essential static files ──

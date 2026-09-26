@@ -43,6 +43,10 @@
         moldova1771MapOpacitySlider: 'Moldova 1771',
         banatMapOpacitySlider: 'Banat 1769–1772',
         satellite60sMapOpacitySlider: "Satellite imagery 60's",
+        vegfpPpiOpacitySlider: 'PPI · Vegetation Fingerprint',
+        vegfpSmxOpacitySlider: 'SMX · Vegetation Fingerprint',
+        vegfpSguOpacitySlider: 'SGU · Vegetation Fingerprint',
+        vegfpSgdOpacitySlider: 'SGD · Vegetation Fingerprint',
         battlesPeriodSlider: 'Battles / Bătălii',
         satPeriodSlider: 'Satellite',
         lidarScannerDistance: 'LIDAR Scanner',
@@ -86,6 +90,10 @@
         transylvania1859MapOpacitySlider: 'transylvania1859MapToggle',
         galicia1855MapOpacitySlider: 'galicia1855MapToggle',
         satellite60sMapOpacitySlider: 'satellite60sToggle',
+        vegfpPpiOpacitySlider: 'vegfpPpiToggle',
+        vegfpSmxOpacitySlider: 'vegfpSmxToggle',
+        vegfpSguOpacitySlider: 'vegfpSguToggle',
+        vegfpSgdOpacitySlider: 'vegfpSgdToggle',
         /* Straturile de analiză: oglinzile lor de distanță/rază comută
            aceleași comutatoare care și le deschid (wire bidirecional deja
            existent în registerDistanceSource), ca butonul „×” să le oprească

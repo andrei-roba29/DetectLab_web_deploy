@@ -38,8 +38,8 @@ const css = read('css/styles.css');
 /* 1. The cache version is bumped so the byte-difference triggers an update
       and old caches are purged on activate. */
 assert(
-    /const CACHE_NAME = 'detectlab-v138-archeo-clickthrough'/.test(sw),
-    'sw.js must carry the v138 cache name'
+    /const CACHE_NAME = 'detectlab-v143-vegfp-smx'/.test(sw),
+    'sw.js must carry the v143 cache name'
 );
 assert(sw.includes('skipWaiting()'), 'sw.js must skipWaiting on install');
 assert(sw.includes('clients.claim()'), 'sw.js must claim clients on activate');
@@ -87,9 +87,9 @@ assert(css.includes('.vertical-opacity-control.vertical-opacity-secondary'),
     'the second mirror anchor is missing from styles.css');
 assert(sw.includes('css/styles.css?v=20260922-mobile-fs-controls'),
     'sw.js must precache the current styles.css');
-assert(sw.includes('js/vertical-opacity-control.js?v=20260923-deliberate-tap'),
+assert(sw.includes('js/vertical-opacity-control.js?v=20260926-vegfp-smx'),
     'sw.js must precache the current vertical-opacity-control.js');
-assert(html.includes('js/vertical-opacity-control.js?v=20260923-deliberate-tap'),
+assert(html.includes('js/vertical-opacity-control.js?v=20260926-vegfp-smx'),
     'index.html must request the same versioned module the shell pre-caches');
 
 console.log('OK — the installed PWA re-checks sw.js, reloads onto the newest shell once,');

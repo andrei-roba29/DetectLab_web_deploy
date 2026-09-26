@@ -10929,6 +10929,44 @@
                     layerVar: '_galicia1855MapLayer',
                     coverageMinZoom: 6,
                     coverageMaxZoom: 14
+                },
+
+                vegfpPpi: {
+                    // Amprenta Vegetației — PPI (CLMS HR-VPP, 10 m, la fiecare
+                    // 10 zile). Acoperire: toată România; tile-urile pornesc de
+                    // la z6, deci sub z6 se arată dreptunghiul roșu de
+                    // acoperire cât timp stratul e pornit.
+                    bounds: [[43.5, 19.5], [48.5, 30.5]],
+                    label: 'Amprenta Vegetației — PPI',
+                    layerVar: '_vegfpPpiLayer',
+                    coverageMinZoom: 6
+                },
+
+                vegfpSmx: {
+                    // Amprenta Vegetației — SMX (VPP MAXV SEASON1, 10 m,
+                    // anual) — valoarea maximă de vegetație a anului.
+                    bounds: [[43.5, 19.5], [48.5, 30.5]],
+                    label: 'Amprenta Vegetației — SMX',
+                    layerVar: '_vegfpSmxLayer',
+                    coverageMinZoom: 6
+                },
+
+                vegfpSgu: {
+                    // Amprenta Vegetației — SGU (VPP LSLOPE SEASON1, 10 m,
+                    // anual) — rata de creștere la începutul sezonului.
+                    bounds: [[43.5, 19.5], [48.5, 30.5]],
+                    label: 'Amprenta Vegetației — SGU',
+                    layerVar: '_vegfpSguLayer',
+                    coverageMinZoom: 6
+                },
+
+                vegfpSgd: {
+                    // Amprenta Vegetației — SGD (VPP RSLOPE SEASON1, 10 m,
+                    // anual) — rata de ofilire la finalul sezonului.
+                    bounds: [[43.5, 19.5], [48.5, 30.5]],
+                    label: 'Amprenta Vegetației — SGD',
+                    layerVar: '_vegfpSgdLayer',
+                    coverageMinZoom: 6
                 }
             };
 
@@ -11226,6 +11264,37 @@
                     });
                 });
 
+                // Amprenta Vegetației (premium) — substraturile PPI, SMX,
+                // SGU și SGD, cu acoperire pe toată România (la fel ca LIDAR
+                // Scanner / Bătălii).
+                layerDefs.push({
+                    key: 'vegfp_ppi',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('vegfpPpiRow'); },
+                    group: 'vegfp'
+                });
+
+                layerDefs.push({
+                    key: 'vegfp_smx',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('vegfpSmxRow'); },
+                    group: 'vegfp'
+                });
+
+                layerDefs.push({
+                    key: 'vegfp_sgu',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('vegfpSguRow'); },
+                    group: 'vegfp'
+                });
+
+                layerDefs.push({
+                    key: 'vegfp_sgd',
+                    bounds: ROMANIA_BOUNDS,
+                    getRow: function() { return document.getElementById('vegfpSgdRow'); },
+                    group: 'vegfp'
+                });
+
                 // Roman Empire sublayers (all share ROMANIA_BOUNDS for highlight purposes, but we list them)
                 var romanToggleIds = [
                     'roman_roads',
@@ -11257,7 +11326,8 @@
                     hist: { expandIconId: 'histExpandIcon', sublayerKeys: ['iosfree','austrianMap','firingPlans','sovietMap'] },
                     lidar: { expandIconId: 'lidarExpandIcon', sublayerKeys: Object.keys(LIDAR_COUNTY_BOUNDS).map(function(k){ return 'lidar_' + k; }) },
                     roman: { expandIconId: 'romanExpandIcon', sublayerKeys: romanToggleIds.map(function(tid){ return 'roman_' + tid; }) },
-                    histPremium: { expandIconId: 'histPremiumExpandIcon', sublayerKeys: premiumKeys.map(function(it){ return 'premium_' + it.key; }) }
+                    histPremium: { expandIconId: 'histPremiumExpandIcon', sublayerKeys: premiumKeys.map(function(it){ return 'premium_' + it.key; }) },
+                    vegfp: { expandIconId: 'vegfpExpandIcon', sublayerKeys: ['vegfp_ppi', 'vegfp_smx', 'vegfp_sgu', 'vegfp_sgd'] }
                 };
 
                 function isIntersecting(mapBounds, layerBounds) {
@@ -11292,7 +11362,7 @@
                     try { mapBounds = activeMap.getBounds(); } catch(e) { return; }
                     if (!mapBounds) return;
 
-                    var groupVisible = { hist: false, lidar: false, roman: false, histPremium: false };
+                    var groupVisible = { hist: false, lidar: false, roman: false, histPremium: false, vegfp: false };
                     layerDefs.forEach(function(def) {
                         var visible = isIntersecting(mapBounds, def.bounds);
                         if (def.group && visible) groupVisible[def.group] = true;
@@ -12255,6 +12325,889 @@
                 // Actualizează vizibilitatea poligoanelor de acoperire
                 if (typeof window.updatePremiumMapCoverageVisibility === 'function') {
                     window.updatePremiumMapCoverageVisibility();
+                }
+            };
+
+            // ── AMPRENTA VEGETAȚIEI / VEGETATION FINGERPRINT (PREMIUM) ──
+            // Grup premium de straturi din familia Copernicus HR-VPP (High
+            // Resolution Vegetation Phenology and Productivity). Substratul
+            // PPI — Plant Phenology Index, „Seasonal Trajectories” 10 m,
+            // compus la fiecare 10 zile (2017–2024). Substratul SMX —
+            // valoarea maximă de vegetație atinsă într-un an (VPP MAXV
+            // SEASON1, 10 m, anual). Substratul SGU — rata de creștere a
+            // vegetației la începutul sezonului („left slope”, VPP LSLOPE
+            // SEASON1, 10 m, anual). Substratul SGD — rata de ofilire a
+            // vegetației la finalul sezonului („right slope”, VPP RSLOPE
+            // SEASON1, 10 m, anual).
+            //
+            // SERVICIU: același GeoWebCache HR-VPP care expune și WMS-ul de
+            // la wmts-1.hrvpp2.vgt.vito.be:8080 (capabilities WMS 1.1.1,
+            // layer CLMS_HRVPP_ST_PPI_10M, dimensiune „time” cu date la 01 /
+            // 11 / 21 ale fiecărei luni). Folosim endpoint-ul WMTS KVP de la
+            // phenology.hrvpp2.vgt.vito.be — singurul disponibil ȘI prin
+            // HTTPS (site-ul e servit prin HTTPS; endpoint-ul WMS de pe
+            // portul 8080 ar fi blocat de browser ca mixed content).
+            // Cererea GetTile cu TILEMATRIXSET=EPSG:3857 lovește direct
+            // cache-ul de tile-uri al serviciului (grila EPSG:3857 e exact
+            // grila XYZ standard a hărții), fără randare WMS dinamică.
+            //
+            // OPTIMIZAREA VOLUMULUI DE FETCH — tile-uri doar pentru România:
+            //   1. `bounds` (anvelopa poligonului de mai jos): Leaflet nu
+            //      creează niciun element de tile în afara dreptunghiului;
+            //   2. mască poligonală simplificată a României (superset cu
+            //      margine de siguranță spre exterior): tile-urile din
+            //      colțurile dreptunghiului care nu intersectează poligonul
+            //      primesc un pixel transparent (L.emptyImageUrl) — ZERO
+            //      cereri de rețea, deci fără tile-uri pentru Ungaria /
+            //      Serbia / Bulgaria / Ucraina / R. Moldova interioare;
+            //   3. deciziile măștii sunt memorate pe (z,x,y);
+            //   4. minZoom 6 / maxNativeZoom 15: produsul are 10 m/px, deci
+            //      z15 (~3,3 m/px la latitudinea României) e deja
+            //      supra-eșantionat; peste z15 Leaflet reutilizește tile-urile
+            //      z15 (fără fetch nou), iar sub z6 stratul nu se încarcă
+            //      (dreptunghiul roșu de acoperire explică de ce).
+            map.createPane('pane_vegfp');
+            map.getPane('pane_vegfp').style.zIndex = 612; // peste LIDAR (610), sub dreptunghiurile de acoperire (615)
+            map.getPane('pane_vegfp').style.pointerEvents = 'none';
+
+            var VEGFP_WMTS_BASE = 'https://phenology.hrvpp2.vgt.vito.be/wmts';
+            var VEGFP_PPI_LAYER_NAME = 'CLMS_HRVPP_ST_PPI_10M';
+            var VEGFP_PPI_MIN_ZOOM = 6;
+            var VEGFP_PPI_MAX_NATIVE_ZOOM = 15;
+            var VEGFP_PPI_DEFAULT_TIME = '2024-07-01'; // miezul sezonului de vegetație, ultimul an complet
+            var VEGFP_SMX_LAYER_NAME = 'CLMS_HRVPP_VPP_MAXV_SEASON1_10M';
+            var VEGFP_SMX_DEFAULT_TIME = '2024-01-01'; // „time” anual, ca la toate straturile VPP
+            var VEGFP_SGU_LAYER_NAME = 'CLMS_HRVPP_VPP_LSLOPE_SEASON1_10M';
+            var VEGFP_SGU_DEFAULT_TIME = '2024-01-01'; // „time” anual
+            var VEGFP_SGD_LAYER_NAME = 'CLMS_HRVPP_VPP_RSLOPE_SEASON1_10M';
+            var VEGFP_SGD_DEFAULT_TIME = '2024-01-01'; // la fel ca SGU: „time” anual
+
+            // Poligon SIMPLIFICAT al României ([lat, lng]), parcurs în sens
+            // orar, cu vârfurile împinse spre EXTERIOR (superset): niciun
+            // punct al României nu rămâne afară, iar tile-urile adânc în
+            // țările vecine sunt respinse. Nu e o frontieră exactă — e o
+            // mască de fetch, nu un strat cadastral.
+            var VEGFP_RO_POLYGON = [
+                [46.05, 20.10], // Beba Veche (extrema vestică)
+                [46.70, 20.55], // granița cu Ungaria, pad spre vest
+                [47.10, 21.30],
+                [47.60, 21.50],
+                [47.75, 22.00], // cotul Satu Mare
+                [48.15, 22.30], // tripliul RO-HU-UA
+                [48.10, 23.30], // Oaș, pad spre nord
+                [48.05, 24.40],
+                [48.00, 25.60], // Rădăuți, pad spre nord
+                [48.40, 26.45], // Horodiștea (extrema nordică)
+                [48.35, 27.05], // tripliul RO-UA-MD (Prut)
+                [47.55, 27.60], // Prut, pad spre est
+                [47.20, 27.95], // Ungheni
+                [46.75, 28.50],
+                [46.30, 28.65], // Prut sud (Cahul/Leova), pad spre est
+                [45.60, 28.55], // Giurgiulești (vărsarea Prutului)
+                [45.55, 29.60], // brațul Chilia (granița cu Ucraina), pad
+                [45.15, 29.90], // Sulina (extrema estică), pad spre est
+                [44.45, 29.40], // litoral, pad spre est
+                [44.20, 28.90], // Capul Midia
+                [43.55, 28.70], // Vama Veche (litoral sud), pad spre mare
+                [43.50, 28.00], // Dobrogea de sud, pad spre Bulgaria
+                [43.70, 27.25], // cotul Silistra, pad spre sud
+                [43.45, 26.60],
+                [43.45, 25.55], // Zimnicea (extrema sudică)
+                [43.55, 24.50], // Dunărea jos (Corabia), pad spre sud
+                [43.80, 22.85], // Vidin, pad spre sud
+                [44.15, 22.25], // Cazanele Dunării, pad spre sud
+                [44.55, 21.25], // Banatul de Sud (Serbia), pad spre sud
+                [44.95, 20.50], // tripliul RO-HU-SR (Baziaș), pad
+                [45.30, 20.45]  // Câmpia de Vest, pad spre vest
+            ];
+
+            // Anvelopa poligonului — filtrul ieftin de nivel 1 (opțiunea
+            // `bounds` a GridLayer: în afara dreptunghiului Leaflet nu
+            // creează nici elementul de tile).
+            var VEGFP_RO_TILE_BOUNDS = L.latLngBounds(VEGFP_RO_POLYGON);
+
+            // ── Geometria măștii (dreptunghi de tile ↔ poligon) ──
+            function _vegfpPointInPolygon(lat, lng, poly) {
+                var inside = false;
+                for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                    var latI = poly[i][0], lngI = poly[i][1];
+                    var latJ = poly[j][0], lngJ = poly[j][1];
+                    if (((latI > lat) !== (latJ > lat)) &&
+                        (lng < (lngJ - lngI) * (lat - latI) / (latJ - latI) + lngI)) {
+                        inside = !inside;
+                    }
+                }
+                return inside;
+            }
+
+            function _vegfpCross(lngA, latA, lngB, latB, lngP, latP) {
+                return (lngB - lngA) * (latP - latA) - (latB - latA) * (lngP - lngA);
+            }
+
+            function _vegfpOnSegment(lngA, latA, lngB, latB, lngP, latP) {
+                return lngP >= Math.min(lngA, lngB) - 1e-12 && lngP <= Math.max(lngA, lngB) + 1e-12 &&
+                       latP >= Math.min(latA, latB) - 1e-12 && latP <= Math.max(latA, latB) + 1e-12;
+            }
+
+            function _vegfpSegmentsIntersect(lng1, lat1, lng2, lat2, lng3, lat3, lng4, lat4) {
+                var d1 = _vegfpCross(lng3, lat3, lng4, lat4, lng1, lat1);
+                var d2 = _vegfpCross(lng3, lat3, lng4, lat4, lng2, lat2);
+                var d3 = _vegfpCross(lng1, lat1, lng2, lat2, lng3, lat3);
+                var d4 = _vegfpCross(lng1, lat1, lng2, lat2, lng4, lat4);
+                if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+                    ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+                // cazuri coliniare — conservator: le tratăm ca intersecție
+                if (d1 === 0 && _vegfpOnSegment(lng3, lat3, lng4, lat4, lng1, lat1)) return true;
+                if (d2 === 0 && _vegfpOnSegment(lng3, lat3, lng4, lat4, lng2, lat2)) return true;
+                if (d3 === 0 && _vegfpOnSegment(lng1, lat1, lng2, lat2, lng3, lat3)) return true;
+                if (d4 === 0 && _vegfpOnSegment(lng1, lat1, lng2, lat2, lng4, lat4)) return true;
+                return false;
+            }
+
+            function _vegfpRectIntersectsPolygon(minLat, minLng, maxLat, maxLng, poly) {
+                // 1. vreun vârf al poligonului cade în dreptunghi
+                for (var i = 0; i < poly.length; i++) {
+                    if (poly[i][0] >= minLat && poly[i][0] <= maxLat &&
+                        poly[i][1] >= minLng && poly[i][1] <= maxLng) return true;
+                }
+                // 2. vreun colț al dreptunghiului e în poligon
+                if (_vegfpPointInPolygon(minLat, minLng, poly)) return true;
+                if (_vegfpPointInPolygon(maxLat, minLng, poly)) return true;
+                if (_vegfpPointInPolygon(minLat, maxLng, poly)) return true;
+                if (_vegfpPointInPolygon(maxLat, maxLng, poly)) return true;
+                // 3. vreo muchie a poligonului ta vreo muchie a dreptunghiului
+                for (var j = 0, k = poly.length - 1; j < poly.length; k = j++) {
+                    var lngA = poly[k][1], latA = poly[k][0];
+                    var lngB = poly[j][1], latB = poly[j][0];
+                    if (_vegfpSegmentsIntersect(lngA, latA, lngB, latB, minLng, minLat, maxLng, minLat) ||
+                        _vegfpSegmentsIntersect(lngA, latA, lngB, latB, maxLng, minLat, maxLng, maxLat) ||
+                        _vegfpSegmentsIntersect(lngA, latA, lngB, latB, maxLng, maxLat, minLng, maxLat) ||
+                        _vegfpSegmentsIntersect(lngA, latA, lngB, latB, minLng, maxLat, minLng, minLat)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Limitele geografice ale unui tile XYZ (Web Mercator), fără
+            // dependență de stareua hărții — matematică pură.
+            function _vegfpTileLat(y, n) {
+                return Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+            }
+
+            function _vegfpTileInRomania(z, x, y) {
+                var key = z + ':' + x + ':' + y;
+                var cached = _vegfpMaskCache[key];
+                if (cached !== undefined) return cached;
+                var n = Math.pow(2, z);
+                var minLng = x / n * 360 - 180;
+                var maxLng = (x + 1) / n * 360 - 180;
+                var maxLat = _vegfpTileLat(y, n);       // marginea de nord
+                var minLat = _vegfpTileLat(y + 1, n);   // marginea de sud
+                var ok = _vegfpRectIntersectsPolygon(minLat, minLng, maxLat, maxLng, VEGFP_RO_POLYGON);
+                // Cache de decizii, cu plafon ca să nu crească la nesfârșit
+                // într-o sesiune foarte lungă de navigare.
+                if (_vegfpMaskCacheCount > 30000) {
+                    _vegfpMaskCache = Object.create(null);
+                    _vegfpMaskCacheCount = 0;
+                }
+                _vegfpMaskCache[key] = ok;
+                _vegfpMaskCacheCount++;
+                return ok;
+            }
+
+            var _vegfpMaskCache = Object.create(null);
+            var _vegfpMaskCacheCount = 0;
+            window._vegfpTileInRomania = _vegfpTileInRomania; // testare / debug
+
+            // Stratul de tile-uri cu mască: getTileUrl decide, înainte de
+            // orice cerere de rețea, dacă tile-ul atinge România. Cele
+            // respinse primesc pixelul transparent al lui Leaflet (fără
+            // descărcare). Suprascrierea getTileUrl e același mecanism folosit
+            // de js/corona-wms-layer.js.
+            var VegFpTileLayer = L.TileLayer.extend({
+                getTileUrl: function (coords) {
+                    var z = this._getZoomForUrl();
+                    if (!_vegfpTileInRomania(z, coords.x, coords.y)) {
+                        return (L.Util && L.Util.emptyImageUrl) || L.emptyImageUrl ||
+                            'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+                    }
+                    return L.TileLayer.prototype.getTileUrl.call(this, coords);
+                }
+            });
+
+            function _vegfpBuildPpiUrl(time) {
+                // Format WMTS KVP verificat împotriva serviciului (GetTile
+                // răspunde cu PNG; STYLE= gol e acceptat de GeoWebCache).
+                return VEGFP_WMTS_BASE +
+                    '?SERVICE=WMTS' +
+                    '&REQUEST=GetTile' +
+                    '&VERSION=1.0.0' +
+                    '&LAYER=' + VEGFP_PPI_LAYER_NAME +
+                    '&STYLE=' +
+                    '&FORMAT=image%2Fpng' +
+                    '&TILEMATRIXSET=EPSG%3A3857' +
+                    '&TILEMATRIX=EPSG%3A3857%3A{z}' +
+                    '&TILEROW={y}' +
+                    '&TILECOL={x}' +
+                    '&TIME=' + time;
+            }
+
+            function _vegfpBuildSmxUrl(time) {
+                // Același format WMTS KVP verificat împotriva serviciului;
+                // dimensiunea „time” a straturilor VPP e anuală, deci
+                // TIME = YYYY-01-01 (2017-01-01 … 2024-01-01).
+                return VEGFP_WMTS_BASE +
+                    '?SERVICE=WMTS' +
+                    '&REQUEST=GetTile' +
+                    '&VERSION=1.0.0' +
+                    '&LAYER=' + VEGFP_SMX_LAYER_NAME +
+                    '&STYLE=' +
+                    '&FORMAT=image%2Fpng' +
+                    '&TILEMATRIXSET=EPSG%3A3857' +
+                    '&TILEMATRIX=EPSG%3A3857%3A{z}' +
+                    '&TILEROW={y}' +
+                    '&TILECOL={x}' +
+                    '&TIME=' + time;
+            }
+
+            function _vegfpBuildSgdUrl(time) {
+                // Același format WMTS KVP; „right slope” = rata de scădere
+                // (ofilire) la finalul sezonului. TIME anual, ca la SGU.
+                return VEGFP_WMTS_BASE +
+                    '?SERVICE=WMTS' +
+                    '&REQUEST=GetTile' +
+                    '&VERSION=1.0.0' +
+                    '&LAYER=' + VEGFP_SGD_LAYER_NAME +
+                    '&STYLE=' +
+                    '&FORMAT=image%2Fpng' +
+                    '&TILEMATRIXSET=EPSG%3A3857' +
+                    '&TILEMATRIX=EPSG%3A3857%3A{z}' +
+                    '&TILEROW={y}' +
+                    '&TILECOL={x}' +
+                    '&TIME=' + time;
+            }
+
+            function _vegfpBuildSguUrl(time) {
+                // „left slope” = rata de creștere la începutul sezonului.
+                // Același format WMTS KVP, TIME anual.
+                return VEGFP_WMTS_BASE +
+                    '?SERVICE=WMTS' +
+                    '&REQUEST=GetTile' +
+                    '&VERSION=1.0.0' +
+                    '&LAYER=' + VEGFP_SGU_LAYER_NAME +
+                    '&STYLE=' +
+                    '&FORMAT=image%2Fpng' +
+                    '&TILEMATRIXSET=EPSG%3A3857' +
+                    '&TILEMATRIX=EPSG%3A3857%3A{z}' +
+                    '&TILEROW={y}' +
+                    '&TILECOL={x}' +
+                    '&TIME=' + time;
+            }
+
+            // Dekadele din dimensiunea „time” a serviciului: zilele 01, 11
+            // și 21 ale fiecărei luni, 2017-01-01 → 2024-12-21 (288 date).
+            var VEGFP_PPI_YEARS = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
+            var VEGFP_PPI_DEKAD_DAYS = [1, 11, 21];
+
+            function _vegfpGeneratePpiDates() {
+                var list = [];
+                for (var yi = 0; yi < VEGFP_PPI_YEARS.length; yi++) {
+                    var year = VEGFP_PPI_YEARS[yi];
+                    for (var m = 1; m <= 12; m++) {
+                        for (var di = 0; di < VEGFP_PPI_DEKAD_DAYS.length; di++) {
+                            var day = VEGFP_PPI_DEKAD_DAYS[di];
+                            list.push(year + '-' + (m < 10 ? '0' + m : m) +
+                                      '-' + (day < 10 ? '0' + day : day));
+                        }
+                    }
+                }
+                return list;
+            }
+
+            var _vegfpPpiDateList = null;
+            function _vegfpPpiDates() {
+                if (!_vegfpPpiDateList) _vegfpPpiDateList = _vegfpGeneratePpiDates();
+                return _vegfpPpiDateList;
+            }
+            window._vegfpPpiDates = _vegfpPpiDates; // testare
+
+            // Dimensiunea „time” a straturilor VPP (SMX/MAXV, SGU/LSLOPE,
+            // SGD/RSLOPE):
+            // o valoare pe an, 2017-01-01 → 2024-01-01.
+            var VEGFP_VPP_YEARS = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
+
+            var _vegfpVppYearList = null;
+            function _vegfpVppYearTimes() {
+                if (!_vegfpVppYearList) {
+                    _vegfpVppYearList = VEGFP_VPP_YEARS.map(function (y) { return y + '-01-01'; });
+                }
+                return _vegfpVppYearList;
+            }
+            window._vegfpVppYearTimes = _vegfpVppYearTimes; // testare
+
+            var _vegfpPpiLayer = null;
+            var _vegfpPpiTime = VEGFP_PPI_DEFAULT_TIME;
+            var _vegfpSmxLayer = null;
+            var _vegfpSmxTime = VEGFP_SMX_DEFAULT_TIME;
+            var _vegfpSguLayer = null;
+            var _vegfpSguTime = VEGFP_SGU_DEFAULT_TIME;
+            var _vegfpSgdLayer = null;
+            var _vegfpSgdTime = VEGFP_SGD_DEFAULT_TIME;
+
+            function _vegfpTilePerfOptions(extra) {
+                // Aceleași opțiuni gesture-safe ca stiva LIDAR / Sat60 —
+                // js/tile-perf.js le aplică oricum global, aici sunt explicite
+                // pentru cazul în care guvernorul e oprit din consolă.
+                var o = extra || {};
+                if (o.updateWhenZooming === undefined) o.updateWhenZooming = false;
+                if (o.updateWhenIdle === undefined) o.updateWhenIdle = true;
+                if (o.keepBuffer === undefined) {
+                    o.keepBuffer = (window.DLTilePerf && window.DLTilePerf.config)
+                        ? window.DLTilePerf.config.keepBuffer : 1;
+                }
+                return o;
+            }
+
+            function _buildVegfpPpiLayer() {
+                return new VegFpTileLayer(_vegfpBuildPpiUrl(_vegfpPpiTime), _vegfpTilePerfOptions({
+                    pane: 'pane_vegfp',
+                    attribution: "© European Union's Copernicus Land Monitoring Service information",
+                    opacity: 0.85,
+                    minZoom: VEGFP_PPI_MIN_ZOOM,
+                    maxNativeZoom: VEGFP_PPI_MAX_NATIVE_ZOOM,
+                    maxZoom: 20,
+                    tileSize: 256,
+                    bounds: VEGFP_RO_TILE_BOUNDS, // filtrul 1: anvelopa României
+                    className: 'vegfp-ppi-tiles',
+                    noWrap: true
+                }));
+            }
+
+            function _buildVegfpSmxLayer() {
+                // Aceleași limite de zoom ca PPI — același produs HR-VPP de
+                // 10 m (supra-eșantionat peste z15, gol sub z6).
+                return new VegFpTileLayer(_vegfpBuildSmxUrl(_vegfpSmxTime), _vegfpTilePerfOptions({
+                    pane: 'pane_vegfp',
+                    attribution: "© European Union's Copernicus Land Monitoring Service information",
+                    opacity: 0.85,
+                    minZoom: VEGFP_PPI_MIN_ZOOM,
+                    maxNativeZoom: VEGFP_PPI_MAX_NATIVE_ZOOM,
+                    maxZoom: 20,
+                    tileSize: 256,
+                    bounds: VEGFP_RO_TILE_BOUNDS, // filtrul 1: anvelopa României
+                    className: 'vegfp-smx-tiles',
+                    noWrap: true
+                }));
+            }
+
+            function _buildVegfpSguLayer() {
+                // Aceleași limite de zoom ca PPI / SMX / SGD — același produs
+                // HR-VPP de 10 m.
+                return new VegFpTileLayer(_vegfpBuildSguUrl(_vegfpSguTime), _vegfpTilePerfOptions({
+                    pane: 'pane_vegfp',
+                    attribution: "© European Union's Copernicus Land Monitoring Service information",
+                    opacity: 0.85,
+                    minZoom: VEGFP_PPI_MIN_ZOOM,
+                    maxNativeZoom: VEGFP_PPI_MAX_NATIVE_ZOOM,
+                    maxZoom: 20,
+                    tileSize: 256,
+                    bounds: VEGFP_RO_TILE_BOUNDS, // filtrul 1: anvelopa României
+                    className: 'vegfp-sgu-tiles',
+                    noWrap: true
+                }));
+            }
+
+            function _buildVegfpSgdLayer() {
+                // Aceleași limite de zoom ca PPI / SGU — același produs HR-VPP
+                // de 10 m.
+                return new VegFpTileLayer(_vegfpBuildSgdUrl(_vegfpSgdTime), _vegfpTilePerfOptions({
+                    pane: 'pane_vegfp',
+                    attribution: "© European Union's Copernicus Land Monitoring Service information",
+                    opacity: 0.85,
+                    minZoom: VEGFP_PPI_MIN_ZOOM,
+                    maxNativeZoom: VEGFP_PPI_MAX_NATIVE_ZOOM,
+                    maxZoom: 20,
+                    tileSize: 256,
+                    bounds: VEGFP_RO_TILE_BOUNDS, // filtrul 1: anvelopa României
+                    className: 'vegfp-sgd-tiles',
+                    noWrap: true
+                }));
+            }
+
+            // ── Public: masterul grupului ──
+            window.toggleVegfpLayer = function (on) {
+                var toggle = document.getElementById('vegfpToggle');
+                if (toggle) toggle.checked = on;
+                if (!on) {
+                    // Oprirea masterului oprește toate substraturile, exact ca
+                    // la „Harti istorice” / LIDAR — la repornire nu trebuie să
+                    // reapară un substrat rămas „aprins” din greșeală.
+                    var ppiToggle = document.getElementById('vegfpPpiToggle');
+                    if (ppiToggle) ppiToggle.checked = false;
+                    window.toggleVegfpPpiLayer(false);
+                    var smxToggle = document.getElementById('vegfpSmxToggle');
+                    if (smxToggle) smxToggle.checked = false;
+                    window.toggleVegfpSmxLayer(false);
+                    var sguToggle = document.getElementById('vegfpSguToggle');
+                    if (sguToggle) sguToggle.checked = false;
+                    window.toggleVegfpSguLayer(false);
+                    var sgdToggle = document.getElementById('vegfpSgdToggle');
+                    if (sgdToggle) sgdToggle.checked = false;
+                    window.toggleVegfpSgdLayer(false);
+                }
+                if (typeof window.updatePremiumMapCoverageVisibility === 'function') {
+                    window.updatePremiumMapCoverageVisibility();
+                }
+            };
+
+            // ── Public: expand/collapse panoul de substraturi ──
+            var _vegfpSubExpanded = false;
+            window.toggleVegfpSubLayers = function () {
+                _vegfpSubExpanded = !_vegfpSubExpanded;
+                var panel = document.getElementById('vegfpSubLayers');
+                var icon = document.getElementById('vegfpExpandIcon');
+                if (_vegfpSubExpanded) {
+                    setSubLayersMaxHeight(panel, true, 900);
+                    panel.style.opacity = '1';
+                    panel.style.marginTop = '10px';
+                    icon.style.transform = 'rotate(0deg)';
+                } else {
+                    setSubLayersMaxHeight(panel, false);
+                    panel.style.opacity = '0';
+                    panel.style.marginTop = '0';
+                    icon.style.transform = 'rotate(-90deg)';
+                }
+                setTimeout(function () {
+                    if (typeof window.checkLayerVisibility === 'function') window.checkLayerVisibility();
+                }, 350);
+            };
+
+            // ── Public: substratul PPI ──
+            window.toggleVegfpPpiLayer = function (on) {
+                if (on) {
+                    // Pornirea unui substrat pornește și masterul grupului
+                    // (ca la Harta Iosefină + din „Harti istorice”).
+                    var master = document.getElementById('vegfpToggle');
+                    if (master && !master.checked) {
+                        master.checked = true;
+                        window.toggleVegfpLayer(true);
+                    }
+                    if (!_vegfpPpiLayer) {
+                        _vegfpPpiLayer = _buildVegfpPpiLayer();
+                        window._vegfpPpiLayer = _vegfpPpiLayer; // dreptunghiul roșu de acoperire
+                    }
+                    if (!map.hasLayer(_vegfpPpiLayer)) _vegfpPpiLayer.addTo(map);
+                } else if (_vegfpPpiLayer && map.hasLayer(_vegfpPpiLayer)) {
+                    map.removeLayer(_vegfpPpiLayer);
+                }
+                var row = document.getElementById('vegfpPpiRow');
+                if (row) row.style.opacity = on ? '1' : '0.45';
+                if (typeof window.updatePremiumMapCoverageVisibility === 'function') {
+                    window.updatePremiumMapCoverageVisibility();
+                }
+            };
+
+            window.setVegfpPpiOpacity = function (val) {
+                var opacity = parseFloat(val) / 100;
+                var pct = document.getElementById('vegfpPpiPct');
+                if (pct) pct.textContent = Math.round(opacity * 100) + '%';
+                if (_vegfpPpiLayer && _vegfpPpiLayer.setOpacity) {
+                    _vegfpPpiLayer.setOpacity(opacity);
+                }
+            };
+
+            function _vegfpSyncPpiDateButtons() {
+                var dates = _vegfpPpiDates();
+                var idx = dates.indexOf(_vegfpPpiTime);
+                var prev = document.getElementById('vegfpPpiPrevBtn');
+                var next = document.getElementById('vegfpPpiNextBtn');
+                if (prev) prev.disabled = (idx <= 0);
+                if (next) next.disabled = (idx === -1 || idx >= dates.length - 1);
+            }
+
+            window.setVegfpPpiDate = function (dateStr) {
+                if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+                _vegfpPpiTime = dateStr;
+                if (_vegfpPpiLayer) {
+                    // setUrl fără noRedraw → curăță și reîncarcă tile-urile
+                    // vizibile cu noua valoare TIME.
+                    _vegfpPpiLayer.setUrl(_vegfpBuildPpiUrl(dateStr));
+                }
+                _vegfpSyncPpiDateButtons();
+            };
+
+            window.vegfpPpiStepDekad = function (dir) {
+                var dates = _vegfpPpiDates();
+                var idx = dates.indexOf(_vegfpPpiTime);
+                if (idx === -1) idx = dates.length - 1;
+                var next = idx + (dir > 0 ? 1 : -1);
+                if (next < 0 || next >= dates.length) return; // capetele listei
+                var select = document.getElementById('vegfpPpiDateSelect');
+                if (select) select.value = dates[next];
+                window.setVegfpPpiDate(dates[next]);
+            };
+
+            // Populează selectorul de dekade (grupat pe ani).
+            (function _vegfpPopulatePpiDates() {
+                var select = document.getElementById('vegfpPpiDateSelect');
+                if (!select) return;
+                var dates = _vegfpPpiDates();
+                var currentYear = null;
+                var group = null;
+                for (var i = 0; i < dates.length; i++) {
+                    var d = dates[i];
+                    var y = d.slice(0, 4);
+                    if (y !== currentYear) {
+                        currentYear = y;
+                        group = document.createElement('optgroup');
+                        group.label = y;
+                        select.appendChild(group);
+                    }
+                    var opt = document.createElement('option');
+                    opt.value = d;
+                    opt.textContent = d;
+                    if (d === _vegfpPpiTime) opt.selected = true;
+                    group.appendChild(opt);
+                }
+                _vegfpSyncPpiDateButtons();
+            })();
+
+            // ── Public: substratul SGU (VPP LSLOPE — rata de creștere la
+            // începutul sezonului; dimensiunea „time” e anuală) ──
+            window.toggleVegfpSmxLayer = function (on) {
+                if (on) {
+                    // Pornirea unui substrat pornește și masterul grupului.
+                    var master = document.getElementById('vegfpToggle');
+                    if (master && !master.checked) {
+                        master.checked = true;
+                        window.toggleVegfpLayer(true);
+                    }
+                    if (!_vegfpSmxLayer) {
+                        _vegfpSmxLayer = _buildVegfpSmxLayer();
+                        window._vegfpSmxLayer = _vegfpSmxLayer; // dreptunghiul roșu de acoperire
+                    }
+                    if (!map.hasLayer(_vegfpSmxLayer)) _vegfpSmxLayer.addTo(map);
+                } else if (_vegfpSmxLayer && map.hasLayer(_vegfpSmxLayer)) {
+                    map.removeLayer(_vegfpSmxLayer);
+                }
+                var row = document.getElementById('vegfpSmxRow');
+                if (row) row.style.opacity = on ? '1' : '0.45';
+                if (typeof window.updatePremiumMapCoverageVisibility === 'function') {
+                    window.updatePremiumMapCoverageVisibility();
+                }
+            };
+
+            window.setVegfpSmxOpacity = function (val) {
+                var opacity = parseFloat(val) / 100;
+                var pct = document.getElementById('vegfpSmxPct');
+                if (pct) pct.textContent = Math.round(opacity * 100) + '%';
+                if (_vegfpSmxLayer && _vegfpSmxLayer.setOpacity) {
+                    _vegfpSmxLayer.setOpacity(opacity);
+                }
+            };
+
+            function _vegfpSyncSmxYearButtons() {
+                var years = _vegfpVppYearTimes();
+                var idx = years.indexOf(_vegfpSmxTime);
+                var prev = document.getElementById('vegfpSmxPrevBtn');
+                var next = document.getElementById('vegfpSmxNextBtn');
+                if (prev) prev.disabled = (idx <= 0);
+                if (next) next.disabled = (idx === -1 || idx >= years.length - 1);
+            }
+
+            window.setVegfpSmxYear = function (timeStr) {
+                // Straturile VPP au o singură valoare „time” pe an.
+                if (!timeStr || !/^\d{4}-01-01$/.test(timeStr)) return;
+                if (_vegfpVppYearTimes().indexOf(timeStr) === -1) return;
+                _vegfpSmxTime = timeStr;
+                if (_vegfpSmxLayer) {
+                    // setUrl fără noRedraw → curăță și reîncarcă tile-urile
+                    // vizibile cu noul an.
+                    _vegfpSmxLayer.setUrl(_vegfpBuildSmxUrl(timeStr));
+                }
+                _vegfpSyncSmxYearButtons();
+            };
+
+            window.vegfpSmxStepYear = function (dir) {
+                var years = _vegfpVppYearTimes();
+                var idx = years.indexOf(_vegfpSmxTime);
+                if (idx === -1) idx = years.length - 1;
+                var next = idx + (dir > 0 ? 1 : -1);
+                if (next < 0 || next >= years.length) return; // capetele listei
+                var select = document.getElementById('vegfpSmxYearSelect');
+                if (select) select.value = years[next];
+                window.setVegfpSmxYear(years[next]);
+            };
+
+            // Populează selectorul de ani (câte o opțiune pe an).
+            (function _vegfpPopulateSmxYears() {
+                var select = document.getElementById('vegfpSmxYearSelect');
+                if (!select) return;
+                var years = _vegfpVppYearTimes();
+                for (var i = 0; i < years.length; i++) {
+                    var opt = document.createElement('option');
+                    opt.value = years[i];
+                    opt.textContent = years[i].slice(0, 4); // doar anul
+                    if (years[i] === _vegfpSmxTime) opt.selected = true;
+                    select.appendChild(opt);
+                }
+                _vegfpSyncSmxYearButtons();
+            })();
+
+            // ── Public: substratul SGU (VPP LSLOPE — rata de creștere la
+            // începutul sezonului; dimensiunea „time” e anuală) ──
+            window.toggleVegfpSguLayer = function (on) {
+                if (on) {
+                    // Pornirea unui substrat pornește și masterul grupului.
+                    var master = document.getElementById('vegfpToggle');
+                    if (master && !master.checked) {
+                        master.checked = true;
+                        window.toggleVegfpLayer(true);
+                    }
+                    if (!_vegfpSguLayer) {
+                        _vegfpSguLayer = _buildVegfpSguLayer();
+                        window._vegfpSguLayer = _vegfpSguLayer; // dreptunghiul roșu de acoperire
+                    }
+                    if (!map.hasLayer(_vegfpSguLayer)) _vegfpSguLayer.addTo(map);
+                } else if (_vegfpSguLayer && map.hasLayer(_vegfpSguLayer)) {
+                    map.removeLayer(_vegfpSguLayer);
+                }
+                var row = document.getElementById('vegfpSguRow');
+                if (row) row.style.opacity = on ? '1' : '0.45';
+                if (typeof window.updatePremiumMapCoverageVisibility === 'function') {
+                    window.updatePremiumMapCoverageVisibility();
+                }
+            };
+
+            window.setVegfpSguOpacity = function (val) {
+                var opacity = parseFloat(val) / 100;
+                var pct = document.getElementById('vegfpSguPct');
+                if (pct) pct.textContent = Math.round(opacity * 100) + '%';
+                if (_vegfpSguLayer && _vegfpSguLayer.setOpacity) {
+                    _vegfpSguLayer.setOpacity(opacity);
+                }
+            };
+
+            function _vegfpSyncSguYearButtons() {
+                var years = _vegfpVppYearTimes();
+                var idx = years.indexOf(_vegfpSguTime);
+                var prev = document.getElementById('vegfpSguPrevBtn');
+                var next = document.getElementById('vegfpSguNextBtn');
+                if (prev) prev.disabled = (idx <= 0);
+                if (next) next.disabled = (idx === -1 || idx >= years.length - 1);
+            }
+
+            window.setVegfpSguYear = function (timeStr) {
+                // Straturile VPP au o singură valoare „time” pe an.
+                if (!timeStr || !/^\d{4}-01-01$/.test(timeStr)) return;
+                if (_vegfpVppYearTimes().indexOf(timeStr) === -1) return;
+                _vegfpSguTime = timeStr;
+                if (_vegfpSguLayer) {
+                    _vegfpSguLayer.setUrl(_vegfpBuildSguUrl(timeStr));
+                }
+                _vegfpSyncSguYearButtons();
+            };
+
+            window.vegfpSguStepYear = function (dir) {
+                var years = _vegfpVppYearTimes();
+                var idx = years.indexOf(_vegfpSguTime);
+                if (idx === -1) idx = years.length - 1;
+                var next = idx + (dir > 0 ? 1 : -1);
+                if (next < 0 || next >= years.length) return; // capetele listei
+                var select = document.getElementById('vegfpSguYearSelect');
+                if (select) select.value = years[next];
+                window.setVegfpSguYear(years[next]);
+            };
+
+            // Populează selectorul de ani (câte o opțiune pe an).
+            (function _vegfpPopulateSguYears() {
+                var select = document.getElementById('vegfpSguYearSelect');
+                if (!select) return;
+                var years = _vegfpVppYearTimes();
+                for (var i = 0; i < years.length; i++) {
+                    var opt = document.createElement('option');
+                    opt.value = years[i];
+                    opt.textContent = years[i].slice(0, 4); // doar anul
+                    if (years[i] === _vegfpSguTime) opt.selected = true;
+                    select.appendChild(opt);
+                }
+                _vegfpSyncSguYearButtons();
+            })();
+
+            // ── Public: substratul SGD (VPP RSLOPE — rata de ofilire la
+            // finalul sezonului; dimensiunea „time” e anuală) ──
+            window.toggleVegfpSgdLayer = function (on) {
+                if (on) {
+                    // Pornirea unui substrat pornește și masterul grupului.
+                    var master = document.getElementById('vegfpToggle');
+                    if (master && !master.checked) {
+                        master.checked = true;
+                        window.toggleVegfpLayer(true);
+                    }
+                    if (!_vegfpSgdLayer) {
+                        _vegfpSgdLayer = _buildVegfpSgdLayer();
+                        window._vegfpSgdLayer = _vegfpSgdLayer; // dreptunghiul roșu de acoperire
+                    }
+                    if (!map.hasLayer(_vegfpSgdLayer)) _vegfpSgdLayer.addTo(map);
+                } else if (_vegfpSgdLayer && map.hasLayer(_vegfpSgdLayer)) {
+                    map.removeLayer(_vegfpSgdLayer);
+                }
+                var row = document.getElementById('vegfpSgdRow');
+                if (row) row.style.opacity = on ? '1' : '0.45';
+                if (typeof window.updatePremiumMapCoverageVisibility === 'function') {
+                    window.updatePremiumMapCoverageVisibility();
+                }
+            };
+
+            window.setVegfpSgdOpacity = function (val) {
+                var opacity = parseFloat(val) / 100;
+                var pct = document.getElementById('vegfpSgdPct');
+                if (pct) pct.textContent = Math.round(opacity * 100) + '%';
+                if (_vegfpSgdLayer && _vegfpSgdLayer.setOpacity) {
+                    _vegfpSgdLayer.setOpacity(opacity);
+                }
+            };
+
+            function _vegfpSyncSgdYearButtons() {
+                var years = _vegfpVppYearTimes();
+                var idx = years.indexOf(_vegfpSgdTime);
+                var prev = document.getElementById('vegfpSgdPrevBtn');
+                var next = document.getElementById('vegfpSgdNextBtn');
+                if (prev) prev.disabled = (idx <= 0);
+                if (next) next.disabled = (idx === -1 || idx >= years.length - 1);
+            }
+
+            window.setVegfpSgdYear = function (timeStr) {
+                // Straturile VPP au o singură valoare „time” pe an.
+                if (!timeStr || !/^\d{4}-01-01$/.test(timeStr)) return;
+                if (_vegfpVppYearTimes().indexOf(timeStr) === -1) return;
+                _vegfpSgdTime = timeStr;
+                if (_vegfpSgdLayer) {
+                    _vegfpSgdLayer.setUrl(_vegfpBuildSgdUrl(timeStr));
+                }
+                _vegfpSyncSgdYearButtons();
+            };
+
+            window.vegfpSgdStepYear = function (dir) {
+                var years = _vegfpVppYearTimes();
+                var idx = years.indexOf(_vegfpSgdTime);
+                if (idx === -1) idx = years.length - 1;
+                var next = idx + (dir > 0 ? 1 : -1);
+                if (next < 0 || next >= years.length) return; // capetele listei
+                var select = document.getElementById('vegfpSgdYearSelect');
+                if (select) select.value = years[next];
+                window.setVegfpSgdYear(years[next]);
+            };
+
+            // Populează selectorul de ani (câte o opțiune pe an).
+            (function _vegfpPopulateSgdYears() {
+                var select = document.getElementById('vegfpSgdYearSelect');
+                if (!select) return;
+                var years = _vegfpVppYearTimes();
+                for (var i = 0; i < years.length; i++) {
+                    var opt = document.createElement('option');
+                    opt.value = years[i];
+                    opt.textContent = years[i].slice(0, 4); // doar anul
+                    if (years[i] === _vegfpSgdTime) opt.selected = true;
+                    select.appendChild(opt);
+                }
+                _vegfpSyncSgdYearButtons();
+            })();
+
+            // ── Public: ferestrele de info (grup + substrat) ──
+            function _vegfpInfoDescription(layer) {
+                var lang = (typeof window._currentLang === 'function') ? window._currentLang() : 'ro';
+                if (layer === 'smx') {
+                    if (lang === 'ro') {
+                        return 'Valoarea maximă de vegetație atinsă într-un an. Un zid sau o ' +
+                            'fundație sub sol limitează cât de mult poate crește cultura, chiar ' +
+                            'și în plin sezon.';
+                    }
+                    return 'The maximum vegetation value reached in a year. A wall or a foundation ' +
+                        'buried in the soil limits how much the crop can grow, even in peak ' +
+                        'season.';
+                }
+                if (layer === 'sgu') {
+                    if (lang === 'ro') {
+                        return 'Cât de repede crește vegetația la începutul sezonului. ' +
+                            'Solul subțire de deasupra unei structuri îngropate se încălzește și ' +
+                            'se usucă mai repede, așa că cultura de acolo pornește mai lent sau mai ' +
+                            'rapid decât cea din jur — o diferență vizibilă exact în perioada de ' +
+                            'creștere timpurie.';
+                    }
+                    return 'How fast the vegetation grows at the start of the season. The thin soil ' +
+                        'above a buried structure warms up and dries out sooner, so the crop on top ' +
+                        'starts more slowly — or more quickly — than the surrounding one: a ' +
+                        'difference visible precisely in the early growth period.';
+                }
+                if (layer === 'sgd') {
+                    if (lang === 'ro') {
+                        return 'Cât de rapid se ofilește vegetația spre final de sezon. Șanțurile ' +
+                            'umplute cu sol mai afânat rețin apa mai mult, întârziind ofilirea ' +
+                            'deasupra lor.';
+                    }
+                    return 'How quickly the vegetation wilts toward the end of the season. Ditches ' +
+                        'filled with looser soil hold water longer, delaying the wilting of the ' +
+                        'crop above them.';
+                }
+                if (layer === 'ppi') {
+                    if (lang === 'ro') {
+                        return 'Arată sănătatea vegetației la fiecare 10 zile de-a lungul sezonului. ' +
+                            'Structurile îngropate schimbă ritmul de creștere al culturii deasupra lor, ' +
+                            'vizibil ca abateri în curba sezonieră.';
+                    }
+                    return 'Shows vegetation health every 10 days throughout the season. Buried structures ' +
+                        'change the growth rhythm of the crop above them, visible as deviations in the ' +
+                        'seasonal curve.';
+                }
+                // descrierea grupului (master)
+                if (lang === 'ro') {
+                    return 'Straturi CLMS HR-VPP (10 m) pentru amprenta culturilor asupra peisajului: ' +
+                        'PPI urmărește sănătatea vegetației la fiecare 10 zile, SGU rata de creștere ' +
+                        'la începutul sezonului, SMX valoarea maximă din plin sezon, iar SGD rata ' +
+                        'de ofilire la finalul lui. Tile-urile se încarcă doar pentru România.';
+                }
+                return 'CLMS HR-VPP layers (10 m) for the fingerprint crops leave on the landscape: ' +
+                    'PPI tracks vegetation health every 10 days, SGU the growth rate at the start ' +
+                    'of the season, SMX the peak value in full season and SGD the wilting rate at ' +
+                    'its end. Tiles are fetched only for Romania.';
+            }
+
+            var VEGFP_ATTRIBUTION = "© European Union's Copernicus Land Monitoring Service information";
+
+            window.showVegfpInfo = function () {
+                if (typeof window.showLayerInfo === 'function') {
+                    window.showLayerInfo('Amprenta Vegetației / Vegetation Fingerprint',
+                        VEGFP_ATTRIBUTION, _vegfpInfoDescription());
+                }
+            };
+
+            window.showVegfpPpiInfo = function () {
+                if (typeof window.showLayerInfo === 'function') {
+                    window.showLayerInfo('PPI — Plant Phenology Index',
+                        VEGFP_ATTRIBUTION, _vegfpInfoDescription('ppi'));
+                }
+            };
+
+            window.showVegfpSmxInfo = function () {
+                if (typeof window.showLayerInfo === 'function') {
+                    window.showLayerInfo('SMX — Season Maximum value (MAXV)',
+                        VEGFP_ATTRIBUTION, _vegfpInfoDescription('smx'));
+                }
+            };
+
+            window.showVegfpSguInfo = function () {
+                if (typeof window.showLayerInfo === 'function') {
+                    window.showLayerInfo('SGU — Season Green-Up rate (LSLOPE)',
+                        VEGFP_ATTRIBUTION, _vegfpInfoDescription('sgu'));
+                }
+            };
+
+            window.showVegfpSgdInfo = function () {
+                if (typeof window.showLayerInfo === 'function') {
+                    window.showLayerInfo('SGD — Season Green-Down rate (RSLOPE)',
+                        VEGFP_ATTRIBUTION, _vegfpInfoDescription('sgd'));
                 }
             };
 
