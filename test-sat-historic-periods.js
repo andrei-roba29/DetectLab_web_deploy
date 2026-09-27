@@ -3,18 +3,24 @@
  * ──────────────────────────────────────────────────────────────────────────
  * Guards the Satellite layer's "Istoric" period slider:
  *
- *   2016    → geospatial:of_2017_2020  (services.geo-spatial.org /geoserver/geospatial/wms)
+ *   2012    → GioLand/VeryHighResolution2012 (copernicus.discomap.eea.europa.eu,
+ *             MapServer WMS, layer "Image")
+ *   2018    → GioLand/VHR_2018_WM   (image.discomap.eea.europa.eu, ImageServer WMS)
+ *   2021    → GioLand/VHR_2021_LAEA (image.discomap.eea.europa.eu, ImageServer WMS)
  *   2025    → the existing Esri World Imagery base (window._satLayer)
  *
- *   The 2018 orthophoto (clc:of_2018_2020, GeoServer "clc") was removed from
- *   the base layer, so the slider has two stops instead of three.
+ *   The 2016 orthophoto (geospatial:of_2017_2020, GeoServer "geospatial") was
+ *   removed from the base layer and replaced by the three Copernicus VHR
+ *   mosaics, so the slider has four stops instead of two.
  *
  * Requirements covered:
- *   1. The 2016 orthophoto is a real WMS layer owned by the Satellite layer —
- *      NOT a sublayer in the panel; exactly one base period is on the map and
- *      nothing reaches for a 2018 layer any more.
+ *   1. The Copernicus VHR mosaics are real WMS layers owned by the Satellite
+ *      layer — NOT sublayers in the panel; exactly one base period is on the
+ *      map and nothing reaches for the retired 2016 orthophoto any more.
  *   2. The panel Satellite card carries a second slider titled "Istoric" with
- *      two stops (2016 / 2025); switching shows the matching map.
+ *      four stops (2012 / 2018 / 2021 / 2025); switching shows the matching
+ *      map. The card also credits the Copernicus Land Monitoring Service in
+ *      the layer info tab.
  *   3. The map-side vertical mirrors: opacity AND period both appear together
  *      whenever the Satellite layer is selected, even if only one is touched —
  *      on desktop AND at phone width (≤600px), which is what every installed
@@ -49,20 +55,36 @@ function check(name, cond, detail) {
     }
 }
 
-console.log('[1] WMS layer for the 2016 orthophoto (2018 removed)');
+console.log('[1] WMS layers for the Copernicus VHR mosaics (2016 orthophoto removed)');
 {
-    check('2016 layer uses the geo-spatial workspace WMS',
-        /services\.geo-spatial\.org\/geoserver\/geospatial\/wms/.test(mapApp));
-    check('2016 layer requests geospatial:of_2017_2020',
-        /layers:\s*'geospatial:of_2017_2020'/.test(mapApp));
+    const histBlock = (mapApp.match(/var SAT_HIST_PERIODS = \{[\s\S]*?\n            \};/) || [''])[0];
+    check('the historical registry ships the three VHR periods',
+        /'2012':/.test(histBlock) && /'2018':/.test(histBlock) && /'2021':/.test(histBlock),
+        histBlock.slice(0, 200));
+    check('2012 uses the Copernicus VeryHighResolution2012 MapServer WMS',
+        /copernicus\.discomap\.eea\.europa\.eu\/arcgis\/services\/GioLand\/VeryHighResolution2012\/MapServer\/WMSServer/.test(mapApp) &&
+        /'Image'\)/.test(histBlock));
+    check('2018 uses the VHR_2018_WM ImageServer WMS',
+        /image\.discomap\.eea\.europa\.eu\/arcgis\/services\/GioLand\/VHR_2018_WM\/ImageServer\/WMSServer/.test(mapApp) &&
+        /'VHR_2018_WM'\)/.test(histBlock));
+    check('2021 uses the VHR_2021_LAEA ImageServer WMS',
+        /image\.discomap\.eea\.europa\.eu\/arcgis\/services\/GioLand\/VHR_2021_LAEA\/ImageServer\/WMSServer/.test(mapApp) &&
+        /'VHR_2021_LAEA'\)/.test(histBlock));
+    check('the VHR requests go out as WMS 1.1.1 JPEG tiles on the historical pane',
+        /version:\s*'1\.1\.1'/.test(mapApp) &&
+        /format:\s*'image\/jpeg'/.test(mapApp) &&
+        /pane:\s*'pane_sat_hist'/.test(mapApp));
+    check('every VHR mosaic carries the Copernicus attribution',
+        /var COPERNICUS_LAND_ATTRIBUTION\s*=\s*\n?\s*"&copy; European Union's Copernicus Land Monitoring Service information"/.test(mapApp) &&
+        /attribution:\s*COPERNICUS_LAND_ATTRIBUTION/.test(mapApp));
     // The prose comment may still name the dropped layer; no CODE may use it.
-    check('the 2018 orthophoto is gone from the base layer',
-        !/layers:\s*'clc:of_2018_2020'/.test(mapApp) &&
-        !/geoserver\/clc\/wms/.test(mapApp) &&
-        !/_sat2018Layer/.test(mapApp) &&
-        !/'2018'\s*:/.test(mapApp));
-    check('historical layer lives on the satellite-level pane',
-        /pane_sat_hist/.test(mapApp) && /window\._sat2016Layer/.test(mapApp));
+    check('the 2016 orthophoto is gone from the base layer',
+        !/layers:\s*'geospatial:of_2017_2020'/.test(mapApp) &&
+        !/geoserver\/geospatial\/wms/.test(mapApp) &&
+        !/_sat2016Layer/.test(mapApp) &&
+        !/'2016'\s*:/.test(mapApp));
+    check('historical layers live on the satellite-level pane',
+        /map\.createPane\('pane_sat_hist'\)/.test(mapApp));
     check('the historical registry still ships for external consumers',
         /window\._satHistPeriods = SAT_HIST_PERIODS/.test(mapApp));
 }
@@ -70,27 +92,46 @@ console.log('[1] WMS layer for the 2016 orthophoto (2018 removed)');
 console.log('[2] Period switching (setSatPeriod)');
 {
     check('setSatPeriod is a global entry point', /window\.setSatPeriod\s*=\s*function/.test(mapApp));
-    check('period order is 2016 → prezent (two stops)',
-        /SAT_PERIOD_ORDER\s*=\s*\[\s*'2016',\s*'prezent'\s*\]/.test(mapApp));
+    check('period order is 2012 → 2018 → 2021 → prezent (four stops)',
+        /SAT_PERIOD_ORDER\s*=\s*\[\s*'2012',\s*'2018',\s*'2021',\s*'prezent'\s*\]/.test(mapApp));
     check('the last stop index is derived from the order, not hard-coded',
         /SAT_PERIOD_LAST_INDEX\s*=\s*SAT_PERIOD_ORDER\.length - 1/.test(mapApp));
     check('the Esri base is removed when a historical period is active',
         /map\.removeLayer\(satelliteLayer\)/.test(mapApp));
-    check('opacity applies to the historical orthophoto too',
-        /SAT_HIST_PERIODS\['2016'\]\.setOpacity\(/.test(mapApp));
-    check('setSatOpacity keeps driving the historical layer',
-        /window\._satHistPeriods\['2016'\]\.setOpacity\(opacity\)/.test(mapApp));
-    check('no opacity or visibility path still reaches a 2018 layer',
-        !/SAT_HIST_PERIODS\['2018'\]/.test(mapApp) && !/_satHistPeriods\['2018'\]/.test(mapApp));
+    check('opacity applies to every historical mosaic, not one hard-coded year',
+        /Object\.keys\(SAT_HIST_PERIODS\)\.forEach\(function \(p\) \{\s*\n\s*SAT_HIST_PERIODS\[p\]\.setOpacity\(histOpacity\);/.test(mapApp));
+    check('setSatOpacity keeps driving all historical layers',
+        /Object\.keys\(window\._satHistPeriods\)\.forEach/.test(mapApp));
+    check('no opacity or visibility path still reaches the retired 2016 layer',
+        !/SAT_HIST_PERIODS\['2016'\]/.test(mapApp) && !/_satHistPeriods\['2016'\]/.test(mapApp));
+}
+
+console.log('[2b] Layer info tab credits the Copernicus Land Monitoring Service');
+{
+    const COPERNICUS_TEXT = "European Union's Copernicus Land Monitoring Service information";
+    check('a showSatelliteInfo entry point exists',
+        /window\.showSatelliteInfo\s*=\s*function/.test(mapApp));
+    const satInfo = (mapApp.match(/window\.showSatelliteInfo\s*=\s*function[\s\S]*?\n            \};/) || [''])[0];
+    check('the satellite info tab prints the Copernicus attribution',
+        satInfo.indexOf(COPERNICUS_TEXT) !== -1, satInfo.slice(0, 200));
+    check('the satellite info tab keeps the Esri credit for the present-day imagery',
+        /Esri, Maxar, Earthstar Geographics/.test(satInfo));
+    check('the Satellite card ships an info button wired to it',
+        /showSatelliteInfo\(\);/.test(indexHtml));
+    const satRow = (indexHtml.match(/<!-- Satellite basemap slider -->[\s\S]*?id="satPeriodTicks"[\s\S]*?<\/div>/) || [''])[0];
+    check('the info button lives inside the Satellite card',
+        /class="layer-info-btn"/.test(satRow) && /showSatelliteInfo/.test(satRow));
+    check('the info button has a plain-text fallback with the same credit',
+        satRow.indexOf('Copernicus Land Monitoring Service information') !== -1);
 }
 
 console.log('[3] Panel UI: the "Istoric" slider inside the Satellite card');
 {
     const periodSliderTag = (indexHtml.match(/<input\b[^>]*id="satPeriodSlider"[^>]*>/) || [])[0] || '';
     check('period slider exists', !!periodSliderTag);
-    check('period slider has exactly two stops (min 0, max 1, step 1)',
-        /min="0"/.test(periodSliderTag) && /max="1"/.test(periodSliderTag) && /step="1"/.test(periodSliderTag));
-    check('period slider defaults to 2025 (value 1)', /value="1"/.test(periodSliderTag));
+    check('period slider has exactly four stops (min 0, max 3, step 1)',
+        /min="0"/.test(periodSliderTag) && /max="3"/.test(periodSliderTag) && /step="1"/.test(periodSliderTag));
+    check('period slider defaults to 2025 (value 3)', /value="3"/.test(periodSliderTag));
     check('period slider drives setSatPeriod', /oninput="setSatPeriod\(this\.value\)"/.test(periodSliderTag));
     check('period slider is NOT an opacity id (panel auto-discovery stays at 35)',
         !/id="[^"]*Opacity/.test(periodSliderTag));
@@ -98,12 +139,13 @@ console.log('[3] Panel UI: the "Istoric" slider inside the Satellite card');
         /data-key="layer_sat_period_label"/.test(indexHtml));
     check('last stop "2025" is translated via data-key',
         /data-key="layer_sat_period_present"/.test(indexHtml));
-    check('tick labels row with two stops ships in the card',
-        /id="satPeriodTicks"/.test(indexHtml) &&
-        (indexHtml.match(/<div class="sat-period-ticks" id="satPeriodTicks"[\s\S]{0,400}?<\/div>/) || [''])[0]
-            .split('<span').length - 1 === 2);
-    check('the 2018 tick label is gone from the card',
-        !/<div class="sat-period-ticks" id="satPeriodTicks"[\s\S]{0,400}?2018/.test(indexHtml));
+    const ticksRow = (indexHtml.match(/<div class="sat-period-ticks" id="satPeriodTicks"[\s\S]{0,600}?<\/div>/) || [''])[0];
+    check('tick labels row with four stops ships in the card',
+        /id="satPeriodTicks"/.test(indexHtml) && ticksRow.split('<span').length - 1 === 4);
+    check('the tick labels read 2012 / 2018 / 2021 / 2025',
+        /2012/.test(ticksRow) && /2018/.test(ticksRow) && /2021/.test(ticksRow) &&
+        /data-key="layer_sat_period_present"/.test(ticksRow));
+    check('the retired 2016 tick label is gone from the card', !/2016/.test(ticksRow));
     check('live period label element exists', /id="satPeriodLabel"/.test(indexHtml));
     check('period slider sits inside the Satellite card (no separate sublayer)',
         /<!-- Satellite basemap slider -->[\s\S]*?id="satOpacitySlider"[\s\S]*?id="satPeriodSlider"[\s\S]*?<\/div>\s*<div class="transp-divider/.test(indexHtml));
@@ -117,8 +159,8 @@ console.log('[4] Map-side vertical mirrors (opacity + period shown together)');
         /id="verticalSatPeriodValue"/.test(indexHtml));
     check('vertical period control is marked satperiod kind',
         /id="verticalSatPeriodControl"[\s\S]{0,300}?data-kind="satperiod"/.test(indexHtml));
-    check('vertical period slider mirrors the two stops',
-        /<input[^>]*id="verticalSatPeriodSlider"[^>]*min="0"[^>]*max="1"/.test(indexHtml));
+    check('vertical period slider mirrors the four stops',
+        /<input[^>]*id="verticalSatPeriodSlider"[^>]*min="0"[^>]*max="3"/.test(indexHtml));
     check('CSS anchors the period mirror to the left of the opacity mirror',
         /\.vertical-period-control\s*\{[^}]*right:\s*calc\(38px \+ 50px \+ 14px/.test(stylesCss));
     check('panel period slider ships stop markers',
@@ -345,7 +387,7 @@ const close = new MockElement('button', 'verticalOpacityClose');
 
 const periodControl = new MockElement('div', 'verticalSatPeriodControl');
 const periodCaption = new MockElement('span', 'verticalSatPeriodCaption');
-const periodVertical = range('verticalSatPeriodSlider', 1, '0', '1');
+const periodVertical = range('verticalSatPeriodSlider', 3, '0', '3');
 const periodOutput = new MockElement('output', 'verticalSatPeriodValue');
 const periodLabel = new MockElement('span', 'verticalSatPeriodLayer');
 
@@ -355,11 +397,14 @@ const satTitle = new MockElement('span');
 satTitle.textContent = 'Satelit';
 satTitle.setAttribute('data-key', 'layer_satellite');
 const satOpacity = range('satOpacitySlider', 100, '10', '100');
-const satPeriod = range('satPeriodSlider', 1, '0', '1');
+const satPeriod = range('satPeriodSlider', 3, '0', '3');
 const ticks = new MockElement('div', 'satPeriodTicks', ['sat-period-ticks']);
-const tick2016 = new MockElement('span'); tick2016.textContent = '2016';
+const tick2012 = new MockElement('span'); tick2012.textContent = '2012';
+const tick2018 = new MockElement('span'); tick2018.textContent = '2018';
+const tick2021 = new MockElement('span'); tick2021.textContent = '2021';
 const tickPrezent = new MockElement('span'); tickPrezent.textContent = '2025';
-ticks.appendChild(tick2016); ticks.appendChild(tickPrezent);
+ticks.appendChild(tick2012); ticks.appendChild(tick2018);
+ticks.appendChild(tick2021); ticks.appendChild(tickPrezent);
 satOwner.appendChild(satTitle);
 satOwner.appendChild(satOpacity);
 satOwner.appendChild(satPeriod);
@@ -389,6 +434,7 @@ const documentMock = new (class extends EventTarget {
     }
     querySelectorAll(selector) {
         if (selector.indexOf('[id*="Opacity"]') !== -1) return [satOpacity, apm];
+        if (selector === '#satPeriodTicks span') return ticks.children;
         return [];
     }
 })();
@@ -434,9 +480,9 @@ check('selecting the Satellite card also shows the period mirror',
 check('the opacity mirror keeps mirroring the opacity range',
     vertical.value === '100' && output.textContent === '100%');
 check('the period mirror starts on 2025',
-    periodVertical.value === '1' && periodOutput.textContent === '2025');
-check('the period mirror follows the panel range geometry (two stops, no phantom 2018)',
-    periodVertical.max === satPeriod.max && periodVertical.max === '1');
+    periodVertical.value === '3' && periodOutput.textContent === '2025');
+check('the period mirror follows the panel range geometry (four stops)',
+    periodVertical.max === satPeriod.max && periodVertical.max === '3');
 check('the period caption reads ISTORIC in Romanian',
     periodCaption.textContent === 'ISTORIC');
 check('the satellite row stays highlighted',
@@ -450,20 +496,28 @@ periodVertical.value = '0';
 periodVertical.dispatchEvent(new Event('input'));
 check('vertical period drag propagates to the panel slider', satPeriod.value === '0');
 check('the panel slider input event fires exactly once', satPeriodInputs === 1);
-check('the period mirror value shows the year', periodOutput.textContent === '2016');
+check('the period mirror value shows the year', periodOutput.textContent === '2012');
+
+// The two middle stops resolve to their own years, not to the ends.
+periodVertical.value = '1';
+periodVertical.dispatchEvent(new Event('input'));
+check('the second stop renders 2018 on the mirror', periodOutput.textContent === '2018');
+periodVertical.value = '2';
+periodVertical.dispatchEvent(new Event('input'));
+check('the third stop renders 2021 on the mirror', periodOutput.textContent === '2021');
 
 // Back to the last stop: „2025" comes from the translated tick label.
-periodVertical.value = '1';
+periodVertical.value = '3';
 periodVertical.dispatchEvent(new Event('input'));
 check('the last stop renders the translated 2025 on the mirror',
     periodOutput.textContent === '2025');
-check('the panel slider is back on 2025 too', satPeriod.value === '1');
+check('the panel slider is back on 2025 too', satPeriod.value === '3');
 
 // Programmatic panel updates (e.g. setSatPeriod) are picked up by the poll.
 satPeriod.value = '0';
 intervals.forEach(function (fn) { fn(); });
 check('polling keeps the period mirror in sync', periodVertical.value === '0');
-check('the 2016 mirror label comes from the year itself', periodOutput.textContent === '2016');
+check('the 2012 mirror label comes from the year itself', periodOutput.textContent === '2012');
 
 // Touching ONLY the period slider still shows both mirrors ("chiar daca doar
 // unul din ele e apasat").

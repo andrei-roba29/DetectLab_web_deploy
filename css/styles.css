@@ -5187,8 +5187,9 @@
            Selecting the Satellite layer (either its opacity slider or the
            „Istoric” period slider) shows BOTH vertical mirrors at the same
            time: the opacity one keeps its usual anchor, the period one sits
-           immediately to its left. Only two discrete stops (2016 / 2025),
-           so the value chip stays permanently visible.
+           immediately to its left. Only four discrete stops
+           (2012 / 2018 / 2021 / 2025), so the value chip stays permanently
+           visible.
 
            The selector carries BOTH classes on purpose. A bare
            `.vertical-period-control` has the same specificity (0,1,0) as the
@@ -5227,8 +5228,11 @@
             letter-spacing: 0.02em;
         }
 
-        /* Two stop dots on the vertical period track: 2016 at the bottom of
-           the travel, 2025 at the top (the 2018 middle stop is gone). */
+        /* Four stop dots on the vertical period track: 2012 at the bottom of
+           the travel, then 2018 and 2021, with 2025 at the top. The dots are
+           spread with background-position percentages, which resolve against
+           (track height − dot size), so they stay evenly aligned with the
+           range thumb's own stops. */
         .vertical-period-control .vertical-opacity-slider-wrap::after {
             content: '';
             position: absolute;
@@ -5239,19 +5243,25 @@
             transform: translate(-50%, -50%);
             background-image:
                 radial-gradient(circle at 50% 50%, rgba(245,240,235,0.9) 1.4px, transparent 2px),
+                radial-gradient(circle at 50% 50%, rgba(245,240,235,0.9) 1.4px, transparent 2px),
+                radial-gradient(circle at 50% 50%, rgba(245,240,235,0.9) 1.4px, transparent 2px),
                 radial-gradient(circle at 50% 50%, rgba(245,240,235,0.9) 1.4px, transparent 2px);
             background-size: 5px 5px;
-            background-position: 50% 0, 50% 100%;
+            background-position: 50% 0, 50% 33.333%, 50% 66.667%, 50% 100%;
             background-repeat: no-repeat;
             pointer-events: none;
             z-index: 1;
         }
 
-        /* Panel „Istoric” slider: same look as every .transp-slider, plus two
-           stop markers aligned with the 2016 / 2025 tick labels. */
+        /* Panel „Istoric” slider: same look as every .transp-slider, plus four
+           stop markers aligned with the 2012 / 2018 / 2021 / 2025 tick labels.
+           The 8px inset matches half the thumb width, so the first and last
+           marker sit under the thumb at each end of the travel. */
         input.transp-slider.sat-period-slider {
             background:
                 radial-gradient(circle at 8px 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
+                radial-gradient(circle at calc(8px + (100% - 16px) / 3) 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
+                radial-gradient(circle at calc(8px + (100% - 16px) * 2 / 3) 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
                 radial-gradient(circle at calc(100% - 8px) 50%, rgba(245,240,235,0.95) 1.8px, transparent 2.5px),
                 linear-gradient(90deg, rgba(160,112,232,0.55), rgba(184,216,240,0.14));
         }

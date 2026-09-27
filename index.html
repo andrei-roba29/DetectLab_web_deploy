@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260923-pwa-docked-actions">
+    <link rel="stylesheet" href="css/styles.css?v=20260927-sat-copernicus-vhr">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260922-mobile-fs-controls">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -1343,7 +1343,8 @@
                      one of them is touched — on desktop AND in the installed PWA
                      (the two anchors are kept apart at every breakpoint, see the
                      .vertical-opacity-control.vertical-period-control rule). Drives
-                     #satPeriodSlider (2016 / 2025) from js/map-app.js. -->
+                     #satPeriodSlider (2012 / 2018 / 2021 / 2025) from
+                     js/map-app.js. -->
                 <div class="vertical-opacity-control vertical-period-control" id="verticalSatPeriodControl"
                      role="group" aria-label="Satellite imagery period" aria-hidden="true" data-kind="satperiod">
                     <!-- ISTORIC chip: direct child of the card, like the other
@@ -1354,7 +1355,7 @@
                     </span>
                     <div class="vertical-opacity-slider-wrap">
                         <input type="range" class="vertical-opacity-slider" id="verticalSatPeriodSlider"
-                               min="0" max="1" value="1" step="1"
+                               min="0" max="3" value="3" step="1"
                                aria-label="Satellite imagery period" aria-orientation="vertical">
                     </div>
                     <output class="vertical-opacity-value" id="verticalSatPeriodValue"
@@ -1523,27 +1524,33 @@
                     <div class="transp-layer-row active" data-category="free">
                         <div class="transp-layer-label">
                             <span class="t" data-key="layer_satellite">Satellite</span>
-                            <span class="pct" id="satPct">100%</span>
+                            <span style="display:flex;align-items:center;gap:5px">
+                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();if (typeof showSatelliteInfo === 'function') { showSatelliteInfo(); } else { showLayerInfo('Satelit','&copy; Esri, Maxar, Earthstar Geographics &middot; &copy; European Union\'s Copernicus Land Monitoring Service information'); }" title="Layer info"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                <span class="pct" id="satPct">100%</span>
+                            </span>
                         </div>
                         <input type="range" class="transp-slider" id="satOpacitySlider"
                                min="10" max="100" value="100"
                                oninput="setSatOpacity(this.value)">
 
-                        <!-- „Istoric”: perioada imaginii satelitare. Două poziții —
-                             2016 (ortofotoplan geo-spatial.org, WMS) și 2025
-                             (stratul actual Esri). Ortofotoplanul 2018 a fost scos
-                             din stratul de bază. Comutarea afișează automat harta
+                        <!-- „Istoric”: perioada imaginii satelitare. Patru poziții —
+                             2012, 2018 și 2021 (mozaicurile Copernicus VHR servite
+                             prin WMS de EEA discomap) și 2025 (stratul actual Esri).
+                             Ortofotoplanul 2016 de la geo-spatial.org a fost scos din
+                             stratul de bază. Comutarea afișează automat harta
                              perioadei alese. -->
                         <div class="transp-layer-label" style="margin-bottom:6px;margin-top:10px">
                             <span style="font-size:0.72rem;opacity:0.6" class="t" data-key="layer_sat_period_label">Istoric</span>
                             <span class="pct" id="satPeriodLabel">2025</span>
                         </div>
                         <input type="range" class="transp-slider sat-period-slider" id="satPeriodSlider"
-                               min="0" max="1" step="1" value="1"
+                               min="0" max="3" step="1" value="3"
                                oninput="setSatPeriod(this.value)"
                                aria-label="Satellite imagery period / Perioada imaginii satelitare">
                         <div class="sat-period-ticks" id="satPeriodTicks" aria-hidden="true">
-                            <span>2016</span>
+                            <span>2012</span>
+                            <span>2018</span>
+                            <span>2021</span>
                             <span class="t" data-key="layer_sat_period_present">2025</span>
                         </div>
                     </div>
@@ -4162,10 +4169,10 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/map-app.js?v=20260926-vegfp-smx"></script>
+    <script src="js/map-app.js?v=20260927-sat-copernicus-vhr"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
-    <script src="js/vertical-opacity-control.js?v=20260926-vegfp-smx"></script>
+    <script src="js/vertical-opacity-control.js?v=20260927-sat-copernicus-vhr"></script>
     <!-- leaflet-heat rămâne în shell (pre-cache), dar nu mai e folosit de
          „Archeological Potential Sites": heatmap-ul de acolo e propriul raster de
          scoruri ancorat geografic, ca să nu alunece la zoom. -->
