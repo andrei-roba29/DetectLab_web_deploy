@@ -301,7 +301,9 @@
 //   buton ⓘ, al cărui tab info citează „© European Union's Copernicus Land
 //   Monitoring Service information”. discomap.eea.europa.eu intră în
 //   PASSTHROUGH_HOSTS ca tile-urile WMS să nu treacă prin shell-ul cache-uit.
-const CACHE_NAME = 'detectlab-v144-sat-copernicus-vhr';
+// v145: LIDAR Scanner — elimină marcajele suprapuse de lângă coordonatele
+//   44.14573, 23.61337 și păstrează un singur obiectiv «fortificație».
+const CACHE_NAME = 'detectlab-v145-lidar-deduplicate-fortification';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -825,7 +827,7 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20260923-pwa-docked-actions',
   // v139: LIDAR Scanner — 12 site-uri noi în data/lidar_scanner_points.csv;
   // DATA_URL din script a fost refăcut, deci PWA-ul trebuie să ia fișierul nou.
-  'js/lidar-scanner.js?v=20260924-lidar-12-sites',
+  'js/lidar-scanner.js?v=20260927-deduplicate-fortification',
   // v140: „Amprenta Vegetației / Vegetation Fingerprint” (premium) — primul
   // substrat PPI din CLMS HR-VPP, cu tile-uri WMTS limitate la România.
   // v141: + substratul SGU (VPP LSLOPE, anual); v142: + SGD (VPP RSLOPE).
