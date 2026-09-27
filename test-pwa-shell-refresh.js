@@ -37,9 +37,13 @@ const css = read('css/styles.css');
 
 /* 1. The cache version is bumped so the byte-difference triggers an update
       and old caches are purged on activate. */
+// Every release bumps the cache name again (the Copernicus VHR basemaps took
+// it to v144), so parse the number instead of pinning a tag that goes stale:
+// what matters here is that the byte-difference keeps triggering an update.
+const shellCacheVersion = Number((sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1] || 0);
 assert(
-    /const CACHE_NAME = 'detectlab-v143-vegfp-smx'/.test(sw),
-    'sw.js must carry the v143 cache name'
+    shellCacheVersion >= 143,
+    'sw.js must carry a bumped cache name (v143 or later), found v' + shellCacheVersion
 );
 assert(sw.includes('skipWaiting()'), 'sw.js must skipWaiting on install');
 assert(sw.includes('clients.claim()'), 'sw.js must claim clients on activate');
@@ -87,10 +91,17 @@ assert(css.includes('.vertical-opacity-control.vertical-opacity-secondary'),
     'the second mirror anchor is missing from styles.css');
 assert(sw.includes('css/styles.css?v=20260922-mobile-fs-controls'),
     'sw.js must precache the current styles.css');
-assert(sw.includes('js/vertical-opacity-control.js?v=20260926-vegfp-smx'),
-    'sw.js must precache the current vertical-opacity-control.js');
-assert(html.includes('js/vertical-opacity-control.js?v=20260926-vegfp-smx'),
-    'index.html must request the same versioned module the shell pre-caches');
+// The module keeps being re-versioned by later releases (the Copernicus VHR
+// basemaps took it to ?v=20260927-sat-copernicus-vhr), and the page can only
+// request ONE URL per asset — so assert the LIVE relationship instead of a
+// frozen tag: whatever index.html requests must be what the shell pre-caches.
+const liveVerticalOpacity =
+    (html.match(/js\/vertical-opacity-control\.js\?v=[^"']+/) || [])[0];
+assert(liveVerticalOpacity,
+    'index.html must request a versioned vertical-opacity-control.js');
+assert(sw.includes("'" + liveVerticalOpacity + "'"),
+    'sw.js must precache the same vertical-opacity-control.js index.html requests ('
+    + liveVerticalOpacity + ')');
 
 console.log('OK — the installed PWA re-checks sw.js, reloads onto the newest shell once,');
 console.log('    and the document tail is clean; the two-slider + side-title shell ships intact.');

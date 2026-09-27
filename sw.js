@@ -293,7 +293,15 @@
 // v142: substratul SGD (VPP RSLOPE SEASON1 — rata de ofilire la finalul
 //   sezonului, tot anual) al treilea strat din grup; aceleași patru
 //   scripturi re-versionate.
-const CACHE_NAME = 'detectlab-v143-vegfp-smx';
+// v144: sliderul „Istoric” al stratului Satelit trece de la ortofotoplanul
+//   2016 (geo-spatial.org) la cele trei mozaicuri Copernicus VHR servite de
+//   EEA discomap prin WMS — 2012 (VeryHighResolution2012/MapServer), 2018
+//   (VHR_2018_WM/ImageServer) și 2021 (VHR_2021_LAEA/ImageServer) — deci
+//   patru poziții (2012 / 2018 / 2021 / 2025). Stratul Satelit primește și
+//   buton ⓘ, al cărui tab info citează „© European Union's Copernicus Land
+//   Monitoring Service information”. discomap.eea.europa.eu intră în
+//   PASSTHROUGH_HOSTS ca tile-urile WMS să nu treacă prin shell-ul cache-uit.
+const CACHE_NAME = 'detectlab-v144-sat-copernicus-vhr';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -825,6 +833,13 @@ const PRECACHE_URLS = [
   'js/translations.js?v=20260926-vegfp-smx',
   'js/subscriptions.js?v=20260926-vegfp-smx',
   'js/vertical-opacity-control.js?v=20260926-vegfp-smx',
+  // v144: Satellite „Istoric” = Copernicus VHR 2012 / 2018 / 2021 + 2025.
+  // The panel slider grows from two stops to four, both the panel and the
+  // map-side mirror ship the new stop markers, and the Satellite card gains
+  // the ⓘ button that credits the Copernicus Land Monitoring Service.
+  'css/styles.css?v=20260927-sat-copernicus-vhr',
+  'js/map-app.js?v=20260927-sat-copernicus-vhr',
+  'js/vertical-opacity-control.js?v=20260927-sat-copernicus-vhr',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
@@ -848,7 +863,8 @@ const PASSTHROUGH_HOSTS = [
   'ran.cimec.ro',       // Romanian cultural data
   'wikipedia.org',      // Wikipedia API
   'openstreetmap.org',  // OSM tiles / API
-  'hrvpp2.vgt.vito.be'  // CLMS HR-VPP vegetation WMTS (Amprenta Vegetației)
+  'hrvpp2.vgt.vito.be', // CLMS HR-VPP vegetation WMTS (Amprenta Vegetației)
+  'discomap.eea.europa.eu' // EEA Copernicus VHR 2012/2018/2021 basemap WMS
 ];
 
 // ── Install event: pre-cache essential static files ──

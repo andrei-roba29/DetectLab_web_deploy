@@ -413,17 +413,27 @@ assert.match(mapApp, /_vegfpInfoDescription\('smx'\)/,
 assert.match(mapApp, /_vegfpInfoDescription\('sgu'\)/,
     'the SGU info window requests its own description');
 
-// Service worker rollout.
-assert.match(sw, /const CACHE_NAME = 'detectlab-v143-vegfp-smx'/,
-    'the app-shell cache is re-versioned so installed PWAs pick up the new layer');
+// Service worker rollout. The cache name is re-bumped by every later release
+// (the Copernicus VHR basemaps took it to v144), so parse the number and
+// require at least the vegetation-fingerprint bump instead of pinning a tag
+// that goes stale with the next release.
+const vegfpCacheVersion = Number((sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1] || 0);
+assert.ok(vegfpCacheVersion >= 143,
+    'the app-shell cache is re-versioned so installed PWAs pick up the new layer '
+    + '(found v' + vegfpCacheVersion + ')');
+// The same scripts keep getting re-versioned by later releases, and the page
+// can only request ONE URL per asset — so assert the LIVE relationship instead
+// of frozen tags: whatever URL index.html requests must be the exact URL the
+// service worker pre-caches, or the installed PWA has an offline gap.
 [
-    'js/map-app.js?v=20260926-vegfp-smx',
-    'js/translations.js?v=20260926-vegfp-smx',
-    'js/subscriptions.js?v=20260926-vegfp-smx',
-    'js/vertical-opacity-control.js?v=20260926-vegfp-smx'
-].forEach((url) => {
-    assert.ok(sw.indexOf("'" + url + "'") !== -1, 'SW precaches ' + url);
-    assert.ok(html.indexOf(url) !== -1, 'index.html references ' + url);
+    'js/map-app.js',
+    'js/translations.js',
+    'js/subscriptions.js',
+    'js/vertical-opacity-control.js'
+].forEach((asset) => {
+    const live = (html.match(new RegExp(asset.replace(/\./g, '\\.') + '\\?v=[^"\']+')) || [])[0];
+    assert.ok(live, 'index.html references a versioned ' + asset);
+    assert.ok(sw.indexOf("'" + live + "'") !== -1, 'SW precaches ' + live);
 });
 assert.match(sw, /'hrvpp2\.vgt\.vito\.be'/,
     'the HR-VPP tile host is listed as a passthrough (never app-shell cached)');

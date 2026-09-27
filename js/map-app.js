@@ -2814,37 +2814,73 @@
             }).addTo(map);
             window._satLayer = satelliteLayer;
 
-            // ── SATELIT / ISTORIC — ortofotoplan 2016 (geo-spatial.org) ──
-            // Stratul „Satelit” are două perioade, comutate din sliderul „Istoric”:
-            //   2016    → geospatial:of_2017_2020  (GeoServer „geospatial”)
+            // ── SATELIT / ISTORIC — mozaicurile Copernicus VHR (EEA discomap) ──
+            // Stratul „Satelit” are patru perioade, comutate din sliderul „Istoric”:
+            //   2012 → GioLand/VeryHighResolution2012 (MapServer WMS, strat „Image”)
+            //   2018 → GioLand/VHR_2018_WM            (ImageServer WMS)
+            //   2021 → GioLand/VHR_2021_LAEA          (ImageServer WMS)
             //   2025 → tile-urile Esri World Imagery de mai sus (stratul actual)
-            // Ortofotoplanul 2018 (clc:of_2018_2020, GeoServer „clc”) a fost scos
-            // din stratul de bază — rămâne doar 2016 + imaginea actuală, deci
-            // sliderul are două poziții, nu trei.
-            // O singură perioadă e pe hartă la un moment dat — cealaltă e scoasă din
-            // map, ca să nu descarce tile-uri nefolosite. Nativ stratul e în
-            // Stereo70 (EPSG:3844); Leaflet cere tile-urile în Web-Mercator (EPSG:3857)
-            // și GeoServer le reproiectează server-side (suportă toate codurile EPSG).
+            // Ortofotoplanul 2016 (geospatial:of_2017_2020, GeoServer „geospatial”)
+            // a fost scos din stratul de bază și înlocuit cu cele trei mozaicuri
+            // VHR (Very High Resolution, 2–2,5 m) ale Copernicus Land Monitoring
+            // Service, care acoperă integral România.
+            // O singură perioadă e pe hartă la un moment dat — celelalte sunt scoase
+            // din map, ca să nu descarce tile-uri nefolosite.
+            //
+            // Proiecții: 2018 e nativ Web-Mercator (sufixul „_WM”), 2012 e publicat
+            // tot în 3857, iar 2021 e nativ LAEA (EPSG:3035) și NU anunță 3857 în
+            // GetCapabilities — dar ArcGIS Server reproiectează oricum server-side
+            // orice cod EPSG cunoscut, deci cererile Leaflet în EPSG:3857 (SRS din
+            // WMS 1.1.1) sunt onorate de toate trei.
+            //
+            // maxNativeZoom: sursele au 2–2,5 m/pixel, adică ~z17 la latitudinea
+            // României; peste acest nivel serverul doar reeșantionează, așa că
+            // Leaflet face overzoom local (până la z20) în loc să mai ceară tile-uri.
             map.createPane('pane_sat_hist');
             map.getPane('pane_sat_hist').style.zIndex = 400; // aceeași nivelă ca satelitul
 
-            var SAT_HIST_PERIODS = {
-                '2016': L.tileLayer.wms('https://services.geo-spatial.org/geoserver/geospatial/wms', {
-                    layers: 'geospatial:of_2017_2020',
+            // Atribuirea cerută de licența Copernicus, aceeași pentru toate cele
+            // trei mozaicuri (și pentru tab-ul info al stratului Satelit).
+            var COPERNICUS_LAND_ATTRIBUTION =
+                "&copy; European Union's Copernicus Land Monitoring Service information";
+            window.COPERNICUS_LAND_ATTRIBUTION = COPERNICUS_LAND_ATTRIBUTION;
+
+            var SAT_HIST_LAST_NATIVE_Z = 17;
+
+            function _satVhrWms(url, layers) {
+                return L.tileLayer.wms(url, {
+                    layers: layers,
                     format: 'image/jpeg',
                     transparent: false,
-                    version: '1.1.0',
+                    // 1.1.1 trimite SRS= (nu CRS=) și păstrează ordinea axelor
+                    // minx,miny,maxx,maxy, deci nu depinde de axis-order-ul 1.3.0.
+                    version: '1.1.1',
                     pane: 'pane_sat_hist',
                     minZoom: 1,
                     maxZoom: 20,
-                    attribution: 'Ortofotoplan 2016 &copy; geo-spatial.org'
-                })
+                    maxNativeZoom: SAT_HIST_LAST_NATIVE_Z,
+                    // Fără crossOrigin: discomap nu garantează antetele CORS, iar
+                    // un <img crossorigin> respins nu s-ar mai afișa deloc. Nimic
+                    // din aplicație nu eșantionează aceste tile-uri în canvas.
+                    attribution: COPERNICUS_LAND_ATTRIBUTION
+                });
+            }
+
+            var SAT_HIST_PERIODS = {
+                '2012': _satVhrWms(
+                    'https://copernicus.discomap.eea.europa.eu/arcgis/services/GioLand/VeryHighResolution2012/MapServer/WMSServer',
+                    'Image'),
+                '2018': _satVhrWms(
+                    'https://image.discomap.eea.europa.eu/arcgis/services/GioLand/VHR_2018_WM/ImageServer/WMSServer',
+                    'VHR_2018_WM'),
+                '2021': _satVhrWms(
+                    'https://image.discomap.eea.europa.eu/arcgis/services/GioLand/VHR_2021_LAEA/ImageServer/WMSServer',
+                    'VHR_2021_LAEA')
             };
-            window._sat2016Layer = SAT_HIST_PERIODS['2016'];
             window._satHistPeriods = SAT_HIST_PERIODS;
 
-            // Index slider → perioadă. Ultima poziție (1) = „2025” (stratul Esri).
-            var SAT_PERIOD_ORDER = ['2016', 'prezent'];
+            // Index slider → perioadă. Ultima poziție (3) = „2025” (stratul Esri).
+            var SAT_PERIOD_ORDER = ['2012', '2018', '2021', 'prezent'];
             var SAT_PERIOD_LAST_INDEX = SAT_PERIOD_ORDER.length - 1;
             window._satPeriod = 'prezent';
 
@@ -2869,10 +2905,13 @@
                     }
                 });
 
-                // Opacitatea curentă din panou se aplică și ortofotoplanului istoric.
+                // Opacitatea curentă din panou se aplică și mozaicurilor istorice.
                 var opSlider = document.getElementById('satOpacitySlider');
-                if (opSlider && SAT_HIST_PERIODS['2016']) {
-                    SAT_HIST_PERIODS['2016'].setOpacity(Number(opSlider.value) / 100);
+                if (opSlider) {
+                    var histOpacity = Number(opSlider.value) / 100;
+                    Object.keys(SAT_HIST_PERIODS).forEach(function (p) {
+                        SAT_HIST_PERIODS[p].setOpacity(histOpacity);
+                    });
                 }
 
                 // Sincronizare UI: sliderul din panou + eticheta perioadei + tick-uri.
@@ -2906,6 +2945,26 @@
                 var presentTick = ticks.length ? ticks[ticks.length - 1] : null;
                 if (label && presentTick) label.textContent = presentTick.textContent.trim() || '2025';
             });
+
+            // ── Tab-ul info al stratului Satelit ──
+            // Atribuirile native Leaflet sunt ascunse prin CSS, deci sursele se
+            // declară aici: imaginea actuală (Esri World Imagery) + cele trei
+            // mozaicuri istorice Copernicus VHR din sliderul „Istoric”.
+            window.showSatelliteInfo = function () {
+                if (typeof window.showLayerInfo !== 'function') return;
+                var lang = (typeof window._currentLang === 'function') ? window._currentLang() : 'ro';
+                var description = (lang === 'en')
+                    ? 'The „Historic” slider switches the base imagery between the Copernicus ' +
+                      'VHR mosaics — 2012 (2.5 m), 2018 and 2021 (2 m) — and the present-day ' +
+                      'satellite imagery.'
+                    : 'Sliderul „Istoric” comută imaginea de bază între mozaicurile Copernicus ' +
+                      'VHR — 2012 (2,5 m), 2018 și 2021 (2 m) — și imaginea satelitară actuală.';
+                window.showLayerInfo(
+                    (lang === 'en') ? 'Satellite' : 'Satelit',
+                    '\u00a9 Esri, Maxar, Earthstar Geographics \u00b7 ' +
+                    "\u00a9 European Union's Copernicus Land Monitoring Service information",
+                    description);
+            };
 
             // ── OSM PLACES (ArcGIS FeatureServer Layer 6 — REST query, nu tile) ──
             // FeatureServer/tile nu este activat pe acest serviciu (HTTP 400).
@@ -6695,11 +6754,14 @@
             window.setSatOpacity = function (val) {
                 var opacity = val / 100;
                 if (window._satLayer) window._satLayer.setOpacity(opacity);
-                // Opacitatea se aplică și ortofotoplanului istoric 2016 (singurul
-                // rămas — 2018 a fost scos din stratul de bază), indiferent care
-                // perioadă e activă din sliderul „Istoric”.
-                if (window._satHistPeriods && window._satHistPeriods['2016']) {
-                    window._satHistPeriods['2016'].setOpacity(opacity);
+                // Opacitatea se aplică și mozaicurilor istorice Copernicus VHR
+                // (2012 / 2018 / 2021), indiferent care perioadă e activă din
+                // sliderul „Istoric”.
+                if (window._satHistPeriods) {
+                    Object.keys(window._satHistPeriods).forEach(function (p) {
+                        var layer = window._satHistPeriods[p];
+                        if (layer && typeof layer.setOpacity === 'function') layer.setOpacity(opacity);
+                    });
                 }
                 document.getElementById('satPct').textContent = val + '%';
             };
