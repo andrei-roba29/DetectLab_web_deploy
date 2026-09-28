@@ -38,12 +38,16 @@ nameserverelor. Poate fi reactivat din Cloudflare după ce zona devine `Active`.
 
 1. Cont client Host-Age → **Domenii**.
 2. Deschide `detectlab.eu`.
-3. Intră la **Nameservere**.
-4. Selectează **Custom**.
-5. Șterge valorile existente și introdu exact cele două nameservere afișate de
-   Cloudflare pentru această zonă.
-6. Salvează modificările.
-7. Așteaptă până când Cloudflare marchează domeniul **Active**.
+3. Dacă DNSSEC este activ, dezactivează-l înainte de schimbarea nameserverelor.
+4. Intră la **Nameservere** și selectează **Custom**.
+5. Șterge vechile valori:
+   - `finley.ns.cloudflare.com`
+   - `meadow.ns.cloudflare.com`
+6. Introdu exact nameserverele atribuite zonei `detectlab.eu` de Cloudflare:
+   - `elias.ns.cloudflare.com`
+   - `nelci.ns.cloudflare.com`
+7. Salvează modificările.
+8. Așteaptă până când Cloudflare marchează domeniul **Active**.
 
 ## 3. Adaugă domeniul la proiectul Netlify existent
 
