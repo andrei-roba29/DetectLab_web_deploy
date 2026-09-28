@@ -19,12 +19,23 @@ import { requireUser } from '../middleware/requireUser.js';
 import * as stripeApi from '../services/stripeClient.js';
 import { handleStripeEvent, ONE_TIME_STATUS } from '../services/subscriptionEvents.js';
 import { PROMO_STATUS } from '../services/promoCodes.js';
+import { resolveSiteOrigin } from '../utils/siteOrigin.js';
 
 const router = Router();
 
-/** Base URL for success/cancel return links: env override, else Origin. */
+/**
+ * Safe base URL for success/cancel return links. A recognised request origin
+ * wins so .ro customers return to .ro and .eu customers return to .eu.
+ * STRIPE_SITE_URL remains the fallback for jobs/clients without Origin.
+ */
 function siteUrl(req) {
-  return env.stripe.siteUrl || req.headers.origin || `http://localhost:${env.port}`;
+  return resolveSiteOrigin({
+    requestOrigin: req.headers.origin,
+    allowedOrigins: env.frontendOrigins,
+    configuredSiteUrl: env.stripe.siteUrl,
+    fallbackOrigin: `http://localhost:${env.port}`,
+    allowLocalhost: env.nodeEnv !== 'production',
+  });
 }
 
 function notConfigured(res) {

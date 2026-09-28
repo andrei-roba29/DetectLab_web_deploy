@@ -126,7 +126,7 @@
                 acct_no_renewal: '€5 <small class="vat-note">+TVA</small> for one month — no automatic renewal',
                 f_product: 'Product', f_resources: 'Resources', f_contact: 'Contact',
                 f_method: 'Methodology', f_docs: 'Documentation', f_papers: 'Research Papers', f_qgis: 'QGIS Project',
-                f_about: 'About Us', f_partner: 'contact@detectlab.ro', f_press: 'Press',
+                f_about: 'About Us', f_partner: '{{contact_email}}', f_press: 'Press',
                 get_app_label: 'Mobile App',
                 get_app_title: 'Get the <span class="hl">DetectLab</span> App',
                 get_app_desc: 'Install the application on your mobile device for quick access to the prediction model.',
@@ -147,7 +147,7 @@
                 pwa_help_step_manual_3: 'If that option is missing, install from Chrome instead — button below.',
                 ios_modal_title: 'Install DetectLab on iPhone / iPad',
                 ios_modal_desc: 'The iOS app installs straight from Safari, no App Store needed. Watch the video and follow the steps below on your phone.',
-                ios_modal_step_1: 'Open <strong>detectlab.ro</strong> in <strong>Safari</strong> on your iPhone or iPad.',
+                ios_modal_step_1: 'Open <strong>{{site_domain}}</strong> in <strong>Safari</strong> on your iPhone or iPad.',
                 ios_modal_step_2: 'Tap the <strong>Share</strong> button (square with an up arrow) in the bottom bar.',
                 ios_modal_step_3: 'Scroll down and choose <strong>Add to Home Screen</strong>.',
                 ios_modal_step_4: 'Confirm with <strong>Add</strong> — DetectLab appears on your home screen and opens full screen.',
@@ -653,7 +653,7 @@
                 acct_no_renewal: '5 € <small class="vat-note">+TVA</small> pentru o lună — fără reînnoire automată',
                 f_product: 'Produs', f_resources: 'Resurse', f_contact: 'Contact',
                 f_method: 'Metodologie', f_docs: 'Documentație', f_papers: 'Articole Științifice', f_qgis: 'Proiect QGIS',
-                f_about: 'Despre Noi', f_partner: 'contact@detectlab.ro', f_press: 'Presă',
+                f_about: 'Despre Noi', f_partner: '{{contact_email}}', f_press: 'Presă',
                 get_app_label: 'Aplicație Mobilă',
                 get_app_title: 'Obține Aplicația <span class="hl">DetectLab</span>',
                 get_app_desc: 'Instalează aplicația pe dispozitivul tău mobil pentru acces rapid la modelul de predicție.',
@@ -675,7 +675,7 @@
                 pwa_help_step_manual_3: 'Dacă opțiunea lipsește, instalează din Chrome — butonul de mai jos.',
                 ios_modal_title: 'Instalează DetectLab pe iPhone / iPad',
                 ios_modal_desc: 'Aplicația iOS se instalează direct din Safari, fără App Store. Urmărește videoclipul și urmează pașii de mai jos pe telefon.',
-                ios_modal_step_1: 'Deschide <strong>detectlab.ro</strong> în <strong>Safari</strong> pe iPhone sau iPad.',
+                ios_modal_step_1: 'Deschide <strong>{{site_domain}}</strong> în <strong>Safari</strong> pe iPhone sau iPad.',
                 ios_modal_step_2: 'Apasă butonul <strong>Distribuire</strong> (pătratul cu săgeată în sus) din bara de jos.',
                 ios_modal_step_3: 'Derulează și alege <strong>Adaugă pe ecranul principal</strong>.',
                 ios_modal_step_4: 'Confirmă cu <strong>Adaugă</strong> — DetectLab apare pe ecranul principal și pornește pe tot ecranul.',
@@ -1057,14 +1057,32 @@
 
         const LANGUAGE_STORAGE_KEY = 'detectlab_lang';
 
+        function getDefaultLanguage() {
+            var configured = window.DetectLabSite && window.DetectLabSite.defaultLanguage;
+            return translations[configured] ? configured : 'ro';
+        }
+
         function getStoredLanguage() {
+            var fallback = getDefaultLanguage();
             try {
                 var stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-                return translations[stored] ? stored : 'ro';
+                return translations[stored] ? stored : fallback;
             } catch (e) {
                 // Storage can be unavailable in private/restricted WebViews.
-                return 'ro';
+                return fallback;
             }
+        }
+
+        function siteText(value) {
+            if (typeof window._dlInterpolateSiteText === 'function') {
+                return window._dlInterpolateSiteText(value);
+            }
+            // Resilient fallback if the tiny domain-config asset was blocked.
+            var host = String((window.location && window.location.hostname) || '').toLowerCase();
+            var domain = /(^|\.)detectlab\.eu$/.test(host) ? 'detectlab.eu' : 'detectlab.ro';
+            return String(value == null ? '' : value)
+                .replace(/\{\{site_domain\}\}/g, domain)
+                .replace(/\{\{contact_email\}\}/g, 'contact@' + domain);
         }
 
         let currentLang = getStoredLanguage();
@@ -1135,7 +1153,7 @@
             const T = translations[lang];
             document.querySelectorAll('.t[data-key]').forEach(el => {
                 const key = el.getAttribute('data-key');
-                if (T[key] !== undefined) el.innerHTML = T[key];
+                if (T[key] !== undefined) el.innerHTML = siteText(T[key]);
             });
             // The SEO guide has one indexable URL per language. Keep every
             // website-only navigation entry pointed at the matching version.
@@ -1159,6 +1177,9 @@
             });
             syncLanguageSelectors(lang);
             updateBillingDisplay();
+            if (typeof window._dlApplyDomainContent === 'function') {
+                window._dlApplyDomainContent();
+            }
 
             // Notifică widget-urile dinamice (ex. stratul „Bătălii / Battles")
             // să-și re-randeze conținutul în noua limbă.

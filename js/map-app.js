@@ -1229,15 +1229,15 @@
                 [42.8657855276803872, 19.9018464511967004],
                 [49.0024961993941517, 30.6713880698685237]
             ];
-            var MAP_PAN_BOUNDS = L.latLngBounds(APM_BOUNDS);
 
-            // Initialise Leaflet map inside DetectLab's existing container
+            // Initialise Leaflet map inside DetectLab's existing container.
+            // APM_BOUNDS defines only the initial Romanian view and the APM
+            // raster coverage; it must not constrain navigation. The .eu site
+            // can therefore pan freely as European regions are added.
             var map = L.map('detectlab-map', {
                 zoomControl: false,
                 minZoom: 5,
                 maxZoom: 20,
-                maxBounds: MAP_PAN_BOUNDS,
-                maxBoundsViscosity: 1.0,
                 worldCopyJump: false,
                 rotate: true,
                 touchRotate: true,
@@ -1265,25 +1265,6 @@
             if (window.DLTilePerf && window.DLTilePerf.attach) {
                 window.DLTilePerf.attach(map);
             }
-
-            // Keep the map snapped to the valid APM canvas while letting the
-            // user zoom out far enough to see it in its entirety: the minimum
-            // zoom is the level at which the whole canvas fits inside the
-            // viewport (never below 5). It must be recalculated when the map
-            // changes size (for example, when entering fullscreen or rotating
-            // a mobile device).
-            function enforceMapCanvasBounds() {
-                var canvasMinZoom = Math.max(5, map.getBoundsZoom(MAP_PAN_BOUNDS, false));
-                map.setMinZoom(canvasMinZoom);
-                if (map.getZoom() < canvasMinZoom) {
-                    map.setZoom(canvasMinZoom, { animate: false });
-                }
-                map.panInsideBounds(MAP_PAN_BOUNDS, { animate: false });
-            }
-
-            map.whenReady(enforceMapCanvasBounds);
-            map.on('resize', enforceMapCanvasBounds);
-            map.on('dragend zoomend', enforceMapCanvasBounds);
 
             var hash = new L.Hash(map);
 

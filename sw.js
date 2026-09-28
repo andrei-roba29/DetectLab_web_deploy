@@ -303,7 +303,9 @@
 //   PASSTHROUGH_HOSTS ca tile-urile WMS să nu treacă prin shell-ul cache-uit.
 // v145: LIDAR Scanner — elimină marcajele suprapuse de lângă coordonatele
 //   44.14573, 23.61337 și păstrează un singur obiectiv «fortificație».
-const CACHE_NAME = 'detectlab-v145-lidar-deduplicate-fortification';
+// v146: lansare detectlab.eu — limba implicită și datele de contact urmează
+//   domeniul (.ro / .eu), iar harta nu mai este blocată la limita României.
+const CACHE_NAME = 'detectlab-v146-eu-domain';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -318,6 +320,11 @@ const PROTECTED_SITES_CACHE_KEY = 'protected-sites';
 
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
+  // Host-aware market defaults for detectlab.ro and detectlab.eu.
+  'js/site-config.js?v=20260928-eu-domain',
+  'js/site-config.js',
+  'js/translations.js?v=20260928-eu-domain',
+  'js/archeo-report-pdf.js?v=20260928-eu-domain',
   // Report: shared potential field, exact scanner annotations, ignore option.
   'js/archeo-report.js?v=20260918-report-evidence',
   'js/archeo-report-pdf.js?v=20260918-report-evidence',

@@ -58,23 +58,24 @@ assert.ok(/<html lang="en">/.test(pages[EN_TECH]) && /<html lang="en">/.test(pag
 
 /* ── 2. canonical + hreflang pairing ──────────────────────────────────── */
 const pairs = [
-    [RO_TECH, RO_TECH, EN_TECH],
-    [EN_TECH, RO_TECH, EN_TECH],
-    [RO_PROC, RO_PROC, EN_PROC],
-    [EN_PROC, RO_PROC, EN_PROC]
+    [RO_TECH, `https://detectlab.ro/${RO_TECH}`, `https://detectlab.eu/${EN_TECH}`],
+    [EN_TECH, `https://detectlab.ro/${RO_TECH}`, `https://detectlab.eu/${EN_TECH}`],
+    [RO_PROC, `https://detectlab.ro/${RO_PROC}`, `https://detectlab.eu/${EN_PROC}`],
+    [EN_PROC, `https://detectlab.ro/${RO_PROC}`, `https://detectlab.eu/${EN_PROC}`]
 ];
 for (const [file, ro, en] of pairs) {
     const html = pages[file];
-    assert.ok(html.includes(`<link rel="canonical" href="${file}">`), `${file}: canonical points at itself`);
+    const canonical = file === RO_TECH || file === RO_PROC ? ro : en;
+    assert.ok(html.includes(`<link rel="canonical" href="${canonical}">`), `${file}: canonical points at its market domain`);
     assert.ok(html.includes(`<link rel="alternate" hreflang="ro" href="${ro}">`), `${file}: hreflang=ro → ${ro}`);
     assert.ok(html.includes(`<link rel="alternate" hreflang="en" href="${en}">`), `${file}: hreflang=en → ${en}`);
-    assert.ok(html.includes(`<link rel="alternate" hreflang="x-default" href="${ro}">`), `${file}: x-default → the Romanian page`);
+    assert.ok(html.includes(`<link rel="alternate" hreflang="x-default" href="${en}">`), `${file}: x-default → the European page`);
 }
-/* the language switcher of each page points at its counterpart */
-assert.ok(pages[RO_TECH].includes('href="technology.html" hreflang="en"'), 'RO tech page links to the EN page');
-assert.ok(pages[EN_TECH].includes('href="tehnologie.html" hreflang="ro"'), 'EN tech page links to the RO page');
-assert.ok(pages[RO_PROC].includes('href="process.html" hreflang="en"'), 'RO process page links to the EN page');
-assert.ok(pages[EN_PROC].includes('href="proces.html" hreflang="ro"'), 'EN process page links to the RO page');
+/* the language switcher of each page points at its counterpart/domain */
+assert.ok(pages[RO_TECH].includes(`href="https://detectlab.eu/${EN_TECH}" hreflang="en"`), 'RO tech page links to the EN page');
+assert.ok(pages[EN_TECH].includes(`href="https://detectlab.ro/${RO_TECH}" hreflang="ro"`), 'EN tech page links to the RO page');
+assert.ok(pages[RO_PROC].includes(`href="https://detectlab.eu/${EN_PROC}" hreflang="en"`), 'RO process page links to the EN page');
+assert.ok(pages[EN_PROC].includes(`href="https://detectlab.ro/${RO_PROC}" hreflang="ro"`), 'EN process page links to the RO page');
 
 /* ── 3. the two tabs cross-link in both languages ─────────────────────── */
 assert.ok(pages[RO_TECH].includes('href="proces.html"') && pages[RO_TECH].includes('href="tehnologie.html"'), 'RO tech page carries both RO tabs');

@@ -822,8 +822,9 @@
         pt.beginPage(tr('arch_report_sources_page_title'));
 
         pt.h2(tr('arch_report_provenance_title'));
-        [[tr('arch_report_src_apm_title'), 'https://detectlab.ro — APM 2.0 (Cloudflare R2 tiles)'],
-         ['UAT', 'https://detectlab.ro — UAT raster (Cloudflare R2 tiles) · © geo-spatial.org'],
+        var detectLabOrigin = (window.DetectLabSite && window.DetectLabSite.canonicalOrigin) || 'https://detectlab.ro';
+        [[tr('arch_report_src_apm_title'), detectLabOrigin + ' — APM 2.0 (Cloudflare R2 tiles)'],
+         ['UAT', detectLabOrigin + ' — UAT raster (Cloudflare R2 tiles) · © geo-spatial.org'],
          [tr('arch_report_src_pot_title'), 'RAN / CIMEC — https://ran.cimec.ro'],
          [tr('arch_report_src_lidar_title'), 'DetectLab LIDAR Scanner (CSV) + LIDAR RO hillshade tiles']].forEach(function (row) {
             pt.kv(row[0], row[1]);
