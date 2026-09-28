@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>DetectLab — Saving History Together</title>
+    <link rel="canonical" href="/" data-site-canonical>
+    <link rel="alternate" hreflang="ro" href="https://detectlab.ro/" data-site-hreflang="ro">
+    <link rel="alternate" hreflang="en" href="https://detectlab.eu/" data-site-hreflang="en">
+    <link rel="alternate" hreflang="x-default" href="https://detectlab.eu/" data-site-hreflang="x-default">
+    <script src="js/site-config.js?v=20260928-eu-domain"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#060E1E">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3589,14 +3594,20 @@
         // inline block, so both `translations` and `currentLang` may not exist
         // yet when a function here runs early.
         function pwaT(key, fallback) {
+            var value = fallback;
             try {
-                var lang = 'ro';
+                var lang = (window.DetectLabSite && window.DetectLabSite.defaultLanguage) || 'ro';
                 if (typeof window._currentLang === 'function') lang = window._currentLang();
                 else if (typeof currentLang !== 'undefined') lang = currentLang;
                 var dict = (typeof translations !== 'undefined') ? translations[lang] : null;
-                if (dict && dict[key] !== undefined) return dict[key];
+                if (dict && dict[key] !== undefined) value = dict[key];
             } catch (e) { /* keep the fallback text */ }
-            return fallback;
+            if (typeof window._dlInterpolateSiteText === 'function') {
+                return window._dlInterpolateSiteText(value);
+            }
+            var pwaHost = String((window.location && (window.location.hostname || window.location.host)) || '').toLowerCase();
+            var pwaDomain = /(^|\.)detectlab\.eu(?::\d+)?$/.test(pwaHost) ? 'detectlab.eu' : 'detectlab.ro';
+            return String(value).replace(/\{\{site_domain\}\}/g, pwaDomain);
         }
 
         function isAndroidUA() {
@@ -3934,7 +3945,7 @@
                 ? 'Aplicația iOS se instalează direct din Safari, fără App Store. Urmărește videoclipul și urmează pașii de mai jos pe telefon.'
                 : 'The iOS app installs straight from Safari, no App Store needed. Watch the video and follow the steps below on your phone.');
             var steps = [
-                pwaT('ios_modal_step_1', isRo ? 'Deschide <strong>detectlab.ro</strong> în <strong>Safari</strong> pe iPhone sau iPad.' : 'Open <strong>detectlab.ro</strong> in <strong>Safari</strong> on your iPhone or iPad.'),
+                pwaT('ios_modal_step_1', isRo ? 'Deschide <strong>{{site_domain}}</strong> în <strong>Safari</strong> pe iPhone sau iPad.' : 'Open <strong>{{site_domain}}</strong> in <strong>Safari</strong> on your iPhone or iPad.'),
                 pwaT('ios_modal_step_2', isRo ? 'Apasă butonul <strong>Distribuire</strong> (pătratul cu săgeată în sus) din bara de jos.' : 'Tap the <strong>Share</strong> button (square with an up arrow) in the bottom bar.'),
                 pwaT('ios_modal_step_3', isRo ? 'Derulează și alege <strong>Adaugă pe ecranul principal</strong>.' : 'Scroll down and choose <strong>Add to Home Screen</strong>.'),
                 pwaT('ios_modal_step_4', isRo ? 'Confirmă cu <strong>Adaugă</strong> — DetectLab apare pe ecranul principal și pornește pe tot ecranul.' : 'Confirm with <strong>Add</strong> — DetectLab appears on your home screen and opens full screen.')
@@ -4107,7 +4118,7 @@
                 <h4 class="t" data-key="f_contact">Contact</h4>
                 <ul>
                     <li><a href="#" class="t" data-key="f_about">About Us</a></li>
-                    <li><a href="#" class="t" data-key="f_partner">Partnerships</a></li>
+                    <li><a href="mailto:contact@detectlab.ro" class="t" data-key="f_partner" data-site-contact>contact@detectlab.ro</a></li>
                 </ul>
             </div>
         </div>
@@ -4117,7 +4128,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260926-vegfp-smx"></script>
+    <script src="js/translations.js?v=20260928-eu-domain"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -4184,7 +4195,7 @@
     <!-- Premium "Archeological Report" / "Raport arheologic": PDF writer →
          PDF layout → the analysis layer itself (this order matters). -->
     <script src="js/pdf-writer.js?v=20260827-arch-report"></script>
-    <script src="js/archeo-report-pdf.js?v=20260918-report-evidence"></script>
+    <script src="js/archeo-report-pdf.js?v=20260928-eu-domain"></script>
     <script src="js/archeo-report.js?v=20260922-distance-mirror-close"></script>
     <script src="js/tutorial.js?v=20260923-pwa-br-stack-account"></script>
 
@@ -4572,9 +4583,7 @@
                 </p>
 
                 <p>
-                    <a href="mailto:conctact@detectlab.ro">
-                        contact@detectlab.ro
-                    </a>
+                    <a href="mailto:contact@detectlab.ro" data-site-contact>contact@detectlab.ro</a>
                 </p>
           </div>
     </div>

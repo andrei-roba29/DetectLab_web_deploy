@@ -1,0 +1,15 @@
+# Both country domains serve this deployment. Keep only the www → apex
+# canonicalisation here; detectlab.eu and detectlab.ro must never redirect to
+# each other because they represent different markets.
+
+[[redirects]]
+  from = "https://www.detectlab.eu/*"
+  to = "https://detectlab.eu/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.detectlab.ro/*"
+  to = "https://detectlab.ro/:splat"
+  status = 301
+  force = true

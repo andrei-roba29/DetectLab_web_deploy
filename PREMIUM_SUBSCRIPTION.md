@@ -175,7 +175,8 @@ On **Railway** (or wherever `backend/` runs) and in `backend/.env`
 STRIPE_SECRET_KEY=sk_test_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx           # from step 5
 STRIPE_ONE_TIME_PRICE_ID=price_xxx        # from step 3 — used by new checkouts
-STRIPE_SITE_URL=https://your-frontend-host   # checkout return redirects
+FRONTEND_ORIGINS=https://detectlab.ro,https://www.detectlab.ro,https://detectlab.eu,https://www.detectlab.eu
+STRIPE_SITE_URL=https://detectlab.ro          # fallback when the request has no trusted Origin
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_anon_key           # same as js/supabase.js
 ```
@@ -185,9 +186,12 @@ is still read as a fallback when `STRIPE_ONE_TIME_PRICE_ID` is unset, so an
 older deployment keeps working, but new deployments should set only
 `STRIPE_ONE_TIME_PRICE_ID`.
 
-`STRIPE_SITE_URL` is the public origin of the frontend (e.g. your GitHub
-Pages URL). If left empty, the backend falls back to the request's
-`Origin` header — fine for local testing.
+`FRONTEND_ORIGINS` is the explicit allowlist of public frontend origins. When
+checkout starts from one of them, Stripe returns the customer to that same
+origin, so `.ro` and `.eu` never cross after payment. `STRIPE_SITE_URL` is a
+legacy/fallback origin for requests that have no recognised `Origin` header;
+an untrusted header is never used as a redirect target. Localhost origins are
+accepted only when `NODE_ENV` is not `production`.
 
 ### 5. Configure the webhook
 - **Production:** Stripe Dashboard → **Developers → Webhooks → Add

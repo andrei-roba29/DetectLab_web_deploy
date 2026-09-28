@@ -8,10 +8,28 @@ function required(name) {
   return value;
 }
 
+function commaSeparated(value, fallback = []) {
+  const entries = String(value || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return entries.length ? entries : fallback;
+}
+
 export const env = {
   port: Number(process.env.PORT || 3000),
   nodeEnv: process.env.NODE_ENV || 'development',
   logLevel: process.env.LOG_LEVEL || 'info',
+
+  // Public frontend origins allowed to become post-payment return targets.
+  // Both country domains share this API; keep this list explicit so a forged
+  // Origin header can never send a customer to an unrelated site.
+  frontendOrigins: commaSeparated(process.env.FRONTEND_ORIGINS, [
+    'https://detectlab.ro',
+    'https://www.detectlab.ro',
+    'https://detectlab.eu',
+    'https://www.detectlab.eu',
+  ]),
 
   databaseUrl: required('DATABASE_URL'),
   pgSsl: process.env.PGSSL === 'true',
