@@ -73,9 +73,12 @@ Observații:
 - Nu include `https://` și nu adăuga `/` la finalul targetului.
 - Șterge eventualele înregistrări A/AAAA/CNAME de parking care au același nume.
 - Nu crea simultan CNAME și A pentru `@`.
-- Lasă înregistrările `DNS only` cel puțin până când Netlify validează DNS-ul și
-  emite certificatul TLS. Netlify oferă deja CDN; proxy-ul Cloudflare nu este
-  necesar pentru lansare.
+- Păstrează înregistrările web `DNS only` permanent cât timp site-ul este
+  găzduit pe Netlify. Mesajul Cloudflare „not fully protected” este un avertisment
+  generic și poate fi ignorat în această arhitectură. Netlify oferă deja CDN,
+  protecție DDoS și HTTPS și recomandă să nu fie pus proxy-ul/CDN-ul Cloudflare
+  în fața serviciului său, deoarece dubla intermediere poate afecta verificarea
+  DNS, emiterea/reînnoirea certificatului TLS și comportamentul cache-ului.
 
 ## 5. Activează HTTPS în Netlify
 
