@@ -68,6 +68,25 @@ console.log('[Test] detectlab.eu dual-domain setup...');
   assert.doesNotMatch(source, /panInsideBounds\(MAP_PAN_BOUNDS/);
   assert.doesNotMatch(source, /maxBoundsViscosity\s*:/);
   assert.match(source, /\.fitBounds\(APM_BOUNDS\)/, 'Romania remains the initial view');
+
+  // Roman Empire & DARE on .eu vs .ro:
+  assert.match(source, /function _isEuropeMarket\(\)/, 'map-app checks for .eu market');
+  assert.match(source, /if \(_isEuropeMarket\(\)\) return true;/, 'Roman features in bounds returns true for .eu (full original scale)');
+  assert.match(source, /var ccParam = isEu \? '' : '&cc=RO';/, 'DARE query does not restrict to cc=RO on .eu');
+
+  // Vegetation Fingerprint (Amprenta Vegetației) on .eu vs .ro:
+  assert.match(source, /VEGFP_EU_TILE_BOUNDS/, 'VEGFP European tile bounds defined');
+  assert.match(source, /_vegfpCurrentTileBounds\(\)/, 'Tile layers use dynamic current tile bounds based on market');
+  assert.match(source, /!_isEuropeMarket\(\) && !_vegfpTileInRomania/, 'Tile loader skips Romania mask when on .eu');
+
+  // Base Layer Satellite with Historical Years (Copernicus VHR 2012, 2018, 2021 + Esri):
+  assert.match(source, /var SAT_HIST_PERIODS\s*=\s*\{/, 'Satellite historical period mosaics are registered');
+  assert.match(source, /window\.setSatPeriod\s*=\s*function/, 'setSatPeriod is available for period switching');
+  assert.match(source, /SAT_PERIOD_ORDER\s*=\s*\[\s*'2012',\s*'2018',\s*'2021',\s*'prezent'\s*\]/, 'All historical base years (2012, 2018, 2021, 2025) are configured');
+
+  // 1960s Satellite Imagery (CORONA) European scale on .eu:
+  assert.match(source, /premiumMapCoverageBounds\.satellite60s/, 'Satellite 60s coverage bounds configured dynamically');
+  assert.match(source, /layerBounds\s*=\s*L\.latLngBounds\(\[\[34\.0,\s*15\.0\],\s*\[58\.0,\s*38\.0\]\]\)/, 'Satellite 60s uses European extent on .eu');
 }
 
 {
