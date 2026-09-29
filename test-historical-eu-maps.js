@@ -1,0 +1,101 @@
+// Test suite for European Historical Maps (CENAGIS / IH PAN)
+// Usage: node test-historical-eu-maps.js
+'use strict';
+
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+console.log('[Test] European Historical Maps (CENAGIS / IH PAN)...');
+
+// 1. Check index.html markup
+const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+assert(indexHtml.includes('id="histEuRow"'), 'index.html contains histEuRow');
+assert(indexHtml.includes('id="histEuSubLayers"'), 'index.html contains histEuSubLayers');
+assert(indexHtml.includes('id="histEuToggle"'), 'index.html contains histEuToggle');
+assert(indexHtml.includes('id="histEuExpandBtn"'), 'index.html contains histEuExpandBtn');
+assert(indexHtml.includes('js/historical-eu-maps.js'), 'index.html loads js/historical-eu-maps.js');
+console.log('  ✓ index.html structure verified');
+
+// 2. Check sw.js precache
+const swJs = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
+assert(swJs.includes('js/historical-eu-maps.js'), 'sw.js precaches js/historical-eu-maps.js');
+assert(swJs.includes('detectlab-v147-eu-cenagis-maps'), 'sw.js cache name updated');
+console.log('  ✓ sw.js precache and cache name verified');
+
+// 3. Check translations.js
+const transJs = fs.readFileSync(path.join(__dirname, 'js/translations.js'), 'utf8');
+assert(transJs.includes('layer_historical_eu'), 'translations.js contains layer_historical_eu key');
+console.log('  ✓ translations.js verified');
+
+// 4. Load and verify historical-eu-maps.js
+const euMapsCode = fs.readFileSync(path.join(__dirname, 'js/historical-eu-maps.js'), 'utf8');
+
+const mockWindow = {
+    localStorage: { getItem: () => 'ro' },
+    document: {
+        documentElement: { lang: 'ro' },
+        readyState: 'complete',
+        addEventListener: () => {},
+        getElementById: () => null,
+        querySelectorAll: () => []
+    },
+    L: {
+        CRS: { EPSG3857: {} },
+        tileLayer: {
+            wms: (url, opts) => ({
+                url,
+                opts,
+                setOpacity: () => {},
+                addTo: () => {},
+                hasLayer: () => false
+            })
+        }
+    }
+};
+
+const sandbox = {
+    window: mockWindow,
+    document: mockWindow.document,
+    L: mockWindow.L,
+    console: console,
+    alert: () => {}
+};
+
+vm.createContext(sandbox);
+vm.runInContext(euMapsCode, sandbox);
+
+const DetectLabEuMaps = sandbox.window.DetectLabEuMaps;
+assert(DetectLabEuMaps, 'DetectLabEuMaps exported to window');
+
+// Verify catalog
+const catalog = DetectLabEuMaps.catalog;
+assert.ok(Object.keys(catalog).length >= 22, 'Catalog contains all core regional/national maps + city plans');
+assert.ok(catalog.wig300k, 'Catalog contains wig300k');
+assert.strictEqual(catalog.wig300k.wms_layer, 'wig300k_3857');
+assert.strictEqual(catalog.chrzanowski.wms_layer, 'chrzanowski_3857');
+assert.strictEqual(catalog.tkkp_126k.wms_layer, 'TKKP_126k_3857');
+assert.strictEqual(catalog.kummersberg.wms_layer, 'kummersberg_3857');
+assert.strictEqual(catalog.m25k.wms_layer, 'm25k_3857');
+console.log('  ✓ Catalog metadata verified (' + Object.keys(catalog).length + ' maps)');
+
+// Verify countries
+const countries = DetectLabEuMaps.countries;
+assert.strictEqual(countries.length, 19, '19 European countries registered');
+
+const countryCodes = countries.map(c => c.code);
+['PL', 'DE', 'UA', 'BY', 'LT', 'LV', 'CZ', 'SK', 'AT', 'HU', 'RU', 'MD', 'RO', 'FR', 'BE-LU', 'NL', 'DK', 'EE', 'CH'].forEach(code => {
+    assert.ok(countryCodes.includes(code), 'Country ' + code + ' is included');
+});
+
+// Verify percentage bounds (0-100%)
+countries.forEach(c => {
+    assert.ok(c.maps.length > 0, c.code + ' has historical maps');
+    c.maps.forEach(m => {
+        assert.ok(m.pct > 0 && m.pct <= 100, c.code + ' map ' + m.id + ' pct valid: ' + m.pct);
+    });
+});
+console.log('  ✓ 19 European countries and coverage percentages verified');
+
+console.log('✅ test-historical-eu-maps.js passed all checks successfully.');

@@ -502,6 +502,8 @@
            the EN/RO options inline; the chevron rotates while open. */
         .pwa-drop-sub {
             display: none;
+            max-height: 260px;
+            overflow-y: auto;
         }
         .pwa-drop-sub.open {
             display: block;
@@ -856,8 +858,31 @@
                     <span class="lang-trigger-arrow">▼</span>
                 </div>
                 <div class="lang-menu">
-                    <div class="lang-option" id="langOptEn" onclick="pickLang('en')">EN</div>
-                    <div class="lang-option selected" id="langOptRo" onclick="pickLang('ro')">RO</div>
+                    <div class="lang-option" data-lang="en" id="langOptEn" onclick="pickLang('en')">🇬🇧 EN</div>
+                    <div class="lang-option selected" data-lang="ro" id="langOptRo" onclick="pickLang('ro')">🇷🇴 RO</div>
+                    <div class="lang-option" data-lang="de" id="langOptDe" onclick="pickLang('de')">🇩🇪 DE</div>
+                    <div class="lang-option" data-lang="fr" id="langOptFr" onclick="pickLang('fr')">🇫🇷 FR</div>
+                    <div class="lang-option" data-lang="it" id="langOptIt" onclick="pickLang('it')">🇮🇹 IT</div>
+                    <div class="lang-option" data-lang="es" id="langOptEs" onclick="pickLang('es')">🇪🇸 ES</div>
+                    <div class="lang-option" data-lang="pl" id="langOptPl" onclick="pickLang('pl')">🇵🇱 PL</div>
+                    <div class="lang-option" data-lang="uk" id="langOptUk" onclick="pickLang('uk')">🇺🇦 UK</div>
+                    <div class="lang-option" data-lang="hu" id="langOptHu" onclick="pickLang('hu')">🇭🇺 HU</div>
+                    <div class="lang-option" data-lang="cs" id="langOptCs" onclick="pickLang('cs')">🇨🇿 CS</div>
+                    <div class="lang-option" data-lang="sk" id="langOptSk" onclick="pickLang('sk')">🇸🇰 SK</div>
+                    <div class="lang-option" data-lang="nl" id="langOptNl" onclick="pickLang('nl')">🇳🇱 NL</div>
+                    <div class="lang-option" data-lang="bg" id="langOptBg" onclick="pickLang('bg')">🇧🇬 BG</div>
+                    <div class="lang-option" data-lang="el" id="langOptEl" onclick="pickLang('el')">🇬🇷 EL</div>
+                    <div class="lang-option" data-lang="pt" id="langOptPt" onclick="pickLang('pt')">🇵🇹 PT</div>
+                    <div class="lang-option" data-lang="da" id="langOptDa" onclick="pickLang('da')">🇩🇰 DA</div>
+                    <div class="lang-option" data-lang="sv" id="langOptSv" onclick="pickLang('sv')">🇸🇪 SV</div>
+                    <div class="lang-option" data-lang="no" id="langOptNo" onclick="pickLang('no')">🇳🇴 NO</div>
+                    <div class="lang-option" data-lang="fi" id="langOptFi" onclick="pickLang('fi')">🇫🇮 FI</div>
+                    <div class="lang-option" data-lang="et" id="langOptEt" onclick="pickLang('et')">🇪🇪 ET</div>
+                    <div class="lang-option" data-lang="lv" id="langOptLv" onclick="pickLang('lv')">🇱🇻 LV</div>
+                    <div class="lang-option" data-lang="lt" id="langOptLt" onclick="pickLang('lt')">🇱🇹 LT</div>
+                    <div class="lang-option" data-lang="hr" id="langOptHr" onclick="pickLang('hr')">🇭🇷 HR</div>
+                    <div class="lang-option" data-lang="sr" id="langOptSr" onclick="pickLang('sr')">🇷🇸 SR</div>
+                    <div class="lang-option" data-lang="sl" id="langOptSl" onclick="pickLang('sl')">🇸🇮 SL</div>
                 </div>
             </div>
             <!-- User pill (shown when logged in) -->
@@ -949,8 +974,31 @@
                     <span class="pwa-sub-chev" aria-hidden="true">▸</span>
                 </button>
                 <div class="pwa-drop-sub" id="pwaLangSub" role="group" aria-label="Language options">
-                    <button class="pwa-drop-item pwa-drop-subitem" id="pwaLangOptEn" onclick="pwaPickLang('en')">🇬🇧 English</button>
-                    <button class="pwa-drop-item pwa-drop-subitem selected" id="pwaLangOptRo" onclick="pwaPickLang('ro')">🇷🇴 Română</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="en" id="pwaLangOptEn" onclick="pwaPickLang('en')">🇬🇧 English</button>
+                    <button class="pwa-drop-item pwa-drop-subitem selected" data-lang="ro" id="pwaLangOptRo" onclick="pwaPickLang('ro')">🇷🇴 Română</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="de" id="pwaLangOptDe" onclick="pwaPickLang('de')">🇩🇪 Deutsch</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="fr" id="pwaLangOptFr" onclick="pwaPickLang('fr')">🇫🇷 Français</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="it" id="pwaLangOptIt" onclick="pwaPickLang('it')">🇮🇹 Italiano</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="es" id="pwaLangOptEs" onclick="pwaPickLang('es')">🇪🇸 Español</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="pl" id="pwaLangOptPl" onclick="pwaPickLang('pl')">🇵🇱 Polski</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="uk" id="pwaLangOptUk" onclick="pwaPickLang('uk')">🇺🇦 Українська</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="hu" id="pwaLangOptHu" onclick="pwaPickLang('hu')">🇭🇺 Magyar</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="cs" id="pwaLangOptCs" onclick="pwaPickLang('cs')">🇨🇿 Čeština</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sk" id="pwaLangOptSk" onclick="pwaPickLang('sk')">🇸🇰 Slovenčina</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="nl" id="pwaLangOptNl" onclick="pwaPickLang('nl')">🇳🇱 Nederlands</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="bg" id="pwaLangOptBg" onclick="pwaPickLang('bg')">🇧🇬 Български</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="el" id="pwaLangOptEl" onclick="pwaPickLang('el')">🇬🇷 Ελληνικά</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="pt" id="pwaLangOptPt" onclick="pwaPickLang('pt')">🇵🇹 Português</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="da" id="pwaLangOptDa" onclick="pwaPickLang('da')">🇩🇰 Dansk</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sv" id="pwaLangOptSv" onclick="pwaPickLang('sv')">🇸🇪 Svenska</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="no" id="pwaLangOptNo" onclick="pwaPickLang('no')">🇳🇴 Norsk</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="fi" id="pwaLangOptFi" onclick="pwaPickLang('fi')">🇫🇮 Suomi</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="et" id="pwaLangOptEt" onclick="pwaPickLang('et')">🇪🇪 Eesti</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="lv" id="pwaLangOptLv" onclick="pwaPickLang('lv')">🇱🇻 Latviešu</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="lt" id="pwaLangOptLt" onclick="pwaPickLang('lt')">🇱🇹 Lietuvių</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="hr" id="pwaLangOptHr" onclick="pwaPickLang('hr')">🇭🇷 Hrvatski</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sr" id="pwaLangOptSr" onclick="pwaPickLang('sr')">🇷🇸 Srpski</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sl" id="pwaLangOptSl" onclick="pwaPickLang('sl')">🇸🇮 Slovenščina</button>
                 </div>
                 <button class="pwa-drop-item" id="pwaStorageItem" onclick="pwaPickStorage()" aria-pressed="false">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z" /><path d="M8 3v6h8V3M8 21v-7h8v7" /><circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" /></svg>
@@ -2780,6 +2828,168 @@
                                        oninput="setTransylvania1859MapOpacity(this.value)">
                             </div>
 
+                            <!-- Übersichtskarte von Mitteleuropa 1:300 000 (1893–1945) (CENAGIS / IH PAN) -->
+                            <div id="mitteleuropaRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
+                                        <span class="t" data-key="layer_mitteleuropa">Übersichtskarte von Mitteleuropa (1893–1945)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle Übersichtskarte von Mitteleuropa 1:300 000" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="mitteleuropaMapToggle" onchange="toggleMitteleuropaMap(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Übersichtskarte von Mitteleuropa 1:300 000','© Übersichtskarte von Mitteleuropa 1:300 000 (1893–1945) · Militärgeographisches Institut Wien & Reichsamt für Landesaufnahme Berlin · Găzduit: CENAGIS / IH PAN')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="mitteleuropaMapPct">80%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="mitteleuropaMapOpacitySlider"
+                                       min="0" max="100" value="80"
+                                       oninput="setMitteleuropaMapOpacity(this.value)">
+                            </div>
+
+                            <!-- Harta generală a Regatului Poloniei – Wojciech Chrzanowski 1859 (CENAGIS / IH PAN) -->
+                            <div id="chrzanowskiRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
+                                        <span class="t" data-key="layer_chrzanowski">Harta Wojciech Chrzanowski (1859)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle Harta Wojciech Chrzanowski 1859" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="chrzanowskiMapToggle" onchange="toggleChrzanowskiMap(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Harta Wojciech Chrzanowski 1859','© Karta Dawnej Polski – Wojciech Chrzanowski (1859; 1:300 000, gravată la Paris) · Găzduit: CENAGIS / IH PAN')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="chrzanowskiMapPct">80%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="chrzanowskiMapOpacitySlider"
+                                       min="0" max="100" value="80"
+                                       oninput="setChrzanowskiMapOpacity(this.value)">
+                            </div>
+
+                            <!-- Special-Karte von Central-Europa – Daniel Gottlob Reymann (1806–1908) (CENAGIS / IH PAN) -->
+                            <div id="reymannRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
+                                        <span class="t" data-key="layer_reymann">Harta Central-Europa – Reymann (1806–1908)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle Special-Karte von Central-Europa Reymann" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="reymannMapToggle" onchange="toggleReymannMap(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Harta Central-Europa – Reymann 1:200 000','© Reymann\'s Special-Karte von Central-Europa 1:200 000 (1806–1908; Daniel Gottlob Reymann) · Găzduit: CENAGIS / IH PAN')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="reymannMapPct">80%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="reymannMapOpacitySlider"
+                                       min="0" max="100" value="80"
+                                       oninput="setReymannMapOpacity(this.value)">
+                            </div>
+
+                            <!-- Karte des Deutschen Reiches 1:100 000 (1878–1945) (CENAGIS / IH PAN) -->
+                            <div id="kdr100kRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
+                                        <span class="t" data-key="layer_kdr100k">Karte des Deutschen Reiches (1878–1945)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle Karte des Deutschen Reiches 1:100 000" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="kdr100kMapToggle" onchange="toggleKdr100kMap(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Karte des Deutschen Reiches 1:100 000','© Karte des Deutschen Reiches 1:100 000 (1878–1945; Generalstab / Reichsamt für Landesaufnahme) · Găzduit: CENAGIS / IH PAN')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="kdr100kMapPct">80%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="kdr100kMapOpacitySlider"
+                                       min="0" max="100" value="80"
+                                       oninput="setKdr100kMapOpacity(this.value)">
+                            </div>
+
+                            <!-- Karte des Deutschen Reiches – Großblatt 1:100 000 (1914–1944) (CENAGIS / IH PAN) -->
+                            <div id="kdrGbRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
+                                        <span class="t" data-key="layer_kdr_gb">Karte des Deutschen Reiches – Großblatt (1914–1944)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle Karte des Deutschen Reiches Großblatt" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="kdrGbMapToggle" onchange="toggleKdrGbMap(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Karte des Deutschen Reiches – Großblatt 1:100 000','© Karte des Deutschen Reiches – Großblatt 1:100 000 (1914–1944) · Găzduit: CENAGIS / IH PAN')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="kdrGbMapPct">80%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="kdrGbMapOpacitySlider"
+                                       min="0" max="100" value="80"
+                                       oninput="setKdrGbMapOpacity(this.value)">
+                            </div>
+
+                            <!-- WIG 1:100 000 – Harta tactică a Poloniei (1919–1939) (CENAGIS / IH PAN) -->
+                            <div id="wig100kRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
+                                        <span class="t" data-key="layer_wig100k">Harta tactică a Poloniei – WIG 1:100k (1919–1939)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle WIG 1:100 000" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="wig100kMapToggle" onchange="toggleWig100kMap(this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px;margin-top:2px">
+                                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                        <span style="font-size:0.72rem;opacity:0.6">Opacity</span>
+                                        <span style="font-size:0.55rem;background:rgba(255,200,50,0.15);color:#ffc832;border:1px solid rgba(255,200,50,0.4);border-radius:3px;padding:1px 4px;flex-shrink:0">PREMIUM</span>
+                                    </span>
+                                    <span class="pct-wrap" style="display:flex;align-items:center;gap:5px">
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Harta tactică a Poloniei – WIG 1:100 000','© Wojskowy Instytut Geograficzny (WIG) 1:100 000 (1919–1939) · Găzduit: CENAGIS / IH PAN')" title="Layer info"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                        <span class="pct" id="wig100kMapPct">80%</span>
+                                    </span>
+                                </div>
+                                <input type="range" class="transp-slider" id="wig100kMapOpacitySlider"
+                                       min="0" max="100" value="80"
+                                       oninput="setWig100kMapOpacity(this.value)">
+                            </div>
+
                             <!-- Hartă administrativă a Galiției și Lodomeriei – 1855 (Tiled Map Service ArcGIS Online) -->
                             <div id="galicia1855Row">
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
@@ -2810,6 +3020,36 @@
                         </div><!-- /histPremiumSubLayers -->
 
                     </div><!-- /histPremium transp-layer-row -->
+
+                    <!-- Hărți Istorice Europene (CENAGIS / IH PAN) — Parent Group -->
+                    <div class="transp-layer-row" data-category="premium" id="histEuRow">
+                        <!-- Group header: master toggle -->
+                        <div class="transp-layer-label" style="margin-bottom:6px">
+                            <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+                                    <circle cx="6.5" cy="6.5" r="5.5" stroke="#c8a96e" stroke-width="0.9" />
+                                    <ellipse cx="6.5" cy="6.5" rx="2.5" ry="5.5" stroke="#c8a96e" stroke-width="0.7" fill="none" />
+                                    <line x1="1" y1="6.5" x2="12" y2="6.5" stroke="#c8a96e" stroke-width="0.7" />
+                                </svg>
+                                <span class="t" data-key="layer_historical_eu" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Hărți Istorice Europene / European Historical Maps</span>
+                            </span>
+                            <span style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
+                                <button onclick="toggleHistEuSubLayers()" id="histEuExpandBtn" title="Expand/Collapse sublayers" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:rgba(200,169,110,0.8);display:flex;align-items:center;transition:color 0.2s;" onmouseover="this.style.color='#c8a96e'" onmouseout="this.style.color='rgba(200,169,110,0.8)'">
+                                    <svg id="histEuExpandIcon" width="12" height="12" viewBox="0 0 12 12" fill="none" style="transition:transform 0.25s ease;transform:rotate(-90deg)">
+                                        <polyline points="2,4 6,8 10,4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </button>
+                                <label class="apm-toggle-switch" title="Toggle European Historical Maps group">
+                                    <input type="checkbox" id="histEuToggle" onchange="toggleHistEuLayer(this.checked)">
+                                    <span class="apm-toggle-track"></span>
+                                </label>
+                            </span>
+                        </div>
+
+                        <!-- Sub-layer switches categorized by Country (populated by historical-eu-maps.js) -->
+                        <div id="histEuSubLayers" style="margin-top:0;padding-left:6px;border-left:2px solid rgba(200,169,110,0.3);display:flex;flex-direction:column;gap:8px;overflow:hidden;transition:max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;max-height:0;opacity:0;"></div>
+
+                    </div><!-- /histEuRow -->
 
                     <!-- Amprenta Vegetației / Vegetation Fingerprint (premium) —
                          CLMS HR-VPP vegetation layers group. Substratul PPI
@@ -4181,6 +4421,7 @@
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/map-app.js?v=20260927-sat-copernicus-vhr"></script>
+    <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20260927-sat-copernicus-vhr"></script>
@@ -4675,6 +4916,83 @@
             if (legend) legend.style.display = '';
         }
 
+        var LAYER_NAME_TO_KEY = {
+            'APM Layer': 'layer_apm',
+            'Biblioteca din Babel': 'layer_babel',
+            'APM 2.0': 'layer_apm20',
+            'Satelit': 'layer_satellite',
+            'Satellite': 'layer_satellite',
+            'Localitati OSM': 'layer_osm_places',
+            'Localități OSM': 'layer_osm_places',
+            'OSM Places': 'layer_osm_places',
+            'UAT': 'layer_uat',
+            'Patrimoniu': 'layer_heritage',
+            'Heritage': 'layer_heritage',
+            'Harta Iosefina': 'layer_iosfree',
+            'Josephine Map': 'layer_iosfree',
+            'Harta Austriaca 1910': 'layer_austrian',
+            'Austrian Map 1910': 'layer_austrian',
+            'Planuri de Tragere': 'layer_firing_plans',
+            'Firing Plans': 'layer_firing_plans',
+            'Harta Sovietica 1970': 'layer_soviet',
+            'Soviet Map 1970': 'layer_soviet',
+            'LIDAR': 'layer_lidar',
+            'Imperiul Roman': 'layer_roman',
+            'Roman Empire': 'layer_roman',
+            'Harta Iosefina +': 'layer_josephine',
+            'Josephine Map +': 'layer_josephine',
+            'Bucovina 1861-1864': 'layer_bucovina',
+            'Harta Austro-Ungara 1861-1864': 'layer_austrohu',
+            'Austro-Hungarian Map 1861-1864': 'layer_austrohu',
+            'Moldova 1868': 'layer_moldova1868',
+            'Moldova II': 'layer_moldovawwii',
+            'Harta tactica poloneza 1933': 'layer_polishtactical1933',
+            'Polish tactical map 1933': 'layer_polishtactical1933',
+            'WWI': 'layer_ww1',
+            'WWII': 'layer_ww2',
+            'Moldova 1771': 'layer_moldova1771',
+            'Banat - 1769-1772': 'layer_banat',
+            'Harta Transilvaniei 1859': 'layer_transylvania1859',
+            'Transylvania Map 1859': 'layer_transylvania1859',
+            'Übersichtskarte von Mitteleuropa (1893–1945)': 'layer_mitteleuropa',
+            'Central Europe Map 1:300k (1893–1945)': 'layer_mitteleuropa',
+            'Harta Wojciech Chrzanowski 1859': 'layer_chrzanowski',
+            'Wojciech Chrzanowski Map (1859)': 'layer_chrzanowski',
+            'Harta Central-Europa – Reymann 1:200 000': 'layer_reymann',
+            'Central Europe Map – Reymann (1806–1908)': 'layer_reymann',
+            'Karte des Deutschen Reiches 1:100 000': 'layer_kdr100k',
+            'German Empire Map 1:100k (1878–1945)': 'layer_kdr100k',
+            'Karte des Deutschen Reiches – Großblatt 1:100 000': 'layer_kdr_gb',
+            'German Empire Großblatt (1914–1944)': 'layer_kdr_gb',
+            'Harta tactică a Poloniei – WIG 1:100 000': 'layer_wig100k',
+            'Polish Tactical Map – WIG 1:100k (1919–1939)': 'layer_wig100k',
+            'Hartă administrativă a Galiției și Lodomeriei – 1855': 'layer_galicia1855',
+            'Administrative Map of Galicia and Lodomeria – 1855': 'layer_galicia1855',
+            "Satellite imagery 60's": 'layer_sat60',
+            'Imagini satelitare anii 60': 'layer_sat60',
+            'Zone cu potențial arheologic': 'layer_archeo_potential',
+            'Archeological Potential Sites': 'layer_archeo_potential',
+            'Raport arheologic': 'layer_arch_report',
+            'Archeological Report': 'layer_arch_report',
+            'Bătălii / Battles': 'layer_battles',
+            'Battles': 'layer_battles',
+            'Amprenta Vegetației': 'layer_vegfp_group',
+            'Amprenta Vegetației / Vegetation Fingerprint': 'layer_vegfp_group',
+            'Vegetation Fingerprint': 'layer_vegfp_group',
+            'PPI': 'layer_vegfp_ppi',
+            'PPI — Plant Phenology Index': 'layer_vegfp_ppi',
+            'Plant Phenology Index': 'layer_vegfp_ppi',
+            'SMX': 'layer_vegfp_smx',
+            'SMX — Season Maximum value': 'layer_vegfp_smx',
+            'Season Maximum value': 'layer_vegfp_smx',
+            'SGU': 'layer_vegfp_sgu',
+            'SGU — Season Green-Up rate': 'layer_vegfp_sgu',
+            'Season Green-Up rate': 'layer_vegfp_sgu',
+            'SGD': 'layer_vegfp_sgd',
+            'SGD — Season Green-Down rate': 'layer_vegfp_sgd',
+            'Season Green-Down rate': 'layer_vegfp_sgd'
+        };
+
         // Al treilea parametru (opțional) e o descriere mai lungă, afișată sub
         // atribuire — folosită de ex. de „Zone cu potențial arheologic”, a cărei
         // explicație a fost mutată din panou aici (vezi showArcheoPotInfo()).
@@ -4682,7 +5000,11 @@
             var overlay = document.getElementById('layerInfoOverlay');
             var battlesLegend = document.getElementById('battlesLayerInfoLegend');
             if (battlesLegend) battlesLegend.style.display = 'none';
-            document.getElementById('layerInfoTitle').textContent = name;
+            var lang = (typeof window._currentLang === 'function') ? window._currentLang() : 'en';
+            var T = (typeof translations !== 'undefined' && translations[lang]) ? translations[lang] : {};
+            var key = LAYER_NAME_TO_KEY[name] || name;
+            var localizedTitle = T[key] || name;
+            document.getElementById('layerInfoTitle').textContent = localizedTitle;
             renderLayerInfoAttribution(document.getElementById('layerInfoAttribution'),
                 String(attribution == null ? '' : attribution));
             var desc = document.getElementById('layerInfoDescription');
@@ -4960,10 +5282,10 @@
                         window.setLang(lang);
                     }
                     // Update selected state (translations.js also syncs these on setLang)
-                    var optEn = document.getElementById('pwaLangOptEn');
-                    var optRo = document.getElementById('pwaLangOptRo');
-                    if (optEn) optEn.classList.toggle('selected', lang === 'en');
-                    if (optRo) optRo.classList.toggle('selected', lang === 'ro');
+                    document.querySelectorAll('#pwaLangSub .pwa-drop-subitem').forEach(function (btn) {
+                        var bLang = btn.getAttribute('data-lang') || (btn.id && btn.id.replace('pwaLangOpt', '').toLowerCase());
+                        btn.classList.toggle('selected', bLang === lang);
+                    });
                     // Close dropdown
                     closePwaDropdowns();
                 };
@@ -5151,11 +5473,11 @@
                             currentLang = localStorage.getItem('detectlab_lang');
                         } catch (e) {}
                     }
-                    if (currentLang && (currentLang === 'en' || currentLang === 'ro')) {
-                        var enOpt = document.getElementById('pwaLangOptEn');
-                        var roOpt = document.getElementById('pwaLangOptRo');
-                        if (enOpt) enOpt.classList.toggle('selected', currentLang === 'en');
-                        if (roOpt) roOpt.classList.toggle('selected', currentLang === 'ro');
+                    if (currentLang) {
+                        document.querySelectorAll('#pwaLangSub .pwa-drop-subitem').forEach(function (btn) {
+                            var bLang = btn.getAttribute('data-lang') || (btn.id && btn.id.replace('pwaLangOpt', '').toLowerCase());
+                            btn.classList.toggle('selected', bLang === currentLang);
+                        });
                     }
                 }
 

@@ -305,7 +305,9 @@
 //   44.14573, 23.61337 și păstrează un singur obiectiv «fortificație».
 // v146: lansare detectlab.eu — limba implicită și datele de contact urmează
 //   domeniul (.ro / .eu), iar harta nu mai este blocată la limita României.
-const CACHE_NAME = 'detectlab-v146-eu-domain';
+// v147: Hărți Istorice Europene (CENAGIS / IH PAN) — 22 de hărți și planuri
+//   urbane istorice categorisite pe fiecare țară europeană (Web & PWA).
+const CACHE_NAME = 'detectlab-v147-eu-cenagis-maps';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -320,6 +322,9 @@ const PROTECTED_SITES_CACHE_KEY = 'protected-sites';
 
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
+  // European Historical Maps (CENAGIS / IH PAN)
+  'js/historical-eu-maps.js?v=20260929-eu-cenagis-maps',
+  'js/historical-eu-maps.js',
   // Host-aware market defaults for detectlab.ro and detectlab.eu.
   'js/site-config.js?v=20260928-eu-domain',
   'js/site-config.js',
@@ -873,7 +878,14 @@ const PASSTHROUGH_HOSTS = [
   'wikipedia.org',      // Wikipedia API
   'openstreetmap.org',  // OSM tiles / API
   'hrvpp2.vgt.vito.be', // CLMS HR-VPP vegetation WMTS (Amprenta Vegetației)
-  'discomap.eea.europa.eu' // EEA Copernicus VHR 2012/2018/2021 basemap WMS
+  'discomap.eea.europa.eu', // EEA Copernicus VHR 2012/2018/2021 basemap WMS
+  'copernicus.discomap.eea.europa.eu',
+  'image.discomap.eea.europa.eu',
+  'pastmaps.cenagis.edu.pl', // CENAGIS / IH PAN Historical Maps GeoServer WMS
+  'atlas.ihpan.edu.pl', // IH PAN PastMaps portal
+  'imperium.ahlfeldt.se', // Digital Atlas of the Roman Empire (DARE) API
+  'cast.uark.edu', // CORONA Atlas of the Near East / GeoServer (CAST UARK)
+  'geoserve.cast.uark.edu' // CORONA GeoWebCache WMS-C tile server
 ];
 
 // ── Install event: pre-cache essential static files ──

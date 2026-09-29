@@ -16,7 +16,7 @@ const sw = read('sw.js');
 const ROW_CLASS = 'layer-visible-highlight';
 const ARROW_CLASS = 'layer-group-arrow-highlight';
 const groups = ['hist', 'lidar', 'roman', 'histPremium'];
-const OUTSIDE = [[50, 32], [51, 33]];
+const OUTSIDE = [[20, -20], [21, -19]];
 const BANAT = [[45, 21], [45.1, 21.1]];
 const BUCOVINA = [[48.35, 25], [48.4, 25.1]];
 const ALL = [[40, 15], [52, 35]];
@@ -186,8 +186,8 @@ function premiumRows(h) {
 
 test('desktop: Banat highlights its leaf, not Bucovina or the whole historical group', () => {
     const h = setup({ local: new MapMock(BANAT) });
-    // WWII also covers all of Banat. Excluding it would break intersects semantics.
-    assert.deepEqual(premiumRows(h), ['banatRow', 'ww2Row']);
+    // WWII, Mitteleuropa and Reymann also cover Banat. Excluding them would break intersects semantics.
+    assert.deepEqual(premiumRows(h), ['banatRow', 'mitteleuropaRow', 'reymannRow', 'ww2Row']);
     assert.equal(highlighted(h, 'bucovinaRow'), false);
     assert.equal(highlighted(h, 'satellite60sRow'), true);
     assert.equal(highlighted(h, 'histPremiumExpandIcon', ARROW_CLASS), true);
@@ -199,8 +199,8 @@ test('PWA: _dlMap takes precedence over a stale local map and window.map', () =>
     const local = new MapMock(BANAT);
     const legacy = new MapMock(ALL);
     const h = setup({ exposed: active, local, legacy, pwa: true });
-    // Galicia 1855 coverage (up to 50.87N) also spans the Bucovina viewport.
-    assert.deepEqual(premiumRows(h), ['bucovinaRow', 'galicia1855Row', 'ww2Row']);
+    // Galicia 1855, Chrzanowski, KDR Großblatt, Mitteleuropa, Reymann, WIG 100k also span the Bucovina viewport.
+    assert.deepEqual(premiumRows(h), ['bucovinaRow', 'chrzanowskiRow', 'galicia1855Row', 'kdrGbRow', 'mitteleuropaRow', 'reymannRow', 'wig100kRow', 'ww2Row']);
     assert.equal(active.reads, 1);
     assert.equal(local.reads + legacy.reads, 0);
     assert.equal(highlighted(h, 'histPremiumExpandIcon', ARROW_CLASS), true);
@@ -340,7 +340,7 @@ test('all real historical, LIDAR and Roman rows resolve in the shared PWA panel'
             }
             return false;
         }));
-    assert.equal(leafRows.length, 55, '4 historical + 11 LIDAR + 28 Roman + 12 premium rows');
+    assert.equal(leafRows.length, 61, '4 historical + 11 LIDAR + 28 Roman + 18 premium rows');
     // These optional Roman definitions have no row in this deployment.
     assert.equal(h.row('roman_shade_herod'), null);
     assert.equal(h.row('roman_shade_hasmonean'), null);

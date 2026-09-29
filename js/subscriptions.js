@@ -693,6 +693,13 @@
         'toggleSatellite60sMap',     // standalone premium layer (CORONA 60's)
         'toggleTransylvania1859Map', // Harta Transilvaniei 1859 (ArcGIS tiles)
         'toggleGalicia1855Map',      // Galiția și Lodomeria 1855 (ArcGIS tiles)
+        'toggleMitteleuropaMap',     // Übersichtskarte von Mitteleuropa (CENAGIS WMS)
+        'toggleChrzanowskiMap',      // Harta Wojciech Chrzanowski 1859 (CENAGIS WMS)
+        'toggleReymannMap',          // Harta Central-Europa – Reymann (CENAGIS WMS)
+        'toggleKdr100kMap',          // Karte des Deutschen Reiches 1:100k (CENAGIS WMS)
+        'toggleKdrGbMap',            // Karte des Deutschen Reiches Großblatt (CENAGIS WMS)
+        'toggleWig100kMap',          // Harta tactică a Poloniei – WIG 1:100k (CENAGIS WMS)
+        'toggleHistEuLayer',         // European Historical Maps (master group)
         'toggleVegfpLayer',          // Amprenta Vegetației (master premium group)
         'toggleVegfpPpiLayer',       // Amprenta Vegetației — substratul PPI
         'toggleVegfpSmxLayer',       // Amprenta Vegetației — substratul SMX (VPP MAXV)

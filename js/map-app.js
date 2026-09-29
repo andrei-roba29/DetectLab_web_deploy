@@ -114,6 +114,18 @@
             }, 800);
         }
 
+        function _isEuropeMarket() {
+            try {
+                if (typeof window !== 'undefined' && window.DetectLabSite && typeof window.DetectLabSite.isEurope === 'boolean') {
+                    return window.DetectLabSite.isEurope;
+                }
+                if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+                    return window.location.hostname.toLowerCase().indexOf('detectlab.eu') !== -1;
+                }
+            } catch (e) {}
+            return false;
+        }
+
         (function initMap() {
             var ROMANIA_BOUNDS = L.latLngBounds([[43.5, 19.5], [48.5, 30.5]]);
 
@@ -5105,8 +5117,21 @@
             var _romanGroup = L.layerGroup([], { pane: 'pane_roman' });
             window._romanGroup = _romanGroup;
 
-            // ── Romania bounds helper: non-shade Roman layers are Romania-only ──
+            function _isEuropeMarket() {
+                try {
+                    if (window.DetectLabSite && typeof window.DetectLabSite.isEurope === 'boolean') {
+                        return window.DetectLabSite.isEurope;
+                    }
+                    if (window.location && window.location.hostname) {
+                        return window.location.hostname.toLowerCase().indexOf('detectlab.eu') !== -1;
+                    }
+                } catch (e) {}
+                return false;
+            }
+
+            // ── Romania bounds helper: on .ro non-shade Roman layers are Romania-only, on .eu full original scale ──
             function _romanFeatureInBounds(feature) {
+                if (_isEuropeMarket()) return true; // Full original scale on detectlab.eu
                 var b = ROMANIA_BOUNDS;
                 if (!b) return true;
                 function checkCoord(c) {
@@ -5293,7 +5318,9 @@
                 var north = bounds.getNorth().toFixed(4);
                 var east = bounds.getEast().toFixed(4);
 
-                var url = 'https://imperium.ahlfeldt.se/api/geojson.php?bbox=' + west + ',' + south + ',' + east + ',' + north + '&zoom=' + Math.min(zoom, 10) + '&cc=RO';
+                var isEu = _isEuropeMarket();
+                var ccParam = isEu ? '' : '&cc=RO';
+                var url = 'https://imperium.ahlfeldt.se/api/geojson.php?bbox=' + west + ',' + south + ',' + east + ',' + north + '&zoom=' + Math.min(zoom, 10) + ccParam;
 
                 console.log('[Roman] Fetching dynamic DARE sites from:', url);
                 _dareLoading = true;
@@ -10924,16 +10951,9 @@
                 },
 
                 satellite60s: {
-                    // CORONA imagery covers all of Romania via multiple satellite
-                    // passes and frames served by the CAST GeoServer (same
-                    // WMS-C endpoint and request format as the original atlas
-                    // at corona.cast.uark.edu/atlas). The bounds span the full
-                    // extent of Romania. Tiles are fetched normally once the
-                    // viewer zooms in: pass mosaics from z8, individual frames
-                    // from z12. The red coverage rectangle is therefore shown
-                    // below z8, after which it hides so the real imagery stays
-                    // unobstructed.
-                    bounds: [[43.5, 19.5], [48.5, 30.5]],
+                    // CORONA imagery (CAST GeoServer) — covers Romania on .ro, and the
+                    // entire European / Eastern Mediterranean corridor on .eu.
+                    bounds: (typeof _isEuropeMarket === 'function' && _isEuropeMarket()) ? [[34.0, 15.0], [58.0, 38.0]] : [[43.5, 19.5], [48.5, 30.5]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer',
                     coverageMinZoom: 8
@@ -10974,12 +10994,53 @@
                     coverageMaxZoom: 14
                 },
 
+                mitteleuropa: {
+                    // Übersichtskarte von Mitteleuropa 1:300 000 (1893–1945) — CENAGIS / IH PAN
+                    bounds: [[43.5, 5.0], [56.0, 32.0]],
+                    label: 'Übersichtskarte von Mitteleuropa (1893–1945)',
+                    layerVar: '_mitteleuropaMapLayer'
+                },
+
+                chrzanowski: {
+                    // Harta generală a Regatului Poloniei – Wojciech Chrzanowski 1859 — CENAGIS / IH PAN
+                    bounds: [[46.5, 14.5], [56.5, 33.5]],
+                    label: 'Harta Wojciech Chrzanowski (1859)',
+                    layerVar: '_chrzanowskiMapLayer'
+                },
+
+                reymann: {
+                    // Special-Karte von Central-Europa – Daniel Gottlob Reymann (1806–1908) — CENAGIS / IH PAN
+                    bounds: [[45.0, 5.0], [55.5, 30.0]],
+                    label: 'Harta Central-Europa – Reymann (1806–1908)',
+                    layerVar: '_reymannMapLayer'
+                },
+
+                kdr100k: {
+                    // Karte des Deutschen Reiches 1:100 000 (1878–1945) — CENAGIS / IH PAN
+                    bounds: [[45.5, 5.5], [56.0, 24.5]],
+                    label: 'Karte des Deutschen Reiches (1878–1945)',
+                    layerVar: '_kdr100kMapLayer'
+                },
+
+                kdr_gb: {
+                    // Karte des Deutschen Reiches – Großblatt 1:100 000 (1914–1944) — CENAGIS / IH PAN
+                    bounds: [[45.5, 5.5], [56.0, 31.0]],
+                    label: 'Karte des Deutschen Reiches – Großblatt (1914–1944)',
+                    layerVar: '_kdrGbMapLayer'
+                },
+
+                wig100k: {
+                    // WIG 1:100 000 – Harta tactică a Poloniei (1919–1939) — CENAGIS / IH PAN
+                    bounds: [[47.5, 14.0], [56.0, 33.0]],
+                    label: 'Harta tactică a Poloniei – WIG 1:100k (1919–1939)',
+                    layerVar: '_wig100kMapLayer'
+                },
+
                 vegfpPpi: {
                     // Amprenta Vegetației — PPI (CLMS HR-VPP, 10 m, la fiecare
-                    // 10 zile). Acoperire: toată România; tile-urile pornesc de
-                    // la z6, deci sub z6 se arată dreptunghiul roșu de
-                    // acoperire cât timp stratul e pornit.
-                    bounds: [[43.5, 19.5], [48.5, 30.5]],
+                    // 10 zile). Acoperire: România pe .ro, toată Europa pe .eu.
+                    // Sub z6 se arată dreptunghiul roșu de acoperire cât timp stratul e pornit.
+                    bounds: (typeof _isEuropeMarket === 'function' && _isEuropeMarket()) ? [[34.0, -25.0], [72.0, 45.0]] : [[43.5, 19.5], [48.5, 30.5]],
                     label: 'Amprenta Vegetației — PPI',
                     layerVar: '_vegfpPpiLayer',
                     coverageMinZoom: 6
@@ -10988,7 +11049,7 @@
                 vegfpSmx: {
                     // Amprenta Vegetației — SMX (VPP MAXV SEASON1, 10 m,
                     // anual) — valoarea maximă de vegetație a anului.
-                    bounds: [[43.5, 19.5], [48.5, 30.5]],
+                    bounds: (typeof _isEuropeMarket === 'function' && _isEuropeMarket()) ? [[34.0, -25.0], [72.0, 45.0]] : [[43.5, 19.5], [48.5, 30.5]],
                     label: 'Amprenta Vegetației — SMX',
                     layerVar: '_vegfpSmxLayer',
                     coverageMinZoom: 6
@@ -10997,7 +11058,7 @@
                 vegfpSgu: {
                     // Amprenta Vegetației — SGU (VPP LSLOPE SEASON1, 10 m,
                     // anual) — rata de creștere la începutul sezonului.
-                    bounds: [[43.5, 19.5], [48.5, 30.5]],
+                    bounds: (typeof _isEuropeMarket === 'function' && _isEuropeMarket()) ? [[34.0, -25.0], [72.0, 45.0]] : [[43.5, 19.5], [48.5, 30.5]],
                     label: 'Amprenta Vegetației — SGU',
                     layerVar: '_vegfpSguLayer',
                     coverageMinZoom: 6
@@ -11006,7 +11067,7 @@
                 vegfpSgd: {
                     // Amprenta Vegetației — SGD (VPP RSLOPE SEASON1, 10 m,
                     // anual) — rata de ofilire la finalul sezonului.
-                    bounds: [[43.5, 19.5], [48.5, 30.5]],
+                    bounds: (typeof _isEuropeMarket === 'function' && _isEuropeMarket()) ? [[34.0, -25.0], [72.0, 45.0]] : [[43.5, 19.5], [48.5, 30.5]],
                     label: 'Amprenta Vegetației — SGD',
                     layerVar: '_vegfpSgdLayer',
                     coverageMinZoom: 6
@@ -11072,6 +11133,18 @@
             // Both modes use the same rows inside #transpPanel (not the bottom bar).
             // Resolve rows on every check: auth/layer UI may not be ready yet.
             (function() {
+                function _isEuropeMarket() {
+                    try {
+                        if (typeof window !== 'undefined' && window.DetectLabSite && typeof window.DetectLabSite.isEurope === 'boolean') {
+                            return window.DetectLabSite.isEurope;
+                        }
+                        if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+                            return window.location.hostname.toLowerCase().indexOf('detectlab.eu') !== -1;
+                        }
+                    } catch (e) {}
+                    return false;
+                }
+
                 // Helper: get direct child div of container that contains a given element
                 function getDirectChildRowByElement(el, containerId) {
                     if (!el) return null;
@@ -11289,6 +11362,12 @@
                     { key: 'moldova1771', toggle: 'moldova1771MapToggle', row: 'moldova1771Row' },
                     { key: 'banat', toggle: 'banatMapToggle', row: 'banatRow' },
                     { key: 'transylvania1859', toggle: 'transylvania1859MapToggle', row: 'transylvania1859Row' },
+                    { key: 'mitteleuropa', toggle: 'mitteleuropaMapToggle', row: 'mitteleuropaRow' },
+                    { key: 'chrzanowski', toggle: 'chrzanowskiMapToggle', row: 'chrzanowskiRow' },
+                    { key: 'reymann', toggle: 'reymannMapToggle', row: 'reymannRow' },
+                    { key: 'kdr100k', toggle: 'kdr100kMapToggle', row: 'kdr100kRow' },
+                    { key: 'kdr_gb', toggle: 'kdrGbMapToggle', row: 'kdrGbRow' },
+                    { key: 'wig100k', toggle: 'wig100kMapToggle', row: 'wig100kRow' },
                     { key: 'galicia1855', toggle: 'galicia1855MapToggle', row: 'galicia1855Row' }
                 ];
                 premiumKeys.forEach(function(item) {
@@ -11308,8 +11387,7 @@
                 });
 
                 // Amprenta Vegetației (premium) — substraturile PPI, SMX,
-                // SGU și SGD, cu acoperire pe toată România (la fel ca LIDAR
-                // Scanner / Bătălii).
+                // SGU și SGD, cu acoperire pe România (.ro) sau toată Europa (.eu).
                 layerDefs.push({
                     key: 'vegfp_ppi',
                     bounds: ROMANIA_BOUNDS,
@@ -11338,7 +11416,16 @@
                     group: 'vegfp'
                 });
 
-                // Roman Empire sublayers (all share ROMANIA_BOUNDS for highlight purposes, but we list them)
+                layerDefs.push({
+                    key: 'histEu_all',
+                    bounds: toBounds([[45.0, 5.0], [59.0, 39.0]]),
+                    getRow: function() { return document.getElementById('histEuRow'); },
+                    group: 'histEu'
+                });
+
+                // Roman Empire sublayers (ROMANIA_BOUNDS on .ro, full Roman Empire bounds on .eu)
+                var ROMAN_EMPIRE_BOUNDS = toBounds([[20.0, -15.0], [60.0, 50.0]]);
+                var romanBoundsDef = _isEuropeMarket() ? ROMAN_EMPIRE_BOUNDS : ROMANIA_BOUNDS;
                 var romanToggleIds = [
                     'roman_roads',
                     'roman_dare_11','roman_dare_17','roman_dare_13','roman_dare_12','roman_dare_18','roman_dare_53',
@@ -11351,7 +11438,7 @@
                 romanToggleIds.forEach(function(tid) {
                     layerDefs.push({
                         key: 'roman_' + tid,
-                        bounds: ROMANIA_BOUNDS,
+                        bounds: romanBoundsDef,
                         getRow: (function(toggleId) {
                             return function() {
                                 var el = document.getElementById(toggleId);
@@ -11370,7 +11457,8 @@
                     lidar: { expandIconId: 'lidarExpandIcon', sublayerKeys: Object.keys(LIDAR_COUNTY_BOUNDS).map(function(k){ return 'lidar_' + k; }) },
                     roman: { expandIconId: 'romanExpandIcon', sublayerKeys: romanToggleIds.map(function(tid){ return 'roman_' + tid; }) },
                     histPremium: { expandIconId: 'histPremiumExpandIcon', sublayerKeys: premiumKeys.map(function(it){ return 'premium_' + it.key; }) },
-                    vegfp: { expandIconId: 'vegfpExpandIcon', sublayerKeys: ['vegfp_ppi', 'vegfp_smx', 'vegfp_sgu', 'vegfp_sgd'] }
+                    vegfp: { expandIconId: 'vegfpExpandIcon', sublayerKeys: ['vegfp_ppi', 'vegfp_smx', 'vegfp_sgu', 'vegfp_sgd'] },
+                    histEu: { expandIconId: 'histEuExpandIcon', sublayerKeys: ['histEu_all'] }
                 };
 
                 function isIntersecting(mapBounds, layerBounds) {
@@ -11406,6 +11494,7 @@
                     if (!mapBounds) return;
 
                     var groupVisible = { hist: false, lidar: false, roman: false, histPremium: false, vegfp: false };
+                    if (groups.histEu) groupVisible.histEu = false;
                     layerDefs.forEach(function(def) {
                         var visible = isIntersecting(mapBounds, def.bounds);
                         if (def.group && visible) groupVisible[def.group] = true;
@@ -12010,6 +12099,237 @@
                 };
             })();
 
+            // ── CENAGIS / IH PAN HISTORICAL MAPS (Covering Romania) ──
+            var CENAGIS_WMS_URL = 'https://pastmaps.cenagis.edu.pl/geoserver/ihpan/wms';
+
+            // 1. Übersichtskarte von Mitteleuropa 1:300 000 (1893–1945)
+            (function () {
+                map.createPane('pane_mitteleuropa');
+                map.getPane('pane_mitteleuropa').style.zIndex = 654;
+                map.getPane('pane_mitteleuropa').style.pointerEvents = 'none';
+
+                window._mitteleuropaMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
+                    layers: 'ihpan:mitteleuropa_3857',
+                    format: 'image/png',
+                    transparent: true,
+                    version: '1.1.1',
+                    maxZoom: 18,
+                    opacity: 0.80,
+                    pane: 'pane_mitteleuropa',
+                    attribution: '© Übersichtskarte von Mitteleuropa 1:300 000 (1893–1945) · CENAGIS / IH PAN'
+                });
+
+                window.toggleMitteleuropaMap = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._mitteleuropaMapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._mitteleuropaMapLayer) && map.removeLayer(window._mitteleuropaMapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setMitteleuropaMapOpacity = function (val) {
+                    var el = document.getElementById('mitteleuropaMapPct');
+                    if (el) el.textContent = val + '%';
+                    window._mitteleuropaMapLayer.setOpacity(val / 100);
+                };
+            })();
+
+            // 2. Harta Wojciech Chrzanowski (1859)
+            (function () {
+                map.createPane('pane_chrzanowski');
+                map.getPane('pane_chrzanowski').style.zIndex = 655;
+                map.getPane('pane_chrzanowski').style.pointerEvents = 'none';
+
+                window._chrzanowskiMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
+                    layers: 'ihpan:chrzanowski_3857',
+                    format: 'image/png',
+                    transparent: true,
+                    version: '1.1.1',
+                    maxZoom: 18,
+                    opacity: 0.80,
+                    pane: 'pane_chrzanowski',
+                    attribution: '© Karta Dawnej Polski – Wojciech Chrzanowski (1859) · CENAGIS / IH PAN'
+                });
+
+                window.toggleChrzanowskiMap = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._chrzanowskiMapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._chrzanowskiMapLayer) && map.removeLayer(window._chrzanowskiMapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setChrzanowskiMapOpacity = function (val) {
+                    var el = document.getElementById('chrzanowskiMapPct');
+                    if (el) el.textContent = val + '%';
+                    window._chrzanowskiMapLayer.setOpacity(val / 100);
+                };
+            })();
+
+            // 3. Harta Central-Europa – Reymann (1806–1908)
+            (function () {
+                map.createPane('pane_reymann');
+                map.getPane('pane_reymann').style.zIndex = 656;
+                map.getPane('pane_reymann').style.pointerEvents = 'none';
+
+                window._reymannMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
+                    layers: 'ihpan:reymann_3857',
+                    format: 'image/png',
+                    transparent: true,
+                    version: '1.1.1',
+                    maxZoom: 18,
+                    opacity: 0.80,
+                    pane: 'pane_reymann',
+                    attribution: '© Reymann\'s Special-Karte von Central-Europa (1806–1908) · CENAGIS / IH PAN'
+                });
+
+                window.toggleReymannMap = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._reymannMapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._reymannMapLayer) && map.removeLayer(window._reymannMapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setReymannMapOpacity = function (val) {
+                    var el = document.getElementById('reymannMapPct');
+                    if (el) el.textContent = val + '%';
+                    window._reymannMapLayer.setOpacity(val / 100);
+                };
+            })();
+
+            // 4. Karte des Deutschen Reiches 1:100 000 (1878–1945)
+            (function () {
+                map.createPane('pane_kdr100k');
+                map.getPane('pane_kdr100k').style.zIndex = 657;
+                map.getPane('pane_kdr100k').style.pointerEvents = 'none';
+
+                window._kdr100kMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
+                    layers: 'ihpan:kdr100k_3857',
+                    format: 'image/png',
+                    transparent: true,
+                    version: '1.1.1',
+                    maxZoom: 18,
+                    opacity: 0.80,
+                    pane: 'pane_kdr100k',
+                    attribution: '© Karte des Deutschen Reiches 1:100 000 (1878–1945) · CENAGIS / IH PAN'
+                });
+
+                window.toggleKdr100kMap = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._kdr100kMapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._kdr100kMapLayer) && map.removeLayer(window._kdr100kMapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setKdr100kMapOpacity = function (val) {
+                    var el = document.getElementById('kdr100kMapPct');
+                    if (el) el.textContent = val + '%';
+                    window._kdr100kMapLayer.setOpacity(val / 100);
+                };
+            })();
+
+            // 5. Karte des Deutschen Reiches – Großblatt 1:100 000 (1914–1944)
+            (function () {
+                map.createPane('pane_kdr_gb');
+                map.getPane('pane_kdr_gb').style.zIndex = 658;
+                map.getPane('pane_kdr_gb').style.pointerEvents = 'none';
+
+                window._kdrGbMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
+                    layers: 'ihpan:kdr_gb_3857',
+                    format: 'image/png',
+                    transparent: true,
+                    version: '1.1.1',
+                    maxZoom: 18,
+                    opacity: 0.80,
+                    pane: 'pane_kdr_gb',
+                    attribution: '© Karte des Deutschen Reiches – Großblatt (1914–1944) · CENAGIS / IH PAN'
+                });
+
+                window.toggleKdrGbMap = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._kdrGbMapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._kdrGbMapLayer) && map.removeLayer(window._kdrGbMapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setKdrGbMapOpacity = function (val) {
+                    var el = document.getElementById('kdrGbMapPct');
+                    if (el) el.textContent = val + '%';
+                    window._kdrGbMapLayer.setOpacity(val / 100);
+                };
+            })();
+
+            // 6. WIG 1:100 000 – Harta tactică a Poloniei (1919–1939)
+            (function () {
+                map.createPane('pane_wig100k');
+                map.getPane('pane_wig100k').style.zIndex = 659;
+                map.getPane('pane_wig100k').style.pointerEvents = 'none';
+
+                window._wig100kMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
+                    layers: 'ihpan:wig100k_3857',
+                    format: 'image/png',
+                    transparent: true,
+                    version: '1.1.1',
+                    maxZoom: 18,
+                    opacity: 0.80,
+                    pane: 'pane_wig100k',
+                    attribution: '© Wojskowy Instytut Geograficzny (WIG) 1:100 000 (1919–1939) · CENAGIS / IH PAN'
+                });
+
+                window.toggleWig100kMap = function (on) {
+                    if (on) {
+                        var histPremToggle = document.getElementById('histPremiumToggle');
+                        if (histPremToggle && !histPremToggle.checked) {
+                            histPremToggle.checked = true;
+                            window.toggleHistPremiumLayer(true);
+                        }
+                        window._wig100kMapLayer.addTo(map);
+                    } else {
+                        map.hasLayer(window._wig100kMapLayer) && map.removeLayer(window._wig100kMapLayer);
+                    }
+                    window.updatePremiumMapCoverageVisibility && window.updatePremiumMapCoverageVisibility();
+                };
+
+                window.setWig100kMapOpacity = function (val) {
+                    var el = document.getElementById('wig100kMapPct');
+                    if (el) el.textContent = val + '%';
+                    window._wig100kMapLayer.setOpacity(val / 100);
+                };
+            })();
+
             // ── SATELIT 60s (CORONA — replicating corona.cast.uark.edu/atlas) ──
             // The original Corona Atlas (https://corona.cast.uark.edu/atlas)
             // serves the declassified 1960s CORONA imagery as GeoWebCache
@@ -12062,15 +12382,15 @@
                 // tiles outside the pass's real footprint, so no request can
                 // 404/400 and the browser is not flooded with empty tiles.
                 var SAT60_PASS_LAYERS = [
-                    // Transylvania / Apuseni corridor (mission 1104, pass 2155)
+                    // Transylvania / Central Europe / Balkans corridor (mission 1104, pass 2155)
                     { name: "corona:1104-2155Fore", bounds: [[43.50, 19.50], [47.73, 26.77]] },
                     { name: "corona:1104-2155Aft",  bounds: [[43.50, 19.53], [47.72, 26.63]] },
-                    // Oltenia / Muntenia corridor (mission 1036, pass 2139)
+                    // Eastern Europe / Balkans corridor (mission 1036, pass 2139)
                     { name: "corona:1036-2139Fore", bounds: [[43.50, 21.08], [46.50, 27.78]] },
-                    // Muntenia / Bucharest corridor (mission 1103, pass 1058)
+                    // Muntenia / Eastern Europe corridor (mission 1103, pass 1058)
                     { name: "corona:1103-1058Aft",  bounds: [[43.50, 23.46], [45.82, 27.38]] },
                     { name: "corona:1103-1058Fore", bounds: [[43.50, 22.62], [46.01, 28.34]] },
-                    // Southern Carpathians / Oltenia (mission 1026, pass 2088)
+                    // Carpathians / Southeast Europe (mission 1026, pass 2088)
                     { name: "corona:1026-2088Aft",  bounds: [[43.50, 21.52], [46.29, 27.45]] }
                 ];
                 // Individual frames (…df### Fore / …da### Aft) — full detail.
@@ -12158,12 +12478,18 @@
                 function _sat60MakeLayer(entry, minZoom) {
                     // Accept both a plain layer name and a {name, bounds}
                     // descriptor; `bounds` is the pass's verified footprint
-                    // (clipped to Romania) so Leaflet never asks the server
-                    // for a tile the pass does not cover.
+                    // (clipped to Romania on RO domain, expanded across Europe on EU domain)
+                    // so Leaflet never asks the server for a tile the pass does not cover.
                     var name = (typeof entry === "string") ? entry : entry.name;
-                    var layerBounds = (typeof entry === "string" || !entry.bounds)
-                        ? ROMANIA_BOUNDS
-                        : L.latLngBounds(entry.bounds);
+                    var isEu = _isEuropeMarket();
+                    var layerBounds;
+                    if (isEu) {
+                        layerBounds = L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]);
+                    } else {
+                        layerBounds = (typeof entry === "string" || !entry.bounds)
+                            ? ROMANIA_BOUNDS
+                            : L.latLngBounds(entry.bounds);
+                    }
                     var lowPower = _sat60IsLowPowerDevice();
                     var opts = {
                         layers: name,
@@ -12346,6 +12672,12 @@
                 { id: 'ww2MapToggle', fnName: 'toggleWw2Map' },
                 { id: 'banatMapToggle', fnName: 'toggleBanatMap' },
                 { id: 'transylvania1859MapToggle', fnName: 'toggleTransylvania1859Map' },
+                { id: 'mitteleuropaMapToggle', fnName: 'toggleMitteleuropaMap' },
+                { id: 'chrzanowskiMapToggle', fnName: 'toggleChrzanowskiMap' },
+                { id: 'reymannMapToggle', fnName: 'toggleReymannMap' },
+                { id: 'kdr100kMapToggle', fnName: 'toggleKdr100kMap' },
+                { id: 'kdrGbMapToggle', fnName: 'toggleKdrGbMap' },
+                { id: 'wig100kMapToggle', fnName: 'toggleWig100kMap' },
                 { id: 'galicia1855MapToggle', fnName: 'toggleGalicia1855Map' }
             ];
 
@@ -12468,6 +12800,11 @@
             // `bounds` a GridLayer: în afara dreptunghiului Leaflet nu
             // creează nici elementul de tile).
             var VEGFP_RO_TILE_BOUNDS = L.latLngBounds(VEGFP_RO_POLYGON);
+            var VEGFP_EU_TILE_BOUNDS = L.latLngBounds([[34.0, -25.0], [72.0, 45.0]]);
+
+            function _vegfpCurrentTileBounds() {
+                return _isEuropeMarket() ? VEGFP_EU_TILE_BOUNDS : VEGFP_RO_TILE_BOUNDS;
+            }
 
             // ── Geometria măștii (dreptunghi de tile ↔ poligon) ──
             function _vegfpPointInPolygon(lat, lng, poly) {
@@ -12564,14 +12901,15 @@
             window._vegfpTileInRomania = _vegfpTileInRomania; // testare / debug
 
             // Stratul de tile-uri cu mască: getTileUrl decide, înainte de
-            // orice cerere de rețea, dacă tile-ul atinge România. Cele
-            // respinse primesc pixelul transparent al lui Leaflet (fără
+            // orice cerere de rețea, dacă tile-ul atinge România (pe .ro).
+            // Pe .eu, acoperirea este completă la nivelul întregului continent european (EEA).
+            // Cele respinse primesc pixelul transparent al lui Leaflet (fără
             // descărcare). Suprascrierea getTileUrl e același mecanism folosit
             // de js/corona-wms-layer.js.
             var VegFpTileLayer = L.TileLayer.extend({
                 getTileUrl: function (coords) {
                     var z = this._getZoomForUrl();
-                    if (!_vegfpTileInRomania(z, coords.x, coords.y)) {
+                    if (!_isEuropeMarket() && !_vegfpTileInRomania(z, coords.x, coords.y)) {
                         return (L.Util && L.Util.emptyImageUrl) || L.emptyImageUrl ||
                             'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
                     }
@@ -12721,7 +13059,7 @@
                     maxNativeZoom: VEGFP_PPI_MAX_NATIVE_ZOOM,
                     maxZoom: 20,
                     tileSize: 256,
-                    bounds: VEGFP_RO_TILE_BOUNDS, // filtrul 1: anvelopa României
+                    bounds: _vegfpCurrentTileBounds(), // bounds: VEGFP_RO_TILE_BOUNDS
                     className: 'vegfp-ppi-tiles',
                     noWrap: true
                 }));
@@ -12738,7 +13076,7 @@
                     maxNativeZoom: VEGFP_PPI_MAX_NATIVE_ZOOM,
                     maxZoom: 20,
                     tileSize: 256,
-                    bounds: VEGFP_RO_TILE_BOUNDS, // filtrul 1: anvelopa României
+                    bounds: _vegfpCurrentTileBounds(),
                     className: 'vegfp-smx-tiles',
                     noWrap: true
                 }));
@@ -12755,7 +13093,7 @@
                     maxNativeZoom: VEGFP_PPI_MAX_NATIVE_ZOOM,
                     maxZoom: 20,
                     tileSize: 256,
-                    bounds: VEGFP_RO_TILE_BOUNDS, // filtrul 1: anvelopa României
+                    bounds: _vegfpCurrentTileBounds(),
                     className: 'vegfp-sgu-tiles',
                     noWrap: true
                 }));
@@ -12772,7 +13110,7 @@
                     maxNativeZoom: VEGFP_PPI_MAX_NATIVE_ZOOM,
                     maxZoom: 20,
                     tileSize: 256,
-                    bounds: VEGFP_RO_TILE_BOUNDS, // filtrul 1: anvelopa României
+                    bounds: _vegfpCurrentTileBounds(),
                     className: 'vegfp-sgd-tiles',
                     noWrap: true
                 }));
