@@ -210,7 +210,6 @@
     var periodOutput;
     var periodCaptionEl;
     var periodLayerLabel;
-    var actionsEl = null;
     var mirrorSlotPool = [];
     var mirrorSlots = [];
     var activeSlot = null;
@@ -335,20 +334,35 @@
         }
     }
 
-    /* Mută butoanele stratului activ în slotul de acțiuni de sub oglinda
-       selectată și le readuce pe celelalte la locul lor din .map-wrapper. */
+    function mirrorSlotVisible(slot) {
+        try {
+            return !!(slot && slot.source && slot.control && slot.control.classList &&
+                slot.control.classList.contains('visible'));
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /* Fiecare oglindă își păstrează propriile acțiuni cât timp rămâne pe ecran.
+       „Activ” înseamnă doar ultimul slider atins (bulă, tastatură, dock-ul de
+       distanță); nu trebuie să golească slotul vecin. Altfel, după Josephine +
+       selectarea unei alte hărți istorice, cele trei butoane Iosefină erau
+       trimise înapoi în .map-wrapper și ascunse până la închiderea celui de-al
+       doilea slider. Destinațiile sunt reconstruite din TOATE mirrorSlots, nu
+       doar din activeSlot. */
     function syncLayerActions() {
         if (!control) return;
-        if (activeSlot && activeSlot.actions) actionsEl = activeSlot.actions;
-        if (!actionsEl) {
-            try { actionsEl = document.getElementById('verticalOpacityActions'); } catch (e) { actionsEl = null; }
+
+        var destinations = {};
+        for (var s = 0; s < mirrorSlots.length; s++) {
+            var slot = mirrorSlots[s];
+            if (!mirrorSlotVisible(slot) || !slot.actions) continue;
+            var slotId = slot.source.id;
+            var slotActions = LAYER_ACTION_MAP[slotId] || [];
+            for (var a = 0; a < slotActions.length; a++) {
+                destinations[slotActions[a]] = slot;
+            }
         }
-        var activeId = activeSource ? activeSource.id : null;
-        var wanted = (activeId && LAYER_ACTION_MAP[activeId]) ? LAYER_ACTION_MAP[activeId] : [];
-        var wantedSet = {};
-        for (var w = 0; w < wanted.length; w++) wantedSet[wanted[w]] = true;
-        var controlVisible = false;
-        try { controlVisible = control.classList.contains('visible'); } catch (e) { controlVisible = false; }
 
         var ids = managedActionIds();
         for (var i = 0; i < ids.length; i++) {
@@ -358,10 +372,11 @@
             if (!actionHome[ids[i]]) {
                 actionHome[ids[i]] = { parent: btn.parentElement, next: btn.nextSibling };
             }
-            var shouldDock = !!wantedSet[ids[i]] && controlVisible && !!actionsEl;
-            if (shouldDock) {
-                if (btn.parentElement !== actionsEl) {
-                    try { actionsEl.appendChild(btn); } catch (e) { /* DOM-only tests */ }
+            var destination = destinations[ids[i]];
+            var destinationActions = destination && destination.actions;
+            if (destinationActions) {
+                if (btn.parentElement !== destinationActions) {
+                    try { destinationActions.appendChild(btn); } catch (e) { /* DOM-only tests */ }
                 }
                 if (btn.classList) btn.classList.add('vo-docked');
             } else {
@@ -378,33 +393,36 @@
                 if (btn.classList) btn.classList.remove('vo-docked', 'show-tip');
             }
         }
-        /* Păstrează ordinea declarată a iconițelor sub slider. */
-        if (actionsEl) {
-            for (var k = 0; k < wanted.length; k++) {
+
+        /* Păstrează ordinea declarată separat sub fiecare slider. */
+        for (var r = 0; r < mirrorSlots.length; r++) {
+            var orderedSlot = mirrorSlots[r];
+            if (!mirrorSlotVisible(orderedSlot) || !orderedSlot.actions) continue;
+            var ordered = LAYER_ACTION_MAP[orderedSlot.source.id] || [];
+            for (var k = 0; k < ordered.length; k++) {
                 var docked = null;
-                try { docked = document.getElementById(wanted[k]); } catch (e) { docked = null; }
-                if (docked && docked.parentElement === actionsEl) {
-                    try { actionsEl.appendChild(docked); } catch (e) { /* DOM-only tests */ }
+                try { docked = document.getElementById(ordered[k]); } catch (e) { docked = null; }
+                if (docked && docked.parentElement === orderedSlot.actions) {
+                    try { orderedSlot.actions.appendChild(docked); } catch (e) { /* DOM-only tests */ }
                 }
             }
         }
-        /* Panoul „Setări detecție” se ancorează în stânga sliderului cât timp
-           stratul Josephine Map + e selectat (vezi body.vo-josephine-docked);
-           când ancora dispare (alt strat / oglindă închisă), panoul se închide
-           ca să nu rămână orfan bottom-center. Oglinda stratului poate sta în
-           oricare dintre cele două sloturi, iar ancora panoului e derivată din
-           poziția oglinzii: clasa suplimentară …-secondary mută ancora cu un
-           pas de oglindă (50px card + 14px spațiu, 46 + 10 pe mobil) spre
-           stânga, altfel panoul de 300px s-ar întinde exact peste oglinda
-           secundară și peste rândul de iconițe de sub ea. */
-        var josephineDocked = activeId === 'josephineOpacitySlider' && controlVisible;
+
+        /* Panoul „Setări detecție” urmează oglinda Josephine cât timp ACEA
+           oglindă rămâne pe ecran, chiar dacă utilizatorul atinge/selectează
+           sliderul vecin. Ancora se derivă din slotul Josephine, nu din
+           activeSlot. */
+        var josephineSource = null;
+        try { josephineSource = document.getElementById('josephineOpacitySlider'); } catch (e) { josephineSource = null; }
+        var josephineSlot = josephineSource ? slotForSource(josephineSource) : null;
+        var josephineDocked = mirrorSlotVisible(josephineSlot);
         /* O oglindă rămasă singură pe ecran stă pe ancora cea mai din dreapta
            (clasa „mirror-sole”), deci și panoul se ancorează ca pentru prima
            oglindă — fără clasa …-secondary. */
-        var josephineSole = !!(activeSlot && activeSlot.control && activeSlot.control.classList &&
-            activeSlot.control.classList.contains('mirror-sole'));
-        var josephineSecondary = josephineDocked && !josephineSole && !!activeSlot &&
-            mirrorSlotPool.length > 1 && activeSlot === mirrorSlotPool[1];
+        var josephineSole = !!(josephineSlot && josephineSlot.control && josephineSlot.control.classList &&
+            josephineSlot.control.classList.contains('mirror-sole'));
+        var josephineSecondary = josephineDocked && !josephineSole &&
+            mirrorSlotPool.length > 1 && josephineSlot === mirrorSlotPool[1];
         try {
             if (document.body && document.body.classList) {
                 document.body.classList.toggle('vo-josephine-docked', josephineDocked);
@@ -417,7 +435,7 @@
                 if (settingsPanel && settingsPanel.classList) settingsPanel.classList.remove('open');
             } catch (e) { /* DOM-only tests */ }
         }
-        /* map-app.js arată/ascunde iconițele în funcție de strat + zoom + oglinda activă. */
+        /* map-app.js arată/ascunde iconițele în funcție de strat + zoom + existența oglinzii sale. */
         refreshLayerActionVisibility();
         syncActionAriaLabels();
     }
@@ -526,19 +544,19 @@
 
     function isVerticalActiveFor(sliderId) {
         try {
-            if (!(activeSource && activeSource.id === sliderId &&
-                control && control.classList.contains('visible'))) {
-                return false;
-            }
-            /* Un slot în curs de DEMOLARE nu mai e activ: la închiderea cu
-               „×”/Escape slotul e scos din mirrorSlots ÎNAINTE ca stratul lui
-               să fie oprit (clearSlot dispatch-uiește „change” pe comutator),
-               iar modulele de analiză care verifică această funcție chiar în
-               timpul acelei închideri nu trebuie să-și mai vadă oglinda moartă
-               ca prezentă — altfel ar putea decide că a lor e ultima oglindă
-               și să închidă (și) oglinzile celorlalte straturi. */
+            /* „Activ pentru strat” înseamnă că oglinda ACELUI strat există și
+               este vizibilă, nu că este ultimul slider atins. Ambele oglinzi
+               pot rămâne simultan pe ecran; acțiunile Josephine/APM și
+               modulele de analiză trebuie să-și recunoască propriul slot chiar
+               când vecinul are focusul. */
             var source = document.getElementById(sliderId);
-            return !!(source && slotForSource(source));
+            var slot = source ? slotForSource(source) : null;
+            if (!mirrorSlotVisible(slot)) return false;
+            /* Un slot în curs de DEMOLARE nu mai apare în mirrorSlots:
+               removeMirrorSlot îl scoate ÎNAINTE ca clearSlot să oprească
+               stratul și să emită „change”, deci reintrările din acel eveniment
+               primesc false și nu ating oglinda vecină. */
+            return true;
         } catch (e) {
             return false;
         }
@@ -797,15 +815,15 @@
     function setActiveSlot(slot) {
         activeSlot = slot || null;
         if (activeSlot) {
-            /* These aliases keep the existing action-dock and tooltip code
-               focused on the slot the user most recently touched. */
+            /* These aliases keep the distance dock and tooltip code focused on
+               the slot the user most recently touched. Layer quick actions are
+               deliberately resolved for every visible slot independently. */
             control = activeSlot.control;
             verticalSlider = activeSlot.slider;
             valueOutput = activeSlot.output;
             layerLabel = activeSlot.label;
             captionEl = activeSlot.caption;
             closeButton = activeSlot.close;
-            actionsEl = activeSlot.actions || actionsEl;
             activeSource = activeSlot.source;
             activeOwner = activeSlot.owner;
             activeFormatter = activeSlot.formatter || percentageText;
@@ -1766,8 +1784,8 @@
             getActiveSliderId: function () {
                 return activeSource ? activeSource.id : null;
             },
-            /* map-app.js arată iconițele APM 2.0 / Iosefină doar când stratul
-               lor e selectat în oglinda verticală vizibilă. */
+            /* map-app.js arată iconițele APM 2.0 / Iosefină cât timp oglinda
+               propriului strat este vizibilă; focusul poate fi pe vecin. */
             isActiveFor: isVerticalActiveFor,
             refreshActions: refreshLayerActionVisibility,
             refreshDock: syncDistanceDock

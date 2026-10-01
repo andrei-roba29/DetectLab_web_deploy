@@ -722,7 +722,6 @@ Latitudine,Longitudine,Categorie
 45.9990013,23.4772156,locuinta
 46.0095168,23.538746,fortificatie
 46.0128138,23.5594135,locuinta
-46.0157032,23.4965592,anomalie necunoscuta
 46.019325,23.5178615,locuinta
 46.0221225,23.5621042,anomalie necunoscuta
 46.043922,23.5690296,locuinta
@@ -732,11 +731,7 @@ Latitudine,Longitudine,Categorie
 46.0675489,23.735975,locuinta
 46.081941,23.5682062,anomalie necunoscuta
 46.0888014,23.5804015,anomalie necunoscuta
-46.0920089,23.5484627,anomalie necunoscuta
-46.0923382,23.5436608,locuinta
-46.0981148,23.5553919,anomalie necunoscuta
 46.1197367,23.5440852,fortificatie
-46.1203643,23.5199987,anomalie necunoscuta
 46.1288585,23.4947847,castru
 46.1912943,23.6555276,anomalie necunoscuta
 46.1997112,23.6406337,locuinta
@@ -802,3 +797,8 @@ Latitudine,Longitudine,Categorie
 44.355930,26.043048,fortificatie
 46.617193,23.073051,tumul
 44.367697,23.072771,burgus
+47.421221,22.382498,tumul
+47.415761,22.381811,fortificatie
+47.419101,22.316355,tumul
+47.434673,22.309201,tumul
+47.418854,22.327974,tumul

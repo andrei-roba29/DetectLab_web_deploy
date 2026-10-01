@@ -1,15 +1,20 @@
 // Regression test — layer quick actions must render under the slider in BOTH
 // on-screen vertical mirrors (primary #verticalOpacityActions and secondary
-// #verticalOpacityActionsSecondary), never beside/overlapping it.
+// #verticalOpacityActionsSecondary), never beside/overlapping it, and must
+// remain attached to THEIR mirror when the neighbouring slider receives focus.
 //
-// Bug: the docked-icon rules in css/styles.css were scoped to
+// First bug: the docked-icon rules in css/styles.css were scoped to
 // `#verticalOpacityActions …`. When a layer (APM 2.0, Josephine Map + /
 // „Harta Iosefină Premium”) was mirrored into the SECOND slider, its buttons
 // were moved physically into #verticalOpacityActionsSecondary but no longer
 // matched any docked rule, so they fell back to their floating bottom-center
-// geometry (position:absolute; bottom:76px; left:50%; translateX(±112px)) —
-// out of the flex column, overlapping each other and off to the left of the
-// slider.
+// geometry.
+//
+// Second bug: syncLayerActions() only considered activeSource. With Josephine
+// still mirrored first, selecting another premium historical-map sublayer as
+// the second slider returned all three Josephine buttons to .map-wrapper;
+// map-app.js then hid them because isActiveFor() only recognised the focused
+// slider. They reappeared only after the second slider was closed.
 //
 // Usage: node test-vertical-opacity-actions-both-slots.js
 // (no dependencies; run `npm install jsdom` in the repo root to also get the
@@ -296,24 +301,28 @@ const actionButtons = ACTION_IDS.map(id => {
 
 const apm20Owner = new MockElement('div', 'apm20Owner', ['opacity-layer-selectable']);
 const josephineOwner = new MockElement('div', 'josephineOwner', ['opacity-layer-selectable']);
+const bucovinaOwner = new MockElement('div', 'bucovinaOwner', ['opacity-layer-selectable']);
 const lidarOwner = new MockElement('div', 'lidarOwner', ['opacity-layer-selectable']);
 const apm20 = add(range('apm20OpacitySlider', 80));
 const josephine = add(range('josephineOpacitySlider', 70));
+const bucovina = add(range('bucovinaMapOpacitySlider', 65));
 const lidarHd = add(range('lidarHdOpacitySlider', 35));
 apm20Owner.appendChild(apm20);
 josephineOwner.appendChild(josephine);
+bucovinaOwner.appendChild(bucovina);
 lidarOwner.appendChild(lidarHd);
 panel.appendChild(apm20Owner);
 panel.appendChild(josephineOwner);
+panel.appendChild(bucovinaOwner);
 panel.appendChild(lidarOwner);
-const allOwners = [apm20Owner, josephineOwner, lidarOwner];
+const allOwners = [apm20Owner, josephineOwner, bucovinaOwner, lidarOwner];
 
 const documentMock = new (class extends EventTarget {
     constructor() { super(); this.readyState = 'complete'; this.body = new MockElement('body'); }
     getElementById(id) { return byId[id] || null; }
     createElement(tag) { return new MockElement(tag); }
     querySelectorAll(selector) {
-        if (selector.indexOf('[id*="Opacity"]') !== -1) return [apm20, josephine, lidarHd];
+        if (selector.indexOf('[id*="Opacity"]') !== -1) return [apm20, josephine, bucovina, lidarHd];
         if (selector === '#transpPanel .opacity-layer-selectable') return allOwners;
         return [];
     }
@@ -351,9 +360,23 @@ const LAYER_ACTIONS = {
 const buttonById = {};
 actionButtons.forEach(btn => { buttonById[btn.id] = btn; });
 
-/* syncLayerActions() docks ONLY the buttons of the active layer and sends the
-   other layers' buttons back to .map-wrapper. */
-function assertActions(sliderId, container, label) {
+/* Mirror the visibility contract used by map-app.js: its refresh callbacks
+   consult isActiveFor(id) and set display:none/flex. This makes the regression
+   prove not only that Josephine's buttons stay in the right DOM slot, but also
+   that they remain visible while the neighbouring historical slider has focus. */
+windowMock._refreshApm20SearchHelpBtnVisibility = function () {
+    buttonById.apm20SearchHelpBtn.style.display = api.isActiveFor('apm20OpacitySlider') ? 'flex' : 'none';
+};
+windowMock._refreshIosBldBtnVisibility = function () {
+    const display = api.isActiveFor('josephineOpacitySlider') ? 'flex' : 'none';
+    LAYER_ACTIONS.josephineOpacitySlider.forEach(id => { buttonById[id].style.display = display; });
+};
+api.refreshActions();
+
+/* syncLayerActions() docks the buttons of EVERY mirrored layer in that
+   layer's own slot. Focus may move to the neighbouring slider without sending
+   the first layer's buttons back to .map-wrapper. */
+function assertLayerActions(sliderId, container, label) {
     const wanted = LAYER_ACTIONS[sliderId];
     wanted.forEach(id => {
         const btn = buttonById[id];
@@ -361,16 +384,10 @@ function assertActions(sliderId, container, label) {
             label + ': #' + id + ' must live in ' + container.id);
         assert(btn.classList.contains('vo-docked'), label + ': #' + id + ' keeps the docked hook class');
     });
-    ACTION_IDS.filter(id => wanted.indexOf(id) === -1).forEach(id => {
-        const btn = buttonById[id];
-        assert.strictEqual(btn.parentElement.id, mapWrapper.id,
-            label + ': #' + id + ' belongs to another layer and stays in .map-wrapper');
-        assert(!btn.classList.contains('vo-docked'), label + ': #' + id + ' drops the docked class');
-    });
 }
 
-function assertActionsAtHome(label) {
-    ACTION_IDS.forEach(id => {
+function assertLayerActionsAtHome(sliderId, label) {
+    LAYER_ACTIONS[sliderId].forEach(id => {
         const btn = buttonById[id];
         assert.strictEqual(btn.parentElement.id, mapWrapper.id,
             label + ': #' + id + ' must return to .map-wrapper');
@@ -378,24 +395,32 @@ function assertActionsAtHome(label) {
     });
 }
 
+function assertActionsAtHome(label) {
+    Object.keys(LAYER_ACTIONS).forEach(id => assertLayerActionsAtHome(id, label));
+}
+
 /* APM 2.0 alone → primary mirror. */
 api.select('apm20OpacitySlider');
 assert(primary.root.classList.contains('visible'), 'APM 2.0 opens the primary mirror');
-assertActions('apm20OpacitySlider', primary.actions, 'APM 2.0 in the primary mirror');
+assertLayerActions('apm20OpacitySlider', primary.actions, 'APM 2.0 in the primary mirror');
+assertLayerActionsAtHome('josephineOpacitySlider', 'Josephine is not mirrored yet');
 assert(body.classList.contains('vo-josephine-docked') === false, 'Josephine is not docked yet');
 assert(body.classList.contains('vo-josephine-docked-secondary') === false,
-    'no secondary anchor while APM 2.0 owns the actions');
+    'no secondary anchor while Josephine is absent');
 
-/* Josephine selected second → its own buttons in the SECONDARY mirror. */
+/* Josephine selected second → both layers keep buttons in their own slots. */
 api.select('josephineOpacitySlider');
 assert(secondary.root.classList.contains('visible'), 'Josephine opens the secondary mirror');
-assert.strictEqual(api.getActiveSliderId(), 'josephineOpacitySlider', 'Josephine is the active mirror');
-assertActions('josephineOpacitySlider', secondary.actions, 'Josephine in the secondary mirror');
+assert.strictEqual(api.getActiveSliderId(), 'josephineOpacitySlider', 'Josephine is the focused mirror');
+assertLayerActions('apm20OpacitySlider', primary.actions, 'APM 2.0 remains in the primary mirror');
+assertLayerActions('josephineOpacitySlider', secondary.actions, 'Josephine in the secondary mirror');
+assert(api.isActiveFor('apm20OpacitySlider'), 'APM remains recognised while Josephine has focus');
+assert(api.isActiveFor('josephineOpacitySlider'), 'Josephine is recognised in the secondary mirror');
 assert(body.classList.contains('vo-josephine-docked'), 'Josephine docks its settings panel');
 assert(body.classList.contains('vo-josephine-docked-secondary'),
     'the settings panel must follow Josephine into the secondary mirror');
 
-/* Josephine leaves the screen → buttons go home, the anchors drop. */
+/* Every mirror leaves the screen → every button goes home. */
 api.close();
 assert(!secondary.root.classList.contains('visible'), 'the secondary mirror closes');
 assertActionsAtHome('after closing every mirror');
@@ -404,18 +429,43 @@ assert(!body.classList.contains('vo-josephine-docked-secondary'), 'the secondary
 
 /* Josephine first → primary mirror, so the extra anchor must NOT be set. */
 api.select('josephineOpacitySlider');
-assertActions('josephineOpacitySlider', primary.actions, 'Josephine alone uses the primary mirror');
+assertLayerActions('josephineOpacitySlider', primary.actions, 'Josephine alone uses the primary mirror');
 assert(body.classList.contains('vo-josephine-docked'), 'Josephine docks its settings panel');
 assert(!body.classList.contains('vo-josephine-docked-secondary'),
     'the primary mirror keeps the base panel anchor');
 
-/* Selecting APM 2.0 on top of it moves the actions to the secondary mirror. */
+/* Selecting APM 2.0 in the second slot must not steal Josephine's buttons. */
 api.select('apm20OpacitySlider');
-assertActions('apm20OpacitySlider', secondary.actions, 'APM 2.0 in the secondary mirror');
-assert(!body.classList.contains('vo-josephine-docked'), 'Josephine is no longer the active layer');
-assert(!body.classList.contains('vo-josephine-docked-secondary'), 'its anchor is released with it');
+assert.strictEqual(api.getActiveSliderId(), 'apm20OpacitySlider', 'APM 2.0 receives focus');
+assertLayerActions('josephineOpacitySlider', primary.actions, 'Josephine persists in the primary mirror');
+assertLayerActions('apm20OpacitySlider', secondary.actions, 'APM 2.0 in the secondary mirror');
+assert(api.isActiveFor('josephineOpacitySlider'), 'Josephine stays recognised while APM has focus');
+assert(body.classList.contains('vo-josephine-docked'), 'Josephine keeps its panel anchor while mirrored');
+assert(!body.classList.contains('vo-josephine-docked-secondary'),
+    'Josephine owns the primary anchor, regardless of which slider has focus');
 
-console.log('OK — layer quick actions dock under the slider in both mirrors (CSS + behaviour).');
+/* Exact regression: Josephine + another premium historical-map sublayer.
+   The three Josephine actions must remain until the Josephine mirror itself
+   is removed — closing the new historical slider must not be what restores
+   them. */
+api.close();
+api.select('josephineOpacitySlider');
+api.select('bucovinaMapOpacitySlider');
+assert.strictEqual(api.getActiveSliderId(), 'bucovinaMapOpacitySlider', 'the newly selected historical map has focus');
+assertLayerActions('josephineOpacitySlider', primary.actions,
+    'Josephine actions survive selection of Bucovina 1861–1864');
+assert(api.isActiveFor('josephineOpacitySlider'), 'Josephine remains mirrored beside Bucovina');
+LAYER_ACTIONS.josephineOpacitySlider.forEach(id => {
+    assert.strictEqual(buttonById[id].style.display, 'flex',
+        '#' + id + ' remains visible while Bucovina has focus');
+});
+assert(body.classList.contains('vo-josephine-docked'), 'Josephine keeps the settings-panel anchor beside Bucovina');
+secondary.close.click();
+assert.strictEqual(api.getActiveSliderId(), 'josephineOpacitySlider', 'focus returns to Josephine after closing Bucovina');
+assertLayerActions('josephineOpacitySlider', primary.actions,
+    'Josephine actions were already present before the Bucovina slider closed');
+
+console.log('OK — each mirrored layer keeps its quick actions when the neighbouring slider receives focus.');
 
 /* ─────────── 2b. a lone mirror takes the right-most position ─────────── */
 

@@ -1,5 +1,5 @@
 /* ============================================================
-   DetectLab — Service Worker v1.4.8
+   DetectLab — Service Worker v1.4.9
    ============================================================ */
 
 // Bump this when a client-side feature or data-sync fix ships so installed
@@ -307,7 +307,11 @@
 //   domeniul (.ro / .eu), iar harta nu mai este blocată la limita României.
 // v147: Hărți Istorice Europene (CENAGIS / IH PAN) — 22 de hărți și planuri
 //   urbane istorice categorisite pe fiecare țară europeană (Web & PWA).
-const CACHE_NAME = 'detectlab-v147-eu-cenagis-maps';
+// v148: acțiunile rapide rămân legate de PROPRIA oglindă verticală. Astfel,
+//   cele trei butoane Josephine Map + nu mai dispar când un alt substrat al
+//   hărților istorice premium este adăugat în al doilea slider; ambele sloturi
+//   își păstrează independent acțiunile până la închiderea propriei oglinzi.
+const CACHE_NAME = 'detectlab-v148-persistent-layer-actions';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -854,6 +858,9 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20260927-sat-copernicus-vhr',
   'js/map-app.js?v=20260927-sat-copernicus-vhr',
   'js/vertical-opacity-control.js?v=20260927-sat-copernicus-vhr',
+  // v148: fiecare oglindă își păstrează propriile acțiuni rapide, inclusiv
+  // Josephine Map + când un alt substrat istoric premium primește focusul.
+  'js/vertical-opacity-control.js?v=20261001-persistent-layer-actions',
   'js/supabase.js?v=20260811-event-sync'
 ];
 
