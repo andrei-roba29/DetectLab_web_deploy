@@ -21,7 +21,8 @@ console.log('  ✓ index.html structure verified');
 // 2. Check sw.js precache
 const swJs = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
 assert(swJs.includes('js/historical-eu-maps.js'), 'sw.js precaches js/historical-eu-maps.js');
-assert(swJs.includes('detectlab-v147-eu-cenagis-maps'), 'sw.js cache name updated');
+const shellVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);
+assert(shellVersion >= 147, 'sw.js cache must be v147 or newer so European maps ship in installed PWAs');
 console.log('  ✓ sw.js precache and cache name verified');
 
 // 3. Check translations.js
