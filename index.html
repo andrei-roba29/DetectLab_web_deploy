@@ -8,7 +8,7 @@
     <link rel="alternate" hreflang="ro" href="https://detectlab.ro/" data-site-hreflang="ro">
     <link rel="alternate" hreflang="en" href="https://detectlab.eu/" data-site-hreflang="en">
     <link rel="alternate" hreflang="x-default" href="https://detectlab.eu/" data-site-hreflang="x-default">
-    <script src="js/site-config.js?v=20260928-eu-domain"></script>
+    <script src="js/site-config.js?v=20261001-market-isolation"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#060E1E">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -502,6 +502,10 @@
            the EN/RO options inline; the chevron rotates while open. */
         .pwa-drop-sub {
             display: none;
+        }
+        /* The long pan-European language list exists only on detectlab.eu;
+           on .ro the submenu keeps its original compact EN/RO height. */
+        html[data-market='eu'] .pwa-drop-sub {
             max-height: 260px;
             overflow-y: auto;
         }
@@ -860,29 +864,29 @@
                 <div class="lang-menu">
                     <div class="lang-option" data-lang="en" id="langOptEn" onclick="pickLang('en')">🇬🇧 EN</div>
                     <div class="lang-option selected" data-lang="ro" id="langOptRo" onclick="pickLang('ro')">🇷🇴 RO</div>
-                    <div class="lang-option" data-lang="de" id="langOptDe" onclick="pickLang('de')">🇩🇪 DE</div>
-                    <div class="lang-option" data-lang="fr" id="langOptFr" onclick="pickLang('fr')">🇫🇷 FR</div>
-                    <div class="lang-option" data-lang="it" id="langOptIt" onclick="pickLang('it')">🇮🇹 IT</div>
-                    <div class="lang-option" data-lang="es" id="langOptEs" onclick="pickLang('es')">🇪🇸 ES</div>
-                    <div class="lang-option" data-lang="pl" id="langOptPl" onclick="pickLang('pl')">🇵🇱 PL</div>
-                    <div class="lang-option" data-lang="uk" id="langOptUk" onclick="pickLang('uk')">🇺🇦 UK</div>
-                    <div class="lang-option" data-lang="hu" id="langOptHu" onclick="pickLang('hu')">🇭🇺 HU</div>
-                    <div class="lang-option" data-lang="cs" id="langOptCs" onclick="pickLang('cs')">🇨🇿 CS</div>
-                    <div class="lang-option" data-lang="sk" id="langOptSk" onclick="pickLang('sk')">🇸🇰 SK</div>
-                    <div class="lang-option" data-lang="nl" id="langOptNl" onclick="pickLang('nl')">🇳🇱 NL</div>
-                    <div class="lang-option" data-lang="bg" id="langOptBg" onclick="pickLang('bg')">🇧🇬 BG</div>
-                    <div class="lang-option" data-lang="el" id="langOptEl" onclick="pickLang('el')">🇬🇷 EL</div>
-                    <div class="lang-option" data-lang="pt" id="langOptPt" onclick="pickLang('pt')">🇵🇹 PT</div>
-                    <div class="lang-option" data-lang="da" id="langOptDa" onclick="pickLang('da')">🇩🇰 DA</div>
-                    <div class="lang-option" data-lang="sv" id="langOptSv" onclick="pickLang('sv')">🇸🇪 SV</div>
-                    <div class="lang-option" data-lang="no" id="langOptNo" onclick="pickLang('no')">🇳🇴 NO</div>
-                    <div class="lang-option" data-lang="fi" id="langOptFi" onclick="pickLang('fi')">🇫🇮 FI</div>
-                    <div class="lang-option" data-lang="et" id="langOptEt" onclick="pickLang('et')">🇪🇪 ET</div>
-                    <div class="lang-option" data-lang="lv" id="langOptLv" onclick="pickLang('lv')">🇱🇻 LV</div>
-                    <div class="lang-option" data-lang="lt" id="langOptLt" onclick="pickLang('lt')">🇱🇹 LT</div>
-                    <div class="lang-option" data-lang="hr" id="langOptHr" onclick="pickLang('hr')">🇭🇷 HR</div>
-                    <div class="lang-option" data-lang="sr" id="langOptSr" onclick="pickLang('sr')">🇷🇸 SR</div>
-                    <div class="lang-option" data-lang="sl" id="langOptSl" onclick="pickLang('sl')">🇸🇮 SL</div>
+                    <div class="lang-option" data-lang="de" data-eu-only id="langOptDe" onclick="pickLang('de')">🇩🇪 DE</div>
+                    <div class="lang-option" data-lang="fr" data-eu-only id="langOptFr" onclick="pickLang('fr')">🇫🇷 FR</div>
+                    <div class="lang-option" data-lang="it" data-eu-only id="langOptIt" onclick="pickLang('it')">🇮🇹 IT</div>
+                    <div class="lang-option" data-lang="es" data-eu-only id="langOptEs" onclick="pickLang('es')">🇪🇸 ES</div>
+                    <div class="lang-option" data-lang="pl" data-eu-only id="langOptPl" onclick="pickLang('pl')">🇵🇱 PL</div>
+                    <div class="lang-option" data-lang="uk" data-eu-only id="langOptUk" onclick="pickLang('uk')">🇺🇦 UK</div>
+                    <div class="lang-option" data-lang="hu" data-eu-only id="langOptHu" onclick="pickLang('hu')">🇭🇺 HU</div>
+                    <div class="lang-option" data-lang="cs" data-eu-only id="langOptCs" onclick="pickLang('cs')">🇨🇿 CS</div>
+                    <div class="lang-option" data-lang="sk" data-eu-only id="langOptSk" onclick="pickLang('sk')">🇸🇰 SK</div>
+                    <div class="lang-option" data-lang="nl" data-eu-only id="langOptNl" onclick="pickLang('nl')">🇳🇱 NL</div>
+                    <div class="lang-option" data-lang="bg" data-eu-only id="langOptBg" onclick="pickLang('bg')">🇧🇬 BG</div>
+                    <div class="lang-option" data-lang="el" data-eu-only id="langOptEl" onclick="pickLang('el')">🇬🇷 EL</div>
+                    <div class="lang-option" data-lang="pt" data-eu-only id="langOptPt" onclick="pickLang('pt')">🇵🇹 PT</div>
+                    <div class="lang-option" data-lang="da" data-eu-only id="langOptDa" onclick="pickLang('da')">🇩🇰 DA</div>
+                    <div class="lang-option" data-lang="sv" data-eu-only id="langOptSv" onclick="pickLang('sv')">🇸🇪 SV</div>
+                    <div class="lang-option" data-lang="no" data-eu-only id="langOptNo" onclick="pickLang('no')">🇳🇴 NO</div>
+                    <div class="lang-option" data-lang="fi" data-eu-only id="langOptFi" onclick="pickLang('fi')">🇫🇮 FI</div>
+                    <div class="lang-option" data-lang="et" data-eu-only id="langOptEt" onclick="pickLang('et')">🇪🇪 ET</div>
+                    <div class="lang-option" data-lang="lv" data-eu-only id="langOptLv" onclick="pickLang('lv')">🇱🇻 LV</div>
+                    <div class="lang-option" data-lang="lt" data-eu-only id="langOptLt" onclick="pickLang('lt')">🇱🇹 LT</div>
+                    <div class="lang-option" data-lang="hr" data-eu-only id="langOptHr" onclick="pickLang('hr')">🇭🇷 HR</div>
+                    <div class="lang-option" data-lang="sr" data-eu-only id="langOptSr" onclick="pickLang('sr')">🇷🇸 SR</div>
+                    <div class="lang-option" data-lang="sl" data-eu-only id="langOptSl" onclick="pickLang('sl')">🇸🇮 SL</div>
                 </div>
             </div>
             <!-- User pill (shown when logged in) -->
@@ -976,29 +980,29 @@
                 <div class="pwa-drop-sub" id="pwaLangSub" role="group" aria-label="Language options">
                     <button class="pwa-drop-item pwa-drop-subitem" data-lang="en" id="pwaLangOptEn" onclick="pwaPickLang('en')">🇬🇧 English</button>
                     <button class="pwa-drop-item pwa-drop-subitem selected" data-lang="ro" id="pwaLangOptRo" onclick="pwaPickLang('ro')">🇷🇴 Română</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="de" id="pwaLangOptDe" onclick="pwaPickLang('de')">🇩🇪 Deutsch</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="fr" id="pwaLangOptFr" onclick="pwaPickLang('fr')">🇫🇷 Français</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="it" id="pwaLangOptIt" onclick="pwaPickLang('it')">🇮🇹 Italiano</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="es" id="pwaLangOptEs" onclick="pwaPickLang('es')">🇪🇸 Español</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="pl" id="pwaLangOptPl" onclick="pwaPickLang('pl')">🇵🇱 Polski</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="uk" id="pwaLangOptUk" onclick="pwaPickLang('uk')">🇺🇦 Українська</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="hu" id="pwaLangOptHu" onclick="pwaPickLang('hu')">🇭🇺 Magyar</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="cs" id="pwaLangOptCs" onclick="pwaPickLang('cs')">🇨🇿 Čeština</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sk" id="pwaLangOptSk" onclick="pwaPickLang('sk')">🇸🇰 Slovenčina</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="nl" id="pwaLangOptNl" onclick="pwaPickLang('nl')">🇳🇱 Nederlands</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="bg" id="pwaLangOptBg" onclick="pwaPickLang('bg')">🇧🇬 Български</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="el" id="pwaLangOptEl" onclick="pwaPickLang('el')">🇬🇷 Ελληνικά</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="pt" id="pwaLangOptPt" onclick="pwaPickLang('pt')">🇵🇹 Português</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="da" id="pwaLangOptDa" onclick="pwaPickLang('da')">🇩🇰 Dansk</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sv" id="pwaLangOptSv" onclick="pwaPickLang('sv')">🇸🇪 Svenska</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="no" id="pwaLangOptNo" onclick="pwaPickLang('no')">🇳🇴 Norsk</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="fi" id="pwaLangOptFi" onclick="pwaPickLang('fi')">🇫🇮 Suomi</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="et" id="pwaLangOptEt" onclick="pwaPickLang('et')">🇪🇪 Eesti</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="lv" id="pwaLangOptLv" onclick="pwaPickLang('lv')">🇱🇻 Latviešu</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="lt" id="pwaLangOptLt" onclick="pwaPickLang('lt')">🇱🇹 Lietuvių</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="hr" id="pwaLangOptHr" onclick="pwaPickLang('hr')">🇭🇷 Hrvatski</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sr" id="pwaLangOptSr" onclick="pwaPickLang('sr')">🇷🇸 Srpski</button>
-                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sl" id="pwaLangOptSl" onclick="pwaPickLang('sl')">🇸🇮 Slovenščina</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="de" data-eu-only id="pwaLangOptDe" onclick="pwaPickLang('de')">🇩🇪 Deutsch</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="fr" data-eu-only id="pwaLangOptFr" onclick="pwaPickLang('fr')">🇫🇷 Français</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="it" data-eu-only id="pwaLangOptIt" onclick="pwaPickLang('it')">🇮🇹 Italiano</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="es" data-eu-only id="pwaLangOptEs" onclick="pwaPickLang('es')">🇪🇸 Español</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="pl" data-eu-only id="pwaLangOptPl" onclick="pwaPickLang('pl')">🇵🇱 Polski</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="uk" data-eu-only id="pwaLangOptUk" onclick="pwaPickLang('uk')">🇺🇦 Українська</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="hu" data-eu-only id="pwaLangOptHu" onclick="pwaPickLang('hu')">🇭🇺 Magyar</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="cs" data-eu-only id="pwaLangOptCs" onclick="pwaPickLang('cs')">🇨🇿 Čeština</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sk" data-eu-only id="pwaLangOptSk" onclick="pwaPickLang('sk')">🇸🇰 Slovenčina</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="nl" data-eu-only id="pwaLangOptNl" onclick="pwaPickLang('nl')">🇳🇱 Nederlands</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="bg" data-eu-only id="pwaLangOptBg" onclick="pwaPickLang('bg')">🇧🇬 Български</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="el" data-eu-only id="pwaLangOptEl" onclick="pwaPickLang('el')">🇬🇷 Ελληνικά</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="pt" data-eu-only id="pwaLangOptPt" onclick="pwaPickLang('pt')">🇵🇹 Português</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="da" data-eu-only id="pwaLangOptDa" onclick="pwaPickLang('da')">🇩🇰 Dansk</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sv" data-eu-only id="pwaLangOptSv" onclick="pwaPickLang('sv')">🇸🇪 Svenska</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="no" data-eu-only id="pwaLangOptNo" onclick="pwaPickLang('no')">🇳🇴 Norsk</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="fi" data-eu-only id="pwaLangOptFi" onclick="pwaPickLang('fi')">🇫🇮 Suomi</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="et" data-eu-only id="pwaLangOptEt" onclick="pwaPickLang('et')">🇪🇪 Eesti</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="lv" data-eu-only id="pwaLangOptLv" onclick="pwaPickLang('lv')">🇱🇻 Latviešu</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="lt" data-eu-only id="pwaLangOptLt" onclick="pwaPickLang('lt')">🇱🇹 Lietuvių</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="hr" data-eu-only id="pwaLangOptHr" onclick="pwaPickLang('hr')">🇭🇷 Hrvatski</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sr" data-eu-only id="pwaLangOptSr" onclick="pwaPickLang('sr')">🇷🇸 Srpski</button>
+                    <button class="pwa-drop-item pwa-drop-subitem" data-lang="sl" data-eu-only id="pwaLangOptSl" onclick="pwaPickLang('sl')">🇸🇮 Slovenščina</button>
                 </div>
                 <button class="pwa-drop-item" id="pwaStorageItem" onclick="pwaPickStorage()" aria-pressed="false">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z" /><path d="M8 3v6h8V3M8 21v-7h8v7" /><circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" /></svg>
@@ -2829,7 +2833,7 @@
                             </div>
 
                             <!-- Übersichtskarte von Mitteleuropa 1:300 000 (1893–1945) (CENAGIS / IH PAN) -->
-                            <div id="mitteleuropaRow">
+                            <div id="mitteleuropaRow" data-eu-only>
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
                                     <span style="display:flex;align-items:center;gap:5px;">
                                         <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
@@ -2856,7 +2860,7 @@
                             </div>
 
                             <!-- Harta generală a Regatului Poloniei – Wojciech Chrzanowski 1859 (CENAGIS / IH PAN) -->
-                            <div id="chrzanowskiRow">
+                            <div id="chrzanowskiRow" data-eu-only>
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
                                     <span style="display:flex;align-items:center;gap:5px;">
                                         <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
@@ -2883,7 +2887,7 @@
                             </div>
 
                             <!-- Special-Karte von Central-Europa – Daniel Gottlob Reymann (1806–1908) (CENAGIS / IH PAN) -->
-                            <div id="reymannRow">
+                            <div id="reymannRow" data-eu-only>
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
                                     <span style="display:flex;align-items:center;gap:5px;">
                                         <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
@@ -2910,7 +2914,7 @@
                             </div>
 
                             <!-- Karte des Deutschen Reiches 1:100 000 (1878–1945) (CENAGIS / IH PAN) -->
-                            <div id="kdr100kRow">
+                            <div id="kdr100kRow" data-eu-only>
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
                                     <span style="display:flex;align-items:center;gap:5px;">
                                         <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
@@ -2937,7 +2941,7 @@
                             </div>
 
                             <!-- Karte des Deutschen Reiches – Großblatt 1:100 000 (1914–1944) (CENAGIS / IH PAN) -->
-                            <div id="kdrGbRow">
+                            <div id="kdrGbRow" data-eu-only>
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
                                     <span style="display:flex;align-items:center;gap:5px;">
                                         <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
@@ -2964,7 +2968,7 @@
                             </div>
 
                             <!-- WIG 1:100 000 – Harta tactică a Poloniei (1919–1939) (CENAGIS / IH PAN) -->
-                            <div id="wig100kRow">
+                            <div id="wig100kRow" data-eu-only>
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;">
                                     <span style="display:flex;align-items:center;gap:5px;">
                                         <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#ffc832" /></svg>
@@ -3022,7 +3026,7 @@
                     </div><!-- /histPremium transp-layer-row -->
 
                     <!-- Hărți Istorice Europene (CENAGIS / IH PAN) — Parent Group -->
-                    <div class="transp-layer-row" data-category="premium" id="histEuRow">
+                    <div class="transp-layer-row" data-category="premium" data-eu-only id="histEuRow">
                         <!-- Group header: master toggle -->
                         <div class="transp-layer-label" style="margin-bottom:6px">
                             <span style="display:flex;align-items:center;gap:7px;min-width:0">
@@ -4368,7 +4372,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260928-eu-domain"></script>
+    <script src="js/translations.js?v=20261001-market-isolation"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -4421,7 +4425,7 @@
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/map-app.js?v=20260927-sat-copernicus-vhr"></script>
-    <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
+    <script src="js/historical-eu-maps.js?v=20261001-market-isolation"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20261001-persistent-layer-actions"></script>

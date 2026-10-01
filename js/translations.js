@@ -14640,16 +14640,31 @@
 
         const LANGUAGE_STORAGE_KEY = 'detectlab_lang';
 
+        // Languages selectable on the current origin. detectlab.eu offers the
+        // full pan-European set; detectlab.ro stays as it always was, with
+        // only Romanian and English — a language stored while the European
+        // variant briefly leaked onto .ro is therefore ignored on .ro while
+        // remaining valid on .eu (localStorage is scoped per origin anyway).
+        function availableLanguages() {
+            var configured = window.DetectLabSite && window.DetectLabSite.languages;
+            if (configured && configured.length) return configured;
+            return Object.keys(translations);
+        }
+
+        function isLanguageAvailable(lang) {
+            return !!translations[lang] && availableLanguages().indexOf(lang) !== -1;
+        }
+
         function getDefaultLanguage() {
             var configured = window.DetectLabSite && window.DetectLabSite.defaultLanguage;
-            return translations[configured] ? configured : 'ro';
+            return isLanguageAvailable(configured) ? configured : 'ro';
         }
 
         function getStoredLanguage() {
             var fallback = getDefaultLanguage();
             try {
                 var stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-                return translations[stored] ? stored : fallback;
+                return isLanguageAvailable(stored) ? stored : fallback;
             } catch (e) {
                 // Storage can be unavailable in private/restricted WebViews.
                 return fallback;
@@ -14729,7 +14744,9 @@
         const periodRO = { '/week': '/săpt.', '/month': '/lună', '/one month': '/o lună', '/year': '/an' };
 
         function setLang(lang) {
-            if (!translations[lang]) lang = getDefaultLanguage();
+            // detectlab.ro accepts only ro/en; detectlab.eu accepts every
+            // translated language (see availableLanguages above).
+            if (!isLanguageAvailable(lang)) lang = getDefaultLanguage();
             currentLang = lang;
 
             try {

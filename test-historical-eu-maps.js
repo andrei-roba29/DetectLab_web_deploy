@@ -99,4 +99,37 @@ countries.forEach(c => {
 });
 console.log('  ✓ 19 European countries and coverage percentages verified');
 
+// 5. Market isolation: the panel renders only on detectlab.eu
+function runForHost(hostname) {
+    const container = { innerHTML: '' };
+    const doc = {
+        documentElement: { lang: 'ro' },
+        readyState: 'complete',
+        addEventListener: () => {},
+        getElementById: id => (id === 'histEuSubLayers' ? container : null),
+        querySelectorAll: () => []
+    };
+    const win = {
+        location: { hostname },
+        localStorage: { getItem: () => 'ro' },
+        DetectLabSite: { isEurope: hostname === 'detectlab.eu', market: hostname === 'detectlab.eu' ? 'eu' : 'ro' },
+        document: doc,
+        L: mockWindow.L
+    };
+    const box = { window: win, document: doc, L: win.L, console, alert: () => {} };
+    vm.createContext(box);
+    vm.runInContext(euMapsCode, box);
+    return { win, container };
+}
+
+const euRun = runForHost('detectlab.eu');
+assert.ok(euRun.container.innerHTML.length > 0, 'the European panel populates on detectlab.eu');
+assert.ok(euRun.container.innerHTML.includes('wig100k'), 'the CENAGIS rows render on detectlab.eu');
+console.log('  ✓ detectlab.eu renders the European historical maps panel');
+
+const roRun = runForHost('detectlab.ro');
+assert.strictEqual(roRun.container.innerHTML, '', 'the panel stays empty on detectlab.ro');
+assert.strictEqual(typeof roRun.win._leafletLayers, 'undefined');
+console.log('  ✓ detectlab.ro never renders the European historical maps panel');
+
 console.log('✅ test-historical-eu-maps.js passed all checks successfully.');

@@ -1242,14 +1242,20 @@
                 [49.0024961993941517, 30.6713880698685237]
             ];
 
+            var MAP_PAN_BOUNDS = L.latLngBounds(APM_BOUNDS);
+            var EU_MARKET = _isEuropeMarket();
+
             // Initialise Leaflet map inside DetectLab's existing container.
-            // APM_BOUNDS defines only the initial Romanian view and the APM
-            // raster coverage; it must not constrain navigation. The .eu site
-            // can therefore pan freely as European regions are added.
+            // detectlab.ro stays exactly as it always was: the map is locked
+            // to the Romanian APM canvas (maxBounds + enforceMapCanvasBounds
+            // below). Only detectlab.eu — the European market — pans freely
+            // across the continent as European regions are added.
             var map = L.map('detectlab-map', {
                 zoomControl: false,
                 minZoom: 5,
                 maxZoom: 20,
+                maxBounds: EU_MARKET ? null : MAP_PAN_BOUNDS,
+                maxBoundsViscosity: EU_MARKET ? 0 : 1.0,
                 worldCopyJump: false,
                 rotate: true,
                 touchRotate: true,
@@ -1276,6 +1282,27 @@
             // MAP_LAYER_PERFORMANCE.md.
             if (window.DLTilePerf && window.DLTilePerf.attach) {
                 window.DLTilePerf.attach(map);
+            }
+
+            if (!EU_MARKET) {
+                // Keep the map snapped to the valid APM canvas while letting the
+                // user zoom out far enough to see it in its entirety: the minimum
+                // zoom is the level at which the whole canvas fits inside the
+                // viewport (never below 5). It must be recalculated when the map
+                // changes size (for example, when entering fullscreen or rotating
+                // a mobile device).
+                function enforceMapCanvasBounds() {
+                    var canvasMinZoom = Math.max(5, map.getBoundsZoom(MAP_PAN_BOUNDS, false));
+                    map.setMinZoom(canvasMinZoom);
+                    if (map.getZoom() < canvasMinZoom) {
+                        map.setZoom(canvasMinZoom, { animate: false });
+                    }
+                    map.panInsideBounds(MAP_PAN_BOUNDS, { animate: false });
+                }
+
+                map.whenReady(enforceMapCanvasBounds);
+                map.on('resize', enforceMapCanvasBounds);
+                map.on('dragend zoomend', enforceMapCanvasBounds);
             }
 
             var hash = new L.Hash(map);
@@ -10994,48 +11021,6 @@
                     coverageMaxZoom: 14
                 },
 
-                mitteleuropa: {
-                    // Übersichtskarte von Mitteleuropa 1:300 000 (1893–1945) — CENAGIS / IH PAN
-                    bounds: [[43.5, 5.0], [56.0, 32.0]],
-                    label: 'Übersichtskarte von Mitteleuropa (1893–1945)',
-                    layerVar: '_mitteleuropaMapLayer'
-                },
-
-                chrzanowski: {
-                    // Harta generală a Regatului Poloniei – Wojciech Chrzanowski 1859 — CENAGIS / IH PAN
-                    bounds: [[46.5, 14.5], [56.5, 33.5]],
-                    label: 'Harta Wojciech Chrzanowski (1859)',
-                    layerVar: '_chrzanowskiMapLayer'
-                },
-
-                reymann: {
-                    // Special-Karte von Central-Europa – Daniel Gottlob Reymann (1806–1908) — CENAGIS / IH PAN
-                    bounds: [[45.0, 5.0], [55.5, 30.0]],
-                    label: 'Harta Central-Europa – Reymann (1806–1908)',
-                    layerVar: '_reymannMapLayer'
-                },
-
-                kdr100k: {
-                    // Karte des Deutschen Reiches 1:100 000 (1878–1945) — CENAGIS / IH PAN
-                    bounds: [[45.5, 5.5], [56.0, 24.5]],
-                    label: 'Karte des Deutschen Reiches (1878–1945)',
-                    layerVar: '_kdr100kMapLayer'
-                },
-
-                kdr_gb: {
-                    // Karte des Deutschen Reiches – Großblatt 1:100 000 (1914–1944) — CENAGIS / IH PAN
-                    bounds: [[45.5, 5.5], [56.0, 31.0]],
-                    label: 'Karte des Deutschen Reiches – Großblatt (1914–1944)',
-                    layerVar: '_kdrGbMapLayer'
-                },
-
-                wig100k: {
-                    // WIG 1:100 000 – Harta tactică a Poloniei (1919–1939) — CENAGIS / IH PAN
-                    bounds: [[47.5, 14.0], [56.0, 33.0]],
-                    label: 'Harta tactică a Poloniei – WIG 1:100k (1919–1939)',
-                    layerVar: '_wig100kMapLayer'
-                },
-
                 vegfpPpi: {
                     // Amprenta Vegetației — PPI (CLMS HR-VPP, 10 m, la fiecare
                     // 10 zile). Acoperire: România pe .ro, toată Europa pe .eu.
@@ -11073,6 +11058,49 @@
                     coverageMinZoom: 6
                 }
             };
+
+            // ── CENAGIS / IH PAN European historical maps — detectlab.eu only ──
+            // detectlab.ro rămâne exact cu setul de hărți premium de dinaintea
+            // variantei europene, deci cele șase hărți CENAGIS se înregistrează
+            // doar pe piața europeană (.eu).
+            if (typeof _isEuropeMarket === 'function' && _isEuropeMarket()) {
+                premiumMapCoverageBounds.mitteleuropa = {
+                    // Übersichtskarte von Mitteleuropa 1:300 000 (1893–1945) — CENAGIS / IH PAN
+                    bounds: [[43.5, 5.0], [56.0, 32.0]],
+                    label: 'Übersichtskarte von Mitteleuropa (1893–1945)',
+                    layerVar: '_mitteleuropaMapLayer'
+                };
+                premiumMapCoverageBounds.chrzanowski = {
+                    // Harta generală a Regatului Poloniei – Wojciech Chrzanowski 1859 — CENAGIS / IH PAN
+                    bounds: [[46.5, 14.5], [56.5, 33.5]],
+                    label: 'Harta Wojciech Chrzanowski (1859)',
+                    layerVar: '_chrzanowskiMapLayer'
+                };
+                premiumMapCoverageBounds.reymann = {
+                    // Special-Karte von Central-Europa – Daniel Gottlob Reymann (1806–1908) — CENAGIS / IH PAN
+                    bounds: [[45.0, 5.0], [55.5, 30.0]],
+                    label: 'Harta Central-Europa – Reymann (1806–1908)',
+                    layerVar: '_reymannMapLayer'
+                };
+                premiumMapCoverageBounds.kdr100k = {
+                    // Karte des Deutschen Reiches 1:100 000 (1878–1945) — CENAGIS / IH PAN
+                    bounds: [[45.5, 5.5], [56.0, 24.5]],
+                    label: 'Karte des Deutschen Reiches (1878–1945)',
+                    layerVar: '_kdr100kMapLayer'
+                };
+                premiumMapCoverageBounds.kdr_gb = {
+                    // Karte des Deutschen Reiches – Großblatt 1:100 000 (1914–1944) — CENAGIS / IH PAN
+                    bounds: [[45.5, 5.5], [56.0, 31.0]],
+                    label: 'Karte des Deutschen Reiches – Großblatt (1914–1944)',
+                    layerVar: '_kdrGbMapLayer'
+                };
+                premiumMapCoverageBounds.wig100k = {
+                    // WIG 1:100 000 – Harta tactică a Poloniei (1919–1939) — CENAGIS / IH PAN
+                    bounds: [[47.5, 14.0], [56.0, 33.0]],
+                    label: 'Harta tactică a Poloniei – WIG 1:100k (1919–1939)',
+                    layerVar: '_wig100kMapLayer'
+                };
+            }
 
             // Create coverage polygons for each premium map
             var premiumMapCoveragePolygons = {};
@@ -11362,14 +11390,21 @@
                     { key: 'moldova1771', toggle: 'moldova1771MapToggle', row: 'moldova1771Row' },
                     { key: 'banat', toggle: 'banatMapToggle', row: 'banatRow' },
                     { key: 'transylvania1859', toggle: 'transylvania1859MapToggle', row: 'transylvania1859Row' },
-                    { key: 'mitteleuropa', toggle: 'mitteleuropaMapToggle', row: 'mitteleuropaRow' },
-                    { key: 'chrzanowski', toggle: 'chrzanowskiMapToggle', row: 'chrzanowskiRow' },
-                    { key: 'reymann', toggle: 'reymannMapToggle', row: 'reymannRow' },
-                    { key: 'kdr100k', toggle: 'kdr100kMapToggle', row: 'kdr100kRow' },
-                    { key: 'kdr_gb', toggle: 'kdrGbMapToggle', row: 'kdrGbRow' },
-                    { key: 'wig100k', toggle: 'wig100kMapToggle', row: 'wig100kRow' },
                     { key: 'galicia1855', toggle: 'galicia1855MapToggle', row: 'galicia1855Row' }
                 ];
+                // CENAGIS / IH PAN European maps highlight only on detectlab.eu;
+                // detectlab.ro keeps the premium rows it had before the
+                // European variant.
+                if (_isEuropeMarket()) {
+                    premiumKeys = premiumKeys.concat([
+                        { key: 'mitteleuropa', toggle: 'mitteleuropaMapToggle', row: 'mitteleuropaRow' },
+                        { key: 'chrzanowski', toggle: 'chrzanowskiMapToggle', row: 'chrzanowskiRow' },
+                        { key: 'reymann', toggle: 'reymannMapToggle', row: 'reymannRow' },
+                        { key: 'kdr100k', toggle: 'kdr100kMapToggle', row: 'kdr100kRow' },
+                        { key: 'kdr_gb', toggle: 'kdrGbMapToggle', row: 'kdrGbRow' },
+                        { key: 'wig100k', toggle: 'wig100kMapToggle', row: 'wig100kRow' }
+                    ]);
+                }
                 premiumKeys.forEach(function(item) {
                     var b = premiumMapCoverageBounds[item.key] ? premiumMapCoverageBounds[item.key].bounds : [[43.5,19.5],[48.5,30.5]];
                     // moldova1771 doesn't have coverage entry, reuse moldova1868 bounds
@@ -11416,12 +11451,15 @@
                     group: 'vegfp'
                 });
 
-                layerDefs.push({
-                    key: 'histEu_all',
-                    bounds: toBounds([[45.0, 5.0], [59.0, 39.0]]),
-                    getRow: function() { return document.getElementById('histEuRow'); },
-                    group: 'histEu'
-                });
+                // European Historical Maps group — detectlab.eu only.
+                if (_isEuropeMarket()) {
+                    layerDefs.push({
+                        key: 'histEu_all',
+                        bounds: toBounds([[45.0, 5.0], [59.0, 39.0]]),
+                        getRow: function() { return document.getElementById('histEuRow'); },
+                        group: 'histEu'
+                    });
+                }
 
                 // Roman Empire sublayers (ROMANIA_BOUNDS on .ro, full Roman Empire bounds on .eu)
                 var ROMAN_EMPIRE_BOUNDS = toBounds([[20.0, -15.0], [60.0, 50.0]]);
@@ -11457,9 +11495,12 @@
                     lidar: { expandIconId: 'lidarExpandIcon', sublayerKeys: Object.keys(LIDAR_COUNTY_BOUNDS).map(function(k){ return 'lidar_' + k; }) },
                     roman: { expandIconId: 'romanExpandIcon', sublayerKeys: romanToggleIds.map(function(tid){ return 'roman_' + tid; }) },
                     histPremium: { expandIconId: 'histPremiumExpandIcon', sublayerKeys: premiumKeys.map(function(it){ return 'premium_' + it.key; }) },
-                    vegfp: { expandIconId: 'vegfpExpandIcon', sublayerKeys: ['vegfp_ppi', 'vegfp_smx', 'vegfp_sgu', 'vegfp_sgd'] },
-                    histEu: { expandIconId: 'histEuExpandIcon', sublayerKeys: ['histEu_all'] }
+                    vegfp: { expandIconId: 'vegfpExpandIcon', sublayerKeys: ['vegfp_ppi', 'vegfp_smx', 'vegfp_sgu', 'vegfp_sgd'] }
                 };
+                // European Historical Maps group — detectlab.eu only.
+                if (_isEuropeMarket()) {
+                    groups.histEu = { expandIconId: 'histEuExpandIcon', sublayerKeys: ['histEu_all'] };
+                }
 
                 function isIntersecting(mapBounds, layerBounds) {
                     try {
@@ -12099,7 +12140,13 @@
                 };
             })();
 
-            // ── CENAGIS / IH PAN HISTORICAL MAPS (Covering Romania) ──
+            // ── CENAGIS / IH PAN HISTORICAL MAPS — detectlab.eu only ──
+            // Cele șase hărți istorice CENAGIS (Mitteleuropa, Chrzanowski, Reymann,
+            // KDR 100k, KDR Großblatt, WIG 100k) fac parte exclusiv din varianta
+            // europeană (detectlab.eu). Pe detectlab.ro niciun strat, pane sau
+            // toggle de mai jos nu se creează — setul de straturi rămâne exact cel
+            // de dinaintea variantei europene.
+            if (typeof _isEuropeMarket === 'function' && _isEuropeMarket()) {
             var CENAGIS_WMS_URL = 'https://pastmaps.cenagis.edu.pl/geoserver/ihpan/wms';
 
             // 1. Übersichtskarte von Mitteleuropa 1:300 000 (1893–1945)
@@ -12329,6 +12376,7 @@
                     window._wig100kMapLayer.setOpacity(val / 100);
                 };
             })();
+            } // end CENAGIS European historical maps (detectlab.eu only)
 
             // ── SATELIT 60s (CORONA — replicating corona.cast.uark.edu/atlas) ──
             // The original Corona Atlas (https://corona.cast.uark.edu/atlas)

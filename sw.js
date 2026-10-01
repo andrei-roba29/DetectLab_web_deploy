@@ -311,7 +311,13 @@
 //   cele trei butoane Josephine Map + nu mai dispar când un alt substrat al
 //   hărților istorice premium este adăugat în al doilea slider; ambele sloturi
 //   își păstrează independent acțiunile până la închiderea propriei oglinzi.
-const CACHE_NAME = 'detectlab-v148-persistent-layer-actions';
+// v149: izolarea piețelor — varianta europeană (limbile pan-europene, hărțile
+//   istorice CENAGIS / IH PAN, navigația liberă pe hartă) există DOAR pe
+//   detectlab.eu. detectlab.ro revine exact la comportamentul de dinaintea
+//   variantei europene: harta blocată pe aria APM din România, meniul de limbi
+//   doar EN/RO și fără straturile CENAGIS. js/historical-eu-maps.js nu se mai
+//   pre-cache-uiește pe originea .ro.
+const CACHE_NAME = 'detectlab-v149-market-isolation';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -326,13 +332,15 @@ const PROTECTED_SITES_CACHE_KEY = 'protected-sites';
 
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
-  // European Historical Maps (CENAGIS / IH PAN)
-  'js/historical-eu-maps.js?v=20260929-eu-cenagis-maps',
+  // European Historical Maps (CENAGIS / IH PAN) — detectlab.eu only.
+  // The install handler below filters these out on the .ro origin so the
+  // Romanian market keeps its pre-European-variant shell.
+  'js/historical-eu-maps.js?v=20261001-market-isolation',
   'js/historical-eu-maps.js',
   // Host-aware market defaults for detectlab.ro and detectlab.eu.
-  'js/site-config.js?v=20260928-eu-domain',
+  'js/site-config.js?v=20261001-market-isolation',
   'js/site-config.js',
-  'js/translations.js?v=20260928-eu-domain',
+  'js/translations.js?v=20261001-market-isolation',
   'js/archeo-report-pdf.js?v=20260928-eu-domain',
   // Report: shared potential field, exact scanner annotations, ignore option.
   'js/archeo-report.js?v=20260918-report-evidence',
@@ -895,12 +903,34 @@ const PASSTHROUGH_HOSTS = [
   'geoserve.cast.uark.edu' // CORONA GeoWebCache WMS-C tile server
 ];
 
+// ── Market isolation for the pre-cache ──
+// The same deployment serves detectlab.ro (the Romanian market, which stays
+// exactly as it was before the European variant) and detectlab.eu (the
+// European market). The service worker's own origin tells them apart, so the
+// CENAGIS European historical maps asset is only pre-cached on .eu.
+const SW_ORIGIN_HOST = (function () {
+  try {
+    var scope = (self.registration && self.registration.scope) || self.location.href;
+    return new URL(scope).hostname.toLowerCase();
+  } catch (e) {
+    return '';
+  }
+})();
+const SW_EU_ORIGIN = /(^|\.)detectlab\.eu$/.test(SW_ORIGIN_HOST);
+
+function precacheUrlsForOrigin() {
+  if (SW_EU_ORIGIN) return PRECACHE_URLS;
+  return PRECACHE_URLS.filter(function (url) {
+    return url.indexOf('historical-eu-maps.js') === -1;
+  });
+}
+
 // ── Install event: pre-cache essential static files ──
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function (cache) {
       console.log('[SW] Pre-caching static assets');
-      return cache.addAll(PRECACHE_URLS).catch(function (err) {
+      return cache.addAll(precacheUrlsForOrigin()).catch(function (err) {
         console.warn('[SW] Pre-cache partial failure:', err.message);
       });
     }).then(function () {
