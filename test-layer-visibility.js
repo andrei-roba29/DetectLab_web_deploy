@@ -132,11 +132,16 @@ function makeDocument() {
     return document;
 }
 
-function setup({ local = new MapMock(OUTSIDE), exposed, legacy, pwa = false, visualViewport = true } = {}) {
+function setup({ local = new MapMock(OUTSIDE), exposed, legacy, pwa = false, visualViewport = true, market = 'eu' } = {}) {
     const document = makeDocument();
     document.body.classList.toggle('is-pwa', pwa);
     const window = new EventTarget();
     Object.assign(window, { _dlMap: exposed, map: legacy });
+    // Market isolation: the production code registers the CENAGIS European
+    // maps (and their coverage/highlight definitions) only on detectlab.eu.
+    // The extracted sections call the initMap-scope _isEuropeMarket(), which
+    // is not part of the extract — provide it per test market.
+    window.DetectLabSite = { market: market, isEurope: market === 'eu', isRomania: market === 'ro' };
     if (visualViewport) window.visualViewport = new EventTarget();
     const frames = [];
     const intervals = [];
@@ -144,6 +149,7 @@ function setup({ local = new MapMock(OUTSIDE), exposed, legacy, pwa = false, vis
     window.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
     const context = vm.createContext({
         window, document, map: local, L: { latLngBounds },
+        _isEuropeMarket: () => market === 'eu',
         setInterval: (callback, delay) => intervals.push({ callback, delay }),
         setTimeout: (callback, delay) => timeouts.push({ callback, delay }),
         // No-op here: flushTimeouts() drains the queue anyway, and the
@@ -205,6 +211,36 @@ test('PWA: _dlMap takes precedence over a stale local map and window.map', () =>
     assert.equal(local.reads + legacy.reads, 0);
     assert.equal(highlighted(h, 'histPremiumExpandIcon', ARROW_CLASS), true);
     assert.equal(h.row('transpPanel').classList.contains('open'), false);
+    assertGroupsUnoutlined(h);
+});
+
+// ── Market isolation: detectlab.ro keeps its pre-European-variant rows ──
+// The CENAGIS / IH PAN European maps are European-variant content and must
+// not register any coverage/highlight definition on the Romanian market,
+// even though their (CSS-hidden) rows still exist in the shared DOM.
+const EU_ROWS = ['mitteleuropaRow', 'chrzanowskiRow', 'reymannRow', 'kdr100kRow', 'kdrGbRow', 'wig100kRow'];
+
+test('ro market: CENAGIS European rows are never highlighted over Banat', () => {
+    const h = setup({ local: new MapMock(BANAT), market: 'ro' });
+    // Exactly the pre-European-variant premium set: Banat + WWII.
+    assert.deepEqual(premiumRows(h), ['banatRow', 'ww2Row']);
+    EU_ROWS.forEach(id => {
+        assert.equal(highlighted(h, id), false, id + ' must not highlight on detectlab.ro');
+    });
+    assert.equal(highlighted(h, 'histEuRow'), false, 'the European Historical Maps group stays inert on .ro');
+    assert.equal(highlighted(h, 'histEuExpandIcon', ARROW_CLASS), false);
+    assert.equal(highlighted(h, 'ww2Row'), true, 'Romanian premium rows keep their pre-EU behaviour');
+    assert.equal(highlighted(h, 'satellite60sRow'), true, 'satellite60s keeps its Romania bounds on .ro');
+});
+
+test('ro market: European rows stay inert even over a fully European viewport', () => {
+    const h = setup({ local: new MapMock(ALL), market: 'ro' });
+    EU_ROWS.forEach(id => {
+        assert(h.row(id), id + ' still exists in the shared DOM (hidden via data-eu-only)');
+        assert.equal(highlighted(h, id), false, id + ' must not highlight on detectlab.ro');
+    });
+    assert.equal(highlighted(h, 'histEuRow'), false);
+    assert.equal(highlighted(h, 'bucovinaRow'), true, 'Romanian rows still highlight');
     assertGroupsUnoutlined(h);
 });
 

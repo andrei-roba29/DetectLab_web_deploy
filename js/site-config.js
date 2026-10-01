@@ -25,6 +25,16 @@
     var contactEmail = 'contact@' + domain;
     var canonicalOrigin = 'https://' + domain;
 
+    // Languages selectable in the UI. detectlab.eu (the European market)
+    // offers the full pan-European set; detectlab.ro stays exactly as it
+    // always was, with only Romanian and English.
+    var EU_LANGUAGES = [
+        'en', 'ro', 'de', 'fr', 'it', 'es', 'pl', 'uk', 'hu', 'cs', 'sk',
+        'nl', 'bg', 'el', 'pt', 'da', 'sv', 'no', 'fi', 'et', 'lv', 'lt',
+        'hr', 'sr', 'sl'
+    ];
+    var languages = market === 'eu' ? EU_LANGUAGES.slice() : ['ro', 'en'];
+
     function normalizePath(pathname) {
         var path = String(pathname || '/');
         if (!path || path === '/index.html') return '/';
@@ -61,6 +71,7 @@
         defaultLanguage: defaultLanguage,
         contactEmail: contactEmail,
         canonicalOrigin: canonicalOrigin,
+        languages: languages,
         isEurope: market === 'eu',
         isRomania: market === 'ro',
         interpolate: interpolate,
@@ -80,6 +91,11 @@
         // Storage can be blocked in private/restricted WebViews.
     }
     if (document && document.documentElement) {
+        // Market marker used by CSS to keep European-variant-only elements
+        // ([data-eu-only]) off detectlab.ro. Set before first paint: this
+        // script loads from <head>, so nothing EU-specific ever flashes on
+        // the Romanian market.
+        document.documentElement.setAttribute('data-market', market);
         document.documentElement.lang = initialLanguage;
     }
 
@@ -87,6 +103,17 @@
         if (!document || !document.querySelectorAll) return;
         var pathname = root.location && root.location.pathname;
         var canonicalPath = normalizePath(pathname);
+
+        // Market isolation in addition to the CSS rules: elements flagged
+        // [data-eu-only] are European-variant content (extra UI languages,
+        // CENAGIS historical maps…) and never render on detectlab.ro;
+        // [data-ro-only] is the symmetric escape hatch for .eu.
+        document.querySelectorAll('[data-eu-only]').forEach(function (element) {
+            element.style.display = (market === 'eu') ? '' : 'none';
+        });
+        document.querySelectorAll('[data-ro-only]').forEach(function (element) {
+            element.style.display = (market === 'ro') ? '' : 'none';
+        });
 
         document.querySelectorAll('[data-site-canonical]').forEach(function (element) {
             element.setAttribute('href', canonicalOrigin + canonicalPath);

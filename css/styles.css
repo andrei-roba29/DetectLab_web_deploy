@@ -821,19 +821,41 @@
             transform: rotate(180deg);
         }
 
+        /* ── Market isolation (detectlab.ro vs detectlab.eu) ──
+           Elements marked [data-eu-only] belong to the European variant
+           (extra UI languages, CENAGIS historical maps). detectlab.ro stays
+           exactly as it was before the European variant, so they never
+           render there. [data-ro-only] is the symmetric escape hatch.
+           js/site-config.js sets html[data-market] from the hostname in
+           <head>, before first paint. */
+        html[data-market='ro'] [data-eu-only] {
+            display: none !important;
+        }
+
+        html[data-market='eu'] [data-ro-only] {
+            display: none !important;
+        }
+
         .lang-menu {
             display: none;
             position: absolute;
             top: calc(100% + 6px);
             right: 0;
-            min-width: 130px;
-            max-height: 340px;
-            overflow-y: auto;
+            min-width: 110px;
             background: #0f1e3a;
             border: 1px solid rgba(184,216,240,0.18);
             border-radius: 8px;
+            overflow: hidden;
             box-shadow: 0 8px 24px rgba(0,0,0,0.45);
             z-index: 9999;
+        }
+
+        /* The long pan-European language list exists only on detectlab.eu;
+           on .ro the menu keeps its original compact EN/RO size. */
+        html[data-market='eu'] .lang-menu {
+            min-width: 130px;
+            max-height: 340px;
+            overflow-y: auto;
         }
 
         .lang-dropdown.open .lang-menu {

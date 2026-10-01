@@ -10,7 +10,14 @@ Data pregătirii: 28 septembrie 2026.
 - `www.detectlab.ro` redirecționează la `detectlab.ro`.
 - `www.detectlab.eu` redirecționează la `detectlab.eu`.
 - Domeniile apex `.ro` și `.eu` **nu** se redirecționează unul către celălalt.
-- Harta pornește cu vederea existentă asupra României, dar deplasarea nu mai este limitată la acel dreptunghi.
+- Harta pornește cu vederea existentă asupra României. Pe `detectlab.eu`
+  deplasarea nu mai este limitată la acel dreptunghi; pe `detectlab.ro` harta
+  rămâne blocată pe aria APM din România, exact ca înainte de varianta
+  europeană (detalii în `MARKET_ISOLATION.md`).
+- Varianta europeană (cele 25 de limbi din meniu, hărțile istorice CENAGIS /
+  IH PAN, limitele europene ale straturilor) există **doar** pe
+  `detectlab.eu`; `detectlab.ro` păstrează interfața și straturile dinaintea
+  acesteia.
 
 ## Situația DNS observată înainte de configurare
 
@@ -143,7 +150,12 @@ permite acest alias.
 - Prima vizită pe `.eu` pornește în engleză.
 - Prima vizită pe `.ro` pornește în română.
 - Alegerea manuală a limbii este memorată separat pe fiecare origin.
-- Harta poate fi deplasată în afara limitelor României.
+- Harta poate fi deplasată în afara limitelor României **pe `.eu`**; pe `.ro`
+  rămâne blocată pe aria APM din România (comportamentul anterior).
+- Meniul de limbi de pe `.ro` conține doar RO/EN; cel de pe `.eu` conține
+  toate cele 25 de limbi.
+- Straturile CENAGIS / IH PAN (Hărți Istorice Europene) apar doar în panoul
+  de pe `.eu`.
 - `https://www.detectlab.eu/...` redirecționează la același path pe apex.
 - Login e-mail și OAuth revin pe domeniul de pornire.
 - Un checkout Stripe de test pornit pe `.eu` revine pe `.eu/checkout.html`.

@@ -786,6 +786,23 @@
         return 'ro';
     }
 
+    // ── Market isolation ──
+    // The CENAGIS / IH PAN catalog belongs exclusively to the European
+    // variant: it renders only on detectlab.eu. detectlab.ro stays exactly
+    // as it was before the European variant, so on the Romanian market the
+    // panel is never populated and no WMS layer is created.
+    function _isEuMarket() {
+        try {
+            if (root.DetectLabSite && typeof root.DetectLabSite.isEurope === 'boolean') {
+                return root.DetectLabSite.isEurope;
+            }
+            if (root.location && root.location.hostname) {
+                return String(root.location.hostname).toLowerCase().indexOf('detectlab.eu') !== -1;
+            }
+        } catch (e) {}
+        return false;
+    }
+
     function getMapInstance() {
         return _activeMap || root._dlMap || root.map || null;
     }
@@ -947,6 +964,7 @@
 
     // ── Generare DOM UI în #histEuSubLayers ──
     function renderUi() {
+        if (!_isEuMarket()) return; // detectlab.eu only — .ro never renders this panel
         var container = document.getElementById('histEuSubLayers');
         if (!container) return;
 
@@ -1053,6 +1071,9 @@
         showMapInfo: showMapInfo,
         renderUi: renderUi,
         init: function (leafletMap) {
+            // European market only: on detectlab.ro nothing from this module
+            // is initialised (the #histEuRow container is hidden there anyway).
+            if (!_isEuMarket()) return;
             if (leafletMap) _activeMap = leafletMap;
             renderUi();
             // Re-render when language changes
