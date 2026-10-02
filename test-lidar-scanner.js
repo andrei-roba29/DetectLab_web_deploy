@@ -153,7 +153,18 @@ vm.createContext(geoSandbox);
 vm.runInContext(fs.readFileSync(path.join(__dirname, 'js/lidar-geo.js'), 'utf8'), geoSandbox);
 const lidarGeo = geoWindow.LidarGeo;
 
-const csvText = fs.readFileSync(path.join(__dirname, 'data/lidar_scanner_points.csv'), 'utf8');
+const removedScannerRows = [
+    '46.09811,23.55539,anomalie necunoscută',
+    '46.09201,23.54846,anomalie necunoscută',
+    '46.09234,23.54366,anomalie necunoscută',
+    '46.12036,23.52000,anomalie necunoscută',
+    '46.01570,23.49656,anomalie necunoscută'
+];
+/* Inject the retired coordinates into the fetched payload: the production CSV
+   no longer contains them, but stale PWA caches and future regenerated files
+   must still be unable to bring them back. */
+const csvText = fs.readFileSync(path.join(__dirname, 'data/lidar_scanner_points.csv'), 'utf8').trimEnd() +
+    '\n' + removedScannerRows.join('\n') + '\n';
 
 // Short-lived timers are held so the test can inspect drag state before the
 // scanner's release safety net fires.
@@ -265,10 +276,12 @@ async function main() {
         const lon = parseFloat(cells[1]);
         return isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
     }).length;
+    const expectedLoadedRows = validCsvRows - removedScannerRows.length;
     assert.match(
         domElements.lidarScannerStatus.textContent,
-        new RegExp('^' + validCsvRows + ' points loaded'),
-        'every valid Romanian CSV row should load (' + validCsvRows + ' expected)'
+        new RegExp('^' + expectedLoadedRows + ' points loaded'),
+        'valid Romanian CSV rows should load except the five explicitly retired coordinates (' +
+            expectedLoadedRows + ' expected)'
     );
 
     // 2. Click directly on the first CSV point.
