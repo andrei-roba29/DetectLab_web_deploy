@@ -12,12 +12,12 @@
 ## Statistici
 | Indicator | Valoare |
 |---|---|
-| Total evenimente | **198** |
-| Pe teritoriul actual al României | 177 |
+| Total evenimente | **201** |
+| Pe teritoriul actual al României | 180 |
 | Parțial (graniță / zona învecinată) | 9 |
 | Context regional (participare românească, în afara granițelor) | 12 |
 | Evenimente cu locație aproximativă (zona) | 159 |
-| Evenimente cu coordonate | 198 |
+| Evenimente cu coordonate | 201 |
 
 ## Structura unei înregistrări
 | Câmp | Descriere |
@@ -160,26 +160,26 @@
 - **RM-147** Bătălia de la Hotin (1621) · 1621-09 — Hotinul este azi în Ucraina; inclus ca eveniment de la granița istorică a Moldovei.
 - **RM-149** Bătălia de la Rabna · 1637 — Locația exactă a bătăliei este disputată.
 - **RM-150** Bătălia de la Ojogeni · 1639 — Localizarea exactă a bătăliei este disputată.
-- **RM-152** Bătălia de la Șoplea · 1655-06-26 — Una dintre cele mai cunoscute răscoale din Transilvania secolului al XVII-lea; bătălia finală a avut loc la Șoplea, azi în comuna Drăgănești (județul Prahova).
+- **RM-152** Bătălia de la Șoplea · 1655-06-26 — Una dintre cele mai cunoscute răscoale din Transilvania secolului al XVII-lea.
 - **RM-155** Bătălia de la Sânmartin (1685) · 1685 — Localizarea exactă a bătăliei este disputată.
-- **RM-160** Războiul Ruso-Turc (1768–1774) și ocupația Principatelor · 1768 — Bătăliile de la Larga și Cahul au avut loc în afara granițelor actuale ale României.
-- **RM-162** Războiul Ruso-Turc (1806–1812) și anexarea Basarabiei · 1806 — Moștenirea teritorială a evenimentului privește și Republica Moldova de azi.
-- **RM-166** Lupta de la Brad (1849) · 1849-02 — Se desfășoară în contextul războiului civil din Transilvania (1848–1849).
-- **RM-167** Luptele de la Abrud (1849) · 1849-05 — Se desfășoară în contextul războiului civil din Transilvania (1848–1849).
-- **RM-169** Bătălia de la Plevna · 1877-07 — Bătălia s-a desfășurat în afara teritoriului actual al României, dar este legată direct de Războiul de Independență.
-- **RM-170** Luptele de la Grivița (1877) · 1877-08-30 — În afara granițelor actuale; parte din Războiul de Independență.
-- **RM-171** Războiul de Independență (Russo-Turc 1877–1878) · 1877-04 — Luptele principale au avut loc în afara granițelor actuale (Bulgaria); trecerea Dunării și mobilizarea s-au desfășurat pe teritoriul românesc.
-- **RM-172** Bătălia de la Smârdan · 1878-01-24 — În afara granițelor actuale; parte din Războiul de Independență.
-- **RM-173** Bătălia de la Bazargic (1916) · 1916-09-05 — Bazargic se află la granița actuală dintre România și Bulgaria (Dobrogea de sud).
-- **RM-174** Bătălia de la Brașov (1916) · 1916-10-07 — Parte din operația de apărare a trecătorilor din 1916.
-- **RM-175** Bătălia de la Predeal (1916) · 1916-10 — Parte din operația de apărare a trecătorilor din 1916.
-- **RM-176** Bătălia de la Sibiu (1916) · 1916-09-26 — Parte din operația de apărare a trecătorilor din 1916.
-- **RM-177** Bătălia de la Turtucaia · 1916-09-02 — Turtucaia este azi în Bulgaria, imediat la frontiera cu România.
-- **RM-178** Bătălia de la Târgu Jiu (1916) · 1916-11-16 — Parte din a doua bătălie de pe Valea Jiului și din apărarea Olteniei.
-- **RM-181** Bătălia de pe Valea Prahovei (1916) · 1916-10-09 — Parte din operația de apărare a trecătorilor din 1916.
-- **RM-182** Bătălia pentru București (1916) · 1916-11-30 — Parte din operația de apărare a teritoriului Munteniei.
-- **RM-183** Operația de la Flămânda · 1916-09-29 — Operație de forțare a Dunării, abandonată din cauza lipsei de coordonare.
-- **RM-184** Prima bătălie de la Oituz (1916) · 1916-10-12 — Urmează a doua bătălie de la Oituz (noiembrie 1916) și cea din 1917.
+- **RM-163** Războiul Ruso-Turc (1768–1774) și ocupația Principatelor · 1768 — Bătăliile de la Larga și Cahul au avut loc în afara granițelor actuale ale României.
+- **RM-165** Războiul Ruso-Turc (1806–1812) și anexarea Basarabiei · 1806 — Moștenirea teritorială a evenimentului privește și Republica Moldova de azi.
+- **RM-169** Lupta de la Brad (1849) · 1849-02 — Se desfășoară în contextul războiului civil din Transilvania (1848–1849).
+- **RM-170** Luptele de la Abrud (1849) · 1849-05 — Se desfășoară în contextul războiului civil din Transilvania (1848–1849).
+- **RM-172** Bătălia de la Plevna · 1877-07 — Bătălia s-a desfășurat în afara teritoriului actual al României, dar este legată direct de Războiul de Independență.
+- **RM-173** Luptele de la Grivița (1877) · 1877-08-30 — În afara granițelor actuale; parte din Războiul de Independență.
+- **RM-174** Războiul de Independență (Russo-Turc 1877–1878) · 1877-04 — Luptele principale au avut loc în afara granițelor actuale (Bulgaria); trecerea Dunării și mobilizarea s-au desfășurat pe teritoriul românesc.
+- **RM-175** Bătălia de la Smârdan · 1878-01-24 — În afara granițelor actuale; parte din Războiul de Independență.
+- **RM-176** Bătălia de la Bazargic (1916) · 1916-09-05 — Bazargic se află la granița actuală dintre România și Bulgaria (Dobrogea de sud).
+- **RM-177** Bătălia de la Brașov (1916) · 1916-10-07 — Parte din operația de apărare a trecătorilor din 1916.
+- **RM-178** Bătălia de la Predeal (1916) · 1916-10 — Parte din operația de apărare a trecătorilor din 1916.
+- **RM-179** Bătălia de la Sibiu (1916) · 1916-09-26 — Parte din operația de apărare a trecătorilor din 1916.
+- **RM-180** Bătălia de la Turtucaia · 1916-09-02 — Turtucaia este azi în Bulgaria, imediat la frontiera cu România.
+- **RM-181** Bătălia de la Târgu Jiu (1916) · 1916-11-16 — Parte din a doua bătălie de pe Valea Jiului și din apărarea Olteniei.
+- **RM-184** Bătălia de pe Valea Prahovei (1916) · 1916-10-09 — Parte din operația de apărare a trecătorilor din 1916.
+- **RM-185** Bătălia pentru București (1916) · 1916-11-30 — Parte din operația de apărare a teritoriului Munteniei.
+- **RM-186** Operația de la Flămânda · 1916-09-29 — Operație de forțare a Dunării, abandonată din cauza lipsei de coordonare.
+- **RM-187** Prima bătălie de la Oituz (1916) · 1916-10-12 — Urmează a doua bătălie de la Oituz (noiembrie 1916) și cea din 1917.
 
 ## Cum poate fi folosită
 - **Excel**: filtrați după `Secol`, `Tip conflict` sau `Regiune istorică`.

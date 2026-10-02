@@ -141,6 +141,33 @@ CONFLICTS_EN_6 = {
         "descriere": "A major battle of the Great Turkish War, fought on Transylvanian territory: the Ottoman forces and the Kurucs (led by Imre Thököly) defeated the Habsburg imperial army, but control over Transylvania changed definitively through the Treaty of Karlowitz (1699), which officially ceded the principality to the Habsburgs."
     },
     "RM-157": {
+        "titlu": "Siege of Oradea (1692)",
+        "tip": "Siege",
+        "locatie": "Oradea (Bihor county)",
+        "regiune": "Crișana",
+        "participanti": "Habsburg Empire vs. the Ottoman Empire (the Oradea Fortress garrison)",
+        "rezultat": "Habsburg victory and occupation of Oradea",
+        "descriere": "During the Great Turkish War, the Habsburg army besieged Oradea Fortress, an important centre of Ottoman rule in Crișana. After the fortification was blockaded and bombarded, the Ottoman garrison surrendered and the city came under Habsburg control."
+    },
+    "RM-158": {
+        "titlu": "Battle of Lugoj (1695)",
+        "tip": "Battle",
+        "locatie": "Lugoj (Timiș county)",
+        "regiune": "Banat",
+        "participanti": "Ottoman Empire vs. the Habsburg Empire",
+        "rezultat": "Ottoman victory",
+        "descriere": "During the Great Turkish War, the Ottoman army led by Sultan Mustafa II confronted the Habsburg forces in the Banat near Lugoj. The imperial troops were defeated, and their commander, Field Marshal Friedrich von Veterani, was killed during the retreat."
+    },
+    "RM-159": {
+        "titlu": "Battle of Cenei (1696)",
+        "tip": "Battle",
+        "locatie": "Cenei (Timiș county)",
+        "regiune": "Banat",
+        "participanti": "Habsburg Empire vs. the Ottoman Empire",
+        "rezultat": "Habsburg victory",
+        "descriere": "The Habsburg and Ottoman armies clashed near Cenei, in the Banat, as operations in the Great Turkish War continued. The Habsburg forces won and strengthened their offensive against Ottoman positions in the region."
+    },
+    "RM-160": {
         "titlu": "The Russo-Turkish War (1710–1711) and the Battle of Stănilești",
         "tip": "War / battle",
         "locatie": "Stănilești, on the Prut (Vaslui county)",
@@ -149,7 +176,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Moldo-Russian defeat; introduction of the Phanariot regime",
         "descriere": "The ruler of Moldavia, Dimitrie Cantemir, secretly allied with Tsar Peter the Great (Treaty of Lutsk), trying to free the country from Ottoman suzerainty. At Stănilești, on the Prut (July 1711), the Moldo-Russian armies were encircled and defeated by the Ottomans. Cantemir went into exile in Russia, and the Porte introduced the Phanariot regime in Moldavia (1711) and then in Wallachia (1716)."
     },
-    "RM-158": {
+    "RM-161": {
         "titlu": "The Austro-Turkish War (1716–1718)",
         "tip": "War",
         "locatie": "Banat and Wallachia",
@@ -158,7 +185,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Annexation of the Banat and Oltenia by the Habsburgs",
         "descriere": "The Habsburg troops attacked the Ottoman fortresses and penetrated deep into the Banat and Wallachia. The conflict ended with the Peace of Passarowitz (1718), by which the Habsburg Empire annexed the Banat and Oltenia (the latter being returned to Wallachia two decades later)."
     },
-    "RM-159": {
+    "RM-162": {
         "titlu": "The Russo-Austro-Turkish War (1735–1739)",
         "tip": "War",
         "locatie": "Moldavia (Iași), Oltenia and Muntenia",
@@ -167,7 +194,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Return of Oltenia under the authority of Bucharest",
         "descriere": "The territory of Moldavia and Wallachia was again a theatre of war: the Russian troops occupied Iași, and the Austrians fought in Oltenia and Muntenia. It ended with the Peace of Belgrade (1739), by which Austria lost Oltenia, which returned under the rule of the Bucharest voivode (and indirectly under Ottoman suzerainty)."
     },
-    "RM-160": {
+    "RM-163": {
         "titlu": "The Russo-Turkish War (1768–1774) and the occupation of the Principalities",
         "tip": "War / occupation",
         "locatie": "Moldavia and Wallachia (the battles of Larga and Cahul — today in the Republic of Moldova)",
@@ -176,7 +203,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Occupation and destruction; Russian right of intervention; annexation of Bukovina",
         "descriere": "One of the most destructive conflicts of the century for the Romanian space: Moldavia and Wallachia were completely occupied by the Tsarist armies, and the important battles of Larga and Cahul were fought on what was then Bessarabian territory. The Peace of Küçük Kaynarca (1774) formally returned the Principalities to the Ottomans, but Russia obtained the right to intervene in protecting the Christians; in 1775 Austria annexed northern Moldavia (Bukovina)."
     },
-    "RM-161": {
+    "RM-164": {
         "titlu": "The Russo-Austro-Turkish War (1787–1792) and the battles of Focșani and Râmnicu Sărat",
         "tip": "War / battles",
         "locatie": "Bucharest, Iași, Focșani, Râmnicu Sărat",
@@ -185,7 +212,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Military occupation; the Russian border on the Dniester; restoration of Ottoman suzerainty",
         "descriere": "The Austro-Russian alliance attacked the Ottoman Empire on Romanian soil: Bucharest and Iași were militarily occupied by the allied troops, and the Russian general Suvorov won resounding victories at Focșani (1789) and Râmnicu Sărat (1789). The war ended with the Peace of Sistova (1791) with Austria and the Peace of Iași (1792) with Russia, when the Russian border reached the Dniester for the first time."
     },
-    "RM-162": {
+    "RM-165": {
         "titlu": "The Russo-Turkish War (1806–1812) and the annexation of Bessarabia",
         "tip": "War",
         "locatie": "Moldavia (between the Prut and the Dniester) and Wallachia",
@@ -194,7 +221,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Annexation of Bessarabia by the Russian Empire",
         "descriere": "The Romanian space was a theatre of operations or was militarily occupied: the war ended with the Peace of Bucharest, by which the Russian Empire annexed the eastern half of Moldavia — the territory between the Prut and the Dniester, later called Bessarabia."
     },
-    "RM-163": {
+    "RM-166": {
         "titlu": "Tudor Vladimirescu's Revolution (1821)",
         "tip": "Revolt / internal war",
         "locatie": "Wallachia: Gorj, Oltenia, Bucharest",
@@ -203,7 +230,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Suppression of the revolt; end of Tudor Vladimirescu",
         "descriere": "A powerful social and national movement in Wallachia: fighting took place between Tudor Vladimirescu's pandurs, the Hetairists (the Greek revolutionaries led by Alexander Ypsilantis, who also operated on Romanian territory) and the Ottoman armies that came to suppress the revolt. Tudor Vladimirescu was eventually assassinated."
     },
-    "RM-164": {
+    "RM-167": {
         "titlu": "The Russo-Turkish War (1828–1829) and the occupation of the Principalities",
         "tip": "War / occupation",
         "locatie": "The Romanian Principalities (Moldavia and Wallachia)",
@@ -212,7 +239,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Russian occupation; the Organic Regulations; recovery of the Danubian fortresses",
         "descriere": "The Principalities were occupied by the Tsarist army. The Treaty of Adrianople brought major economic and political changes (the establishment of the Organic Regulations) and returned the Danubian fortresses to Wallachia: Brăila, Giurgiu and Turnu."
     },
-    "RM-165": {
+    "RM-168": {
         "titlu": "The 1848–1849 Revolution in Transylvania (civil war)",
         "tip": "Revolution / civil war",
         "locatie": "Transylvania: the Apuseni Mountains and various Transylvanian localities",
@@ -320,7 +347,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Suppression of the Seimeni revolt",
         "descriere": "The revolt of the Seimeni (mercenaries) and the Hussars, in full ferment, was defeated by the troops of Prince George Rákóczi II at Șoplea. The rebellion of the rebels, which also had an anti-hierarchical and anti-noble component, was crushed, marking the end of a major internal crisis in Transylvania."
     },
-    "RM-166": {
+    "RM-169": {
         "titlu": "The fight at Brad (1849)",
         "tip": "Battle",
         "locatie": "Brad (Hunedoara county), the Apuseni Mountains",
@@ -329,7 +356,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Victory of the Motzen at Brad",
         "descriere": "In the clashes in the Apuseni Mountains, the Motzen led by Avram Iancu won an important victory at Brad, consolidating the Romanian control over the area and repelling the offensive of the Hungarian revolutionaries."
     },
-    "RM-167": {
+    "RM-170": {
         "titlu": "The fights at Abrud (1849)",
         "tip": "Battle",
         "locatie": "Abrud (Alba county), the Apuseni Mountains",
@@ -338,7 +365,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Victory of Avram Iancu's Motzen; defence of the Apuseni Mountains",
         "descriere": "During the civil war in Transylvania, Avram Iancu defended Abrud repeatedly with his Motzen, inflicting heavy defeats on the Hungarian revolutionary army that tried to occupy the Apuseni Mountains. The fights at Abrud are among the most famous clashes of the 1848–1849 Revolution in Transylvania."
     },
-    "RM-169": {
+    "RM-172": {
         "titlu": "Battle of Plevna",
         "tip": "Battle",
         "locatie": "Plevna (today Pleven, Bulgaria)",
@@ -347,7 +374,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Russian-Romanian victory; capitulation of the Ottoman garrison",
         "descriere": "The siege of Plevna was the bloodiest clash of the War of Independence: the Romanian and Russian troops besieged and defeated the Ottoman garrison of Osman Pasha, which capitulated on 10 December 1877. The victory contributed decisively to the achievement of Romania's independence."
     },
-    "RM-170": {
+    "RM-173": {
         "titlu": "The fights at Grivița (1877)",
         "tip": "Battle",
         "locatie": "Grivița redoubt, near Plevna (today Pleven, Bulgaria)",
@@ -356,7 +383,7 @@ CONFLICTS_EN_6 = {
         "rezultat": "Capture of the Grivița redoubt by the Romanian army",
         "descriere": "The Romanian attack on the Grivița redoubt at Plevna is one of the most heroic feats of arms of the War of Independence, resulting in the capture of the redoubt after extremely bloody fighting, celebrated in Romanian culture."
     },
-    "RM-172": {
+    "RM-175": {
         "titlu": "Battle of Smârdan",
         "tip": "Battle",
         "locatie": "Smârdan, near Vidin (Bulgaria)",
