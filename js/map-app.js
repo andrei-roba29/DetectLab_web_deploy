@@ -12145,7 +12145,9 @@
                 map.getPane('pane_mitteleuropa').style.pointerEvents = 'none';
 
                 window._mitteleuropaMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
-                    layers: 'ihpan:mitteleuropa_3857',
+                    // CENAGIS publishes this catalogue entry as ukvme_3857
+                    // (the display title is Übersichtskarte von Mitteleuropa).
+                    layers: 'ihpan:ukvme_3857',
                     format: 'image/png',
                     transparent: true,
                     version: '1.1.1',
@@ -12259,7 +12261,8 @@
                 map.getPane('pane_kdr100k').style.pointerEvents = 'none';
 
                 window._kdr100kMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
-                    layers: 'ihpan:kdr100k_3857',
+                    // The 1:100,000 German Empire catalogue layer is named kdr_3857.
+                    layers: 'ihpan:kdr_3857',
                     format: 'image/png',
                     transparent: true,
                     version: '1.1.1',
