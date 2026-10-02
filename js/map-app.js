@@ -5534,6 +5534,211 @@
 
             var _lidarVisible = false;
 
+            // Public geodata services used by the free LiDAR catalogue. Each
+            // country keeps its own WMS endpoint and layer name, but they all
+            // share the same Leaflet group and opacity controls below.
+            var NETHERLANDS_LIDAR_WMS_URL =
+                'https://service.pdok.nl/rws/actueel-hoogtebestand-nederland/wms/v1_0';
+            var NORWAY_LIDAR_WMS_URL =
+                'https://wms.geonorge.no/skwms1/wms.hoyde-hoydedata-metadata-prosjekt';
+            var POLAND_LIDAR_KRON86_WMS_URL =
+                'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomNMT/WMS/SkorowidzeWUkladzieKRON86';
+            var POLAND_LIDAR_EVRF2007_WMS_URL =
+                'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomNMT/WMS/SkorowidzeWUkladzieEVRF2007';
+            // The WFS endpoints publish the same year indexes as vector
+            // footprints. Keep them alongside the WMS display services so a
+            // future download/feature-info action can reuse the supplied
+            // catalog without another source-definition change.
+            var POLAND_LIDAR_KRON86_WFS_URL =
+                'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomiaroweLidarKRON86/WFS/Skorowidze';
+            var POLAND_LIDAR_EVRF2007_WFS_URL =
+                'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomiaroweLidarEVRF2007/WFS/Skorowidze';
+            var SPAIN_LIDAR_WMS_URL = 'https://servicios.idee.es/wms-inspire/mdt';
+            var SWITZERLAND_LIDAR_WMS_URL = 'https://wms.geo.admin.ch/';
+            var UK_LIDAR_WMS_URL =
+                'https://environment.data.gov.uk/geoservices/datasets/13787b9a-26a4-4775-8523-806d13af58fc/wms';
+            var FRANCE_LIDAR_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
+            var DENMARK_LIDAR_WMS_URL = 'https://wms.datafordeler.dk/DHMNedboer/dhm/1.0.0/WMS';
+
+            // Norway publishes one WMS catalog rather than one service per
+            // project. These two entries make the control useful immediately;
+            // the complete catalog is requested from GetCapabilities below and
+            // replaces/extends this fallback list when the service permits CORS.
+            var NORWAY_LIDAR_REGIONS = [
+                { name: 'Vestfold 10pkt 2025', year: '2025', wmsLayer: 'Vestfold 10pkt 2025:multiskyggerelieff' },
+                { name: 'Vest-Telemark Søndre 10pkt 2025', year: '2025', wmsLayer: 'Vest-Telemark Søndre 10pkt 2025:multiskyggerelieff' }
+            ];
+            var NORWAY_LIDAR_CATALOG_URL = NORWAY_LIDAR_WMS_URL +
+                '?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0';
+
+            window.NORWAY_LIDAR_WMS_URL = NORWAY_LIDAR_WMS_URL;
+            window.NORWAY_LIDAR_REGIONS = NORWAY_LIDAR_REGIONS;
+            window.NETHERLANDS_LIDAR_WMS_URL = NETHERLANDS_LIDAR_WMS_URL;
+            window.POLAND_LIDAR_KRON86_WMS_URL = POLAND_LIDAR_KRON86_WMS_URL;
+            window.POLAND_LIDAR_EVRF2007_WMS_URL = POLAND_LIDAR_EVRF2007_WMS_URL;
+            window.POLAND_LIDAR_KRON86_WFS_URL = POLAND_LIDAR_KRON86_WFS_URL;
+            window.POLAND_LIDAR_EVRF2007_WFS_URL = POLAND_LIDAR_EVRF2007_WFS_URL;
+            window.SPAIN_LIDAR_WMS_URL = SPAIN_LIDAR_WMS_URL;
+            window.SWITZERLAND_LIDAR_WMS_URL = SWITZERLAND_LIDAR_WMS_URL;
+            window.UK_LIDAR_WMS_URL = UK_LIDAR_WMS_URL;
+            window.FRANCE_LIDAR_WMS_URL = FRANCE_LIDAR_WMS_URL;
+            window.DENMARK_LIDAR_WMS_URL = DENMARK_LIDAR_WMS_URL;
+
+            // The WMS services use different layer catalogues, so the select
+            // controls below swap a complete layer instead of stacking several
+            // incompatible rasters on top of each other.
+            var POLAND_LIDAR_MODES = {
+                kron86: {
+                    label: 'PL-KRON86-NH · 2011–2019',
+                    url: POLAND_LIDAR_KRON86_WMS_URL,
+                    indexUrl: POLAND_LIDAR_KRON86_WFS_URL,
+                    layers: 'gugik:SkorowidzDanychPomiarowychLIDAR2011,gugik:SkorowidzDanychPomiarowychLIDAR2012,gugik:SkorowidzDanychPomiarowychLIDAR2013,gugik:SkorowidzDanychPomiarowychLIDAR2014,gugik:SkorowidzDanychPomiarowychLIDAR2015,gugik:SkorowidzDanychPomiarowychLIDAR2016,gugik:SkorowidzDanychPomiarowychLIDAR2017,gugik:SkorowidzDanychPomiarowychLIDAR2018,gugik:SkorowidzDanychPomiarowychLIDAR2019'
+                },
+                evrf2007: {
+                    label: 'PL-EVRF2007-NH · 2018–2026',
+                    url: POLAND_LIDAR_EVRF2007_WMS_URL,
+                    indexUrl: POLAND_LIDAR_EVRF2007_WFS_URL,
+                    layers: 'gugik:SkorowidzDanychPomiarowychLIDAR2018,gugik:SkorowidzDanychPomiarowychLIDAR2019,gugik:SkorowidzDanychPomiarowychLIDAR2020,gugik:SkorowidzDanychPomiarowychLIDAR2021,gugik:SkorowidzDanychPomiarowychLIDAR2022,gugik:SkorowidzDanychPomiarowychLIDAR2023,gugik:SkorowidzDanychPomiarowychLIDAR2024,gugik:SkorowidzDanychPomiarowychLIDAR2025,gugik:SkorowidzDanychPomiarowychLIDAR2026'
+                }
+            };
+            var FRANCE_LIDAR_MODES = {
+                terrain: { label: 'MNT · Terrain', layers: 'IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' },
+                surface: { label: 'MNS · Surface', layers: 'IGNF_LIDAR-HD_MNS_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' },
+                height: { label: 'MNH · Height', layers: 'IGNF_LIDAR-HD_MNH_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' }
+            };
+            var UK_LIDAR_MODES = {
+                dtm: { label: 'DTM 1 m', layers: 'Lidar_Composite_DTM_1m' },
+                elevation: { label: 'Elevation DTM 1 m', layers: 'Lidar_Composite_Elevation_DTM_1m', styles: 'elevation' },
+                hillshade: { label: 'Hillshade DTM 1 m', layers: 'Lidar_Composite_Hillshade_DTM_1m', styles: 'hillshade' }
+            };
+
+            function _lidarWmsOptions(extra) {
+                var options = extra || {};
+                if (options.updateWhenZooming === undefined) options.updateWhenZooming = false;
+                if (options.updateWhenIdle === undefined) options.updateWhenIdle = true;
+                if (options.keepBuffer === undefined) {
+                    options.keepBuffer = (window.DLTilePerf && window.DLTilePerf.config)
+                        ? window.DLTilePerf.config.keepBuffer : 1;
+                }
+                options.pane = 'pane_lidar';
+                options.maxZoom = 20;
+                return options;
+            }
+
+            function _createFreeLidarWmsLayer(url, layers, cfg) {
+                cfg = cfg || {};
+                var options = _lidarWmsOptions({
+                    layers: layers,
+                    format: cfg.format || 'image/png',
+                    transparent: cfg.transparent !== false,
+                    version: cfg.version || '1.3.0',
+                    styles: cfg.styles || '',
+                    opacity: cfg.opacity,
+                    attribution: cfg.attribution || '© LIDAR',
+                    crs: L.CRS.EPSG3857
+                });
+                if (cfg.crossOrigin) options.crossOrigin = cfg.crossOrigin;
+                if (cfg.serverType) options.serverType = cfg.serverType;
+                if (cfg.minZoom !== undefined) options.minZoom = cfg.minZoom;
+                if (cfg.maxNativeZoom !== undefined) options.maxNativeZoom = cfg.maxNativeZoom;
+                return L.tileLayer.wms(url, options);
+            }
+
+            function createNorwayLidarLayer(region) {
+                if (!region || !region.wmsLayer) return null;
+                return L.tileLayer.wms(NORWAY_LIDAR_WMS_URL, _lidarWmsOptions({
+                    layers: region.wmsLayer,
+                    format: 'image/png',
+                    transparent: true,
+                    version: '1.3.0',
+                    opacity: 0.75,
+                    attribution: '© Kartverket'
+                }));
+            }
+            window.createNorwayLidarLayer = createNorwayLidarLayer;
+
+            function _norwayRegionFromLayerName(layerName) {
+                var raw = String(layerName || '').trim();
+                if (!raw || raw.indexOf(':multiskyggerelieff') === -1) return null;
+                var name = raw.replace(/:multiskyggerelieff$/, '');
+                var yearMatch = name.match(/(19|20)\d{2}$/);
+                return { name: name, year: yearMatch ? yearMatch[0] : '', wmsLayer: raw };
+            }
+
+            function _populateNorwayRegionSelect() {
+                var select = document.getElementById('norwayLidarRegionSelect');
+                if (!select) return;
+                var current = select.value;
+                select.innerHTML = '';
+                NORWAY_LIDAR_REGIONS.forEach(function (region) {
+                    var option = document.createElement('option');
+                    option.value = region.wmsLayer;
+                    option.textContent = region.name + (region.year ? ' (' + region.year + ')' : '');
+                    select.appendChild(option);
+                });
+                if (current && NORWAY_LIDAR_REGIONS.some(function (r) { return r.wmsLayer === current; })) {
+                    select.value = current;
+                }
+            }
+
+            function _loadNorwayLidarCatalog() {
+                return fetch(NORWAY_LIDAR_CATALOG_URL).then(function (response) {
+                    if (!response.ok) throw new Error('Norway LiDAR catalog HTTP ' + response.status);
+                    return response.text();
+                }).then(function (xmlText) {
+                    var xml = new DOMParser().parseFromString(xmlText, 'text/xml');
+                    var names = xml.getElementsByTagNameNS
+                        ? xml.getElementsByTagNameNS('*', 'Name')
+                        : xml.getElementsByTagName('Name');
+                    var regions = [], seen = {};
+                    for (var i = 0; i < names.length; i++) {
+                        var region = _norwayRegionFromLayerName(names[i].textContent);
+                        if (region && !seen[region.wmsLayer]) {
+                            seen[region.wmsLayer] = true;
+                            regions.push(region);
+                        }
+                    }
+                    if (!regions.length) throw new Error('Norway LiDAR catalog has no hillshade layers');
+                    regions.sort(function (a, b) { return a.name.localeCompare(b.name, 'nb'); });
+                    NORWAY_LIDAR_REGIONS = regions;
+                    window.NORWAY_LIDAR_REGIONS = NORWAY_LIDAR_REGIONS;
+                    _populateNorwayRegionSelect();
+                    var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.noLidar;
+                    if (cfg && !NORWAY_LIDAR_REGIONS.some(function (r) { return r.wmsLayer === cfg.region.wmsLayer; })) {
+                        cfg.region = NORWAY_LIDAR_REGIONS[0];
+                        var select = document.getElementById('norwayLidarRegionSelect');
+                        if (select) select.value = cfg.region.wmsLayer;
+                    }
+                    return regions;
+                }).catch(function (error) {
+                    // The fallback entries still provide a working control when
+                    // the public capabilities document blocks browser CORS.
+                    console.warn('[DetectLab] Norway LiDAR catalog unavailable; using fallback regions', error);
+                    _populateNorwayRegionSelect();
+                    return NORWAY_LIDAR_REGIONS;
+                });
+            }
+
+            function _selectedRegion(list, value) {
+                return list.filter(function (region) { return region.wmsLayer === value; })[0] || list[0];
+            }
+
+            window.setNorwayLidarRegion = function (wmsLayer) {
+                var cfg = LIDAR_SUB_LAYERS.noLidar;
+                if (!cfg) return;
+                var selected = _selectedRegion(NORWAY_LIDAR_REGIONS, wmsLayer);
+                if (!selected) return;
+                cfg.region = selected;
+                if (cfg.leafletLayer) {
+                    if (_lidarGroup.hasLayer(cfg.leafletLayer)) _lidarGroup.removeLayer(cfg.leafletLayer);
+                    cfg.leafletLayer = createNorwayLidarLayer(selected);
+                    if (cfg.leafletLayer) {
+                        cfg.leafletLayer.setOpacity(cfg.opacity);
+                        if (_lidarVisible && cfg.enabled) _lidarGroup.addLayer(cfg.leafletLayer);
+                    }
+                }
+            };
+
             // Sub-layer definitions
             var LIDAR_SUB_LAYERS = {
                 hd: {
@@ -5633,7 +5838,95 @@
                     leafletLayer: null
                 },
 
+                // ── Free European LiDAR catalogue ──────────────────────────
+                // These entries deliberately live in the same LIDAR master
+                // switch as the original Romania coverage. They are lazy: a
+                // WMS layer is not constructed until its opacity is raised or
+                // its country switch is turned on.
+                nlAhn: {
+                    label: 'Netherlands · AHN DTM 0.5 m', enabled: false, opacity: 0.8,
+                    type: 'wms', url: NETHERLANDS_LIDAR_WMS_URL, wmsLayers: 'dtm_05m',
+                    serverType: 'mapserver', crossOrigin: 'anonymous',
+                    attribution: 'Source: AHN (Actueel Hoogtebestand Nederland) — Rijkswaterstaat / PDOK. Licence: CC0 1.0 Universal.', leafletLayer: null
+                },
+                noLidar: {
+                    label: 'Norway · Kartverket', enabled: false, opacity: 0.75,
+                    factory: 'norway', region: NORWAY_LIDAR_REGIONS[0], leafletLayer: null
+                },
+                plLidar: {
+                    label: 'Poland · LIDAR measurements', enabled: false, opacity: 0.8,
+                    factory: 'poland', mode: 'kron86', attribution: '© GUGiK — Polish national LIDAR measurements (free data).', leafletLayer: null
+                },
+                esLidar: {
+                    label: 'Spain · LiDAR-derived DTM', enabled: false, opacity: 0.8,
+                    type: 'wms', url: SPAIN_LIDAR_WMS_URL, wmsLayers: 'EL.ElevationGridCoverage', styles: 'Elevaciones',
+                    attribution: '© IGN España — PNOA LiDAR', leafletLayer: null
+                },
+                chLidar: {
+                    label: 'Switzerland · swissSURFACE3D', enabled: false, opacity: 0.8,
+                    type: 'wms', url: SWITZERLAND_LIDAR_WMS_URL, wmsLayers: 'ch.swisstopo.swisssurface3d.metadata',
+                    attribution: '© swisstopo — swissSURFACE3D LiDAR', leafletLayer: null
+                },
+                ukLidar: {
+                    label: 'United Kingdom · Environment Agency', enabled: false, opacity: 0.8,
+                    factory: 'uk', mode: 'dtm', attribution: '© Environment Agency / Defra — LiDAR Composite DTM.', leafletLayer: null
+                },
+                frLidar: {
+                    label: 'France · LiDAR HD', enabled: false, opacity: 0.8,
+                    factory: 'france', mode: 'terrain', attribution: '© IGN France — LiDAR HD.', leafletLayer: null
+                },
+                dkLidar: {
+                    label: 'Denmark · DHM terrain hillshade', enabled: false, opacity: 0.8,
+                    factory: 'denmark', attribution: '© Datafordeler / Danish Geodata Agency — Danmarks Højdemodel.', leafletLayer: null
+                }
             };
+
+            var LIDAR_COUNTRY_TOGGLE_IDS = {
+                nlAhn: 'lidarNlAhnToggle', noLidar: 'lidarNoLidarToggle',
+                plLidar: 'lidarPlLidarToggle', esLidar: 'lidarEsLidarToggle',
+                chLidar: 'lidarChLidarToggle', ukLidar: 'lidarUkLidarToggle',
+                frLidar: 'lidarFrLidarToggle', dkLidar: 'lidarDkLidarToggle'
+            };
+
+            function _createSelectableEuropeanLidarLayer(cfg) {
+                var mode;
+                if (cfg.factory === 'poland') {
+                    mode = POLAND_LIDAR_MODES[cfg.mode] || POLAND_LIDAR_MODES.kron86;
+                    return _createFreeLidarWmsLayer(mode.url, mode.layers, {
+                        opacity: cfg.opacity,
+                        attribution: cfg.attribution
+                    });
+                }
+                if (cfg.factory === 'uk') {
+                    mode = UK_LIDAR_MODES[cfg.mode] || UK_LIDAR_MODES.dtm;
+                    return _createFreeLidarWmsLayer(UK_LIDAR_WMS_URL, mode.layers, {
+                        opacity: cfg.opacity,
+                        styles: mode.styles,
+                        attribution: cfg.attribution
+                    });
+                }
+                if (cfg.factory === 'france') {
+                    mode = FRANCE_LIDAR_MODES[cfg.mode] || FRANCE_LIDAR_MODES.terrain;
+                    return _createFreeLidarWmsLayer(FRANCE_LIDAR_WMS_URL, mode.layers, {
+                        opacity: cfg.opacity,
+                        attribution: cfg.attribution
+                    });
+                }
+                if (cfg.factory === 'denmark') {
+                    // Datafordeler requires the key as a query parameter. It is
+                    // intentionally supplied at runtime rather than committed
+                    // to the public repository. Deployments can set it before
+                    // map initialisation with window.DETECTLAB_DK_API_KEY.
+                    var apiKey = window.DETECTLAB_DK_API_KEY || '';
+                    var separator = DENMARK_LIDAR_WMS_URL.indexOf('?') === -1 ? '?' : '&';
+                    return _createFreeLidarWmsLayer(
+                        DENMARK_LIDAR_WMS_URL + separator + 'apikey=' + encodeURIComponent(apiKey),
+                        'dhm_terraen_skyggekort',
+                        { opacity: cfg.opacity, attribution: cfg.attribution }
+                    );
+                }
+                return null;
+            }
 
             function _buildLidarLeafletLayer(key, cfg) {
                 // ── Gesture-safe tile options for the LIDAR stack ──
@@ -5657,17 +5950,28 @@
                     return o;
                 }
 
+                if (cfg.factory === 'norway') {
+                    return createNorwayLidarLayer(cfg.region);
+                }
+                if (cfg.factory) {
+                    return _createSelectableEuropeanLidarLayer(cfg);
+                }
+
                 if (cfg.type === 'wms') {
-                    return L.tileLayer.wms(cfg.url, _lidarPerfOptions({
+                    var wmsOptions = _lidarPerfOptions({
                         layers: cfg.wmsLayers,
-                        format: 'image/png',
-                        transparent: true,
-                        version: '1.3.0',
+                        format: cfg.format || 'image/png',
+                        transparent: cfg.transparent !== false,
+                        version: cfg.version || '1.3.0',
+                        styles: cfg.styles || '',
                         opacity: cfg.opacity,
                         pane: 'pane_lidar',
-                        attribution: '© LIDAR ' + cfg.label,
+                        attribution: cfg.attribution || '© LIDAR ' + cfg.label,
                         crs: L.CRS.EPSG3857
-                    }));
+                    });
+                    if (cfg.crossOrigin) wmsOptions.crossOrigin = cfg.crossOrigin;
+                    if (cfg.serverType) wmsOptions.serverType = cfg.serverType;
+                    return L.tileLayer.wms(cfg.url, wmsOptions);
                 }
 
 
@@ -5736,10 +6040,14 @@
                     Object.keys(LIDAR_SUB_LAYERS).forEach(function (key) {
                         var cfg = LIDAR_SUB_LAYERS[key];
                         cfg.enabled = false;
+                        var countryToggle = document.getElementById(LIDAR_COUNTRY_TOGGLE_IDS[key] || '');
+                        if (countryToggle) countryToggle.checked = false;
                     });
                 }
                 var subPanel = document.getElementById('lidarSubLayers');
+                var europeanPanel = document.getElementById('lidarEuropeanSubLayers');
                 if (subPanel) subPanel.style.opacity = on ? '1' : '0.45';
+                if (europeanPanel) europeanPanel.style.opacity = on ? '1' : '0.45';
                 if (window._updateCs917ZoomHint) window._updateCs917ZoomHint();
                 if (window._updateDj917ZoomHint) window._updateDj917ZoomHint();
                 if (window._updateGj917ZoomHint) window._updateGj917ZoomHint();
@@ -5770,21 +6078,98 @@
                 if (key === 'mh917' && window._updateMh917ZoomHint) window._updateMh917ZoomHint();
             };
 
+            // ── European country controls ─────────────────────────────────
+            // Country rows use ordinary checkboxes, while the master remains the
+            // single switch that owns the shared Leaflet layer group.
+            window.toggleInternationalLidar = function (key, on) {
+                var cfg = LIDAR_SUB_LAYERS[key];
+                if (!cfg) return;
+                if (on && !_lidarVisible) {
+                    var master = document.getElementById('lidarToggle');
+                    if (master) master.checked = true;
+                    window.toggleLidarLayer(true);
+                }
+                window.toggleLidarSub(key, !!on);
+            };
+
+            window.setInternationalLidarOpacity = function (key, value) {
+                var cfg = LIDAR_SUB_LAYERS[key];
+                if (!cfg) return;
+                var numeric = Math.max(0, Math.min(100, Number(value) || 0));
+                cfg.opacity = numeric / 100;
+                var uiKey = key.charAt(0).toUpperCase() + key.slice(1);
+                var pct = document.getElementById('lidar' + uiKey + 'Pct');
+                if (pct) pct.textContent = numeric + '%';
+                if (cfg.leafletLayer && cfg.leafletLayer.setOpacity) {
+                    cfg.leafletLayer.options.opacity = cfg.opacity;
+                    cfg.leafletLayer.setOpacity(cfg.opacity);
+                }
+                if (numeric > 0) {
+                    if (!_lidarVisible) {
+                        var master = document.getElementById('lidarToggle');
+                        if (master) master.checked = true;
+                        window.toggleLidarLayer(true);
+                    }
+                    if (!cfg.enabled) window.toggleLidarSub(key, true);
+                } else if (cfg.enabled) {
+                    window.toggleLidarSub(key, false);
+                }
+                var slider = document.getElementById('lidar' + uiKey + 'OpacitySlider');
+                if (slider && String(slider.value) !== String(numeric)) slider.value = numeric;
+            };
+
+            function _replaceSelectableInternationalLayer(key, mode) {
+                var cfg = LIDAR_SUB_LAYERS[key];
+                if (!cfg) return;
+                cfg.mode = mode;
+                if (cfg.leafletLayer) {
+                    if (_lidarGroup.hasLayer(cfg.leafletLayer)) _lidarGroup.removeLayer(cfg.leafletLayer);
+                    cfg.leafletLayer = _buildLidarLeafletLayer(key, cfg);
+                    if (cfg.leafletLayer) {
+                        cfg.leafletLayer.setOpacity(cfg.opacity);
+                        if (_lidarVisible && cfg.enabled) _lidarGroup.addLayer(cfg.leafletLayer);
+                    }
+                }
+            }
+
+            window.setPolandLidarMode = function (mode) {
+                _replaceSelectableInternationalLayer('plLidar', mode);
+            };
+            window.setUkLidarMode = function (mode) {
+                _replaceSelectableInternationalLayer('ukLidar', mode);
+            };
+            window.setFranceLidarMode = function (mode) {
+                _replaceSelectableInternationalLayer('frLidar', mode);
+            };
+
+            // Populate the Norway selector immediately, then ask Kartverket for
+            // the full project catalog (the service currently contains roughly
+            // 1,356 project regions and can change over time).
+            _populateNorwayRegionSelect();
+            _loadNorwayLidarCatalog();
+            var norwaySelect = document.getElementById('norwayLidarRegionSelect');
+            if (norwaySelect) norwaySelect.addEventListener('change', function () {
+                window.setNorwayLidarRegion(this.value);
+            });
+
             // ── Public: expand/collapse sub-layer panel ──
             var _lidarSubExpandedState = false;
             window.toggleLidarSubLayers = function() {
                 _lidarSubExpandedState = !_lidarSubExpandedState;
                 var panel = document.getElementById('lidarSubLayers');
+                var europeanPanel = document.getElementById('lidarEuropeanSubLayers');
                 var icon = document.getElementById('lidarExpandIcon');
                 if (_lidarSubExpandedState) {
+                    setSubLayersMaxHeight(europeanPanel, true, 900);
                     setSubLayersMaxHeight(panel, true, 1100);
-                    panel.style.opacity = '1';
-                    panel.style.marginTop = '10px';
+                    if (europeanPanel) { europeanPanel.style.opacity = '1'; europeanPanel.style.marginTop = '10px'; }
+                    if (panel) { panel.style.opacity = '1'; panel.style.marginTop = '10px'; }
                     icon.style.transform = 'rotate(0deg)';
                 } else {
+                    setSubLayersMaxHeight(europeanPanel, false);
                     setSubLayersMaxHeight(panel, false);
-                    panel.style.opacity = '0';
-                    panel.style.marginTop = '0';
+                    if (europeanPanel) { europeanPanel.style.opacity = '0'; europeanPanel.style.marginTop = '0'; }
+                    if (panel) { panel.style.opacity = '0'; panel.style.marginTop = '0'; }
                     icon.style.transform = 'rotate(-90deg)';
                 }
                 setTimeout(function() {
@@ -6192,7 +6577,8 @@
             };
 
             map.on('zoomend', function() {
-                ['ar', 'hd', 'ab', 'bh', 'cs', 'ro2m', 'ro1m', 'cs917', 'dj917', 'gj917', 'mh917'].forEach(function(key) {
+                ['ar', 'hd', 'ab', 'bh', 'cs', 'ro2m', 'ro1m', 'cs917', 'dj917', 'gj917', 'mh917',
+                 'nlAhn', 'noLidar', 'plLidar', 'esLidar', 'chLidar', 'ukLidar', 'frLidar', 'dkLidar'].forEach(function(key) {
                     var cfg = LIDAR_SUB_LAYERS[key];
                     if (cfg && cfg.leafletLayer && cfg.enabled && _lidarVisible) {
                         cfg.leafletLayer.options.opacity = cfg.opacity;
@@ -11192,8 +11578,25 @@
                     mh917: [[44.30, 22.20], [45.00, 23.20]]
                 };
 
+                // The country rows are filtered by the selected-country view,
+                // but deliberately do not participate in the older green
+                // coverage-highlight count used for the Romania catalogue.
+                // This keeps the original panel's visual semantics stable while
+                // adding the international free services.
+                var INTERNATIONAL_LIDAR_BOUNDS = {
+                    nlAhn: [[50.70, 3.20], [53.60, 7.30]],
+                    noLidar: [[57.90, 4.00], [71.30, 31.50]],
+                    plLidar: [[49.00, 14.00], [54.90, 24.20]],
+                    esLidar: [[27.50, -18.50], [43.90, 4.50]],
+                    chLidar: [[45.80, 5.90], [47.90, 10.60]],
+                    ukLidar: [[49.70, -8.70], [60.90, 2.10]],
+                    frLidar: [[41.30, -5.50], [51.20, 9.70]],
+                    dkLidar: [[54.40, 7.90], [57.80, 15.70]]
+                };
+
                 // Central config: each leaf layer with its bounds and row getter
                 var layerDefs = [];
+                var internationalLayerDefs = [];
 
                 // Helper to create L.latLngBounds safely
                 function toBounds(arr) {
@@ -11291,7 +11694,15 @@
                         cs917: 'lidarCs917OpacitySlider',
                         dj917: 'lidarDj917OpacitySlider',
                         gj917: 'lidarGj917OpacitySlider',
-                        mh917: 'lidarMh917OpacitySlider'
+                        mh917: 'lidarMh917OpacitySlider',
+                        nlAhn: 'lidarNlAhnOpacitySlider',
+                        noLidar: 'lidarNoLidarOpacitySlider',
+                        plLidar: 'lidarPlLidarOpacitySlider',
+                        esLidar: 'lidarEsLidarOpacitySlider',
+                        chLidar: 'lidarChLidarOpacitySlider',
+                        ukLidar: 'lidarUkLidarOpacitySlider',
+                        frLidar: 'lidarFrLidarOpacitySlider',
+                        dkLidar: 'lidarDkLidarOpacitySlider'
                     };
                     var realSliderId = mapping[k] || sliderId;
                     layerDefs.push({
@@ -11308,6 +11719,30 @@
                             };
                         })(realSliderId),
                         group: 'lidar'
+                    });
+                });
+
+                // International free LiDAR rows use the selected-country
+                // filtering, but not the Romania coverage highlight outlines.
+                Object.keys(INTERNATIONAL_LIDAR_BOUNDS).forEach(function(k) {
+                    var sliderId = 'lidar' + k.charAt(0).toUpperCase() + k.slice(1) + 'OpacitySlider';
+                    var realSliderId = {
+                        nlAhn: 'lidarNlAhnOpacitySlider', noLidar: 'lidarNoLidarOpacitySlider',
+                        plLidar: 'lidarPlLidarOpacitySlider', esLidar: 'lidarEsLidarOpacitySlider',
+                        chLidar: 'lidarChLidarOpacitySlider', ukLidar: 'lidarUkLidarOpacitySlider',
+                        frLidar: 'lidarFrLidarOpacitySlider', dkLidar: 'lidarDkLidarOpacitySlider'
+                    }[k] || sliderId;
+                    internationalLayerDefs.push({
+                        key: 'lidar_' + k,
+                        bounds: toBounds(INTERNATIONAL_LIDAR_BOUNDS[k]),
+                        getRow: (function(sId) {
+                            return function() {
+                                var s = document.getElementById(sId);
+                                if (!s) return null;
+                                return getDirectChildRowByElement(s, 'lidarEuropeanSubLayers') || s.parentElement;
+                            };
+                        })(realSliderId),
+                        group: null
                     });
                 });
 
@@ -11542,7 +11977,7 @@
                         if (c === iso && featureLayer.getBounds) countryBounds = featureLayer.getBounds();
                     });
                     if (!countryBounds) return;
-                    layerDefs.forEach(function (def) {
+                    layerDefs.concat(internationalLayerDefs).forEach(function (def) {
                         var row = null;
                         try { row = def.getRow(); } catch (e) {}
                         if (!row || !def.bounds) return;
@@ -12526,9 +12961,10 @@
                     // Central/Eastern-European corridor. Restricting the layer
                     // to ROMANIA_BOUNDS made valid 200 responses outside
                     // Romania disappear before Leaflet could display them.
-                    var layerBounds = (typeof entry === "string" || !entry.bounds)
-                        ? L.latLngBounds([[34.0, 15.0], [58.0, 38.0]])
-                        : L.latLngBounds(entry.bounds);
+                    var layerBounds = L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]);
+                    if (typeof entry !== "string" && entry.bounds) {
+                        layerBounds = L.latLngBounds(entry.bounds);
+                    }
                     layerBounds.extend(L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]));
                     var lowPower = _sat60IsLowPowerDevice();
                     var opts = {

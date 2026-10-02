@@ -24,7 +24,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260927-sat-copernicus-vhr">
+    <link rel="stylesheet" href="css/styles.css?v=20261002-european-lidar">
     <link rel="stylesheet" href="css/country-selector.css?v=20261002">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260922-mobile-fs-controls">
@@ -1955,8 +1955,8 @@
                                     <line x1="1" y1="6.5" x2="3" y2="6.5" stroke="#4fc3f7" stroke-width="0.8" />
                                     <line x1="10" y1="6.5" x2="12" y2="6.5" stroke="#4fc3f7" stroke-width="0.8" />
                                 </svg>
-                                <span>LIDAR</span>
-                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('LIDAR','© Dr. Alexandru Hegyi alexandruhegyi.com')" title="Layer info"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
+                                <span>LiDAR</span>
+                                <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('LiDAR','Free national LiDAR services: AHN / Kartverket / GUGiK / IGN / swisstopo / Environment Agency / Datafordeler.')" title="Layer info"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor" /></svg></button>
                             </span>
                             <span style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
                                 <button onclick="toggleLidarSubLayers()" id="lidarExpandBtn" title="Expand/Collapse sublayers" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:rgba(79,195,247,0.8);display:flex;align-items:center;transition:color 0.2s;" onmouseover="this.style.color='#4fc3f7'" onmouseout="this.style.color='rgba(79,195,247,0.8)'">
@@ -1972,6 +1972,119 @@
                         </div>
 
                         <!-- Sub-layer switches -->
+                        <div id="lidarEuropeanSubLayers" style="margin-top:0;padding-left:6px;border-left:2px solid rgba(79,195,247,0.3);display:flex;flex-direction:column;gap:8px;overflow:hidden;transition:max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;max-height:0;opacity:0;">
+
+                            <!-- Netherlands · AHN LiDAR Terrain -->
+                            <div class="lidar-country-row" id="lidarNlAhnRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <span>Netherlands · AHN DTM 0.5 m</span>
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Netherlands · AHN LiDAR Terrain (0.5 m)','Source: AHN (Actueel Hoogtebestand Nederland) — Rijkswaterstaat / PDOK. Licence: CC0 1.0 Universal.')" title="Layer info">ⓘ</button>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle Netherlands LiDAR" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="lidarNlAhnToggle" onchange="toggleInternationalLidar('nlAhn', this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px;"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarNlAhnPct">80%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarNlAhnOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('nlAhn', this.value)">
+                            </div>
+
+                            <!-- Norway · one project catalog -->
+                            <div class="lidar-country-row" id="lidarNoLidarRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <span>Norway · Kartverket LiDAR</span>
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Norway LiDAR','© Kartverket')" title="Layer info">ⓘ</button>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle Norway LiDAR" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="lidarNoLidarToggle" onchange="toggleInternationalLidar('noLidar', this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+                                <select id="norwayLidarRegionSelect" class="lidar-country-select" aria-label="Norway LiDAR project"></select>
+                                <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarNoLidarPct">75%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarNoLidarOpacitySlider" min="0" max="100" value="75" oninput="setInternationalLidarOpacity('noLidar', this.value)">
+                            </div>
+
+                            <!-- Poland · two national elevation-system catalogs -->
+                            <div class="lidar-country-row" id="lidarPlLidarRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <span>Poland · GUGiK LIDAR</span>
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Poland LIDAR','© GUGiK — Polish national LIDAR measurements (free data).')" title="Layer info">ⓘ</button>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle Poland LiDAR" style="transform:scale(0.85);transform-origin:right center;">
+                                        <input type="checkbox" id="lidarPlLidarToggle" onchange="toggleInternationalLidar('plLidar', this.checked)">
+                                        <span class="apm-toggle-track"></span>
+                                    </label>
+                                </div>
+                                <select id="polandLidarModeSelect" class="lidar-country-select" aria-label="Poland LiDAR catalog" onchange="setPolandLidarMode(this.value)">
+                                    <option value="kron86">PL-KRON86-NH · 2011–2019</option>
+                                    <option value="evrf2007">PL-EVRF2007-NH · 2018–2026</option>
+                                </select>
+                                <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarPlLidarPct">80%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarPlLidarOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('plLidar', this.value)">
+                            </div>
+
+                            <!-- Spain -->
+                            <div class="lidar-country-row" id="lidarEsLidarRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;"><span>Spain · LiDAR-derived DTM</span><button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Spain LiDAR','© IGN España — PNOA LiDAR')" title="Layer info">ⓘ</button></span>
+                                    <label class="apm-toggle-switch" title="Toggle Spain LiDAR" style="transform:scale(0.85);transform-origin:right center;"><input type="checkbox" id="lidarEsLidarToggle" onchange="toggleInternationalLidar('esLidar', this.checked)"><span class="apm-toggle-track"></span></label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarEsLidarPct">80%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarEsLidarOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('esLidar', this.value)">
+                            </div>
+
+                            <!-- Switzerland -->
+                            <div class="lidar-country-row" id="lidarChLidarRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;"><span>Switzerland · swissSURFACE3D</span><button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Switzerland LiDAR','© swisstopo — swissSURFACE3D LiDAR')" title="Layer info">ⓘ</button></span>
+                                    <label class="apm-toggle-switch" title="Toggle Switzerland LiDAR" style="transform:scale(0.85);transform-origin:right center;"><input type="checkbox" id="lidarChLidarToggle" onchange="toggleInternationalLidar('chLidar', this.checked)"><span class="apm-toggle-track"></span></label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarChLidarPct">80%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarChLidarOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('chLidar', this.value)">
+                            </div>
+
+                            <!-- UK -->
+                            <div class="lidar-country-row" id="lidarUkLidarRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;"><span>UK · Environment Agency LiDAR</span><button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('UK LiDAR','© Environment Agency / Defra — freely available LiDAR composite.')" title="Layer info">ⓘ</button></span>
+                                    <label class="apm-toggle-switch" title="Toggle UK LiDAR" style="transform:scale(0.85);transform-origin:right center;"><input type="checkbox" id="lidarUkLidarToggle" onchange="toggleInternationalLidar('ukLidar', this.checked)"><span class="apm-toggle-track"></span></label>
+                                </div>
+                                <select id="ukLidarModeSelect" class="lidar-country-select" aria-label="UK LiDAR product" onchange="setUkLidarMode(this.value)">
+                                    <option value="dtm">DTM 1 m</option><option value="elevation">Elevation DTM 1 m</option><option value="hillshade">Hillshade DTM 1 m</option>
+                                </select>
+                                <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarUkLidarPct">80%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarUkLidarOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('ukLidar', this.value)">
+                            </div>
+
+                            <!-- France -->
+                            <div class="lidar-country-row" id="lidarFrLidarRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;"><span>France · LiDAR HD</span><button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('France LiDAR HD','© IGN France — LiDAR HD')" title="Layer info">ⓘ</button></span>
+                                    <label class="apm-toggle-switch" title="Toggle France LiDAR" style="transform:scale(0.85);transform-origin:right center;"><input type="checkbox" id="lidarFrLidarToggle" onchange="toggleInternationalLidar('frLidar', this.checked)"><span class="apm-toggle-track"></span></label>
+                                </div>
+                                <select id="franceLidarModeSelect" class="lidar-country-select" aria-label="France LiDAR HD product" onchange="setFranceLidarMode(this.value)">
+                                    <option value="terrain">MNT · Terrain</option><option value="surface">MNS · Surface</option><option value="height">MNH · Height</option>
+                                </select>
+                                <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarFrLidarPct">80%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarFrLidarOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('frLidar', this.value)">
+                            </div>
+
+                            <!-- Denmark -->
+                            <div class="lidar-country-row" id="lidarDkLidarRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;"><span>Denmark · DHM terrain hillshade</span><button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Denmark LiDAR terrain hillshade','© Datafordeler / Danish Geodata Agency. This WMS requires a Datafordeler API key.')" title="Layer info">ⓘ</button></span>
+                                    <label class="apm-toggle-switch" title="Toggle Denmark LiDAR" style="transform:scale(0.85);transform-origin:right center;"><input type="checkbox" id="lidarDkLidarToggle" onchange="toggleInternationalLidar('dkLidar', this.checked)"><span class="apm-toggle-track"></span></label>
+                                </div>
+                                <div class="transp-layer-label" style="margin-bottom:5px"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarDkLidarPct">80%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarDkLidarOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('dkLidar', this.value)">
+                            </div>
+
+                        </div><!-- /lidarEuropeanSubLayers -->
+
                         <div id="lidarSubLayers" style="margin-top:0;padding-left:6px;border-left:2px solid rgba(79,195,247,0.3);display:flex;flex-direction:column;gap:8px;overflow:hidden;transition:max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;max-height:0;opacity:0;">
 
                             <!-- HD sub-layer -->
@@ -4422,7 +4535,7 @@
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/country-selector.js?v=20261002"></script>
-    <script src="js/map-app.js?v=20261002-country-wms-fix"></script>
+    <script src="js/map-app.js?v=20261002-european-lidar"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>

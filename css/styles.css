@@ -5992,6 +5992,55 @@
         .archeo-pot-tag { display:block; font:.68rem/1.25 'Outfit',sans-serif; white-space:nowrap; }
         .archeo-pot-tag b { color:#c4a0f0; font-weight:700; }
 
+        /* Country LiDAR opacity controls are intentionally local to the
+           accordion (they are not mirrored into the desktop quick-opacity
+           control, which remains reserved for the original catalogue). */
+        .lidar-country-opacity {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 5px;
+            border-radius: 3px;
+            background: linear-gradient(90deg, rgba(79,195,247,0.55), rgba(184,216,240,0.14));
+            outline: none;
+            cursor: pointer;
+        }
+        .lidar-country-opacity::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #29b6f6;
+            border: 2px solid rgba(255,255,255,0.85);
+            box-shadow: 0 0 0 4px rgba(79,195,247,0.18), 0 2px 8px rgba(0,0,0,0.5);
+            cursor: pointer;
+        }
+        .lidar-country-opacity::-moz-range-thumb {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #29b6f6;
+            border: 2px solid rgba(255,255,255,0.85);
+            box-shadow: 0 0 0 4px rgba(79,195,247,0.18), 0 2px 8px rgba(0,0,0,0.5);
+            cursor: pointer;
+        }
+
+        /* Free European LiDAR selectors stay compact inside the accordion. */
+        .lidar-country-row { padding: 5px 0 8px; border-bottom: 1px solid rgba(79,195,247,0.10); }
+        .lidar-country-row:last-child { border-bottom: 0; }
+        .lidar-country-select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 5px 7px;
+            border: 1px solid rgba(79,195,247,0.25);
+            border-radius: 5px;
+            background: rgba(6,14,30,0.7);
+            color: rgba(245,240,235,0.82);
+            font: 0.7rem 'Outfit', sans-serif;
+        }
+        .lidar-country-select:focus { outline: 1px solid rgba(79,195,247,0.8); }
+
         /* ── LIDAR Scanner ── */
         .lidar-scanner-row { border-color: rgba(140,255,102,0.18); }
         .lidar-scanner-row.is-on { box-shadow: 0 0 22px rgba(57,255,20,0.10), inset 0 0 18px rgba(57,255,20,0.035); }
