@@ -1248,7 +1248,10 @@
             // can therefore pan freely as European regions are added.
             var map = L.map('detectlab-map', {
                 zoomControl: false,
-                minZoom: 5,
+                // The first screen is a geographic selector, not a Romania-only view.
+                // Once a country is chosen the picker fits the map back to the
+                // normal working scale.
+                minZoom: 2,
                 maxZoom: 20,
                 worldCopyJump: false,
                 rotate: true,
@@ -1265,7 +1268,14 @@
                 markerZoomAnimation: true,
                 fadeAnimation: true,
                 zoomAnimationThreshold: 10
-            }).fitBounds(APM_BOUNDS);
+            }).setView([51, 12], 3);
+
+            // The initial view is an interactive globe-like overview of Europe.
+            // Country polygons are added above the current base layer and remain
+            // visible after selection so the chosen territory stays legible.
+            if (window.DetectLabCountrySelector) {
+                window.DetectLabCountrySelector.init(map);
+            }
 
             // ── GLOBAL TILE GOVERNOR ──
             // js/tile-perf.js patches every tile layer of the app (LIDAR,
@@ -11515,6 +11525,32 @@
                         var groupRow = icon.closest ? icon.closest('.transp-layer-row') : null;
                         if (groupRow) groupRow.classList.remove('layer-visible-highlight');
                     });
+                };
+
+                // After country selection, use the existing coverage catalogue to
+                // reduce the layer panel to layers whose footprint intersects the
+                // selected country. Unknown rows are left alone (some live/API
+                // layers do not publish a bounds record yet).
+                window.filterLayersForCountry = function (iso) {
+                    var countryBounds = null;
+                    var countryLayer = window._detectlabCountryLayer;
+                    if (countryLayer && countryLayer.eachLayer) countryLayer.eachLayer(function (featureLayer) {
+                        var p = featureLayer.feature && featureLayer.feature.properties || {};
+                        var c = String(p.ISO_A2 || p.iso_a2 || p.ISO2 || p.iso2 || p.ISO_A3 || '').toUpperCase();
+                        if (c === iso && featureLayer.getBounds) countryBounds = featureLayer.getBounds();
+                    });
+                    if (!countryBounds) return;
+                    layerDefs.forEach(function (def) {
+                        var row = null;
+                        try { row = def.getRow(); } catch (e) {}
+                        if (!row || !def.bounds) return;
+                        var available = false;
+                        try { available = countryBounds.intersects(def.bounds); } catch (e) {}
+                        row.classList.toggle('country-layer-unavailable', !available);
+                        row.setAttribute('aria-hidden', available ? 'false' : 'true');
+                    });
+                    var panel = document.getElementById('transpPanel');
+                    if (panel) panel.classList.add('country-filter-active');
                 };
 
                 // Auth handlers and PWA controls can change layout after this listener
