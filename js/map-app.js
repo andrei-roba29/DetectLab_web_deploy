@@ -1248,7 +1248,10 @@
             // can therefore pan freely as European regions are added.
             var map = L.map('detectlab-map', {
                 zoomControl: false,
-                minZoom: 5,
+                // The first screen is a geographic selector, not a Romania-only view.
+                // Once a country is chosen the picker fits the map back to the
+                // normal working scale.
+                minZoom: 2,
                 maxZoom: 20,
                 worldCopyJump: false,
                 rotate: true,
@@ -1265,7 +1268,14 @@
                 markerZoomAnimation: true,
                 fadeAnimation: true,
                 zoomAnimationThreshold: 10
-            }).fitBounds(APM_BOUNDS);
+            }).setView([51, 12], 3);
+
+            // The initial view is an interactive globe-like overview of Europe.
+            // Country polygons are added above the current base layer and remain
+            // visible after selection so the chosen territory stays legible.
+            if (window.DetectLabCountrySelector) {
+                window.DetectLabCountrySelector.init(map);
+            }
 
             // ── GLOBAL TILE GOVERNOR ──
             // js/tile-perf.js patches every tile layer of the app (LIDAR,
@@ -10953,7 +10963,9 @@
                 satellite60s: {
                     // CORONA imagery (CAST GeoServer) — covers Romania on .ro, and the
                     // entire European / Eastern Mediterranean corridor on .eu.
-                    bounds: (typeof _isEuropeMarket === 'function' && _isEuropeMarket()) ? [[34.0, 15.0], [58.0, 38.0]] : [[43.5, 19.5], [48.5, 30.5]],
+                    // CORONA has footprints across the Central/Eastern European
+                    // corridor, not only inside Romania.
+                    bounds: [[34.0, 15.0], [58.0, 38.0]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer',
                     coverageMinZoom: 8
@@ -11326,7 +11338,7 @@
                 });
                 layerDefs.push({
                     key: 'satellite60s',
-                    bounds: toBounds(premiumMapCoverageBounds.satellite60s ? premiumMapCoverageBounds.satellite60s.bounds : [[43.5,19.5],[48.5,30.5]]),
+                    bounds: toBounds(premiumMapCoverageBounds.satellite60s ? premiumMapCoverageBounds.satellite60s.bounds : [[34.0,15.0],[58.0,38.0]]),
                     getRow: function() { return document.getElementById('satellite60sRow'); },
                     group: null
                 });
@@ -11515,6 +11527,32 @@
                         var groupRow = icon.closest ? icon.closest('.transp-layer-row') : null;
                         if (groupRow) groupRow.classList.remove('layer-visible-highlight');
                     });
+                };
+
+                // After country selection, use the existing coverage catalogue to
+                // reduce the layer panel to layers whose footprint intersects the
+                // selected country. Unknown rows are left alone (some live/API
+                // layers do not publish a bounds record yet).
+                window.filterLayersForCountry = function (iso) {
+                    var countryBounds = null;
+                    var countryLayer = window._detectlabCountryLayer;
+                    if (countryLayer && countryLayer.eachLayer) countryLayer.eachLayer(function (featureLayer) {
+                        var p = featureLayer.feature && featureLayer.feature.properties || {};
+                        var c = String(p.ISO_A2 || p.iso_a2 || p.ISO2 || p.iso2 || p.ISO_A3 || '').toUpperCase();
+                        if (c === iso && featureLayer.getBounds) countryBounds = featureLayer.getBounds();
+                    });
+                    if (!countryBounds) return;
+                    layerDefs.forEach(function (def) {
+                        var row = null;
+                        try { row = def.getRow(); } catch (e) {}
+                        if (!row || !def.bounds) return;
+                        var available = false;
+                        try { available = countryBounds.intersects(def.bounds); } catch (e) {}
+                        row.classList.toggle('country-layer-unavailable', !available);
+                        row.setAttribute('aria-hidden', available ? 'false' : 'true');
+                    });
+                    var panel = document.getElementById('transpPanel');
+                    if (panel) panel.classList.add('country-filter-active');
                 };
 
                 // Auth handlers and PWA controls can change layout after this listener
@@ -12109,7 +12147,9 @@
                 map.getPane('pane_mitteleuropa').style.pointerEvents = 'none';
 
                 window._mitteleuropaMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
-                    layers: 'ihpan:mitteleuropa_3857',
+                    // CENAGIS publishes this catalogue entry as ukvme_3857
+                    // (the display title is Übersichtskarte von Mitteleuropa).
+                    layers: 'ihpan:ukvme_3857',
                     format: 'image/png',
                     transparent: true,
                     version: '1.1.1',
@@ -12223,7 +12263,8 @@
                 map.getPane('pane_kdr100k').style.pointerEvents = 'none';
 
                 window._kdr100kMapLayer = L.tileLayer.wms(CENAGIS_WMS_URL, {
-                    layers: 'ihpan:kdr100k_3857',
+                    // The 1:100,000 German Empire catalogue layer is named kdr_3857.
+                    layers: 'ihpan:kdr_3857',
                     format: 'image/png',
                     transparent: true,
                     version: '1.1.1',
@@ -12481,15 +12522,14 @@
                     // (clipped to Romania on RO domain, expanded across Europe on EU domain)
                     // so Leaflet never asks the server for a tile the pass does not cover.
                     var name = (typeof entry === "string") ? entry : entry.name;
-                    var isEu = _isEuropeMarket();
-                    var layerBounds;
-                    if (isEu) {
-                        layerBounds = L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]);
-                    } else {
-                        layerBounds = (typeof entry === "string" || !entry.bounds)
-                            ? ROMANIA_BOUNDS
-                            : L.latLngBounds(entry.bounds);
-                    }
+                    // Preserve the descriptor footprint, then widen it to the shared
+                    // Central/Eastern-European corridor. Restricting the layer
+                    // to ROMANIA_BOUNDS made valid 200 responses outside
+                    // Romania disappear before Leaflet could display them.
+                    var layerBounds = (typeof entry === "string" || !entry.bounds)
+                        ? L.latLngBounds([[34.0, 15.0], [58.0, 38.0]])
+                        : L.latLngBounds(entry.bounds);
+                    layerBounds.extend(L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]));
                     var lowPower = _sat60IsLowPowerDevice();
                     var opts = {
                         layers: name,
