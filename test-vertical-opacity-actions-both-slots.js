@@ -29,6 +29,14 @@ const vm = require('vm');
 
 const css = fs.readFileSync(path.join(__dirname, 'css/styles.css'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const verticalOpacitySource = fs.readFileSync(path.join(__dirname, 'js/vertical-opacity-control.js'), 'utf8');
+
+/* Action reconciliation must be driven by all visible mirror slots, even in
+   the transient state where no slot owns the global active-control alias. */
+const syncLayerActionsBody = verticalOpacitySource.match(/function syncLayerActions\(\) \{([\s\S]*?)\n    \}/);
+assert(syncLayerActionsBody, 'syncLayerActions() exists');
+assert(!/if \(!control\) return;/.test(syncLayerActionsBody[1]),
+    'action sync must not abort while the active-control alias is temporarily empty');
 
 const ACTION_IDS = ['apm20SearchHelpBtn', 'iosBldSearchHelpBtn', 'iosBldSettingsBtn', 'iosBldSuggestBtn'];
 

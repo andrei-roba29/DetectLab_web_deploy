@@ -5,8 +5,34 @@
  */
 (function () {
     'use strict';
-    var DATA_URL = 'data/lidar_scanner_points.csv?v=20260927-deduplicate-fortification';
+    var DATA_URL = 'data/lidar_scanner_points.csv?v=20261002-remove-five-points';
     var HERITAGE_RADIUS_M = 600;
+
+    /* Coordonate retrase explicit din catalogul LIDAR Scanner. Filtrul rămâne
+       lângă pipeline-ul de încărcare chiar dacă rândurile nu mai există în CSV:
+       astfel nici o copie veche/cache-uită sau o regenerare ulterioară a
+       fișierului nu le poate readuce pe hartă. Toleranța acoperă precizia de
+       cinci zecimale cu care au fost raportate punctele (~1 m). */
+    var REMOVED_SCANNER_POINTS = [
+        [46.09811, 23.55539],
+        [46.09201, 23.54846],
+        [46.09234, 23.54366],
+        [46.12036, 23.52000],
+        [46.01570, 23.49656]
+    ];
+    var REMOVED_POINT_TOLERANCE_DEG = 0.00001;
+
+    function isRemovedScannerPoint(record) {
+        if (!record || !isFinite(record.lat) || !isFinite(record.lon)) return false;
+        for (var i = 0; i < REMOVED_SCANNER_POINTS.length; i++) {
+            var removed = REMOVED_SCANNER_POINTS[i];
+            if (Math.abs(record.lat - removed[0]) <= REMOVED_POINT_TOLERANCE_DEG &&
+                Math.abs(record.lon - removed[1]) <= REMOVED_POINT_TOLERANCE_DEG) {
+                return true;
+            }
+        }
+        return false;
+    }
     var map = null, resultsLayer = null, selectedMarker = null, selectionCircle = null;
     var points = [], selected = null, active = false, scanning = false, pointsPromise = null;
 
@@ -513,7 +539,10 @@
             if (!response.ok) throw Error('CSV HTTP ' + response.status);
             return response.text();
         }).then(function (text) {
-            points = LidarGeo.load_points(parseCsv(text));
+            var records = parseCsv(text).filter(function (record) {
+                return !isRemovedScannerPoint(record);
+            });
+            points = LidarGeo.load_points(records);
             setStatus(points.length + ' points loaded / puncte încărcate — choose a point on the map');
             return points;
         }).catch(function (error) {

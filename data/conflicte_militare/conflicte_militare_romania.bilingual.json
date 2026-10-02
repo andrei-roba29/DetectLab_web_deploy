@@ -4,7 +4,7 @@
   "descriere": "Conflicte militare de pe teritoriul actual al României, sec. VIII î.Hr. – 1944 (RO + EN)",
   "sursa_principala": "batalii.csv + completări din istoriografia consacrată",
   "generat": "2026-09-01",
-  "numar_inregistrari": 198,
+  "numar_inregistrari": 201,
   "structura": "câmpuri comune + blocuri `ro` și `en` cu câmpurile textuale"
  },
  "conflicte": [
@@ -4690,6 +4690,96 @@
   },
   {
    "id": "RM-157",
+   "data_start": "1692",
+   "data_end": "1692",
+   "an_start": 1692,
+   "an_end": 1692,
+   "secol_n": 17,
+   "lat": 47.05,
+   "lng": 21.93,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Asediul Oradiei (1692)",
+    "tip": "Asediu",
+    "locatie": "Oradea (județul Bihor)",
+    "regiune": "Crișana",
+    "participanti": "Imperiul Habsburgic vs. Imperiul Otoman (garnizoana Cetății Oradea)",
+    "descriere": "În timpul Marelui Război Turcesc, armata habsburgică asediază Cetatea Oradea, important centru al stăpânirii otomane din Crișana. După blocarea și bombardarea fortificației, garnizoana otomană capitulează, iar orașul intră sub control habsburgic.",
+    "rezultat": "Victorie habsburgică și ocuparea Oradiei"
+   },
+   "en": {
+    "titlu": "Siege of Oradea (1692)",
+    "tip": "Siege",
+    "locatie": "Oradea (Bihor county)",
+    "regiune": "Crișana",
+    "participanti": "Habsburg Empire vs. the Ottoman Empire (the Oradea Fortress garrison)",
+    "descriere": "During the Great Turkish War, the Habsburg army besieged Oradea Fortress, an important centre of Ottoman rule in Crișana. After the fortification was blockaded and bombarded, the Ottoman garrison surrendered and the city came under Habsburg control.",
+    "rezultat": "Habsburg victory and occupation of Oradea"
+   }
+  },
+  {
+   "id": "RM-158",
+   "data_start": "1695",
+   "data_end": "1695",
+   "an_start": 1695,
+   "an_end": 1695,
+   "secol_n": 17,
+   "lat": 45.69,
+   "lng": 21.9,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Lugoj (1695)",
+    "tip": "Bătălie",
+    "locatie": "Lugoj (județul Timiș)",
+    "regiune": "Banat",
+    "participanti": "Imperiul Otoman vs. Imperiul Habsburgic",
+    "descriere": "În cadrul Marelui Război Turcesc, armata otomană condusă de sultanul Mustafa al II-lea înfruntă forțele habsburgice din Banat în apropierea Lugojului. Trupele imperiale sunt învinse, iar comandantul lor, feldmareșalul Friedrich von Veterani, este ucis în timpul retragerii.",
+    "rezultat": "Victorie otomană"
+   },
+   "en": {
+    "titlu": "Battle of Lugoj (1695)",
+    "tip": "Battle",
+    "locatie": "Lugoj (Timiș county)",
+    "regiune": "Banat",
+    "participanti": "Ottoman Empire vs. the Habsburg Empire",
+    "descriere": "During the Great Turkish War, the Ottoman army led by Sultan Mustafa II confronted the Habsburg forces in the Banat near Lugoj. The imperial troops were defeated, and their commander, Field Marshal Friedrich von Veterani, was killed during the retreat.",
+    "rezultat": "Ottoman victory"
+   }
+  },
+  {
+   "id": "RM-159",
+   "data_start": "1696",
+   "data_end": "1696",
+   "an_start": 1696,
+   "an_end": 1696,
+   "secol_n": 17,
+   "lat": 45.72,
+   "lng": 20.9,
+   "zona_aprox": 0,
+   "teritoriu": "da",
+   "ro": {
+    "titlu": "Bătălia de la Cenei (1696)",
+    "tip": "Bătălie",
+    "locatie": "Cenei (județul Timiș)",
+    "regiune": "Banat",
+    "participanti": "Imperiul Habsburgic vs. Imperiul Otoman",
+    "descriere": "Armata habsburgică și cea otomană se confruntă lângă Cenei, în Banat, în continuarea operațiunilor Marelui Război Turcesc. Forțele habsburgice obțin victoria și își consolidează ofensiva împotriva pozițiilor otomane din regiune.",
+    "rezultat": "Victorie habsburgică"
+   },
+   "en": {
+    "titlu": "Battle of Cenei (1696)",
+    "tip": "Battle",
+    "locatie": "Cenei (Timiș county)",
+    "regiune": "Banat",
+    "participanti": "Habsburg Empire vs. the Ottoman Empire",
+    "descriere": "The Habsburg and Ottoman armies clashed near Cenei, in the Banat, as operations in the Great Turkish War continued. The Habsburg forces won and strengthened their offensive against Ottoman positions in the region.",
+    "rezultat": "Habsburg victory"
+   }
+  },
+  {
+   "id": "RM-160",
    "data_start": "1710",
    "data_end": "1711",
    "an_start": 1710,
@@ -4719,7 +4809,7 @@
    }
   },
   {
-   "id": "RM-158",
+   "id": "RM-161",
    "data_start": "1716",
    "data_end": "1718",
    "an_start": 1716,
@@ -4749,7 +4839,7 @@
    }
   },
   {
-   "id": "RM-159",
+   "id": "RM-162",
    "data_start": "1735",
    "data_end": "1739",
    "an_start": 1735,
@@ -4779,7 +4869,7 @@
    }
   },
   {
-   "id": "RM-160",
+   "id": "RM-163",
    "data_start": "1768",
    "data_end": "1774",
    "an_start": 1768,
@@ -4809,7 +4899,7 @@
    }
   },
   {
-   "id": "RM-161",
+   "id": "RM-164",
    "data_start": "1787",
    "data_end": "1792",
    "an_start": 1787,
@@ -4839,7 +4929,7 @@
    }
   },
   {
-   "id": "RM-162",
+   "id": "RM-165",
    "data_start": "1806",
    "data_end": "1812",
    "an_start": 1806,
@@ -4869,7 +4959,7 @@
    }
   },
   {
-   "id": "RM-163",
+   "id": "RM-166",
    "data_start": "1821",
    "data_end": "1821",
    "an_start": 1821,
@@ -4899,7 +4989,7 @@
    }
   },
   {
-   "id": "RM-164",
+   "id": "RM-167",
    "data_start": "1828",
    "data_end": "1829",
    "an_start": 1828,
@@ -4929,7 +5019,7 @@
    }
   },
   {
-   "id": "RM-165",
+   "id": "RM-168",
    "data_start": "1848",
    "data_end": "1849",
    "an_start": 1848,
@@ -4959,7 +5049,7 @@
    }
   },
   {
-   "id": "RM-166",
+   "id": "RM-169",
    "data_start": "1849-02",
    "data_end": "1849-02",
    "an_start": 1849,
@@ -4989,7 +5079,7 @@
    }
   },
   {
-   "id": "RM-167",
+   "id": "RM-170",
    "data_start": "1849-05",
    "data_end": "1849-05",
    "an_start": 1849,
@@ -5019,7 +5109,7 @@
    }
   },
   {
-   "id": "RM-168",
+   "id": "RM-171",
    "data_start": "1853",
    "data_end": "1856",
    "an_start": 1853,
@@ -5049,7 +5139,7 @@
    }
   },
   {
-   "id": "RM-169",
+   "id": "RM-172",
    "data_start": "1877-07",
    "data_end": "1877-12-10",
    "an_start": 1877,
@@ -5079,7 +5169,7 @@
    }
   },
   {
-   "id": "RM-170",
+   "id": "RM-173",
    "data_start": "1877-08-30",
    "data_end": "1877-08-30",
    "an_start": 1877,
@@ -5109,7 +5199,7 @@
    }
   },
   {
-   "id": "RM-171",
+   "id": "RM-174",
    "data_start": "1877-04",
    "data_end": "1878",
    "an_start": 1877,
@@ -5139,7 +5229,7 @@
    }
   },
   {
-   "id": "RM-172",
+   "id": "RM-175",
    "data_start": "1878-01-24",
    "data_end": "1878-01-24",
    "an_start": 1878,
@@ -5169,7 +5259,7 @@
    }
   },
   {
-   "id": "RM-173",
+   "id": "RM-176",
    "data_start": "1916-09-05",
    "data_end": "1916-09-07",
    "an_start": 1916,
@@ -5199,7 +5289,7 @@
    }
   },
   {
-   "id": "RM-174",
+   "id": "RM-177",
    "data_start": "1916-10-07",
    "data_end": "1916-10-08",
    "an_start": 1916,
@@ -5229,7 +5319,7 @@
    }
   },
   {
-   "id": "RM-175",
+   "id": "RM-178",
    "data_start": "1916-10",
    "data_end": "1916-10",
    "an_start": 1916,
@@ -5259,7 +5349,7 @@
    }
   },
   {
-   "id": "RM-176",
+   "id": "RM-179",
    "data_start": "1916-09-26",
    "data_end": "1916-09-29",
    "an_start": 1916,
@@ -5289,7 +5379,7 @@
    }
   },
   {
-   "id": "RM-177",
+   "id": "RM-180",
    "data_start": "1916-09-02",
    "data_end": "1916-09-06",
    "an_start": 1916,
@@ -5319,7 +5409,7 @@
    }
   },
   {
-   "id": "RM-178",
+   "id": "RM-181",
    "data_start": "1916-11-16",
    "data_end": "1916-11-17",
    "an_start": 1916,
@@ -5349,7 +5439,7 @@
    }
   },
   {
-   "id": "RM-179",
+   "id": "RM-182",
    "data_start": "1916-11",
    "data_end": "1916-12",
    "an_start": 1916,
@@ -5379,7 +5469,7 @@
    }
   },
   {
-   "id": "RM-180",
+   "id": "RM-183",
    "data_start": "1916-10",
    "data_end": "1916-11",
    "an_start": 1916,
@@ -5409,7 +5499,7 @@
    }
   },
   {
-   "id": "RM-181",
+   "id": "RM-184",
    "data_start": "1916-10-09",
    "data_end": "1916-10-25",
    "an_start": 1916,
@@ -5439,7 +5529,7 @@
    }
   },
   {
-   "id": "RM-182",
+   "id": "RM-185",
    "data_start": "1916-11-30",
    "data_end": "1916-12-03",
    "an_start": 1916,
@@ -5469,7 +5559,7 @@
    }
   },
   {
-   "id": "RM-183",
+   "id": "RM-186",
    "data_start": "1916-09-29",
    "data_end": "1916-10-05",
    "an_start": 1916,
@@ -5499,7 +5589,7 @@
    }
   },
   {
-   "id": "RM-184",
+   "id": "RM-187",
    "data_start": "1916-10-12",
    "data_end": "1916-10-27",
    "an_start": 1916,
@@ -5529,7 +5619,7 @@
    }
   },
   {
-   "id": "RM-185",
+   "id": "RM-188",
    "data_start": "1916-08-27",
    "data_end": "1916-12",
    "an_start": 1916,
@@ -5559,7 +5649,7 @@
    }
   },
   {
-   "id": "RM-186",
+   "id": "RM-189",
    "data_start": "1917-08-06",
    "data_end": "1917-09-03",
    "an_start": 1917,
@@ -5589,7 +5679,7 @@
    }
   },
   {
-   "id": "RM-187",
+   "id": "RM-190",
    "data_start": "1917-07-22",
    "data_end": "1917-08-01",
    "an_start": 1917,
@@ -5619,7 +5709,7 @@
    }
   },
   {
-   "id": "RM-188",
+   "id": "RM-191",
    "data_start": "1917-08-08",
    "data_end": "1917-08-20",
    "an_start": 1917,
@@ -5649,7 +5739,7 @@
    }
   },
   {
-   "id": "RM-189",
+   "id": "RM-192",
    "data_start": "1943-08-01",
    "data_end": "1943-08-01",
    "an_start": 1943,
@@ -5679,7 +5769,7 @@
    }
   },
   {
-   "id": "RM-190",
+   "id": "RM-193",
    "data_start": "1943",
    "data_end": "1944",
    "an_start": 1943,
@@ -5709,7 +5799,7 @@
    }
   },
   {
-   "id": "RM-191",
+   "id": "RM-194",
    "data_start": "1944-08-20",
    "data_end": "1944-08-29",
    "an_start": 1944,
@@ -5739,7 +5829,7 @@
    }
   },
   {
-   "id": "RM-192",
+   "id": "RM-195",
    "data_start": "1944-09-14",
    "data_end": "1944-09-19",
    "an_start": 1944,
@@ -5769,7 +5859,7 @@
    }
   },
   {
-   "id": "RM-193",
+   "id": "RM-196",
    "data_start": "1944-09",
    "data_end": "1944-10",
    "an_start": 1944,
@@ -5799,7 +5889,7 @@
    }
   },
   {
-   "id": "RM-194",
+   "id": "RM-197",
    "data_start": "1944-08-24",
    "data_end": "1944-09",
    "an_start": 1944,
@@ -5829,7 +5919,7 @@
    }
   },
   {
-   "id": "RM-195",
+   "id": "RM-198",
    "data_start": "1944-10",
    "data_end": "1944-10-25",
    "an_start": 1944,
@@ -5859,7 +5949,7 @@
    }
   },
   {
-   "id": "RM-196",
+   "id": "RM-199",
    "data_start": "1944-08",
    "data_end": "1944-09",
    "an_start": 1944,
@@ -5889,7 +5979,7 @@
    }
   },
   {
-   "id": "RM-197",
+   "id": "RM-200",
    "data_start": "1944-03",
    "data_end": "1944-04",
    "an_start": 1944,
@@ -5919,7 +6009,7 @@
    }
   },
   {
-   "id": "RM-198",
+   "id": "RM-201",
    "data_start": "1944-04-08",
    "data_end": "1944-06-06",
    "an_start": 1944,

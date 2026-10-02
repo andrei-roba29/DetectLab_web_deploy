@@ -351,8 +351,12 @@
        doilea slider. Destinațiile sunt reconstruite din TOATE mirrorSlots, nu
        doar din activeSlot. */
     function syncLayerActions() {
-        if (!control) return;
-
+        /* Nu condiționa resincronizarea de aliasul global `control`. În timpul
+           înlocuirii/închiderii unui slot, setActiveSlot(null) poate goli
+           temporar aliasul chiar dacă în `mirrorSlots` mai există o oglindă
+           vizibilă. Un return aici lăsa acțiunile Iosefină acasă (display:none)
+           până la închiderea sliderului vecin. Sursa de adevăr sunt sloturile
+           vizibile, pe care le parcurgem mai jos. */
         var destinations = {};
         for (var s = 0; s < mirrorSlots.length; s++) {
             var slot = mirrorSlots[s];

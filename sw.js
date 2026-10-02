@@ -311,7 +311,13 @@
 //   cele trei butoane Josephine Map + nu mai dispar când un alt substrat al
 //   hărților istorice premium este adăugat în al doilea slider; ambele sloturi
 //   își păstrează independent acțiunile până la închiderea propriei oglinzi.
-const CACHE_NAME = 'detectlab-v148-persistent-layer-actions';
+// v149: resincronizarea acțiunilor nu mai depinde de aliasul temporar al
+//   sliderului activ. Înlocuirea sau focalizarea celeilalte hărți istorice nu
+//   mai poate lăsa butoanele Iosefină ascunse; versiunea nouă forțează și
+//   actualizarea shell-ului pentru instalațiile PWA care aveau codul vechi.
+// v150: cinci coordonate retrase din LIDAR Scanner sunt filtrate inclusiv din
+//   copiile vechi ale CSV-ului; lidar-scanner.js și DATA_URL sunt re-versionate.
+const CACHE_NAME = 'detectlab-v150-lidar-remove-five-points';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -844,6 +850,8 @@ const PRECACHE_URLS = [
   // v139: LIDAR Scanner — 12 site-uri noi în data/lidar_scanner_points.csv;
   // DATA_URL din script a fost refăcut, deci PWA-ul trebuie să ia fișierul nou.
   'js/lidar-scanner.js?v=20260927-deduplicate-fortification',
+  // v150: blacklist persistent pentru cele cinci coordonate retrase.
+  'js/lidar-scanner.js?v=20261002-remove-five-points',
   // v140: „Amprenta Vegetației / Vegetation Fingerprint” (premium) — primul
   // substrat PPI din CLMS HR-VPP, cu tile-uri WMTS limitate la România.
   // v141: + substratul SGU (VPP LSLOPE, anual); v142: + SGD (VPP RSLOPE).
@@ -858,9 +866,11 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20260927-sat-copernicus-vhr',
   'js/map-app.js?v=20260927-sat-copernicus-vhr',
   'js/vertical-opacity-control.js?v=20260927-sat-copernicus-vhr',
-  // v148: fiecare oglindă își păstrează propriile acțiuni rapide, inclusiv
-  // Josephine Map + când un alt substrat istoric premium primește focusul.
+  // v148–v149: fiecare oglindă își păstrează propriile acțiuni rapide,
+  // inclusiv Josephine Map + când un alt substrat istoric premium primește
+  // focusul; v149 elimină dependența de aliasul temporar al sliderului activ.
   'js/vertical-opacity-control.js?v=20261001-persistent-layer-actions',
+  'js/vertical-opacity-control.js?v=20261002-persistent-layer-actions-v2',
   'js/supabase.js?v=20260811-event-sync'
 ];
 

@@ -4,7 +4,7 @@
   "descriere": "Conflicte militare de pe teritoriul actual al României, sec. VIII î.Hr. – 1944",
   "sursa_principala": "batalii.csv (fișierul utilizatorului) + completări din istoriografia consacrată",
   "generat": "2026-09-01",
-  "numar_inregistrari": 198,
+  "numar_inregistrari": 201,
   "campi": {
    "id": "ID",
    "titlu": "Titlu",
@@ -3619,6 +3619,75 @@
    "id": "RM-156"
   },
   {
+   "titlu": "Asediul Oradiei (1692)",
+   "tip": "Asediu",
+   "data_start": "1692",
+   "data_end": "1692",
+   "an_start": 1692,
+   "an_end": 1692,
+   "secol": "sec. XVII d.Hr.",
+   "secol_n": 17,
+   "locatie": "Oradea (județul Bihor)",
+   "zona_aprox": 0,
+   "judet": "Bihor",
+   "regiune": "Crișana",
+   "lat": 47.05,
+   "lng": 21.93,
+   "participanti": "Imperiul Habsburgic vs. Imperiul Otoman (garnizoana Cetății Oradea)",
+   "descriere": "În timpul Marelui Război Turcesc, armata habsburgică asediază Cetatea Oradea, important centru al stăpânirii otomane din Crișana. După blocarea și bombardarea fortificației, garnizoana otomană capitulează, iar orașul intră sub control habsburgic.",
+   "rezultat": "Victorie habsburgică și ocuparea Oradiei",
+   "teritoriu": "da",
+   "observatii": "—",
+   "sursa": "Completare solicitată — Marele Război Turcesc",
+   "id": "RM-157"
+  },
+  {
+   "titlu": "Bătălia de la Lugoj (1695)",
+   "tip": "Bătălie",
+   "data_start": "1695",
+   "data_end": "1695",
+   "an_start": 1695,
+   "an_end": 1695,
+   "secol": "sec. XVII d.Hr.",
+   "secol_n": 17,
+   "locatie": "Lugoj (județul Timiș)",
+   "zona_aprox": 0,
+   "judet": "Timiș",
+   "regiune": "Banat",
+   "lat": 45.69,
+   "lng": 21.9,
+   "participanti": "Imperiul Otoman vs. Imperiul Habsburgic",
+   "descriere": "În cadrul Marelui Război Turcesc, armata otomană condusă de sultanul Mustafa al II-lea înfruntă forțele habsburgice din Banat în apropierea Lugojului. Trupele imperiale sunt învinse, iar comandantul lor, feldmareșalul Friedrich von Veterani, este ucis în timpul retragerii.",
+   "rezultat": "Victorie otomană",
+   "teritoriu": "da",
+   "observatii": "—",
+   "sursa": "Completare solicitată — Marele Război Turcesc",
+   "id": "RM-158"
+  },
+  {
+   "titlu": "Bătălia de la Cenei (1696)",
+   "tip": "Bătălie",
+   "data_start": "1696",
+   "data_end": "1696",
+   "an_start": 1696,
+   "an_end": 1696,
+   "secol": "sec. XVII d.Hr.",
+   "secol_n": 17,
+   "locatie": "Cenei (județul Timiș)",
+   "zona_aprox": 0,
+   "judet": "Timiș",
+   "regiune": "Banat",
+   "lat": 45.72,
+   "lng": 20.9,
+   "participanti": "Imperiul Habsburgic vs. Imperiul Otoman",
+   "descriere": "Armata habsburgică și cea otomană se confruntă lângă Cenei, în Banat, în continuarea operațiunilor Marelui Război Turcesc. Forțele habsburgice obțin victoria și își consolidează ofensiva împotriva pozițiilor otomane din regiune.",
+   "rezultat": "Victorie habsburgică",
+   "teritoriu": "da",
+   "observatii": "—",
+   "sursa": "Completare solicitată — Marele Război Turcesc",
+   "id": "RM-159"
+  },
+  {
    "titlu": "Războiul Ruso-Turc (1710–1711) și Bătălia de la Stănilești",
    "tip": "Război / bătălie",
    "data_start": "1710",
@@ -3639,7 +3708,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XVIII d.Hr., pct. 1",
-   "id": "RM-157"
+   "id": "RM-160"
   },
   {
    "titlu": "Războiul Austro-Turc (1716–1718)",
@@ -3662,7 +3731,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XVIII d.Hr., pct. 2",
-   "id": "RM-158"
+   "id": "RM-161"
   },
   {
    "titlu": "Războiul Ruso-Austro-Turc (1735–1739)",
@@ -3685,7 +3754,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XVIII d.Hr., pct. 3",
-   "id": "RM-159"
+   "id": "RM-162"
   },
   {
    "titlu": "Războiul Ruso-Turc (1768–1774) și ocupația Principatelor",
@@ -3708,7 +3777,7 @@
    "teritoriu": "da",
    "observatii": "Bătăliile de la Larga și Cahul au avut loc în afara granițelor actuale ale României.",
    "sursa": "batalii.csv — sec. XVIII d.Hr., pct. 4",
-   "id": "RM-160"
+   "id": "RM-163"
   },
   {
    "titlu": "Războiul Ruso-Austro-Turc (1787–1792) și bătăliile de la Focșani și Râmnicu Sărat",
@@ -3731,7 +3800,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XVIII d.Hr., pct. 5",
-   "id": "RM-161"
+   "id": "RM-164"
   },
   {
    "titlu": "Războiul Ruso-Turc (1806–1812) și anexarea Basarabiei",
@@ -3754,7 +3823,7 @@
    "teritoriu": "da",
    "observatii": "Moștenirea teritorială a evenimentului privește și Republica Moldova de azi.",
    "sursa": "batalii.csv — sec. XIX d.Hr.",
-   "id": "RM-162"
+   "id": "RM-165"
   },
   {
    "titlu": "Revoluția lui Tudor Vladimirescu (1821)",
@@ -3777,7 +3846,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XIX d.Hr.",
-   "id": "RM-163"
+   "id": "RM-166"
   },
   {
    "titlu": "Războiul Ruso-Turc (1828–1829) și ocuparea Principatelor",
@@ -3800,7 +3869,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XIX d.Hr.",
-   "id": "RM-164"
+   "id": "RM-167"
   },
   {
    "titlu": "Revoluția de la 1848–1849 din Transilvania (război civil)",
@@ -3823,7 +3892,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XIX d.Hr.",
-   "id": "RM-165"
+   "id": "RM-168"
   },
   {
    "titlu": "Lupta de la Brad (1849)",
@@ -3846,7 +3915,7 @@
    "teritoriu": "da",
    "observatii": "Se desfășoară în contextul războiului civil din Transilvania (1848–1849).",
    "sursa": "batalii.csv — sec. XIX d.Hr. (completare)",
-   "id": "RM-166"
+   "id": "RM-169"
   },
   {
    "titlu": "Luptele de la Abrud (1849)",
@@ -3869,7 +3938,7 @@
    "teritoriu": "da",
    "observatii": "Se desfășoară în contextul războiului civil din Transilvania (1848–1849).",
    "sursa": "batalii.csv — sec. XIX d.Hr. (completare)",
-   "id": "RM-167"
+   "id": "RM-170"
   },
   {
    "titlu": "Războiul Crimeii — ocuparea Principatelor (1853–1856)",
@@ -3892,7 +3961,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XIX d.Hr.",
-   "id": "RM-168"
+   "id": "RM-171"
   },
   {
    "titlu": "Bătălia de la Plevna",
@@ -3915,7 +3984,7 @@
    "teritoriu": "nu",
    "observatii": "Bătălia s-a desfășurat în afara teritoriului actual al României, dar este legată direct de Războiul de Independență.",
    "sursa": "batalii.csv — sec. XIX d.Hr. (completare)",
-   "id": "RM-169"
+   "id": "RM-172"
   },
   {
    "titlu": "Luptele de la Grivița (1877)",
@@ -3938,7 +4007,7 @@
    "teritoriu": "nu",
    "observatii": "În afara granițelor actuale; parte din Războiul de Independență.",
    "sursa": "batalii.csv — sec. XIX d.Hr. (completare)",
-   "id": "RM-170"
+   "id": "RM-173"
   },
   {
    "titlu": "Războiul de Independență (Russo-Turc 1877–1878)",
@@ -3961,7 +4030,7 @@
    "teritoriu": "partial",
    "observatii": "Luptele principale au avut loc în afara granițelor actuale (Bulgaria); trecerea Dunării și mobilizarea s-au desfășurat pe teritoriul românesc.",
    "sursa": "batalii.csv — sec. XIX d.Hr.",
-   "id": "RM-171"
+   "id": "RM-174"
   },
   {
    "titlu": "Bătălia de la Smârdan",
@@ -3984,7 +4053,7 @@
    "teritoriu": "nu",
    "observatii": "În afara granițelor actuale; parte din Războiul de Independență.",
    "sursa": "batalii.csv — sec. XIX d.Hr. (completare)",
-   "id": "RM-172"
+   "id": "RM-175"
   },
   {
    "titlu": "Bătălia de la Bazargic (1916)",
@@ -4007,7 +4076,7 @@
    "teritoriu": "partial",
    "observatii": "Bazargic se află la granița actuală dintre România și Bulgaria (Dobrogea de sud).",
    "sursa": "batalii.csv — sec. XX d.Hr. (completare)",
-   "id": "RM-173"
+   "id": "RM-176"
   },
   {
    "titlu": "Bătălia de la Brașov (1916)",
@@ -4030,7 +4099,7 @@
    "teritoriu": "da",
    "observatii": "Parte din operația de apărare a trecătorilor din 1916.",
    "sursa": "batalii.csv — sec. XX d.Hr. (completare)",
-   "id": "RM-174"
+   "id": "RM-177"
   },
   {
    "titlu": "Bătălia de la Predeal (1916)",
@@ -4053,7 +4122,7 @@
    "teritoriu": "da",
    "observatii": "Parte din operația de apărare a trecătorilor din 1916.",
    "sursa": "batalii.csv — sec. XX d.Hr. (completare)",
-   "id": "RM-175"
+   "id": "RM-178"
   },
   {
    "titlu": "Bătălia de la Sibiu (1916)",
@@ -4076,7 +4145,7 @@
    "teritoriu": "da",
    "observatii": "Parte din operația de apărare a trecătorilor din 1916.",
    "sursa": "batalii.csv — sec. XX d.Hr. (completare)",
-   "id": "RM-176"
+   "id": "RM-179"
   },
   {
    "titlu": "Bătălia de la Turtucaia",
@@ -4099,7 +4168,7 @@
    "teritoriu": "nu",
    "observatii": "Turtucaia este azi în Bulgaria, imediat la frontiera cu România.",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-177"
+   "id": "RM-180"
   },
   {
    "titlu": "Bătălia de la Târgu Jiu (1916)",
@@ -4122,7 +4191,7 @@
    "teritoriu": "da",
    "observatii": "Parte din a doua bătălie de pe Valea Jiului și din apărarea Olteniei.",
    "sursa": "batalii.csv — sec. XX d.Hr. (completare)",
-   "id": "RM-178"
+   "id": "RM-181"
   },
   {
    "titlu": "Bătălia de pe Neajlov–Argeș (1916)",
@@ -4145,7 +4214,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-179"
+   "id": "RM-182"
   },
   {
    "titlu": "Bătălia de pe Valea Jiului (1916)",
@@ -4168,7 +4237,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-180"
+   "id": "RM-183"
   },
   {
    "titlu": "Bătălia de pe Valea Prahovei (1916)",
@@ -4191,7 +4260,7 @@
    "teritoriu": "da",
    "observatii": "Parte din operația de apărare a trecătorilor din 1916.",
    "sursa": "batalii.csv — sec. XX d.Hr. (completare)",
-   "id": "RM-181"
+   "id": "RM-184"
   },
   {
    "titlu": "Bătălia pentru București (1916)",
@@ -4214,7 +4283,7 @@
    "teritoriu": "da",
    "observatii": "Parte din operația de apărare a teritoriului Munteniei.",
    "sursa": "batalii.csv — sec. XX d.Hr. (completare)",
-   "id": "RM-182"
+   "id": "RM-185"
   },
   {
    "titlu": "Operația de la Flămânda",
@@ -4237,7 +4306,7 @@
    "teritoriu": "da",
    "observatii": "Operație de forțare a Dunării, abandonată din cauza lipsei de coordonare.",
    "sursa": "batalii.csv — sec. XX d.Hr. (completare)",
-   "id": "RM-183"
+   "id": "RM-186"
   },
   {
    "titlu": "Prima bătălie de la Oituz (1916)",
@@ -4260,7 +4329,7 @@
    "teritoriu": "da",
    "observatii": "Urmează a doua bătălie de la Oituz (noiembrie 1916) și cea din 1917.",
    "sursa": "batalii.csv — sec. XX d.Hr. (completare)",
-   "id": "RM-184"
+   "id": "RM-187"
   },
   {
    "titlu": "Primul Război Mondial — Campania din 1916 (înfrângerea inițială)",
@@ -4283,7 +4352,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-185"
+   "id": "RM-188"
   },
   {
    "titlu": "Bătălia de la Mărășești (1917)",
@@ -4306,7 +4375,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-186"
+   "id": "RM-189"
   },
   {
    "titlu": "Bătălia de la Mărăști (1917)",
@@ -4329,7 +4398,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-187"
+   "id": "RM-190"
   },
   {
    "titlu": "Bătălia de la Oituz (1917)",
@@ -4352,7 +4421,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-188"
+   "id": "RM-191"
   },
   {
    "titlu": "Al Doilea Război Mondial — Operațiunea Tidal Wave (bombardarea Ploieștiului)",
@@ -4375,7 +4444,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-189"
+   "id": "RM-192"
   },
   {
    "titlu": "Bombardamentele aliate asupra României (1943–1944)",
@@ -4398,7 +4467,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-190"
+   "id": "RM-193"
   },
   {
    "titlu": "A Doua Ofensivă Iași–Chișinău (20–29 august 1944)",
@@ -4421,7 +4490,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-191"
+   "id": "RM-194"
   },
   {
    "titlu": "Bătălia de la Păuliș (1944)",
@@ -4444,7 +4513,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-192"
+   "id": "RM-195"
   },
   {
    "titlu": "Bătălia de la Turda (1944)",
@@ -4467,7 +4536,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-193"
+   "id": "RM-196"
   },
   {
    "titlu": "Bătălia pentru București (august–septembrie 1944)",
@@ -4490,7 +4559,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-194"
+   "id": "RM-197"
   },
   {
    "titlu": "Eliberarea Careiului și Satu Mare (25 octombrie 1944)",
@@ -4513,7 +4582,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-195"
+   "id": "RM-198"
   },
   {
    "titlu": "Luptele de pe linia Dunării și din Dobrogea (1944)",
@@ -4536,7 +4605,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-196"
+   "id": "RM-199"
   },
   {
    "titlu": "Ofensiva Uman–Botoșani (1944)",
@@ -4559,7 +4628,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-197"
+   "id": "RM-200"
   },
   {
    "titlu": "Prima Ofensivă Iași–Chișinău (1944) și bătălia de la Târgu Frumos",
@@ -4582,7 +4651,7 @@
    "teritoriu": "da",
    "observatii": "—",
    "sursa": "batalii.csv — sec. XX d.Hr.",
-   "id": "RM-198"
+   "id": "RM-201"
   }
  ]
 }
