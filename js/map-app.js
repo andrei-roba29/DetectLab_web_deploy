@@ -10963,7 +10963,9 @@
                 satellite60s: {
                     // CORONA imagery (CAST GeoServer) — covers Romania on .ro, and the
                     // entire European / Eastern Mediterranean corridor on .eu.
-                    bounds: (typeof _isEuropeMarket === 'function' && _isEuropeMarket()) ? [[34.0, 15.0], [58.0, 38.0]] : [[43.5, 19.5], [48.5, 30.5]],
+                    // CORONA has footprints across the Central/Eastern European
+                    // corridor, not only inside Romania.
+                    bounds: [[34.0, 15.0], [58.0, 38.0]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer',
                     coverageMinZoom: 8
@@ -11336,7 +11338,7 @@
                 });
                 layerDefs.push({
                     key: 'satellite60s',
-                    bounds: toBounds(premiumMapCoverageBounds.satellite60s ? premiumMapCoverageBounds.satellite60s.bounds : [[43.5,19.5],[48.5,30.5]]),
+                    bounds: toBounds(premiumMapCoverageBounds.satellite60s ? premiumMapCoverageBounds.satellite60s.bounds : [[34.0,15.0],[58.0,38.0]]),
                     getRow: function() { return document.getElementById('satellite60sRow'); },
                     group: null
                 });
@@ -12520,15 +12522,14 @@
                     // (clipped to Romania on RO domain, expanded across Europe on EU domain)
                     // so Leaflet never asks the server for a tile the pass does not cover.
                     var name = (typeof entry === "string") ? entry : entry.name;
-                    var isEu = _isEuropeMarket();
-                    var layerBounds;
-                    if (isEu) {
-                        layerBounds = L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]);
-                    } else {
-                        layerBounds = (typeof entry === "string" || !entry.bounds)
-                            ? ROMANIA_BOUNDS
-                            : L.latLngBounds(entry.bounds);
-                    }
+                    // Preserve the descriptor footprint, then widen it to the shared
+                    // Central/Eastern-European corridor. Restricting the layer
+                    // to ROMANIA_BOUNDS made valid 200 responses outside
+                    // Romania disappear before Leaflet could display them.
+                    var layerBounds = (typeof entry === "string" || !entry.bounds)
+                        ? L.latLngBounds([[34.0, 15.0], [58.0, 38.0]])
+                        : L.latLngBounds(entry.bounds);
+                    layerBounds.extend(L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]));
                     var lowPower = _sat60IsLowPowerDevice();
                     var opts = {
                         layers: name,

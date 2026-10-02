@@ -864,7 +864,10 @@ const PRECACHE_URLS = [
   // map-side mirror ship the new stop markers, and the Satellite card gains
   // the ⓘ button that credits the Copernicus Land Monitoring Service.
   'css/styles.css?v=20260927-sat-copernicus-vhr',
+  'css/country-selector.css?v=20261002',
+  'js/country-selector.js?v=20261002',
   'js/map-app.js?v=20260927-sat-copernicus-vhr',
+  'js/map-app.js?v=20261002-country-wms-fix',
   'js/vertical-opacity-control.js?v=20260927-sat-copernicus-vhr',
   // v148–v149: fiecare oglindă își păstrează propriile acțiuni rapide,
   // inclusiv Josephine Map + când un alt substrat istoric premium primește
