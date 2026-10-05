@@ -322,7 +322,9 @@
 //   (js/globe-country-picker.js, css/globe-country-picker.css) — a MapLibre GL
 //   "globe" projection shown the first time a logged-in visitor reaches the
 //   map. css/country-selector.css and js/country-selector.js are retired.
-const CACHE_NAME = 'detectlab-v152-globe-country-gate';
+// v153: Netherlands LiDAR now uses the AHN6 DSM 50 cm ArcGIS ImageServer
+//   (dynamic exportImage tiles in Web Mercator) instead of the older PDOK WMS.
+const CACHE_NAME = 'detectlab-v153-ahn6-dsm';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -874,6 +876,7 @@ const PRECACHE_URLS = [
   'js/globe-country-picker.js?v=20261005',
   'js/map-app.js?v=20260927-sat-copernicus-vhr',
   'js/map-app.js?v=20261002-european-lidar',
+  'js/map-app.js?v=20261005-ahn6-dsm',
   'js/vertical-opacity-control.js?v=20260927-sat-copernicus-vhr',
   // v148–v149: fiecare oglindă își păstrează propriile acțiuni rapide,
   // inclusiv Josephine Map + când un alt substrat istoric premium primește
@@ -895,6 +898,7 @@ const PASSTHROUGH_HOSTS = [
   'geo-spatial.org',    // heritage WMS + eharta
   'geo-spatial.ro',     // heritage WMS (eism)
   'arcgisonline.com',   // Esri satellite tiles
+  'arcgisonline.nl',    // AHN6 DSM ImageServer
   'tiles.arcgis.com',   // LAKI III / MDH historical map tiles
   'raw.githubusercontent.com', // heritage images + geo-data JSON
   'githubusercontent.com',     // catch-all for GitHub CDN

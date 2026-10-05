@@ -5539,10 +5539,14 @@
             var _lidarVisible = false;
 
             // Public geodata services used by the free LiDAR catalogue. Each
-            // country keeps its own WMS endpoint and layer name, but they all
-            // share the same Leaflet group and opacity controls below.
-            var NETHERLANDS_LIDAR_WMS_URL =
-                'https://service.pdok.nl/rws/actueel-hoogtebestand-nederland/wms/v1_0';
+            // country keeps its own service endpoint and layer name, but they
+            // all share the same Leaflet group and opacity controls below.
+            // AHN6 is published as a dynamic ArcGIS ImageServer in the
+            // Dutch national RD New projection (EPSG:28992), not as a tiled
+            // WMS. The layer builder below requests Web-Mercator exportImage
+            // tiles from this service so it lines up with Leaflet's map.
+            var NETHERLANDS_LIDAR_IMAGE_SERVER_URL =
+                'https://ahn.arcgisonline.nl/arcgis/rest/services/Hoogtebestand/AHN6_DSM_50cm/ImageServer';
             var NORWAY_LIDAR_WMS_URL =
                 'https://wms.geonorge.no/skwms1/wms.hoyde-hoydedata-metadata-prosjekt';
             var POLAND_LIDAR_KRON86_WMS_URL =
@@ -5577,7 +5581,7 @@
 
             window.NORWAY_LIDAR_WMS_URL = NORWAY_LIDAR_WMS_URL;
             window.NORWAY_LIDAR_REGIONS = NORWAY_LIDAR_REGIONS;
-            window.NETHERLANDS_LIDAR_WMS_URL = NETHERLANDS_LIDAR_WMS_URL;
+            window.NETHERLANDS_LIDAR_IMAGE_SERVER_URL = NETHERLANDS_LIDAR_IMAGE_SERVER_URL;
             window.POLAND_LIDAR_KRON86_WMS_URL = POLAND_LIDAR_KRON86_WMS_URL;
             window.POLAND_LIDAR_EVRF2007_WMS_URL = POLAND_LIDAR_EVRF2007_WMS_URL;
             window.POLAND_LIDAR_KRON86_WFS_URL = POLAND_LIDAR_KRON86_WFS_URL;
@@ -5845,13 +5849,18 @@
                 // ── Free European LiDAR catalogue ──────────────────────────
                 // These entries deliberately live in the same LIDAR master
                 // switch as the original Romania coverage. They are lazy: a
-                // WMS layer is not constructed until its opacity is raised or
-                // its country switch is turned on.
+                // remote layer is not constructed until its opacity is raised
+                // or its country switch is turned on.
                 nlAhn: {
-                    label: 'Netherlands · AHN DTM 0.5 m', enabled: false, opacity: 0.8,
-                    type: 'wms', url: NETHERLANDS_LIDAR_WMS_URL, wmsLayers: 'dtm_05m',
-                    serverType: 'mapserver', crossOrigin: 'anonymous',
-                    attribution: 'Source: AHN (Actueel Hoogtebestand Nederland) — Rijkswaterstaat / PDOK. Licence: CC0 1.0 Universal.', leafletLayer: null
+                    label: 'Netherlands · AHN6 DSM 0.5 m', enabled: false, opacity: 0.8,
+                    type: 'arcgis_image_server', url: NETHERLANDS_LIDAR_IMAGE_SERVER_URL,
+                    // Hillshade keeps the 0.5 m DSM legible over the basemap;
+                    // the source remains the AHN6 DSM ImageServer itself.
+                    renderingRule: 'AHN - Hillshade (Multidirectionaal)',
+                    bounds: [[50.70, 3.20], [53.60, 7.30]],
+                    maxNativeZoom: 18, minZoom: 7,
+                    crossOrigin: 'anonymous',
+                    attribution: 'Source: AHN6 DSM 50 cm — Rijkswaterstaat / PDOK. Licence: CC0 1.0 Universal.', leafletLayer: null
                 },
                 noLidar: {
                     label: 'Norway · Kartverket', enabled: false, opacity: 0.75,
@@ -5952,6 +5961,99 @@
                             : 1;
                     }
                     return o;
+                }
+
+                // ArcGIS ImageServer layers are dynamic (AHN6 is not a
+                // Single Fused Map Cache), so they cannot use Leaflet's
+                // ordinary {z}/{x}/{y} tile URL expansion. Render one
+                // Web-Mercator exportImage request per Leaflet tile instead.
+                function _createArcGisImageServerLayer(imageServerUrl, imageCfg) {
+                    var ImageServerGridLayer = L.GridLayer.extend({
+                        options: {
+                            tileSize: 256,
+                            updateWhenZooming: false,
+                            updateWhenIdle: true,
+                            keepBuffer: 1,
+                            maxZoom: 20,
+                            maxNativeZoom: 18,
+                            minZoom: 0,
+                            opacity: 1,
+                            pane: 'pane_lidar',
+                            noWrap: true
+                        },
+
+                        createTile: function (coords, done) {
+                            var tile = L.DomUtil.create('img', 'leaflet-tile');
+                            var size = this.getTileSize();
+                            var finished = false;
+                            var finish = function (error) {
+                                if (finished) return;
+                                finished = true;
+                                done(error, tile);
+                            };
+
+                            tile.alt = '';
+                            tile.setAttribute('role', 'presentation');
+                            tile.width = size.x;
+                            tile.height = size.y;
+                            if (imageCfg.crossOrigin) tile.crossOrigin = imageCfg.crossOrigin;
+                            tile.onload = function () { finish(null); };
+                            tile.onerror = function (error) { finish(error || new Error('AHN6 ImageServer tile failed')); };
+                            tile.src = this._exportImageUrl(coords);
+                            return tile;
+                        },
+
+                        onAdd: function (map) {
+                            L.GridLayer.prototype.onAdd.call(this, map);
+                            this.setOpacity(this.options.opacity);
+                        },
+
+                        _exportImageUrl: function (coords) {
+                            var size = this.getTileSize();
+                            var nw = this._map.unproject(coords.multiplyBy(size), coords.z);
+                            var se = this._map.unproject(coords.add([1, 1]).multiplyBy(size), coords.z);
+                            var crs = this._map.options.crs || L.CRS.EPSG3857;
+                            var nwProjected = crs.project(nw);
+                            var seProjected = crs.project(se);
+                            var params = {
+                                bbox: [nwProjected.x, seProjected.y, seProjected.x, nwProjected.y].join(','),
+                                bboxSR: 3857,
+                                imageSR: 3857,
+                                size: size.x + ',' + size.y,
+                                format: 'png32',
+                                transparent: true,
+                                adjustAspectRatio: false,
+                                interpolation: 'RSP_BilinearInterpolation',
+                                f: 'image'
+                            };
+                            if (imageCfg.renderingRule) {
+                                params.renderingRule = JSON.stringify({ rasterFunction: imageCfg.renderingRule });
+                            }
+                            return imageServerUrl + L.Util.getParamString(params, imageServerUrl);
+                        },
+
+                        setOpacity: function (opacity) {
+                            this.options.opacity = opacity;
+                            if (this._container) this._container.style.opacity = opacity;
+                            return this;
+                        }
+                    });
+
+                    var options = _lidarPerfOptions({
+                        opacity: imageCfg.opacity,
+                        pane: 'pane_lidar',
+                        attribution: imageCfg.attribution || '© LIDAR',
+                        maxZoom: imageCfg.maxZoom !== undefined ? imageCfg.maxZoom : 20,
+                        maxNativeZoom: imageCfg.maxNativeZoom !== undefined ? imageCfg.maxNativeZoom : 18,
+                        minZoom: imageCfg.minZoom !== undefined ? imageCfg.minZoom : 0,
+                        bounds: imageCfg.bounds ? L.latLngBounds(imageCfg.bounds) : undefined,
+                        crossOrigin: imageCfg.crossOrigin
+                    });
+                    return new ImageServerGridLayer(options);
+                }
+
+                if (cfg.type === 'arcgis_image_server') {
+                    return _createArcGisImageServerLayer(cfg.url, cfg);
                 }
 
                 if (cfg.factory === 'norway') {
