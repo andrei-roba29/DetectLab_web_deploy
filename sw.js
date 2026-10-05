@@ -318,7 +318,11 @@
 // v150: cinci coordonate retrase din LIDAR Scanner sunt filtrate inclusiv din
 //   copiile vechi ale CSV-ului; lidar-scanner.js și DATA_URL sunt re-versionate.
 // v151: free European LiDAR catalogues and country-specific WMS controls.
-const CACHE_NAME = 'detectlab-v151-european-lidar';
+// v152: the flat Leaflet country picker is replaced by a real 3D globe gate
+//   (js/globe-country-picker.js, css/globe-country-picker.css) — a MapLibre GL
+//   "globe" projection shown the first time a logged-in visitor reaches the
+//   map. css/country-selector.css and js/country-selector.js are retired.
+const CACHE_NAME = 'detectlab-v152-globe-country-gate';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -866,8 +870,8 @@ const PRECACHE_URLS = [
   // the ⓘ button that credits the Copernicus Land Monitoring Service.
   'css/styles.css?v=20260927-sat-copernicus-vhr',
   'css/styles.css?v=20261002-european-lidar',
-  'css/country-selector.css?v=20261002',
-  'js/country-selector.js?v=20261002',
+  'css/globe-country-picker.css?v=20261005',
+  'js/globe-country-picker.js?v=20261005',
   'js/map-app.js?v=20260927-sat-copernicus-vhr',
   'js/map-app.js?v=20261002-european-lidar',
   'js/vertical-opacity-control.js?v=20260927-sat-copernicus-vhr',

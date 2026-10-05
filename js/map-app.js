@@ -1270,11 +1270,15 @@
                 zoomAnimationThreshold: 10
             }).setView([51, 12], 3);
 
-            // The initial view is an interactive globe-like overview of Europe.
-            // Country polygons are added above the current base layer and remain
-            // visible after selection so the chosen territory stays legible.
-            if (window.DetectLabCountrySelector) {
-                window.DetectLabCountrySelector.init(map);
+            // Country selection now happens one layer up, on a real 3D globe
+            // (js/globe-country-picker.js) shown the first time an authenticated
+            // visitor reaches the map. attach() restores a previously chosen
+            // country instantly (no globe flash) or opens the globe gate once
+            // the user is confirmed logged in. Once a country is picked the
+            // gate hands this Leaflet instance a locked maxBounds/minZoom and
+            // calls filterLayersForCountry() exactly like the retired picker did.
+            if (window.DetectLabGlobeGate) {
+                window.DetectLabGlobeGate.attach(map);
             }
 
             // ── GLOBAL TILE GOVERNOR ──
