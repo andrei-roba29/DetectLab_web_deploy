@@ -25,7 +25,7 @@
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=20261002-european-lidar">
-    <link rel="stylesheet" href="css/country-selector.css?v=20261002">
+    <link rel="stylesheet" href="css/globe-country-picker.css?v=20261005">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260922-mobile-fs-controls">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -1271,6 +1271,43 @@
                         <h3 style="font-family:'Cinzel',serif;font-size:1.4rem" class="t" data-key="lock_title">Members-Only Map</h3>
                         <p style="color:rgba(245,240,235,0.6);max-width:320px;line-height:1.7" class="t" data-key="lock_desc">Subscribe to unlock full-resolution APM layers, advanced filters, and export tools.</p>
                         <a href="#pricing" class="btn-primary t" data-key="lock_btn">View Plans</a>
+                    </div>
+
+                    <!-- 3D Globe country gate — the first thing an authenticated
+                         visitor sees in the map card. A MapLibre GL "globe"
+                         projection tints every European country translucent
+                         grey-violet with a black border; hovering flips it to
+                         translucent neon-green. Picking one hands off to the
+                         normal 2D map, locked to that country. See
+                         js/globe-country-picker.js. -->
+                    <button type="button" class="globe-gate-reopen" id="globeGateReopenBtn" data-key="globe_gate_change_country">Change Country</button>
+                    <div class="globe-gate hidden" id="globeGate" aria-hidden="true">
+                        <div class="globe-gate-canvas" id="globeGateCanvas"></div>
+                        <div class="globe-gate-chrome">
+                            <div class="globe-gate-title t" id="globeGateTitle" data-key="globe_gate_title">Choose your country</div>
+                            <p class="globe-gate-desc t" id="globeGateDesc" data-key="globe_gate_desc">Spin the globe and select a European country to start mapping.</p>
+                            <div class="globe-gate-legend">
+                                <span class="globe-gate-swatch globe-gate-swatch--default"></span><span class="t" data-key="globe_gate_legend_default">Available country</span>
+                                <span class="globe-gate-swatch globe-gate-swatch--hover"></span><span class="t" data-key="globe_gate_legend_hover">Hovered</span>
+                            </div>
+                        </div>
+                        <button type="button" id="globeGateCloseBtn" class="globe-gate-reopen" style="display:none;top:auto;right:auto;left:14px" aria-label="Close">✕</button>
+                        <div class="globe-gate-hint" id="globeGateHint"></div>
+                        <div class="globe-gate-loading" id="globeGateLoading">
+                            <span class="globe-gate-spinner" aria-hidden="true"></span>
+                            <span class="t" data-key="globe_gate_loading">Loading world map…</span>
+                        </div>
+                        <div class="globe-gate-error hidden" id="globeGateError">
+                            <p id="globeGateErrorText">The world map could not load. Please check your connection and try again.</p>
+                            <button type="button" id="globeGateRetryBtn" class="t" data-key="globe_gate_retry">Retry</button>
+                        </div>
+                        <!-- Plain country <select> used only when the device/browser
+                             cannot run the WebGL globe at all — keeps the picker
+                             reachable instead of hard-blocking the app. -->
+                        <div class="globe-gate-fallback hidden" id="globeGateFallback">
+                            <select id="globeGateFallbackSelect"></select>
+                            <button type="button" id="globeGateFallbackBtn">OK</button>
+                        </div>
                     </div>
                 </div>
 
@@ -4534,7 +4571,7 @@
     <script src="js/corona-wms-layer.js?v=20260812-layers"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/country-selector.js?v=20261002"></script>
+    <script src="js/globe-country-picker.js?v=20261005"></script>
     <script src="js/map-app.js?v=20261002-european-lidar"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>

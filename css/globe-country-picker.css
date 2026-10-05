@@ -1,0 +1,253 @@
+/* ══════════════════════════════════════════════════════════════
+   DetectLab — 3D Globe Country Gate
+   First screen shown after login: a MapLibre GL globe projection
+   with every European country tinted a translucent grey-violet and
+   outlined in black. Hovering a country swaps it to a translucent
+   neon-green; clicking it hands off to the normal 2D working map,
+   locked to that country's extent. See GLOBE_COUNTRY_GATE.md.
+   ══════════════════════════════════════════════════════════════ */
+
+.globe-gate {
+    position: absolute;
+    inset: 0;
+    z-index: 10600;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #060814;
+    opacity: 1;
+    transition: opacity .45s ease;
+}
+
+.globe-gate.hidden {
+    display: none !important;
+}
+
+.globe-gate.is-leaving {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.globe-gate-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* MapLibre injects its own canvas/controls into this container */
+.globe-gate-canvas .maplibregl-map {
+    width: 100%;
+    height: 100%;
+    font-family: inherit;
+}
+
+.globe-gate-canvas .maplibregl-ctrl-attrib {
+    background: rgba(6,8,20,0.55) !important;
+    color: rgba(230,230,240,0.65) !important;
+    border-radius: 8px 0 0 0;
+}
+.globe-gate-canvas .maplibregl-ctrl-attrib a { color: rgba(185,255,0,0.85) !important; }
+.globe-gate-canvas .maplibregl-ctrl-bottom-right,
+.globe-gate-canvas .maplibregl-ctrl-top-right { z-index: 2; }
+.globe-gate-canvas .maplibregl-canvas:focus { outline: none; }
+.globe-gate-canvas .maplibregl-canvas-container.maplibregl-interactive { cursor: grab; }
+.globe-gate-canvas .maplibregl-canvas-container.maplibregl-interactive:active { cursor: grabbing; }
+
+/* ── Chrome: title / description / legend, floating above the globe ── */
+.globe-gate-chrome {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    padding: 18px 20px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(4,6,16,0.82) 0%, rgba(4,6,16,0.35) 70%, rgba(4,6,16,0) 100%);
+}
+
+.globe-gate-title {
+    font-family: 'Cinzel', serif;
+    font-size: 1.3rem;
+    letter-spacing: .02em;
+    color: #F5F0EB;
+    text-shadow: 0 2px 10px rgba(0,0,0,.6);
+}
+
+.globe-gate-desc {
+    margin: 0;
+    max-width: 440px;
+    font-size: .85rem;
+    line-height: 1.5;
+    color: rgba(245,240,235,0.78);
+}
+
+.globe-gate-legend {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: .72rem;
+    color: rgba(245,240,235,0.72);
+}
+
+.globe-gate-swatch {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    border: 1px solid #000;
+    vertical-align: middle;
+    margin-right: 2px;
+}
+.globe-gate-swatch--default { background: rgba(130,110,160,0.55); }
+.globe-gate-swatch--hover { background: rgba(57,255,20,0.6); box-shadow: 0 0 8px rgba(57,255,20,.6); }
+
+.globe-gate-legend span + span { margin-left: 2px; }
+
+/* ── Hovered-country name pill, follows the cursor loosely by just
+   sitting centered near the bottom — simpler & always reachable on touch. ── */
+.globe-gate-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 3;
+    padding: 7px 16px;
+    border-radius: 999px;
+    background: rgba(8,10,22,0.78);
+    border: 1px solid rgba(185,255,0,0.55);
+    color: #ddffb0;
+    font: 600 13px/1.2 system-ui, sans-serif;
+    box-shadow: 0 6px 22px rgba(0,0,0,.45);
+    opacity: 0;
+    transition: opacity .15s ease, transform .15s ease;
+    pointer-events: none;
+    white-space: nowrap;
+    max-width: calc(100% - 40px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.globe-gate-hint.show { opacity: 1; }
+
+/* ── Loading / error states ── */
+.globe-gate-loading,
+.globe-gate-error {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    text-align: center;
+    padding: 24px;
+    background: #060814;
+    color: rgba(245,240,235,0.85);
+    font: 500 .9rem/1.5 system-ui, sans-serif;
+}
+.globe-gate-loading.hidden,
+.globe-gate-error.hidden { display: none !important; }
+
+.globe-gate-spinner {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid rgba(185,255,0,0.18);
+    border-top-color: #b9ff00;
+    animation: globeGateSpin 0.9s linear infinite;
+}
+@keyframes globeGateSpin { to { transform: rotate(360deg); } }
+
+.globe-gate-error button {
+    margin-top: 4px;
+    padding: 9px 20px;
+    border-radius: 999px;
+    border: 1px solid rgba(185,255,0,0.6);
+    background: rgba(185,255,0,0.12);
+    color: #ddffb0;
+    font: 600 .85rem system-ui, sans-serif;
+    cursor: pointer;
+}
+.globe-gate-error button:hover { background: rgba(185,255,0,0.22); }
+
+/* ── No-WebGL fallback: a plain country <select>, shown instead of the
+   globe canvas when the device/browser cannot run it. ── */
+.globe-gate-fallback {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    background: #060814;
+}
+.globe-gate-fallback.hidden { display: none !important; }
+.globe-gate-fallback select {
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.25);
+    font: 500 .9rem system-ui, sans-serif;
+    max-width: 220px;
+}
+.globe-gate-fallback button {
+    padding: 9px 20px;
+    border-radius: 999px;
+    border: 1px solid rgba(185,255,0,0.6);
+    background: rgba(185,255,0,0.12);
+    color: #ddffb0;
+    font: 600 .85rem system-ui, sans-serif;
+    cursor: pointer;
+}
+.globe-gate-fallback button:hover { background: rgba(185,255,0,0.22); }
+
+/* ── "Change country" re-entry pill, shown once a country is active ── */
+.globe-gate-reopen {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 640;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(185,255,0,0.45);
+    background: rgba(8,10,22,0.72);
+    backdrop-filter: blur(6px);
+    color: #ddffb0;
+    font: 600 12px system-ui, sans-serif;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4);
+}
+body.country-selected .globe-gate-reopen { display: inline-flex; }
+.globe-gate-reopen:hover { background: rgba(185,255,0,0.16); }
+.map-frame.is-fullscreen .globe-gate-reopen {
+    top: calc(14px + env(safe-area-inset-top));
+}
+
+/* Keep the "exit full screen" control reachable even while the globe
+   gate (very high z-index) is open above everything else in the frame. */
+.map-frame.is-fullscreen .btn-close-fullscreen {
+    z-index: 10700 !important;
+}
+
+@media (max-width: 640px) {
+    .globe-gate-title { font-size: 1.1rem; }
+    .globe-gate-desc { font-size: .78rem; }
+    .globe-gate-chrome { padding: 14px 14px 10px; }
+}
