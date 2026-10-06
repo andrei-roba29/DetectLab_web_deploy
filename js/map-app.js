@@ -5547,8 +5547,19 @@
             // tiles from this service so it lines up with Leaflet's map.
             var NETHERLANDS_LIDAR_IMAGE_SERVER_URL =
                 'https://ahn.arcgisonline.nl/arcgis/rest/services/Hoogtebestand/AHN6_DSM_50cm/ImageServer';
-            var NORWAY_LIDAR_WMS_URL =
-                'https://wms.geonorge.no/skwms1/wms.hoyde-hoydedata-metadata-prosjekt';
+            // Norway: Kartverket's national LiDAR terrain models, served as
+            // dynamic ArcGIS ImageServers by hoydedata.no. The configuration
+            // (service names, rendering rules, zoom window, opacity) lives in
+            // the CONFIG block of js/hoydedata-layer.js.
+            //
+            // This replaces the former Geonorge WMS
+            // (wms.hoyde-hoydedata-metadata-prosjekt): its layers are *per
+            // survey project*, so outside the one selected project the server
+            // answered 200 with a fully transparent PNG and the map looked
+            // empty everywhere.
+            var NORWAY_LIDAR_IMAGE_SERVER_HOST =
+                (window.Hoydedata && window.Hoydedata.CONFIG.HOST) ||
+                'https://hoydedata.no/arcgis/rest/services';
             var POLAND_LIDAR_KRON86_WMS_URL =
                 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomNMT/WMS/SkorowidzeWUkladzieKRON86';
             var POLAND_LIDAR_EVRF2007_WMS_URL =
@@ -5568,19 +5579,15 @@
             var FRANCE_LIDAR_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
             var DENMARK_LIDAR_WMS_URL = 'https://wms.datafordeler.dk/DHMNedboer/dhm/1.0.0/WMS';
 
-            // Norway publishes one WMS catalog rather than one service per
-            // project. These two entries make the control useful immediately;
-            // the complete catalog is requested from GetCapabilities below and
-            // replaces/extends this fallback list when the service permits CORS.
-            var NORWAY_LIDAR_REGIONS = [
-                { name: 'Vestfold 10pkt 2025', year: '2025', wmsLayer: 'Vestfold 10pkt 2025:multiskyggerelieff' },
-                { name: 'Vest-Telemark Søndre 10pkt 2025', year: '2025', wmsLayer: 'Vest-Telemark Søndre 10pkt 2025:multiskyggerelieff' }
-            ];
-            var NORWAY_LIDAR_CATALOG_URL = NORWAY_LIDAR_WMS_URL +
-                '?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0';
+            // The Norway control now switches between whole-country products
+            // (bare terrain, surface, local relief) instead of 1,356 survey
+            // projects, so there is no catalogue request to make at start-up.
+            var NORWAY_LIDAR_MODES = (window.Hoydedata && window.Hoydedata.MODES) || {};
+            var NORWAY_LIDAR_DEFAULT_MODE =
+                (window.Hoydedata && window.Hoydedata.CONFIG.DEFAULT_MODE) || 'dtm';
 
-            window.NORWAY_LIDAR_WMS_URL = NORWAY_LIDAR_WMS_URL;
-            window.NORWAY_LIDAR_REGIONS = NORWAY_LIDAR_REGIONS;
+            window.NORWAY_LIDAR_IMAGE_SERVER_HOST = NORWAY_LIDAR_IMAGE_SERVER_HOST;
+            window.NORWAY_LIDAR_MODES = NORWAY_LIDAR_MODES;
             window.NETHERLANDS_LIDAR_IMAGE_SERVER_URL = NETHERLANDS_LIDAR_IMAGE_SERVER_URL;
             window.POLAND_LIDAR_KRON86_WMS_URL = POLAND_LIDAR_KRON86_WMS_URL;
             window.POLAND_LIDAR_EVRF2007_WMS_URL = POLAND_LIDAR_EVRF2007_WMS_URL;
@@ -5652,100 +5659,96 @@
                 return L.tileLayer.wms(url, options);
             }
 
-            function createNorwayLidarLayer(region) {
-                if (!region || !region.wmsLayer) return null;
-                return L.tileLayer.wms(NORWAY_LIDAR_WMS_URL, _lidarWmsOptions({
-                    layers: region.wmsLayer,
-                    format: 'image/png',
-                    transparent: true,
-                    version: '1.3.0',
-                    opacity: 0.75,
-                    attribution: '© Kartverket'
-                }));
+            // Norway · hoydedata.no ImageServer (js/hoydedata-layer.js).
+            // One exportImage request per Leaflet tile, EPSG:3857 in and out,
+            // reprojected on the fly by the server from its native EPSG:25833.
+            function createNorwayLidarLayer(cfg) {
+                if (!window.Hoydedata) {
+                    console.warn('[DetectLab] hoydedata-layer.js is not loaded — Norway LiDAR unavailable');
+                    return null;
+                }
+                var modeKey = (cfg && cfg.mode) || NORWAY_LIDAR_DEFAULT_MODE;
+                return window.Hoydedata.createLayer({
+                    mode: modeKey,
+                    pane: 'pane_lidar',
+                    opacity: (cfg && cfg.opacity !== undefined)
+                        ? cfg.opacity
+                        : window.Hoydedata.CONFIG.OPACITY,
+                    keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                        ? window.DLTilePerf.config.keepBuffer
+                        : window.Hoydedata.CONFIG.KEEP_BUFFER
+                });
             }
             window.createNorwayLidarLayer = createNorwayLidarLayer;
 
-            function _norwayRegionFromLayerName(layerName) {
-                var raw = String(layerName || '').trim();
-                if (!raw || raw.indexOf(':multiskyggerelieff') === -1) return null;
-                var name = raw.replace(/:multiskyggerelieff$/, '');
-                var yearMatch = name.match(/(19|20)\d{2}$/);
-                return { name: name, year: yearMatch ? yearMatch[0] : '', wmsLayer: raw };
-            }
-
-            function _populateNorwayRegionSelect() {
+            function _populateNorwayModeSelect() {
                 var select = document.getElementById('norwayLidarRegionSelect');
-                if (!select) return;
+                if (!select || !window.Hoydedata) return;
                 var current = select.value;
                 select.innerHTML = '';
-                NORWAY_LIDAR_REGIONS.forEach(function (region) {
+                window.Hoydedata.modeKeys().forEach(function (key) {
                     var option = document.createElement('option');
-                    option.value = region.wmsLayer;
-                    option.textContent = region.name + (region.year ? ' (' + region.year + ')' : '');
+                    option.value = key;
+                    option.textContent = NORWAY_LIDAR_MODES[key].label;
                     select.appendChild(option);
                 });
-                if (current && NORWAY_LIDAR_REGIONS.some(function (r) { return r.wmsLayer === current; })) {
-                    select.value = current;
-                }
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.noLidar;
+                select.value = (current && NORWAY_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || NORWAY_LIDAR_DEFAULT_MODE);
             }
 
-            function _loadNorwayLidarCatalog() {
-                return fetch(NORWAY_LIDAR_CATALOG_URL).then(function (response) {
-                    if (!response.ok) throw new Error('Norway LiDAR catalog HTTP ' + response.status);
-                    return response.text();
-                }).then(function (xmlText) {
-                    var xml = new DOMParser().parseFromString(xmlText, 'text/xml');
-                    var names = xml.getElementsByTagNameNS
-                        ? xml.getElementsByTagNameNS('*', 'Name')
-                        : xml.getElementsByTagName('Name');
-                    var regions = [], seen = {};
-                    for (var i = 0; i < names.length; i++) {
-                        var region = _norwayRegionFromLayerName(names[i].textContent);
-                        if (region && !seen[region.wmsLayer]) {
-                            seen[region.wmsLayer] = true;
-                            regions.push(region);
-                        }
-                    }
-                    if (!regions.length) throw new Error('Norway LiDAR catalog has no hillshade layers');
-                    regions.sort(function (a, b) { return a.name.localeCompare(b.name, 'nb'); });
-                    NORWAY_LIDAR_REGIONS = regions;
-                    window.NORWAY_LIDAR_REGIONS = NORWAY_LIDAR_REGIONS;
-                    _populateNorwayRegionSelect();
-                    var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.noLidar;
-                    if (cfg && !NORWAY_LIDAR_REGIONS.some(function (r) { return r.wmsLayer === cfg.region.wmsLayer; })) {
-                        cfg.region = NORWAY_LIDAR_REGIONS[0];
-                        var select = document.getElementById('norwayLidarRegionSelect');
-                        if (select) select.value = cfg.region.wmsLayer;
-                    }
-                    return regions;
-                }).catch(function (error) {
-                    // The fallback entries still provide a working control when
-                    // the public capabilities document blocks browser CORS.
-                    console.warn('[DetectLab] Norway LiDAR catalog unavailable; using fallback regions', error);
-                    _populateNorwayRegionSelect();
-                    return NORWAY_LIDAR_REGIONS;
-                });
-            }
-
-            function _selectedRegion(list, value) {
-                return list.filter(function (region) { return region.wmsLayer === value; })[0] || list[0];
-            }
-
-            window.setNorwayLidarRegion = function (wmsLayer) {
+            // DTM ⇄ DSM ⇄ local relief. The layer object is reused: only the
+            // service name inside the exportImage URL changes, so Leaflet just
+            // redraws the tiles that are already on screen.
+            window.setNorwayLidarMode = function (modeKey) {
                 var cfg = LIDAR_SUB_LAYERS.noLidar;
-                if (!cfg) return;
-                var selected = _selectedRegion(NORWAY_LIDAR_REGIONS, wmsLayer);
-                if (!selected) return;
-                cfg.region = selected;
-                if (cfg.leafletLayer) {
-                    if (_lidarGroup.hasLayer(cfg.leafletLayer)) _lidarGroup.removeLayer(cfg.leafletLayer);
-                    cfg.leafletLayer = createNorwayLidarLayer(selected);
-                    if (cfg.leafletLayer) {
-                        cfg.leafletLayer.setOpacity(cfg.opacity);
-                        if (_lidarVisible && cfg.enabled) _lidarGroup.addLayer(cfg.leafletLayer);
-                    }
+                if (!cfg || !NORWAY_LIDAR_MODES[modeKey]) return;
+                cfg.mode = modeKey;
+                if (cfg.leafletLayer && cfg.leafletLayer.setMode) {
+                    cfg.leafletLayer.setMode(modeKey);
                 }
             };
+            // Backwards-compatible alias (the control used to pick a project).
+            window.setNorwayLidarRegion = window.setNorwayLidarMode;
+
+            // Click → "Elevation: N m", straight from the ImageServer identify
+            // operation. Verified CORS-safe: hoydedata.no reflects the request
+            // Origin, so a plain fetch() works with no proxy. The handler is
+            // attached only while the Norway layer is actually on the map, and
+            // ignores the click that ends a pan.
+            var _norwayIdentifyPopup = null;
+            function _norwayIdentifyClick(e) {
+                var cfg = LIDAR_SUB_LAYERS.noLidar;
+                if (!cfg || !window.Hoydedata || !window.Hoydedata.CONFIG.IDENTIFY.ENABLED) return;
+                if (!cfg.leafletLayer || !_lidarGroup.hasLayer(cfg.leafletLayer)) return;
+                if (typeof map._draggableMoved === 'function' && map._draggableMoved(map)) return;
+                if (map.getZoom() < window.Hoydedata.CONFIG.MIN_ZOOM) return;
+                var bounds = cfg.leafletLayer.options.bounds;
+                if (bounds && !bounds.contains(e.latlng)) return;
+
+                _norwayIdentifyPopup = L.popup({ className: 'hoydedata-identify-popup' })
+                    .setLatLng(e.latlng)
+                    .setContent('…')
+                    .openOn(map);
+                var popup = _norwayIdentifyPopup;
+                window.Hoydedata.identify(e.latlng, cfg.mode).then(function (result) {
+                    if (popup !== _norwayIdentifyPopup) return;
+                    popup.setContent(window.Hoydedata.formatIdentify(result));
+                }).catch(function () {
+                    if (popup !== _norwayIdentifyPopup) return;
+                    popup.setContent('Elevation unavailable');
+                });
+            }
+            function _setNorwayIdentifyEnabled(on) {
+                map.off('click', _norwayIdentifyClick);
+                if (on) map.on('click', _norwayIdentifyClick);
+                if (!on && _norwayIdentifyPopup) {
+                    map.closePopup(_norwayIdentifyPopup);
+                    _norwayIdentifyPopup = null;
+                }
+            }
+            window._setNorwayIdentifyEnabled = _setNorwayIdentifyEnabled;
 
             // Sub-layer definitions
             var LIDAR_SUB_LAYERS = {
@@ -5863,8 +5866,15 @@
                     attribution: 'Source: AHN6 DSM 50 cm — Rijkswaterstaat / PDOK. Licence: CC0 1.0 Universal.', leafletLayer: null
                 },
                 noLidar: {
-                    label: 'Norway · Kartverket', enabled: false, opacity: 0.75,
-                    factory: 'norway', region: NORWAY_LIDAR_REGIONS[0], leafletLayer: null
+                    // Whole-country Kartverket LiDAR via hoydedata.no. Zoom
+                    // window, opacity and service names come from the CONFIG
+                    // block of js/hoydedata-layer.js.
+                    label: 'Norway · Kartverket', enabled: false,
+                    opacity: (window.Hoydedata && window.Hoydedata.CONFIG.OPACITY) || 0.7,
+                    factory: 'norway', mode: NORWAY_LIDAR_DEFAULT_MODE,
+                    attribution: (window.Hoydedata && window.Hoydedata.CONFIG.ATTRIBUTION) ||
+                        'Hillshade © Kartverket (CC BY 4.0)',
+                    leafletLayer: null
                 },
                 plLidar: {
                     label: 'Poland · LIDAR measurements', enabled: false, opacity: 0.8,
@@ -6057,7 +6067,7 @@
                 }
 
                 if (cfg.factory === 'norway') {
-                    return createNorwayLidarLayer(cfg.region);
+                    return createNorwayLidarLayer(cfg);
                 }
                 if (cfg.factory) {
                     return _createSelectableEuropeanLidarLayer(cfg);
@@ -6182,6 +6192,10 @@
                 if (key === 'dj917' && window._updateDj917ZoomHint) window._updateDj917ZoomHint();
                 if (key === 'gj917' && window._updateGj917ZoomHint) window._updateGj917ZoomHint();
                 if (key === 'mh917' && window._updateMh917ZoomHint) window._updateMh917ZoomHint();
+                // Click-to-read-elevation only exists while Norway is on map.
+                if (key === 'noLidar' && window._setNorwayIdentifyEnabled) {
+                    window._setNorwayIdentifyEnabled(!!on && !!cfg.leafletLayer);
+                }
             };
 
             // ── European country controls ─────────────────────────────────
@@ -6248,14 +6262,11 @@
                 _replaceSelectableInternationalLayer('frLidar', mode);
             };
 
-            // Populate the Norway selector immediately, then ask Kartverket for
-            // the full project catalog (the service currently contains roughly
-            // 1,356 project regions and can change over time).
-            _populateNorwayRegionSelect();
-            _loadNorwayLidarCatalog();
+            // Norway: three whole-country products, no catalogue request.
+            _populateNorwayModeSelect();
             var norwaySelect = document.getElementById('norwayLidarRegionSelect');
             if (norwaySelect) norwaySelect.addEventListener('change', function () {
-                window.setNorwayLidarRegion(this.value);
+                window.setNorwayLidarMode(this.value);
             });
 
             // ── Public: expand/collapse sub-layer panel ──
