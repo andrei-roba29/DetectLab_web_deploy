@@ -5623,7 +5623,14 @@
             var UK_LIDAR_DEFAULT_MODE =
                 (window.EaLidarWmts && window.EaLidarWmts.CONFIG.DEFAULT_MODE) || 'hillshade';
             var FRANCE_LIDAR_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
+            // Denmark now streams Danmarks Højdemodel from Dataforsyningen
+            // through the site's own token-adding proxy (see
+            // js/dataforsyningen-dhm-layer.js). The old Datafordeler WMS
+            // constant stays for external callers only.
             var DENMARK_LIDAR_WMS_URL = 'https://wms.datafordeler.dk/DHMNedboer/dhm/1.0.0/WMS';
+            var DENMARK_LIDAR_MODES = (window.DataforsyningenDHM && window.DataforsyningenDHM.MODES) || {};
+            var DENMARK_LIDAR_DEFAULT_MODE =
+                (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.DEFAULT_MODE) || 'terrain';
 
             // The Norway control now switches between whole-country products
             // (bare terrain, surface, local relief) instead of 1,356 survey
@@ -5651,6 +5658,7 @@
             window.UK_LIDAR_MODES = UK_LIDAR_MODES;
             window.FRANCE_LIDAR_WMS_URL = FRANCE_LIDAR_WMS_URL;
             window.DENMARK_LIDAR_WMS_URL = DENMARK_LIDAR_WMS_URL;
+            window.DENMARK_LIDAR_MODES = DENMARK_LIDAR_MODES;
 
             // The WMS services use different layer catalogues, so the select
             // controls below swap a complete layer instead of stacking several
@@ -5963,8 +5971,12 @@
                     factory: 'france', mode: 'terrain', attribution: '© IGN France — LiDAR HD.', leafletLayer: null
                 },
                 dkLidar: {
-                    label: 'Denmark · DHM terrain hillshade', enabled: false, opacity: 0.8,
-                    factory: 'denmark', attribution: '© Datafordeler / Danish Geodata Agency — Danmarks Højdemodel.', leafletLayer: null
+                    label: 'Denmark · DHM hillshade (Dataforsyningen)', enabled: false,
+                    opacity: (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.OPACITY) || 0.6,
+                    factory: 'denmark', mode: DENMARK_LIDAR_DEFAULT_MODE,
+                    attribution: (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.ATTRIBUTION) ||
+                        'Indeholder data fra Klimadatastyrelsen, Danmarks Højdemodel (CC BY 4.0)',
+                    leafletLayer: null
                 }
             };
 
@@ -6075,17 +6087,27 @@
                     });
                 }
                 if (cfg.factory === 'denmark') {
-                    // Datafordeler requires the key as a query parameter. It is
-                    // intentionally supplied at runtime rather than committed
-                    // to the public repository. Deployments can set it before
-                    // map initialisation with window.DETECTLAB_DK_API_KEY.
-                    var apiKey = window.DETECTLAB_DK_API_KEY || '';
-                    var separator = DENMARK_LIDAR_WMS_URL.indexOf('?') === -1 ? '?' : '&';
-                    return _createFreeLidarWmsLayer(
-                        DENMARK_LIDAR_WMS_URL + separator + 'apikey=' + encodeURIComponent(apiKey),
-                        'dhm_terraen_skyggekort',
-                        { opacity: cfg.opacity, attribution: cfg.attribution }
-                    );
+                    // Dataforsyningen WMS in EPSG:3857, clipped to Denmark.
+                    // The token is NEVER in this file: tiles go through the
+                    // site's own /api/geo/dk-dhm proxy, which adds it
+                    // server-side (backend/src/routes/geoProxy.js). A static
+                    // deployment with no backend can set
+                    // window.DETECTLAB_DK_TOKEN instead — insecure, see
+                    // DENMARK_LIDAR_DATAFORSYNINGEN.md.
+                    if (!window.DataforsyningenDHM) {
+                        console.warn('[DetectLab] dataforsyningen-dhm-layer.js is not loaded — Denmark LiDAR unavailable');
+                        return null;
+                    }
+                    return window.DataforsyningenDHM.createLayer({
+                        mode: cfg.mode || DENMARK_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.DataforsyningenDHM.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.DataforsyningenDHM.CONFIG.KEEP_BUFFER
+                    });
                 }
                 return null;
             }
@@ -6525,6 +6547,35 @@
                 }
                 _replaceSelectableInternationalLayer('ukLidar', mode);
             };
+
+            window.setDenmarkLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.dkLidar;
+                // Only the WMS layer name changes, so redraw in place.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && DENMARK_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
+                _replaceSelectableInternationalLayer('dkLidar', mode);
+            };
+
+            function _populateDenmarkModeSelect() {
+                var select = document.getElementById('denmarkLidarModeSelect');
+                if (!select || !window.DataforsyningenDHM) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.DataforsyningenDHM.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = DENMARK_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.dkLidar;
+                select.value = (current && DENMARK_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || DENMARK_LIDAR_DEFAULT_MODE);
+            }
+            _populateDenmarkModeSelect();
 
             function _populateUkModeSelect() {
                 var select = document.getElementById('ukLidarModeSelect');
@@ -11996,7 +12047,7 @@
                     chLidar: [[45.398181, 5.140242], [48.230651, 11.47757]],
                     ukLidar: [[49.850605, -7.104776], [55.877087, 2.084282]],
                     frLidar: [[41.30, -5.50], [51.20, 9.70]],
-                    dkLidar: [[54.40, 7.90], [57.80, 15.70]]
+                    dkLidar: [[54.4265, 7.99125], [57.7781, 15.5995]]
                 };
 
                 // Central config: each leaf layer with its bounds and row getter
