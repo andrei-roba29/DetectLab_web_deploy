@@ -2045,24 +2045,25 @@
                                 <input type="range" class="lidar-country-opacity" id="lidarNoLidarOpacitySlider" min="0" max="100" value="70" oninput="setInternationalLidarOpacity('noLidar', this.value)">
                             </div>
 
-                            <!-- Poland · two national elevation-system catalogs -->
+                            <!-- Poland · GUGiK ISOK/NMT terrain shading (WMS, EPSG:3857, token-free).
+                                 Options are filled from js/geoportal-nmt-layer.js. -->
                             <div class="lidar-country-row" id="lidarPlLidarRow">
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
                                     <span style="display:flex;align-items:center;gap:5px;">
-                                        <span>Poland · GUGiK LIDAR</span>
-                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Poland LIDAR','© GUGiK — Polish national LIDAR measurements (free data).')" title="Layer info">ⓘ</button>
+                                        <span>Poland · GUGiK NMT shading</span>
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Poland LIDAR','Cieniowanie: © GUGiK / Geoportal.gov.pl (dane ISOK/NMT). LiDAR-derived terrain shading (NMT 1 m) and dynamic hypsometry, served live by the public Geoportal WMS. Visible from zoom 10. Using the service means accepting the Geoportal Regulamin.')" title="Layer info">ⓘ</button>
                                     </span>
                                     <label class="apm-toggle-switch" title="Toggle Poland LiDAR" style="transform:scale(0.85);transform-origin:right center;">
                                         <input type="checkbox" id="lidarPlLidarToggle" onchange="toggleInternationalLidar('plLidar', this.checked)">
                                         <span class="apm-toggle-track"></span>
                                     </label>
                                 </div>
-                                <select id="polandLidarModeSelect" class="lidar-country-select" aria-label="Poland LiDAR catalog" onchange="setPolandLidarMode(this.value)">
-                                    <option value="kron86">PL-KRON86-NH · 2011–2019</option>
-                                    <option value="evrf2007">PL-EVRF2007-NH · 2018–2026</option>
+                                <select id="polandLidarModeSelect" class="lidar-country-select" aria-label="Poland NMT product (shading or hypsometry)" onchange="setPolandLidarMode(this.value)">
+                                    <option value="cieniowanie">Cieniowanie · hillshade (NMT 1 m)</option>
+                                    <option value="hipsometria">Hipsometria · colour relief</option>
                                 </select>
-                                <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarPlLidarPct">80%</span></div>
-                                <input type="range" class="lidar-country-opacity" id="lidarPlLidarOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('plLidar', this.value)">
+                                <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarPlLidarPct">70%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarPlLidarOpacitySlider" min="0" max="100" value="70" oninput="setInternationalLidarOpacity('plLidar', this.value)">
                             </div>
 
                             <!-- Spain -->
@@ -4596,10 +4597,12 @@
     <script src="js/corona-coverage-layer.js?v=20261006-europe"></script>
     <!-- Norway LiDAR (Kartverket hoydedata.no ImageServer) — must load before map-app.js -->
     <script src="js/hoydedata-layer.js?v=20261006-norway"></script>
+    <!-- Poland LiDAR shading (GUGiK ISOK/NMT WMS) — must load before map-app.js -->
+    <script src="js/geoportal-nmt-layer.js?v=20261006-poland"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/globe-country-picker.js?v=20261005"></script>
-    <script src="js/map-app.js?v=20261006-norway-hoydedata"></script>
+    <script src="js/map-app.js?v=20261006-poland-nmt"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>

@@ -5560,6 +5560,17 @@
             var NORWAY_LIDAR_IMAGE_SERVER_HOST =
                 (window.Hoydedata && window.Hoydedata.CONFIG.HOST) ||
                 'https://hoydedata.no/arcgis/rest/services';
+            // Poland: terrain SHADING from the GUGiK ISOK/NMT services
+            // (js/geoportal-nmt-layer.js holds the CONFIG block).
+            //
+            // The two "Skorowidze" WMS endpoints that used to back this row
+            // publish the INDEX SHEETS of the LiDAR measurement data — survey
+            // metadata, not imagery — which is why the tiles came back 200 and
+            // empty. They are kept below only as a reference to the catalogue
+            // (the WFS twins), never as a display layer.
+            var POLAND_NMT_WMS_BASE =
+                (window.GeoportalNMT && window.GeoportalNMT.CONFIG.WMS_BASE) ||
+                'https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WMS/';
             var POLAND_LIDAR_KRON86_WMS_URL =
                 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomNMT/WMS/SkorowidzeWUkladzieKRON86';
             var POLAND_LIDAR_EVRF2007_WMS_URL =
@@ -5602,20 +5613,12 @@
             // The WMS services use different layer catalogues, so the select
             // controls below swap a complete layer instead of stacking several
             // incompatible rasters on top of each other.
-            var POLAND_LIDAR_MODES = {
-                kron86: {
-                    label: 'PL-KRON86-NH · 2011–2019',
-                    url: POLAND_LIDAR_KRON86_WMS_URL,
-                    indexUrl: POLAND_LIDAR_KRON86_WFS_URL,
-                    layers: 'gugik:SkorowidzDanychPomiarowychLIDAR2011,gugik:SkorowidzDanychPomiarowychLIDAR2012,gugik:SkorowidzDanychPomiarowychLIDAR2013,gugik:SkorowidzDanychPomiarowychLIDAR2014,gugik:SkorowidzDanychPomiarowychLIDAR2015,gugik:SkorowidzDanychPomiarowychLIDAR2016,gugik:SkorowidzDanychPomiarowychLIDAR2017,gugik:SkorowidzDanychPomiarowychLIDAR2018,gugik:SkorowidzDanychPomiarowychLIDAR2019'
-                },
-                evrf2007: {
-                    label: 'PL-EVRF2007-NH · 2018–2026',
-                    url: POLAND_LIDAR_EVRF2007_WMS_URL,
-                    indexUrl: POLAND_LIDAR_EVRF2007_WFS_URL,
-                    layers: 'gugik:SkorowidzDanychPomiarowychLIDAR2018,gugik:SkorowidzDanychPomiarowychLIDAR2019,gugik:SkorowidzDanychPomiarowychLIDAR2020,gugik:SkorowidzDanychPomiarowychLIDAR2021,gugik:SkorowidzDanychPomiarowychLIDAR2022,gugik:SkorowidzDanychPomiarowychLIDAR2023,gugik:SkorowidzDanychPomiarowychLIDAR2024,gugik:SkorowidzDanychPomiarowychLIDAR2025,gugik:SkorowidzDanychPomiarowychLIDAR2026'
-                }
-            };
+            var POLAND_LIDAR_MODES = (window.GeoportalNMT && window.GeoportalNMT.MODES) || {};
+            var POLAND_LIDAR_DEFAULT_MODE =
+                (window.GeoportalNMT && window.GeoportalNMT.CONFIG.DEFAULT_MODE) || 'cieniowanie';
+            window.POLAND_NMT_WMS_BASE = POLAND_NMT_WMS_BASE;
+            window.POLAND_LIDAR_MODES = POLAND_LIDAR_MODES;
+
             var FRANCE_LIDAR_MODES = {
                 terrain: { label: 'MNT · Terrain', layers: 'IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' },
                 surface: { label: 'MNS · Surface', layers: 'IGNF_LIDAR-HD_MNS_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' },
@@ -5877,8 +5880,13 @@
                     leafletLayer: null
                 },
                 plLidar: {
-                    label: 'Poland · LIDAR measurements', enabled: false, opacity: 0.8,
-                    factory: 'poland', mode: 'kron86', attribution: '© GUGiK — Polish national LIDAR measurements (free data).', leafletLayer: null
+                    // Terrain shading (ISOK/NMT 1 m), not the survey index sheets.
+                    label: 'Poland · GUGiK NMT shading', enabled: false,
+                    opacity: (window.GeoportalNMT && window.GeoportalNMT.CONFIG.OPACITY) || 0.7,
+                    factory: 'poland', mode: POLAND_LIDAR_DEFAULT_MODE,
+                    attribution: (window.GeoportalNMT && window.GeoportalNMT.CONFIG.ATTRIBUTION) ||
+                        'Cieniowanie: © GUGiK / Geoportal.gov.pl (dane ISOK/NMT)',
+                    leafletLayer: null
                 },
                 esLidar: {
                     label: 'Spain · LiDAR-derived DTM', enabled: false, opacity: 0.8,
@@ -5914,10 +5922,21 @@
             function _createSelectableEuropeanLidarLayer(cfg) {
                 var mode;
                 if (cfg.factory === 'poland') {
-                    mode = POLAND_LIDAR_MODES[cfg.mode] || POLAND_LIDAR_MODES.kron86;
-                    return _createFreeLidarWmsLayer(mode.url, mode.layers, {
-                        opacity: cfg.opacity,
-                        attribution: cfg.attribution
+                    // GUGiK ISOK/NMT shading — one WMS GetMap per Leaflet tile
+                    // in EPSG:3857, no token, bounded to Poland.
+                    if (!window.GeoportalNMT) {
+                        console.warn('[DetectLab] geoportal-nmt-layer.js is not loaded — Poland LiDAR unavailable');
+                        return null;
+                    }
+                    return window.GeoportalNMT.createLayer({
+                        mode: cfg.mode || POLAND_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.GeoportalNMT.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.GeoportalNMT.CONFIG.KEEP_BUFFER
                     });
                 }
                 if (cfg.factory === 'uk') {
@@ -6253,8 +6272,34 @@
             }
 
             window.setPolandLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.plLidar;
+                // Cieniowanie ⇄ Hipsometria only changes the service name in
+                // the GetMap URL, so redraw instead of rebuilding the layer.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && POLAND_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
                 _replaceSelectableInternationalLayer('plLidar', mode);
             };
+
+            function _populatePolandModeSelect() {
+                var select = document.getElementById('polandLidarModeSelect');
+                if (!select || !window.GeoportalNMT) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.GeoportalNMT.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = POLAND_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.plLidar;
+                select.value = (current && POLAND_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || POLAND_LIDAR_DEFAULT_MODE);
+            }
+            _populatePolandModeSelect();
             window.setUkLidarMode = function (mode) {
                 _replaceSelectableInternationalLayer('ukLidar', mode);
             };

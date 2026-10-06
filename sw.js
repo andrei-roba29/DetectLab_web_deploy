@@ -324,7 +324,7 @@
 //   map. css/country-selector.css and js/country-selector.js are retired.
 // v153: Netherlands LiDAR now uses the AHN6 DSM 50 cm ArcGIS ImageServer
 //   (dynamic exportImage tiles in Web Mercator) instead of the older PDOK WMS.
-const CACHE_NAME = 'detectlab-v155-norway-hoydedata';
+const CACHE_NAME = 'detectlab-v156-poland-nmt';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -402,7 +402,10 @@ const PRECACHE_URLS = [
   'js/hoydedata-layer.js',
   'js/hoydedata-layer.js?v=20261006-norway',
   'js/map-app.js?v=20261006-corona-europe',
+  'js/geoportal-nmt-layer.js',
+  'js/geoportal-nmt-layer.js?v=20261006-poland',
   'js/map-app.js?v=20261006-norway-hoydedata',
+  'js/map-app.js?v=20261006-poland-nmt',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',
