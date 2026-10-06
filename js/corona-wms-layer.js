@@ -1,58 +1,92 @@
 /*
  * corona-wms-layer.js
  * ───────────────────────────────────────────────────────────────────────────
- * CORONA ("Satellite imagery 60's") tile layer for DetectLab — a faithful
- * replica of how the original Corona Atlas website
- * (https://corona.cast.uark.edu/atlas) fetches its tiles.
+ * CORONA ("Satellite imagery 60's") for DetectLab — a faithful port of the
+ * tile-fetching logic of the original Corona Atlas
+ * (https://corona.cast.uark.edu/atlas, CAST — University of Arkansas),
+ * generalised from a hand-written Romania list to the WHOLE OF EUROPE.
  *
- * How the original fetches tiles (verified against its live network traffic,
- * captured by the Internet Archive on 2020-04-29 and 2019-10-28 — see
- * SATELLITE_60s_FIX.md for the exact captured URLs):
+ * ═══════════════════════════════════════════════════════════════════════════
+ * HOW THE ORIGINAL WEBSITE FETCHES TILES  (read from its own source:
+ * corona.cast.uark.edu/assets/libraries/custom/maputils.js — the
+ * "CORONA RASTER MANAGER/FUNCTIONS" block — and from its live traffic)
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- *   Endpoint : https://geoserve.cast.uark.edu/geoserver/gwc/service/wms
- *              (GeoWebCache WMS-C tile cache, workspace "corona")
- *   Request  : WMS 1.1.1 GetMap, ONE Corona layer per request
- *   Params   : SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap
- *              &FORMAT=image%2Fpng&TRANSPARENT=true
- *              &LAYERS=corona:<pass-or-frame>&tiled=true
- *              &WIDTH=256&HEIGHT=256&SRS=EPSG%3A900913&STYLES=
- *              &BBOX=<minx>,<miny>,<maxx>,<maxy>
- *   Grid     : standard Web-Mercator XYZ tile grid; BBOX in EPSG:900913
- *              metres, aligned to 256×256 tiles (the exact tile grid
- *              GeoWebCache's EPSG:900913 gridset is built on).
- *   Behaviour: the layer is a plain map tile layer — when visible it asks
- *              the browser to load the tiles covering the viewport at the
- *              current zoom, exactly like any basemap. There is NO manual
- *              "load here" button, NO client-side request queue, NO
- *              IndexedDB cache: each tile is a direct GET <img> request
- *              (browser/HTTP caching only), same as the original.
+ * 1. CATALOGUE — on page load the atlas calls
  *
- * Two granularities are used, exactly like the original atlas:
- *   • pass mosaics  ("corona:1103-2139Fore" / "…Aft") — coarse level;
- *   • frame layers  ("corona:1105-2235df064" / "…da###") — full-res level.
- * Each Corona layer is its OWN tile layer instance so every request carries
- * a single LAYERS= value (GeoWebCache cannot combine layers dynamically).
+ *        GET /corona/get_raster_names        (JSON)
  *
- * Leaflet must be loaded BEFORE this file. It exposes:
- *     window.coronaWmsTileUrl(baseUrl, layerName, z, x, y)  → exact request URL
- *     window.CoronaWmsLayer                                  → L.TileLayer.WMS subclass
- *     window.createCoronaWmsLayer(url, options)              → factory
+ *    which returns EVERY Corona product the CAST GeoServer publishes, keyed
+ *    by pass:
+ *
+ *        "1104-2155Fore": {
+ *           label: "1104-2155Fore (Mar 20, 1967)",
+ *           location: "1104-2155Fore",          // GeoServer layer, minus workspace
+ *           extent: {minx, miny, maxx, maxy},   // EPSG:4326
+ *           polygon: "{\"type\":\"Polygon\",\"coordinates\":[[…]]}",
+ *           images: [ { label, location: "1104-2155df004", extent, polygon,
+ *                       ftp, size_ntf, size_tif }, … ]   // individual frames
+ *        }
+ *
+ *    `initializeRasterManager(resp)` → `new rasterManager(rasterSettings, data)`
+ *    builds one `rasterLayer` for every pass (the "layerGroup") and one for
+ *    every frame ("layer") inside it.
+ *
+ * 2. TILE SOURCE — each rasterLayer is an `ol.layer.Tile` over
+ *
+ *        new ol.source.TileWMS({
+ *          url:    "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms",
+ *          params: {LAYERS: "corona:" + location, VERSION: "1.1.1", tiled: "true"},
+ *          tileGrid: new ol.tilegrid.TileGrid({
+ *            origin: [-20037508.34, -20037508.34],
+ *            resolutions: [156543.03390000001, …, 1.1943285667419434]  // 18 levels
+ *          }),
+ *          extent: <the layer's own footprint, EPSG:900913>
+ *        })
+ *
+ *    i.e. ONE Corona layer per request, GeoWebCache WMS-C, EPSG:900913,
+ *    256×256 tiles of the standard Web-Mercator grid, and no request is ever
+ *    sent outside the product's own footprint.
+ *
+ * 3. ZOOM GATING — `rasterSettings.layerSettings`:
+ *
+ *        layerGroup (pass mosaic): minZoom  8, maxZoom 11
+ *        layer      (single frame): minZoom 12, maxZoom 20
+ *
+ * 4. WHAT IS VISIBLE — `rasterLayer.checkZoom()`, re-run on every `moveend`
+ *    (`corona.zoomChanged()`): a product draws only when its POLYGON (not its
+ *    bbox) intersects the current view extent *and* the zoom is inside its
+ *    range. Everything else is `setVisible(false)`.
+ *
+ * This file reproduces 1–4 on Leaflet. The only deliberate difference is
+ * memory hygiene: the original creates an OpenLayers layer for every product
+ * in the catalogue up-front; here the Leaflet tile layer for a product is
+ * created the first time it is actually needed and dropped when it leaves the
+ * view, which keeps a Europe-wide catalogue affordable on a phone. The
+ * requests that reach the server are identical.
+ *
+ * Exposes (Leaflet must be loaded first):
+ *     window.coronaWmsTileUrl(baseUrl, layerName, z, x, y) → exact request URL
+ *     window.CoronaWmsLayer                                 → L.TileLayer.WMS subclass
+ *     window.createCoronaWmsLayer(url, options)             → factory
+ *     window.CoronaAtlas                                    → catalogue + manager
  */
 (function (root) {
     'use strict';
 
-    if (!root.L) {
+    var L = root.L;
+    if (!L) {
         console.error('[CoronaWms] Leaflet is not loaded — corona-wms-layer.js must load after leaflet.js');
         return;
     }
-    var L = root.L;
 
     /* ───────────────────────────────────────────────────────────────────────
-     * Web-Mercator / EPSG:900913 tile-grid math (the standard XYZ grid that
-     * GeoWebCache's EPSG:900913 gridset uses: 256×256 tiles, world extent
-     * ±20037508.342789244 m, origin top-left at zoom 0).
+     * Web-Mercator / EPSG:900913 tile-grid math. GeoWebCache's EPSG:900913
+     * gridset is the standard XYZ grid: 256×256 tiles, world extent
+     * ±20037508.342789244 m, 18 levels (z0…z17 — the exact `resolutions`
+     * array the atlas passes to ol.tilegrid.TileGrid).
      * ───────────────────────────────────────────────────────────────────── */
-    var WM_ORIGIN = 20037508.342789244; // half the EPSG:900913 world extent
+    var WM_ORIGIN = 20037508.342789244;
 
     function tileToBbox900913(z, x, y) {
         var tileSize = (WM_ORIGIN * 2) / Math.pow(2, z); // metres per 256 px tile
@@ -93,16 +127,9 @@
     }
 
     /* ───────────────────────────────────────────────────────────────────────
-     * The tile layer. One instance per Corona layer (pass mosaic or frame),
+     * The tile layer. One instance per Corona product (pass mosaic or frame),
      * so each tile request carries exactly one LAYERS= value — the same way
      * the original atlas issues its requests.
-     *
-     * We build on L.TileLayer.WMS only for the standard tile lifecycle
-     * (createTile / _removeTile / redraw / loading events); getTileUrl() is
-     * overridden to emit the original's exact URL (Leaflet's own WMS params
-     * would use lowercase names and SRS=EPSG:3857 — the original sends
-     * uppercase names and SRS=EPSG:900913, which GeoWebCache's EPSG:900913
-     * gridset is keyed on).
      * ───────────────────────────────────────────────────────────────────── */
     var CoronaWmsLayer = L.TileLayer.WMS.extend({
 
@@ -112,10 +139,8 @@
                 transparent: true,
                 version: '1.1.1',
                 tileSize: 256,
-                maxNativeZoom: 15,   // server pyramids end at z15 (verified)
-                // Zoom gating is opt-in per layer (passes vs frames). Below
-                // minZoom Leaflet creates no tile element and fires no
-                // request; above maxZoom nothing is requested either.
+                // The atlas's tileGrid has 18 resolutions → native levels z0…z17.
+                maxNativeZoom: 17,
                 minZoom: 0,
                 maxZoom: 20
             }, options || {});
@@ -136,13 +161,587 @@
         }
     });
 
-    /* ───────────────────────────────────────────────────────────────────────
-     * Exports
-     * ───────────────────────────────────────────────────────────────────── */
+    /* ═══════════════════════════════════════════════════════════════════════
+     * CATALOGUE — the Europe-wide equivalent of the atlas's
+     * `getRasterNames()` → `initializeRasterManager()`.
+     *
+     * The CAST endpoint (corona.cast.uark.edu/corona/get_raster_names) sends
+     * no `Access-Control-Allow-Origin` header, so a browser on another origin
+     * cannot read it directly. The catalogue therefore arrives through one of
+     * these, in order (all same-origin or CORS-enabled):
+     *
+     *   1. window.CORONA_CATALOG_URL      — explicit override (e.g. Supabase);
+     *   2. data/corona-europe-catalog.json — static snapshot committed/produced
+     *      by tools/build-corona-europe-catalog.mjs (fastest, cacheable, PWA);
+     *   3. /api/corona/rasters            — Netlify function that proxies and
+     *      filters the live CAST catalogue (always fresh, same origin);
+     *   4. the built-in minimal list below — last-resort so the layer still
+     *      draws something if 1–3 are all unavailable.
+     *
+     * Every source yields the same normalised shape.
+     * ═══════════════════════════════════════════════════════════════════════ */
+
+    // Whole of Europe (incl. Iceland/Svalbard in the north-west, the Urals in
+    // the east, Cyprus/Crete in the south-east).
+    var EUROPE_BBOX = [-25, 34, 60, 72]; // [minLon, minLat, maxLon, maxLat]
+
+    // Zoom gating — the atlas's own rasterSettings.layerSettings.
+    var PASS_MIN_ZOOM = 8;
+    var PASS_MAX_ZOOM = 11;
+    var FRAME_MIN_ZOOM = 12;
+    var FRAME_MAX_ZOOM = 20;
+
+    var WMS_URL = 'https://geoserve.cast.uark.edu/geoserver/gwc/service/wms';
+    var WORKSPACE = 'corona:';
+
+    /*
+     * Last-resort list: Corona passes verified by hand (2026-08-12) to exist
+     * on the CAST GeoServer and to return real pixels over Romania. It is NOT
+     * the Europe catalogue — it only keeps the layer from going completely
+     * dark if every catalogue source fails.
+     */
+    var FALLBACK_BLOCKS = [
+        { id: '1104-2155Fore', location: '1104-2155Fore', label: '1104-2155Fore', extent: [19.50, 43.50, 26.77, 47.73] },
+        { id: '1104-2155Aft', location: '1104-2155Aft', label: '1104-2155Aft', extent: [19.53, 43.50, 26.63, 47.72] },
+        { id: '1036-2139Fore', location: '1036-2139Fore', label: '1036-2139Fore', extent: [21.08, 43.50, 27.78, 46.50] },
+        { id: '1103-1058Aft', location: '1103-1058Aft', label: '1103-1058Aft', extent: [23.46, 43.50, 27.38, 45.82] },
+        { id: '1103-1058Fore', location: '1103-1058Fore', label: '1103-1058Fore', extent: [22.62, 43.50, 28.34, 46.01] },
+        { id: '1026-2088Aft', location: '1026-2088Aft', label: '1026-2088Aft', extent: [21.52, 43.50, 27.45, 46.29] }
+    ].map(function (block) {
+        return {
+            id: block.id,
+            label: block.label,
+            location: block.location,
+            extent: block.extent,
+            rings: [bboxRing(block.extent)],
+            images: [
+                // Frame-level products of the two verified Transylvania passes.
+                // (Kept tiny on purpose: this list is a safety net, not data.)
+            ]
+        };
+    });
+
+    FALLBACK_BLOCKS[0].images = [
+        { label: '1104-2155df004', location: '1104-2155df004', extent: [21.01, 45.28, 24.78, 47.87] },
+        { label: '1104-2155df007', location: '1104-2155df007', extent: [21.12, 44.91, 24.86, 47.50] },
+        { label: '1104-2155df011', location: '1104-2155df011', extent: [21.25, 44.42, 24.95, 47.00] }
+    ].map(function (image) {
+        return {
+            label: image.label,
+            location: image.location,
+            extent: image.extent,
+            rings: [bboxRing(image.extent)]
+        };
+    });
+
+    function bboxRing(extent) {
+        return [
+            [extent[0], extent[1]],
+            [extent[2], extent[1]],
+            [extent[2], extent[3]],
+            [extent[0], extent[3]],
+            [extent[0], extent[1]]
+        ];
+    }
+
+    /* ── geometry helpers ─────────────────────────────────────────────────── */
+
+    function bboxOfRings(rings) {
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (var r = 0; r < rings.length; r++) {
+            var ring = rings[r];
+            for (var i = 0; i < ring.length; i++) {
+                var x = ring[i][0], y = ring[i][1];
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+        return [minX, minY, maxX, maxY];
+    }
+
+    function bboxIntersects(a, b) {
+        return !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
+    }
+
+    function pointInRing(x, y, ring) {
+        var inside = false;
+        for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            var xi = ring[i][0], yi = ring[i][1];
+            var xj = ring[j][0], yj = ring[j][1];
+            var hit = ((yi > y) !== (yj > y)) &&
+                (x < (xj - xi) * (y - yi) / ((yj - yi) || Number.MIN_VALUE) + xi);
+            if (hit) inside = !inside;
+        }
+        return inside;
+    }
+
+    function segmentsIntersect(p1, p2, p3, p4) {
+        function orient(a, b, c) {
+            var v = (b[1] - a[1]) * (c[0] - b[0]) - (b[0] - a[0]) * (c[1] - b[1]);
+            if (v > 0) return 1;
+            if (v < 0) return 2;
+            return 0;
+        }
+        function onSeg(a, b, c) {
+            return b[0] <= Math.max(a[0], c[0]) && b[0] >= Math.min(a[0], c[0]) &&
+                b[1] <= Math.max(a[1], c[1]) && b[1] >= Math.min(a[1], c[1]);
+        }
+        var o1 = orient(p1, p2, p3), o2 = orient(p1, p2, p4);
+        var o3 = orient(p3, p4, p1), o4 = orient(p3, p4, p2);
+        if (o1 !== o2 && o3 !== o4) return true;
+        if (o1 === 0 && onSeg(p1, p3, p2)) return true;
+        if (o2 === 0 && onSeg(p1, p4, p2)) return true;
+        if (o3 === 0 && onSeg(p3, p1, p4)) return true;
+        if (o4 === 0 && onSeg(p3, p2, p4)) return true;
+        return false;
+    }
+
+    /*
+     * The OpenLayers `geometry.intersectsExtent()` the atlas relies on, in
+     * plain JS: does the product footprint (a thin, strongly rotated
+     * parallelogram — its bbox is a poor proxy) overlap the view rectangle?
+     * bbox = [minLon, minLat, maxLon, maxLat].
+     */
+    function ringsIntersectBbox(rings, bbox) {
+        if (!rings || !rings.length) return false;
+        var rect = bboxRing(bbox);
+        for (var r = 0; r < rings.length; r++) {
+            var ring = rings[r];
+            if (!ring || ring.length < 2) continue;
+            // a) any vertex of the footprint inside the view
+            for (var i = 0; i < ring.length; i++) {
+                var x = ring[i][0], y = ring[i][1];
+                if (x >= bbox[0] && x <= bbox[2] && y >= bbox[1] && y <= bbox[3]) return true;
+            }
+            // b) the view is entirely inside the footprint
+            if (pointInRing(bbox[0], bbox[1], ring)) return true;
+            // c) any edge crossing
+            for (var k = 0; k < ring.length - 1; k++) {
+                for (var m = 0; m < rect.length - 1; m++) {
+                    if (segmentsIntersect(ring[k], ring[k + 1], rect[m], rect[m + 1])) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /* ── catalogue normalisation ──────────────────────────────────────────── */
+
+    function extentToArray(extent) {
+        if (!extent) return null;
+        if (Object.prototype.toString.call(extent) === '[object Array]') {
+            return extent.length === 4 ? extent.map(Number) : null;
+        }
+        if (typeof extent.minx === 'number' || typeof extent.minx === 'string') {
+            return [Number(extent.minx), Number(extent.miny), Number(extent.maxx), Number(extent.maxy)];
+        }
+        return null;
+    }
+
+    /* The CAST catalogue ships `polygon` as a GeoJSON *string* of a Polygon or
+     * MultiPolygon (the atlas does `JSON.parse` + wraps a Polygon so both end
+     * up as MultiPolygon coordinates). Our slim snapshot ships `rings`
+     * directly. Both become a flat array of rings here. */
+    function toRings(polygon) {
+        if (!polygon) return null;
+        var parsed = polygon;
+        if (typeof polygon === 'string') {
+            try { parsed = JSON.parse(polygon); } catch (err) { return null; }
+        }
+        if (!parsed) return null;
+        if (Object.prototype.toString.call(parsed) === '[object Array]') {
+            // already a list of rings
+            return parsed.length && parsed[0] && parsed[0].length ? parsed : null;
+        }
+        var coords = parsed.coordinates;
+        if (!coords) return null;
+        var rings = [];
+        if (parsed.type === 'Polygon') {
+            rings = coords.slice();
+        } else if (parsed.type === 'MultiPolygon') {
+            for (var i = 0; i < coords.length; i++) {
+                rings = rings.concat(coords[i]);
+            }
+        }
+        return rings.length ? rings : null;
+    }
+
+    function normalizeProduct(entry, key) {
+        var location = entry.location || entry.name || key;
+        if (!location) return null;
+        var rings = toRings(entry.rings || entry.polygon);
+        var extent = extentToArray(entry.extent) || (rings ? bboxOfRings(rings) : null);
+        if (!extent) return null;
+        if (!rings) rings = [bboxRing(extent)];
+        return {
+            id: key || location,
+            label: entry.label || location,
+            location: String(location).replace(/^corona:/, ''),
+            extent: extent,
+            rings: rings,
+            ftp: entry.ftp || null
+        };
+    }
+
+    /**
+     * Accepts either the raw CAST payload (object keyed by pass) or our slim
+     * snapshot ({blocks: [...]}) and returns the normalised block list,
+     * optionally clipped to a bbox.
+     */
+    function normalizeCatalog(payload, bbox) {
+        if (!payload) return [];
+        var raw = payload.blocks || payload;
+        var out = [];
+        var keys;
+        var isArray = Object.prototype.toString.call(raw) === '[object Array]';
+        keys = isArray ? raw.map(function (_, i) { return i; }) : Object.keys(raw);
+
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            var entry = raw[key];
+            if (!entry || typeof entry !== 'object') continue;
+            var block = normalizeProduct(entry, isArray ? (entry.id || entry.location) : key);
+            if (!block) continue;
+            if (bbox && !bboxIntersects(block.extent, bbox)) continue;
+
+            var images = [];
+            var rawImages = entry.images || [];
+            for (var j = 0; j < rawImages.length; j++) {
+                var image = normalizeProduct(rawImages[j], rawImages[j].location);
+                if (!image) continue;
+                if (bbox && !bboxIntersects(image.extent, bbox)) continue;
+                images.push(image);
+            }
+            block.images = images;
+            out.push(block);
+        }
+        return out;
+    }
+
+    /* ── catalogue loading ────────────────────────────────────────────────── */
+
+    function catalogSources() {
+        var sources = [];
+        if (root.CORONA_CATALOG_URL) sources.push(root.CORONA_CATALOG_URL);
+        sources.push('data/corona-europe-catalog.json');
+        sources.push('/api/corona/rasters?bbox=' + EUROPE_BBOX.join(','));
+        return sources;
+    }
+
+    var _catalogPromise = null;
+
+    function loadCatalog(options) {
+        options = options || {};
+        if (_catalogPromise && !options.force) return _catalogPromise;
+
+        var bbox = options.bbox || EUROPE_BBOX;
+        var sources = options.sources || catalogSources();
+
+        _catalogPromise = new Promise(function (resolve) {
+            var index = 0;
+
+            function finish(blocks, source) {
+                if (blocks && blocks.length) {
+                    console.info('[Corona] catalogue: ' + blocks.length + ' passes from ' + source);
+                    resolve({ blocks: blocks, source: source });
+                } else {
+                    next();
+                }
+            }
+
+            function next() {
+                if (index >= sources.length) {
+                    console.warn('[Corona] no catalogue source reachable — using the built-in fallback list');
+                    resolve({ blocks: FALLBACK_BLOCKS.slice(), source: 'fallback' });
+                    return;
+                }
+                var url = sources[index++];
+                var request;
+                try {
+                    request = fetch(url, { credentials: 'omit' });
+                } catch (err) {
+                    next();
+                    return;
+                }
+                request.then(function (response) {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.json();
+                }).then(function (json) {
+                    finish(normalizeCatalog(json, bbox), url);
+                })['catch'](function (err) {
+                    console.warn('[Corona] catalogue source failed (' + url + '): ' + (err && err.message));
+                    next();
+                });
+            }
+
+            next();
+        });
+
+        return _catalogPromise;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+     * RASTER MANAGER — the Leaflet twin of the atlas's `rasterManager` /
+     * `rasterLayer.checkZoom()`.
+     * ═══════════════════════════════════════════════════════════════════════ */
+
+    /**
+     * @param {L.Map} map
+     * @param {Object} options
+     *   group            {L.LayerGroup} where active tile layers are attached
+     *   pane             {string}
+     *   opacity          {number}
+     *   viewportPad      {number}  extra view margin (fraction), default 0.25
+     *   maxActivePasses  {number}  safety cap, default 18
+     *   maxActiveFrames  {number}  safety cap, default 24
+     *   tileLayerOptions {Object}  merged into every tile layer (perf tuning)
+     *   onChange         {Function(activeDescriptors)}
+     */
+    function CoronaRasterManager(map, options) {
+        this._map = map;
+        this.options = L.extend({
+            url: WMS_URL,
+            workspace: WORKSPACE,
+            group: null,
+            pane: undefined,
+            opacity: 0.85,
+            viewportPad: 0.25,
+            maxActivePasses: 18,
+            maxActiveFrames: 24,
+            passMinZoom: PASS_MIN_ZOOM,
+            passMaxZoom: PASS_MAX_ZOOM,
+            frameMinZoom: FRAME_MIN_ZOOM,
+            frameMaxZoom: FRAME_MAX_ZOOM,
+            tileLayerOptions: {},
+            onChange: null
+        }, options || {});
+
+        this.blocks = [];
+        this._layers = {};   // location → L.TileLayer
+        this._active = [];   // descriptors currently attached
+        this._group = this.options.group || L.layerGroup([]);
+    }
+
+    CoronaRasterManager.prototype = {
+
+        getGroup: function () {
+            return this._group;
+        },
+
+        setCatalog: function (blocks) {
+            this.blocks = blocks || [];
+            return this;
+        },
+
+        /** The products the original atlas would show for this view/zoom. */
+        selectProducts: function (zoom, bbox) {
+            var out = [];
+            var i, j;
+            if (zoom >= this.options.passMinZoom && zoom <= this.options.passMaxZoom) {
+                for (i = 0; i < this.blocks.length; i++) {
+                    var block = this.blocks[i];
+                    if (!bboxIntersects(block.extent, bbox)) continue;
+                    if (!ringsIntersectBbox(block.rings, bbox)) continue;
+                    out.push({ type: 'pass', product: block });
+                }
+                out = out.slice(0, this.options.maxActivePasses);
+            } else if (zoom >= this.options.frameMinZoom && zoom <= this.options.frameMaxZoom) {
+                for (i = 0; i < this.blocks.length; i++) {
+                    var parent = this.blocks[i];
+                    if (!bboxIntersects(parent.extent, bbox)) continue;
+                    var images = parent.images || [];
+                    for (j = 0; j < images.length; j++) {
+                        var image = images[j];
+                        if (!bboxIntersects(image.extent, bbox)) continue;
+                        if (!ringsIntersectBbox(image.rings, bbox)) continue;
+                        out.push({ type: 'frame', product: image, parent: parent });
+                    }
+                }
+                // A pass whose frames were not published individually would
+                // vanish at z12+; keep its mosaic so the imagery stays on
+                // screen while zoomed in (the atlas has the same gap, but an
+                // empty map reads as a bug to our users).
+                if (!out.length) {
+                    for (i = 0; i < this.blocks.length; i++) {
+                        var only = this.blocks[i];
+                        if (!bboxIntersects(only.extent, bbox)) continue;
+                        if (!ringsIntersectBbox(only.rings, bbox)) continue;
+                        out.push({ type: 'pass', product: only });
+                    }
+                }
+                out = out.slice(0, this.options.maxActiveFrames);
+            }
+            return out;
+        },
+
+        _tileLayerFor: function (descriptor) {
+            var location = descriptor.product.location;
+            var existing = this._layers[location];
+            if (existing) return existing;
+
+            var name = this.options.workspace + location;
+            var extent = descriptor.product.extent;
+            var bounds = L.latLngBounds([[extent[1], extent[0]], [extent[3], extent[2]]]);
+            var isFrame = descriptor.type === 'frame';
+
+            var opts = L.extend({
+                layers: name,
+                coronaLayer: name,
+                format: 'image/png',
+                transparent: true,
+                attribution: '© Corona 1960s (CAST UARK)',
+                tileSize: 256,
+                opacity: this.options.opacity,
+                bounds: bounds,
+                minZoom: isFrame ? this.options.frameMinZoom : this.options.passMinZoom,
+                maxZoom: isFrame ? this.options.frameMaxZoom : 20,
+                maxNativeZoom: 17
+            }, this.options.tileLayerOptions);
+            if (this.options.pane) opts.pane = this.options.pane;
+
+            var layer = root.createCoronaWmsLayer
+                ? root.createCoronaWmsLayer(this.options.url, opts)
+                : L.tileLayer.wms(this.options.url, opts);
+
+            // A tile the server refuses (renamed/retired product → GeoWebCache
+            // answers "400 Unknown layer …") must not leave a broken <img>.
+            layer.on('tileerror', function (e) {
+                if (e && e.tile) e.tile.style.display = 'none';
+                if (!layer._coronaErrorLogged) {
+                    layer._coronaErrorLogged = true;
+                    console.warn('[Corona] product unavailable on the CAST server: ' + name);
+                }
+            });
+
+            layer._coronaDescriptor = descriptor;
+            layer._coronaBounds = bounds;
+            this._layers[location] = layer;
+            return layer;
+        },
+
+        /** Re-evaluate the view — the atlas's `corona.zoomChanged()`. */
+        update: function () {
+            if (!this._map) return [];
+            var zoom = this._map.getZoom();
+            var viewBounds;
+            try {
+                viewBounds = this._map.getBounds().pad(this.options.viewportPad);
+            } catch (err) {
+                return this._active;
+            }
+            var bbox = [
+                viewBounds.getWest(), viewBounds.getSouth(),
+                viewBounds.getEast(), viewBounds.getNorth()
+            ];
+
+            var wanted = this.selectProducts(zoom, bbox);
+            var wantedByLocation = {};
+            var i;
+            for (i = 0; i < wanted.length; i++) {
+                wantedByLocation[wanted[i].product.location] = wanted[i];
+            }
+
+            // detach what left the view / the zoom range
+            for (var location in this._layers) {
+                if (!Object.prototype.hasOwnProperty.call(this._layers, location)) continue;
+                var layer = this._layers[location];
+                var attached = this._group.hasLayer(layer);
+                if (!wantedByLocation[location] && attached) {
+                    this._group.removeLayer(layer);
+                }
+            }
+            // attach what entered it
+            for (i = 0; i < wanted.length; i++) {
+                var tileLayer = this._tileLayerFor(wanted[i]);
+                if (!this._group.hasLayer(tileLayer)) this._group.addLayer(tileLayer);
+            }
+
+            // keep the cache bounded (tile layers hold decoded images alive)
+            this._evictUnused(60);
+
+            this._active = wanted;
+            if (typeof this.options.onChange === 'function') {
+                try { this.options.onChange(wanted); } catch (err) { /* never break the map */ }
+            }
+            return wanted;
+        },
+
+        _evictUnused: function (limit) {
+            var locations = Object.keys(this._layers);
+            if (locations.length <= limit) return;
+            for (var i = 0; i < locations.length && Object.keys(this._layers).length > limit; i++) {
+                var layer = this._layers[locations[i]];
+                if (this._group.hasLayer(layer)) continue;
+                layer.off();
+                delete this._layers[locations[i]];
+            }
+        },
+
+        getActiveProducts: function () {
+            return this._active.slice();
+        },
+
+        getActiveLayers: function () {
+            var out = [];
+            for (var location in this._layers) {
+                if (!Object.prototype.hasOwnProperty.call(this._layers, location)) continue;
+                if (this._group.hasLayer(this._layers[location])) out.push(this._layers[location]);
+            }
+            return out;
+        },
+
+        setOpacity: function (opacity) {
+            this.options.opacity = opacity;
+            for (var location in this._layers) {
+                if (!Object.prototype.hasOwnProperty.call(this._layers, location)) continue;
+                var layer = this._layers[location];
+                if (layer && layer.setOpacity) layer.setOpacity(opacity);
+            }
+        },
+
+        clear: function () {
+            for (var location in this._layers) {
+                if (!Object.prototype.hasOwnProperty.call(this._layers, location)) continue;
+                var layer = this._layers[location];
+                if (this._group.hasLayer(layer)) this._group.removeLayer(layer);
+                layer.off();
+            }
+            this._layers = {};
+            this._active = [];
+        }
+    };
+
+    /* ── exports ──────────────────────────────────────────────────────────── */
+
     root.coronaWmsTileUrl = buildWmsUrl;          // pure helper (also used by tests)
     root.CoronaWmsLayer = CoronaWmsLayer;
     root.createCoronaWmsLayer = function (url, options) {
         return new CoronaWmsLayer(url, options);
+    };
+
+    root.CoronaAtlas = {
+        WMS_URL: WMS_URL,
+        WORKSPACE: WORKSPACE,
+        EUROPE_BBOX: EUROPE_BBOX,
+        PASS_MIN_ZOOM: PASS_MIN_ZOOM,
+        PASS_MAX_ZOOM: PASS_MAX_ZOOM,
+        FRAME_MIN_ZOOM: FRAME_MIN_ZOOM,
+        FRAME_MAX_ZOOM: FRAME_MAX_ZOOM,
+        MAX_NATIVE_ZOOM: 17,
+        FALLBACK_BLOCKS: FALLBACK_BLOCKS,
+        catalogSources: catalogSources,
+        normalizeCatalog: normalizeCatalog,
+        loadCatalog: loadCatalog,
+        bboxIntersects: bboxIntersects,
+        ringsIntersectBbox: ringsIntersectBbox,
+        bboxOfRings: bboxOfRings,
+        tileToBbox900913: tileToBbox900913,
+        Manager: CoronaRasterManager,
+        createManager: function (map, options) {
+            return new CoronaRasterManager(map, options);
+        }
     };
 
 })(window);

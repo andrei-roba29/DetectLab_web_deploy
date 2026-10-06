@@ -11453,11 +11453,14 @@
                 },
 
                 satellite60s: {
-                    // CORONA imagery (CAST GeoServer) — covers Romania on .ro, and the
-                    // entire European / Eastern Mediterranean corridor on .eu.
-                    // CORONA has footprints across the Central/Eastern European
-                    // corridor, not only inside Romania.
-                    bounds: [[34.0, 15.0], [58.0, 38.0]],
+                    // CORONA imagery (CAST GeoServer) — the catalogue is now
+                    // loaded for the WHOLE of Europe (js/corona-wms-layer.js,
+                    // CoronaAtlas.EUROPE_BBOX), so the "where is this layer"
+                    // rectangle spans Europe too. The exact strips covered by
+                    // the 1960s passes are drawn by the coverage outlines
+                    // (js/corona-coverage-layer.js); this rectangle only marks
+                    // the region below the zoom at which tiles start.
+                    bounds: [[34.0, -25.0], [72.0, 60.0]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer',
                     coverageMinZoom: 8
@@ -12912,107 +12915,75 @@
                 };
             })();
 
-            // ── SATELIT 60s (CORONA — replicating corona.cast.uark.edu/atlas) ──
-            // The original Corona Atlas (https://corona.cast.uark.edu/atlas)
-            // serves the declassified 1960s CORONA imagery as GeoWebCache
-            // WMS-C tiles:
+            // ── SATELIT 60s (CORONA) — the Corona Atlas logic, Europe-wide ──
+            // Port of how https://corona.cast.uark.edu/atlas fetches its tiles
+            // (read from the atlas's own source: assets/libraries/custom/
+            // maputils.js → "CORONA RASTER MANAGER/FUNCTIONS"), applied to the
+            // whole of Europe instead of a hand-written Romania list:
             //
-            //   endpoint : https://geoserve.cast.uark.edu/geoserver/gwc/service/wms
-            //   request  : WMS 1.1.1 GetMap · tiled=true · 256×256 ·
-            //              TRANSPARENT PNG · SRS=EPSG:900913 · BBOX in Web
-            //              Mercator metres aligned to the standard tile grid ·
-            //              ONE Corona layer per request
-            //              (LAYERS=corona:<pass> / corona:<frame>).
+            //   1. CATALOGUE — the atlas calls GET /corona/get_raster_names and
+            //      receives every CORONA product the CAST GeoServer publishes:
+            //      a pass mosaic per orbit ("1104-2155Fore") plus the individual
+            //      frames inside it ("1104-2155df004"), each with its WGS84
+            //      footprint polygon. DetectLab loads the same catalogue through
+            //      js/corona-wms-layer.js (static snapshot → /api/corona/rasters
+            //      proxy → built-in fallback; the CAST endpoint itself sends no
+            //      CORS header and is ~6 MB of worldwide coverage).
+            //   2. TILES — one ol.source.TileWMS per product against
+            //      geoserve.cast.uark.edu/geoserver/gwc/service/wms, WMS 1.1.1
+            //      GetMap, tiled=true, 256×256, SRS=EPSG:900913, a single
+            //      LAYERS=corona:<product> per request, limited to the product's
+            //      own footprint. window.createCoronaWmsLayer() emits exactly
+            //      those URLs.
+            //   3. ZOOM GATING — rasterSettings.layerSettings: pass mosaics live
+            //      at z8–z11, individual frames at z12–z20.
+            //   4. VISIBILITY — rasterLayer.checkZoom(), re-run on every moveend
+            //      (corona.zoomChanged()): a product draws only while its
+            //      POLYGON (not its bbox) intersects the view.
             //
-            // This block replicates that exactly: every Corona pass mosaic or
-            // individual frame in the VERIFIED Romania list below becomes its
-            // own tile layer that issues those same requests, and tiles are
-            // fetched by the browser like any normal map layer — no manual
-            // "Load images here" button, no client-side request queue, no
-            // IndexedDB cache. Zoom gating mirrors the original: pass mosaics
-            // are requested from mid zoom (z8+), individual frames only when
-            // zoomed in (z12+); below those zooms the atlas shows nothing for
-            // this layer either (its docs: "only active at or below a certain
-            // zoom level"), so no tile request is ever sent.
+            // The one deliberate difference is memory hygiene: the atlas builds
+            // an OpenLayers layer for every product up front; here a Leaflet tile
+            // layer is created when the product first enters the view and dropped
+            // when it leaves, which keeps a Europe-wide catalogue affordable on a
+            // phone. The requests that reach the server are identical.
+            //
+            // Coverage outlines (js/corona-coverage-layer.js) are shown together
+            // with the layer so the empty space between passes reads as "no
+            // imagery here", not as a broken layer.
             (function () {
                 map.createPane("pane_sat60");
                 map.getPane("pane_sat60").style.zIndex = 648;
                 map.getPane("pane_sat60").style.pointerEvents = "none";
 
-                var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
                 var SAT60_OPACITY = 0.85;
-                var SAT60_MAX_NATIVE_ZOOM = 15;
+                var Atlas = window.CoronaAtlas;
 
-                // CORONA passes that really exist on the CAST GeoServer AND
-                // really cover Romanian territory.
-                //
-                // IMPORTANT — why this list is short and why it is hard-checked:
-                // the CAST archive is the "Corona Atlas of the Middle East";
-                // its Romanian coverage is limited to a handful of passes.
-                // The previous list here was guessed from the naming pattern
-                // and most of those names do not exist on the server at all
-                // (GeoWebCache answers `400 Unknown layer corona:…`, e.g. the
-                // reported `corona:1107-1074Fore`), while the few that do
-                // exist (`corona:1107-1074Aft`, `corona:1110-2289Fore`, …)
-                // image Greece and Peru, not Romania — so the layer could
-                // never draw anything.
-                //
-                // Every entry below was verified against the live server via
-                // WMS GetFeatureInfo (non-zero GRAY_INDEX = real pixels) and
-                // its footprint read from the layer's own KML LookAt, then
-                // clipped to Romania. `bounds` keeps Leaflet from requesting
-                // tiles outside the pass's real footprint, so no request can
-                // 404/400 and the browser is not flooded with empty tiles.
-                var SAT60_PASS_LAYERS = [
-                    // Transylvania / Central Europe / Balkans corridor (mission 1104, pass 2155)
-                    { name: "corona:1104-2155Fore", bounds: [[43.50, 19.50], [47.73, 26.77]] },
-                    { name: "corona:1104-2155Aft",  bounds: [[43.50, 19.53], [47.72, 26.63]] },
-                    // Eastern Europe / Balkans corridor (mission 1036, pass 2139)
-                    { name: "corona:1036-2139Fore", bounds: [[43.50, 21.08], [46.50, 27.78]] },
-                    // Muntenia / Eastern Europe corridor (mission 1103, pass 1058)
-                    { name: "corona:1103-1058Aft",  bounds: [[43.50, 23.46], [45.82, 27.38]] },
-                    { name: "corona:1103-1058Fore", bounds: [[43.50, 22.62], [46.01, 28.34]] },
-                    // Carpathians / Southeast Europe (mission 1026, pass 2088)
-                    { name: "corona:1026-2088Aft",  bounds: [[43.50, 21.52], [46.29, 27.45]] }
-                ];
-                // Individual frames (…df### Fore / …da### Aft) — full detail.
-                // Verified the same way; df004 is the Transylvania frame at
-                // ~22.90E/46.58N (GRAY_INDEX 255 = real imagery).
-                var SAT60_FRAME_LAYERS = [
-                    { name: "corona:1104-2155df004", bounds: [[45.28, 21.01], [47.87, 24.78]] },
-                    { name: "corona:1104-2155df007", bounds: [[44.91, 21.12], [47.50, 24.86]] },
-                    { name: "corona:1104-2155df011", bounds: [[44.42, 21.25], [47.00, 24.95]] }
-                ];
-
-                // The original atlas requests pass-level tiles from mid zoom
-                // and frame-level tiles only when zoomed well in. Below these
-                // zooms Leaflet creates no tile element and sends no request,
-                // which is also what keeps this layer from flooding the page
-                // with requests/DOM at Romania-overview zoom.
-                var SAT60_PASS_MIN_ZOOM = 8;
-                var SAT60_FRAME_MIN_ZOOM = 12;
-
-                var _sat60Layers = [];
                 var _sat60MapLayer = L.layerGroup([]);
+                var _sat60Manager = null;
+                var _sat60Opacity = SAT60_OPACITY;
+                var _sat60On = false;
+                var _sat60CatalogPromise = null;
+
+                // Used by the premium coverage-rectangle system and by the tests.
+                window._sat60MapLayer = _sat60MapLayer;
+                window._sat60Layers = [];
 
                 // ── Mobile safety: why this layer used to crash phones ──────
-                // Nine CORONA tile layers share one pane. On a phone (incl.
+                // Several CORONA tile layers share one pane. On a phone (incl.
                 // "Desktop site" / PWA, where Leaflet's own L.Browser.mobile
                 // sniff is defeated by the spoofed user-agent) Leaflet's
                 // defaults are the worst case for that stack:
                 //   • updateWhenIdle  = L.Browser.mobile → false when the UA
-                //     is spoofed, so EVERY pan frame re-runs _update() nine
-                //     times and queues new tiles while the finger is moving;
-                //   • updateWhenZooming = true → the same happens on every
-                //     frame of a pinch/scroll zoom animation;
-                //   • keepBuffer = 2 → each layer keeps a two-tile ring
-                //     around the viewport, i.e. (w+4)×(h+4) live <img> nodes
-                //     per layer, ×9 layers, plus up to 5 retained parent
-                //     levels while zooming.
+                //     is spoofed, so EVERY pan frame re-runs _update() for
+                //     every layer and queues new tiles while the finger moves;
+                //   • updateWhenZooming = true → the same on every frame of a
+                //     pinch/scroll zoom animation;
+                //   • keepBuffer = 2 → each layer keeps a two-tile ring around
+                //     the viewport.
                 // The result is hundreds of in-flight requests and decoded
                 // 256×256 PNGs within a second → mobile WebKit/Chromium kills
                 // the tab (out of memory). Nothing below changes WHAT is
-                // requested (same endpoint, same WMS-C URL, same layers, same
+                // requested (same endpoint, same WMS-C URL, same products, same
                 // zoom gating, same footprints) — only HOW OFTEN and HOW MANY
                 // tiles are kept alive on constrained devices.
                 var _sat60LowPowerCache = null;
@@ -13029,17 +13000,12 @@
                     if (_sat60LowPowerCache !== null) return _sat60LowPowerCache;
                     var lowPower = false;
                     try {
-                        // Leaflet's UA sniff (true on a normal mobile browser).
                         if (L.Browser && L.Browser.mobile) lowPower = true;
-                        // "Desktop site" / PWA on a phone defeats the UA sniff,
-                        // but a touch-first device still reports a coarse
-                        // pointer and touch points.
                         var coarse = !!(window.matchMedia &&
                             window.matchMedia("(pointer: coarse)").matches);
                         var touchPoints = (navigator.maxTouchPoints || 0) > 0 ||
                             ("ontouchstart" in window);
                         if (coarse && touchPoints) lowPower = true;
-                        // Low-memory devices benefit from the same limits.
                         if (typeof navigator.deviceMemory === "number" &&
                             navigator.deviceMemory > 0 && navigator.deviceMemory <= 4) {
                             lowPower = true;
@@ -13051,164 +13017,115 @@
                     return lowPower;
                 }
 
-                // How far outside the viewport a pass/frame still counts as
-                // "visible" (fraction of the viewport size). Small enough to
-                // keep memory down, large enough that a normal drag does not
-                // uncover an empty area before moveend fires.
-                var SAT60_VIEWPORT_PAD = 0.35;
-
-                function _sat60MakeLayer(entry, minZoom) {
-                    // Accept both a plain layer name and a {name, bounds}
-                    // descriptor; `bounds` is the pass's verified footprint
-                    // (clipped to Romania on RO domain, expanded across Europe on EU domain)
-                    // so Leaflet never asks the server for a tile the pass does not cover.
-                    var name = (typeof entry === "string") ? entry : entry.name;
-                    // Preserve the descriptor footprint, then widen it to the shared
-                    // Central/Eastern-European corridor. Restricting the layer
-                    // to ROMANIA_BOUNDS made valid 200 responses outside
-                    // Romania disappear before Leaflet could display them.
-                    var layerBounds = L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]);
-                    if (typeof entry !== "string" && entry.bounds) {
-                        layerBounds = L.latLngBounds(entry.bounds);
-                    }
-                    layerBounds.extend(L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]));
+                function _sat60EnsureManager() {
+                    if (_sat60Manager || !Atlas) return _sat60Manager;
                     var lowPower = _sat60IsLowPowerDevice();
-                    var opts = {
-                        layers: name,
-                        coronaLayer: name,
-                        format: "image/png",
-                        transparent: true,
-                        attribution: "© Corona 1960s (CAST UARK)",
-                        tileSize: 256,
-                        opacity: SAT60_OPACITY,
+
+                    _sat60Manager = Atlas.createManager(map, {
+                        group: _sat60MapLayer,
                         pane: "pane_sat60",
-                        bounds: layerBounds,
-                        minZoom: minZoom,
-                        maxNativeZoom: SAT60_MAX_NATIVE_ZOOM,
-                        maxZoom: 20,
-                        // Never queue tiles for the intermediate frames of a
-                        // zoom animation: Leaflet then only re-transforms the
-                        // levels it already has and loads the final zoom once,
-                        // on zoomend. This alone removes the burst that killed
-                        // the tab on a fast pinch/scroll zoom.
-                        updateWhenZooming: false,
-                        // Same idea for panning: load after the gesture ends
-                        // instead of on every move frame. Forced on regardless
-                        // of the user-agent (Leaflet's default is the mobile
-                        // sniff, which "Desktop site" mode defeats).
-                        updateWhenIdle: true,
-                        // One extra tile around the viewport on phones covers
-                        // the zoom handoff without restoring the 2-tile ring
-                        // that filled memory (9 layers × the ring). Desktop
-                        // keeps Leaflet's default of 2.
-                        keepBuffer: lowPower ? 1 : 2
-                    };
-                    var layer;
-                    if (typeof window.createCoronaWmsLayer === "function") {
-                        // Faithful layer: emits the original atlas's exact
-                        // WMS-C request URLs (see js/corona-wms-layer.js).
-                        layer = window.createCoronaWmsLayer(SAT60_WMS_URL, opts);
-                    } else {
-                        // Fallback if corona-wms-layer.js is missing: plain WMS
-                        // tile layer against the same GWC endpoint.
-                        layer = L.tileLayer.wms(SAT60_WMS_URL, opts);
-                    }
-                    // A tile that the server refuses (e.g. the layer was
-                    // renamed/retired upstream: GeoWebCache answers
-                    // "400 Unknown layer …" instead of a PNG) must not leave a
-                    // broken <img> on the map — hide it and log the layer name
-                    // once so the cause is visible instead of silent.
-                    layer.on("tileerror", function (e) {
-                        if (e && e.tile) { e.tile.style.display = "none"; }
-                        if (!layer._sat60ErrorLogged) {
-                            layer._sat60ErrorLogged = true;
-                            console.warn("[Sat60] CORONA layer unavailable on the CAST server: " + name);
+                        opacity: _sat60Opacity,
+                        // A product slightly off-screen still counts as visible,
+                        // so a normal drag does not uncover an empty area before
+                        // moveend fires.
+                        viewportPad: lowPower ? 0.2 : 0.35,
+                        // Safety caps: a dense Corona corridor can put dozens of
+                        // frames in one view; beyond these the extra layers add
+                        // memory, not imagery.
+                        maxActivePasses: lowPower ? 8 : 18,
+                        maxActiveFrames: lowPower ? 10 : 24,
+                        tileLayerOptions: {
+                            // Never queue tiles for the intermediate frames of a
+                            // zoom animation: Leaflet then only re-transforms the
+                            // levels it already has and loads the final zoom once,
+                            // on zoomend.
+                            updateWhenZooming: false,
+                            // Same idea for panning: load after the gesture ends
+                            // instead of on every move frame. Forced on regardless
+                            // of the user-agent (Leaflet's default is the mobile
+                            // sniff, which "Desktop site" mode defeats).
+                            updateWhenIdle: true,
+                            keepBuffer: lowPower ? 1 : 2
+                        },
+                        onChange: function (active) {
+                            window._sat60Layers = _sat60Manager.getActiveLayers();
+                            window._sat60ActiveProducts = active;
                         }
                     });
-                    // The pass's footprint, kept for the viewport check in
-                    // _sat60SyncActiveLayers (options.bounds is normalised by
-                    // Leaflet; this stays a plain LatLngBounds).
-                    layer._sat60Bounds = L.latLngBounds(layerBounds);
-                    return layer;
+
+                    // The atlas re-runs checkZoom() on every moveend
+                    // (corona.zoomChanged()) — never during the gesture.
+                    map.on("moveend zoomend", function () {
+                        if (_sat60On && _sat60Manager) _sat60Manager.update();
+                    });
+                    return _sat60Manager;
                 }
 
-                // Attach only the passes/frames that can actually draw in the
-                // current view. A layer whose footprint is off-screen, or
-                // whose min zoom is not reached, never produces a visible
-                // tile anyway (Leaflet's `bounds`/`minZoom` already reject
-                // those requests) — but while it is attached it still keeps
-                // its container, its retained tile levels and its share of the
-                // per-frame update work alive. Detaching it frees that memory,
-                // and re-attaching costs nothing but the tiles it really needs.
-                // What the user sees is unchanged: whatever imagery covers the
-                // screen is always attached.
-                function _sat60SyncActiveLayers() {
-                    if (!_sat60Layers.length || !map.hasLayer(_sat60MapLayer)) return;
-                    var zoom = map.getZoom();
-                    var view;
-                    try {
-                        view = map.getBounds().pad(SAT60_VIEWPORT_PAD);
-                    } catch (err) {
-                        return; // map not laid out yet — leave membership as is
-                    }
-                    _sat60Layers.forEach(function (layer) {
-                        var wanted = zoom >= (layer.options.minZoom || 0) &&
-                            (!layer._sat60Bounds || layer._sat60Bounds.intersects(view));
-                        var attached = _sat60MapLayer.hasLayer(layer);
-                        if (wanted && !attached) {
-                            _sat60MapLayer.addLayer(layer);
-                        } else if (!wanted && attached) {
-                            _sat60MapLayer.removeLayer(layer);
-                        }
-                    });
-                }
-
-                function ensureSat60Layers() {
-                    if (_sat60Layers.length > 0) return true;
-                    SAT60_PASS_LAYERS.forEach(function (entry) {
-                        _sat60Layers.push(_sat60MakeLayer(entry, SAT60_PASS_MIN_ZOOM));
-                    });
-                    SAT60_FRAME_LAYERS.forEach(function (entry) {
-                        _sat60Layers.push(_sat60MakeLayer(entry, SAT60_FRAME_MIN_ZOOM));
-                    });
-                    _sat60MapLayer = L.layerGroup(_sat60Layers);
-                    window._sat60Layers = _sat60Layers;
-                    // Used by the premium coverage-rectangle system.
-                    window._sat60MapLayer = _sat60MapLayer;
-                    // Re-evaluate which passes/frames are worth keeping alive
-                    // once each gesture has settled (never during it).
-                    map.on("moveend zoomend", _sat60SyncActiveLayers);
-                    return true;
+                function _sat60LoadCatalog() {
+                    if (_sat60CatalogPromise) return _sat60CatalogPromise;
+                    if (!Atlas) return Promise.resolve(null);
+                    _sat60CatalogPromise = Atlas.loadCatalog({ bbox: Atlas.EUROPE_BBOX })
+                        .then(function (result) {
+                            var manager = _sat60EnsureManager();
+                            if (manager) {
+                                manager.setCatalog(result.blocks);
+                                window._sat60Catalog = result;
+                                if (_sat60On) manager.update();
+                            }
+                            return result;
+                        });
+                    return _sat60CatalogPromise;
                 }
 
                 window.toggleSatellite60sMap = function (on) {
-                    // Strat premium de sine stătător: switch-ul lui nu mai
-                    // pornește grupul "Historical Maps" (nu mai e substrat
-                    // al acestuia) și nu mai e oprit de switch-ul mare al
-                    // grupului — see HIST_PREMIUM_SUBLAYER_TOGGLES.
+                    // Strat premium de sine stătător: switch-ul lui nu pornește
+                    // grupul "Historical Maps" și nu e oprit de switch-ul mare
+                    // al grupului — see HIST_PREMIUM_SUBLAYER_TOGGLES.
+                    _sat60On = !!on;
                     if (on) {
-                        ensureSat60Layers();
+                        _sat60EnsureManager();
                         if (!map.hasLayer(_sat60MapLayer)) {
                             _sat60MapLayer.addTo(map);
                         }
-                        _sat60SyncActiveLayers();
+                        _sat60LoadCatalog();
+                        if (_sat60Manager) _sat60Manager.update();
+                        // Where does this layer actually have imagery? The
+                        // outlines answer that before the user hunts for tiles.
+                        if (window.CoronaCoverage && window.SAT60_COVERAGE_OUTLINES !== false) {
+                            window.CoronaCoverage.show(map);
+                            var outlinesToggle = document.getElementById("satellite60sCoverageToggle");
+                            if (outlinesToggle) outlinesToggle.checked = true;
+                        }
                     } else {
                         if (map.hasLayer(_sat60MapLayer)) {
                             map.removeLayer(_sat60MapLayer);
                         }
+                        if (window.CoronaCoverage) window.CoronaCoverage.hide();
+                        var offToggle = document.getElementById("satellite60sCoverageToggle");
+                        if (offToggle) offToggle.checked = false;
                     }
                     if (typeof window.updatePremiumMapCoverageVisibility === "function") {
                         window.updatePremiumMapCoverageVisibility();
                     }
                 };
 
+                // Independent switch for the coverage outlines (the row under
+                // the layer's opacity slider).
+                window.toggleSatellite60sCoverage = function (on) {
+                    window.SAT60_COVERAGE_OUTLINES = !!on;
+                    if (!window.CoronaCoverage) return;
+                    if (on) {
+                        window.CoronaCoverage.show(map);
+                    } else {
+                        window.CoronaCoverage.hide();
+                    }
+                };
+
                 window.setSatellite60sMapOpacity = function (val) {
                     var pct = document.getElementById("satellite60sMapPct");
                     if (pct) pct.textContent = val + "%";
-                    var opacity = val / 100;
-                    _sat60Layers.forEach(function (layer) {
-                        if (layer && layer.setOpacity) layer.setOpacity(opacity);
-                    });
+                    _sat60Opacity = val / 100;
+                    if (_sat60Manager) _sat60Manager.setOpacity(_sat60Opacity);
                 };
             })();
 

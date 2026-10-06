@@ -45,6 +45,14 @@
   "lock_title": "Hartă Exclusivă Membrilor",
   "lock_desc": "Abonează-te pentru a debloca straturi APM la rezoluție completă, filtre avansate și instrumente de export.",
   "lock_btn": "Vezi Planuri",
+  "globe_gate_title": "Alege-ți țara",
+  "globe_gate_desc": "Rotește globul și alege o țară europeană pentru a începe explorarea hărții.",
+  "globe_gate_loading": "Se încarcă harta lumii…",
+  "globe_gate_legend_default": "Țară disponibilă",
+  "globe_gate_legend_hover": "Evidențiat",
+  "globe_gate_error": "Harta lumii nu a putut fi încărcată. Verifică conexiunea și încearcă din nou.",
+  "globe_gate_retry": "Reîncearcă",
+  "globe_gate_change_country": "Schimbă Țara",
   "apm_score": "Scor APM:",
   "how_label": "Proces",
   "how_title": "Cum Funcționează <span class=\"hl\">DetectLab</span>",
@@ -313,7 +321,8 @@
   "layer_polishtactical1933": "Harta tactică poloneză 1933",
   "layer_ww1": "WWI",
   "layer_ww2": "WWII",
-  "layer_satellite60s": "Imagini satelitare anii 60'",
+  "layer_satellite60s": "Imagini satelitare anii 60\\'",
+  "layer_sat60_coverage": "Contur acoperire",
   "layer_vegfp_group": "Amprenta Vegetației",
   "layer_vegfp_ppi": "PPI",
   "layer_vegfp_date_label": "Dată",
@@ -570,7 +579,5 @@
   "ios_bld_search_help_zoom_in": "Zoom in mai mult",
   "ios_bld_search_help_zoom_out": "Zoom out mai mult",
   "ios_bld_settings": "Setări detecție",
-  "ios_bld_suggest": "Sugerează o clădire dispărută",
-  "en": "technology.html",
-  "ro": "tehnologie.html"
+  "ios_bld_suggest": "Sugerează o clădire dispărută"
 }

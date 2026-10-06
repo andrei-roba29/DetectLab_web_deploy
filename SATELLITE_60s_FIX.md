@@ -1,287 +1,305 @@
-# Satellite Imagery 60's — faithful replica of the Corona Atlas tile fetching
+# Satellite Imagery 60's — faithful replica of the Corona Atlas, for all of Europe
 
-> **Update 2026-08-12 (b) — the layer showed nothing: wrong layer *names*.**
->
-> The request format documented below was already correct; what was wrong was
-> the *list of CORONA layers* being requested. It had been written from the
-> naming pattern instead of the server's real catalogue, so most names did not
-> exist. The reported request
->
-> ```
-> …/gwc/service/wms?…&LAYERS=corona%3A1107-1074Fore&…
->   → 400: Unknown layer corona:1107-1074Fore.
-> ```
->
-> Verified live against `geoserve.cast.uark.edu`:
->
-> | Old entry | Reality on the server |
-> |---|---|
-> | `corona:1107-1074Fore` | **does not exist** → `400 Unknown layer` (the reported bug) |
-> | `corona:1103-2155Fore`, `corona:1110-2289Aft`, `corona:1103-2139Aft`, `corona:1106-1042Aft`, `corona:1105-2235Aft` | **do not exist** |
-> | `corona:1107-1074Aft` | exists, but images **Greece** (22.09 E, 38.76 N) |
-> | `corona:1110-2289Fore` | exists, but images **Peru** (−75.67 E, −13.02 N) |
-> | `corona:1105-2235Fore` | exists, but images the **Middle East** (31.74 E, 24.62 N) |
-> | `corona:1103-2167df101` | exists, but images **China** (117.57 E, 35.73 N) |
->
-> So every tile request over Romania either errored or fell outside the pass
-> footprint — the layer could never draw anything. This is expected of the
-> archive: CAST publishes the *"Corona Atlas of the Middle East"*, and its
-> coverage of Romania is limited to a few passes.
->
-> **Fix:** the list now contains only layers verified to (a) exist and (b)
-> return real pixels over Romania (WMS `GetFeatureInfo`, non-zero `GRAY_INDEX`),
-> each gated to its own footprint read from the layer's KML `LookAt`:
->
-> | Layer | Verified evidence |
-> |---|---|
-> | `corona:1104-2155Fore` / `…Aft` | Transylvania — `GRAY_INDEX 255` at 22.90 E / 46.58 N |
-> | `corona:1036-2139Fore` | Muntenia/Bucharest — `GRAY_INDEX 88` at 26.10 E / 44.43 N |
-> | `corona:1103-1058Aft` / `…Fore` | Muntenia — `GRAY_INDEX 105/112` at ~25.4 E / 44.4 N |
-> | `corona:1026-2088Aft` | Oltenia — `GRAY_INDEX 119` at ~23.8 E / 44.3 N |
-> | `corona:1104-2155df004` / `df007` / `df011` | Transylvania frames (full detail) |
->
-> Each layer now carries its **own** `bounds` (its real footprint clipped to
-> Romania) instead of a blanket Romania box, so Leaflet never requests a tile
-> the pass does not cover. A `tileerror` handler hides any tile the server
-> still refuses and logs the layer name once, so a future upstream rename
-> degrades quietly instead of leaving broken tiles.
->
-> Regression test: `node test-sat60-layers.js`.
->
-> **Note on scope:** large parts of Romania (e.g. Cluj — the location of the
-> reported tile, plus Iași, Brașov, Constanța, Timișoara) have **no** imagery
-> in the CAST archive at all. There the layer is correctly empty; that is a
-> limit of the source, not a bug.
+**Status: 2026-10-06.** The layer no longer uses a hand-written list of nine
+Romanian CORONA layers. It now replicates the *whole* raster logic of the
+original [Corona Atlas](https://corona.cast.uark.edu/atlas) (CAST, University
+of Arkansas) — catalogue-driven product selection, pass mosaics vs. individual
+frames, footprint-intersection + zoom-band gating — over the **entire
+European window** `[-25, 34] → [60, 72]` (Iceland/Azores edge to the Urals,
+Crete to Svalbard). A second overlay draws the **coverage outlines** from the
+supplied KML so users can see where 1960s imagery actually exists.
 
-**Status: 2026-08-12** — the layer now replicates the *exact* tile fetching /
-request sending of the original website
-[Corona Atlas](https://corona.cast.uark.edu/atlas) (CAST, University of
-Arkansas). All previous on-demand machinery ("Load images here" button,
-client-side request queue, IndexedDB tile cache, viewport probes, zoom-gated
-manual loading) has been **removed**.
+Previous notes about the Romania-only list are kept in §7 (history) because
+they document a real trap: CORONA layer names cannot be guessed.
 
 ---
 
-## 1. How the original website fetches tiles (inspected)
+## 1. How the original atlas really works
 
-The atlas at `corona.cast.uark.edu/atlas` is an OpenLayers app that displays
-declassified 1960s CORONA imagery served by the CAST GeoServer through
-**GeoWebCache WMS-C**. The exact request pattern was verified from the
-original site's own live traffic (captured by the Internet Archive on
-2020-04-29 and 2019-10-28 — see "Evidence" below).
+The atlas is an OpenLayers app. Its raster logic lives in
+`https://corona.cast.uark.edu/assets/libraries/custom/maputils.js?v=1.6.1`,
+and it is short enough to transcribe:
 
+```js
+var tileGrid = new ol.tilegrid.TileGrid({
+  origin: [-20037508.34, -20037508.34],
+  resolutions: [156543.0339, 78271.51695, …, 1.1943285667419434]  // z0 … z17
+});
+
+rasterSettings = {
+  baseUrl: "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms",
+  projection: "EPSG:900913", serverType: "geoserver", workspace: "corona:",
+  version: "1.1.1", tiled: "true",
+  layerSettings: {
+    layerGroup: { minZoom: 8,  maxZoom: 11 },   // pass mosaics
+    layer:      { minZoom: 12, maxZoom: 20 }    // individual frames
+  },
+  tileGrid: tileGrid
+};
+
+$(document).ready(function () { mapInit(); … getRasterNames(); loadSites(); });
+
+function getRasterNames() {                      // once, on page load
+  $.ajax({ url: '/corona/get_raster_names', dataType: 'json',
+           success: function (resp) { initializeRasterManager(resp); } });
+}
 ```
-Endpoint : https://geoserve.cast.uark.edu/geoserver/gwc/service/wms
-           (GeoWebCache WMS-C tile cache; the "corona" GeoServer workspace)
 
-Request  : WMS 1.1.1 GetMap, ONE corona layer per request, tiled=true
+So the three mechanisms are:
 
-Params   : SERVICE=WMS
-           VERSION=1.1.1
-           REQUEST=GetMap
-           FORMAT=image%2Fpng
-           TRANSPARENT=true
-           LAYERS=corona:<pass-or-frame>     ← single layer, never a list
-           tiled=true
-           WIDTH=256
-           HEIGHT=256
-           SRS=EPSG%3A900913                 ← Web Mercator (900913), NOT 3857
-           STYLES=
-           BBOX=<minx>,<miny>,<maxx>,<maxy>  ← EPSG:900913 metres, aligned to
-                                               the standard 256×256 XYZ grid
-```
+1. **A catalogue, fetched once.** `/corona/get_raster_names` returns the whole
+   worldwide archive as an object keyed by pass name:
 
-Key facts established from the captured traffic:
+   ```jsonc
+   "1006-1025Aft": {
+     "label": "1006-1025Aft (Jun 05, 1964)",
+     "base": "1006-1025da",
+     "show_on_load": "yes",
+     "location": "1006-1025Aft",                     // ⇒ WMS layer corona:1006-1025Aft
+     "extent": { "minx": 26.44, "miny": 40.40, "maxx": 29.35, "maxy": 41.15 },
+     "polygon": "{\"type\": \"Polygon\", \"coordinates\": [[…]]}",  // JSON *string*
+     "images": [{
+       "label": "1006-1025A120",
+       "location": "1006-1025da120",                 // ⇒ corona:1006-1025da120
+       "ftp": "1006-1025d/1006-1025da/ds1006-1025da120.ntf",
+       "size_ntf": "877", "size_tif": "370",
+       "extent": { … }, "polygon": "{…}"
+     }]
+   }
+   ```
 
-| Fact | Evidence |
+   The product name sent to GeoServer is the **`location`** field, never the
+   label — this is exactly what the old implementation got wrong.
+
+2. **Selection = footprint ∩ viewport, inside a zoom band.** Every `moveend`
+   calls `rasterManager.zoomChanged()` → `rasterLayer.checkZoom()`, which sets
+   a product visible iff its parsed `polygon` intersects the view extent *and*
+   the current zoom is inside its band (8–11 for the pass mosaic, 12–20 for
+   the frames). The polygons are rotated strips, so the bbox test alone is far
+   too generous — the atlas tests the polygon.
+
+3. **Plain WMS-C tile fetching.** One GeoWebCache request per product:
+
+   ```
+   https://geoserve.cast.uark.edu/geoserver/gwc/service/wms
+     ?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap
+     &FORMAT=image%2Fpng&TRANSPARENT=true
+     &LAYERS=corona%3A<location>          ← single layer, never a list
+     &tiled=true&WIDTH=256&HEIGHT=256
+     &SRS=EPSG%3A900913&STYLES=
+     &BBOX=<minx>,<miny>,<maxx>,<maxy>    ← EPSG:900913 metres, standard XYZ grid
+   ```
+
+   The grid has 18 levels (z0 … z17) ⇒ `maxNativeZoom: 17`; above that the
+   viewer overzooms, as DetectLab now does too.
+
+Downloads (GeoTIFF `…/coronaftp2/<ftp>.tif`, NITF `…/coronaftp/<ftp>.ntf`) are
+a separate feature of the atlas and remain out of scope.
+
+---
+
+## 2. The one thing that cannot be copied verbatim: the catalogue request
+
+`corona.cast.uark.edu/corona/get_raster_names` **sends no CORS header** and
+answers with ~6 MB of worldwide coverage. A browser `fetch()` from
+detectlab.ro fails on the preflight-less cross-origin read, and even if it did
+not, 6 MB on every page load is unacceptable on mobile.
+
+The catalogue is therefore fetched **server-side**, clipped to a bbox and
+slimmed down. Three sources are tried in order (`CoronaAtlas.catalogSources()`):
+
+| # | Source | Why |
+|---|---|---|
+| 1 | `window.CORONA_CATALOG_URL` | escape hatch / self-hosting |
+| 2 | `data/corona-europe-catalog.json` | static snapshot: same-origin, CDN-cached, works offline in the PWA, zero function invocations |
+| 3 | `/api/corona/rasters?bbox=…` | live proxy (Netlify function) — always current, used if the snapshot is absent |
+| 4 | `CoronaAtlas.FALLBACK_BLOCKS` | the six verified Romanian passes, so the layer is never completely dead |
+
+Nothing in the shipped client code ever calls `corona.cast.uark.edu`
+directly (pinned by `test-sat60-layers.js`).
+
+**Slimming** (`netlify/lib/corona-catalog.mjs → slimCatalog`): drop every pass
+whose footprint misses the bbox, drop the labels/sizes the map does not use,
+parse the `polygon` strings into plain ring arrays and round coordinates to
+5 decimals (~1 m). Europe comes out ≈20× smaller than the raw payload.
+
+---
+
+## 3. What DetectLab now does
+
+### `js/corona-wms-layer.js`
+
+| Export | Role |
 |---|---|
-| Endpoint is the GWC WMS-C service | every captured tile request goes to `/geoserver/gwc/service/wms` |
-| One layer per request | `LAYERS=corona:1105-2235df021`, `LAYERS=corona:1101-2168Fore`, `LAYERS=corona:1104-2203da058`, … — never comma-separated |
-| Two layer granularities | **pass mosaics** (`…Fore` / `…Aft`, e.g. `corona:1101-2168Fore`) requested at low/medium zoom, and **individual frames** (`…df###` for the Fore camera, `…da###` for the Aft camera, e.g. `corona:1105-2235df021`) requested when zoomed in |
-| EPSG:900913, 256×256 | `SRS=EPSG:900913&WIDTH=256&HEIGHT=256`, BBOX deltas match the standard Web-Mercator tile grid (e.g. z15 tile width = `40075016.685578488 / 2^15 = 1222.99245256…` m) |
-| Plain browser tile fetching | tiles are ordinary `<img>` GETs — no client queue, no client database, no manual "load" button |
-| Zoom gating | the layer is only active when zoomed in (the atlas homepage: *"For efficiency this layer is only active at or below a certain zoom level, and is therefore not viewable when the Atlas is initially opened"*) |
+| `coronaWmsTileUrl(base, layer, z, x, y)` | byte-identical WMS-C URL builder (pure; the tests compare it against the atlas's captured traffic) |
+| `CoronaWmsLayer` / `createCoronaWmsLayer()` | `L.TileLayer.WMS` subclass emitting that URL, `maxNativeZoom: 17` |
+| `CoronaAtlas.WMS_URL`, `.WORKSPACE`, `.EUROPE_BBOX` | the atlas's own constants |
+| `CoronaAtlas.PASS_MIN_ZOOM 8` / `PASS_MAX_ZOOM 11` / `FRAME_MIN_ZOOM 12` / `FRAME_MAX_ZOOM 20` | the two zoom bands, verbatim from `maputils.js` |
+| `CoronaAtlas.loadCatalog({bbox})` | the source chain above, with `normalizeCatalog()` accepting both the raw CAST shape and the slim snapshot |
+| `CoronaAtlas.createManager(map, opts)` | the replica of `rasterManager` |
 
-### Evidence (Internet Archive captures)
+`createManager()` is the heart of it:
 
-Captured requests (CDX of `geoserve.cast.uark.edu`, status 200, image/png):
+- `selectProducts(bounds, zoom)` — pure function: zoom band → candidate kind
+  (pass mosaic or frame), then `ringsIntersectBbox()` against the padded view
+  bbox. Rotated strips are handled with a real polygon test (edge
+  intersection + point-in-ring), not a bbox test.
+- `update()` — attaches what was selected, detaches the rest. Tile layers are
+  created **lazily**, keyed by `location`, and `_evictUnused(60)` discards
+  layers that have been off-screen for a while, so panning across Europe does
+  not accumulate hundreds of Leaflet layers.
+- Caps: `maxActivePasses`, `maxActiveFrames` — a hard ceiling on how much can
+  be attached at once, nearest-to-centre first.
+- `setOpacity()`, `getActiveLayers()`, `clear()`.
 
-- `20200429001955 …/geoserver/gwc/service/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=true&LAYERS=corona%3A1105-2235df021&tiled=true&WIDTH=256&HEIGHT=256&SRS=EPSG%3A900913&STYLES=&BBOX=3580921.899662502%2C3481859.511022657%2C3582144.892114846%2C3483082.503475001` — frame layer, z15 tile `x=19312, y=13536`
-- …the same tile for the neighbouring frame `corona:1105-2235df022` — both frames of the pass requested independently
-- `20191028221221 …&LAYERS=corona%3A1101-2168Fore&…&BBOX=3913575.8467000015%2C3209132.194150001%2C3991847.3636500016%2C3287403.711100001` — pass mosaic at z8
-- `20200429020238 …&LAYERS=corona%3A1104-2203da058&…` — Aft-camera frame
-- `20200429020351 …&LAYERS=corona%3A1101-2168df053&…` — Fore-camera frame, z8/z9 tiles
+### `js/map-app.js` (Sat60 block)
 
-The independent QGIS plugin *CAST-corona-clicker* (github.com/ishibaro)
-confirms the same services: WMS GetFeatureInfo at
-`https://geoserve.cast.uark.edu/geoserver/corona/wms`, GWC capabilities at
-`…/geoserver/gwc/service/wms?REQUEST=GetCapabilities&tiled=true`, WMTS tiles
-at `…/geoserver/gwc/service/wmts` (`tileMatrixSet=EPSG:4326`), and layer
-naming `corona:<mission>-<pass><df|da><###>` / `corona:<mission>-<pass><Fore|Aft>`.
+- Own pane `pane_sat60` (z-index 648), opacity `0.85`.
+- Manager options, tuned per device by `_sat60IsLowPowerDevice()`
+  (`L.Browser.mobile` + coarse pointer + `navigator.deviceMemory <= 4`,
+  override `window.SAT60_LOW_POWER_TILES`):
 
----
+  | option | low power | desktop |
+  |---|---|---|
+  | `viewportPad` | 0.2 | 0.35 |
+  | `maxActivePasses` | 8 | 18 |
+  | `maxActiveFrames` | 10 | 24 |
+  | `keepBuffer` | 1 | 2 |
 
-## 2. What DetectLab now does (identical behaviour)
+  plus `updateWhenZooming: false`, `updateWhenIdle: true` on every tile layer.
+- `map.on("moveend zoomend")` → `manager.update()` — never during a gesture.
+- Globals: `toggleSatellite60sMap(on)`, `setSatellite60sMapOpacity(v)`,
+  `toggleSatellite60sCoverage(on)`, `window._sat60Layers`,
+  `window._sat60ActiveProducts`, `window._sat60Catalog`.
+- The premium red coverage rectangle for this layer now spans Europe and
+  hides from z8 (`coverageMinZoom: 8`), where real tiles begin.
 
-`js/corona-wms-layer.js` (rewritten) exposes:
+### Server side
 
-- `window.coronaWmsTileUrl(baseUrl, layerName, z, x, y)` — builds the exact
-  request URL described above (pure function, used by the tests).
-- `window.CoronaWmsLayer` — an `L.TileLayer.WMS` subclass whose
-  `getTileUrl()` emits that exact URL. It keeps Leaflet's default tile
-  lifecycle, so tiles are fetched by the browser as normal `<img>` GETs —
-  the same "type of fetching" as the original.
-- `window.createCoronaWmsLayer(url, options)` — factory used by `map-app.js`.
-
-`js/map-app.js` (Sat60 block rewritten):
-
-- One tile layer **per Corona layer** — each pass mosaic and each frame in
-  the curated Romania list — so every request carries a single `LAYERS=`
-  value (GeoWebCache cannot combine layers dynamically).
-- Toggle on ⇒ layer group added to the map; toggle off ⇒ removed. No manual
-  loading step.
-- Zoom gating mirrors the original (its docs: only active when zoomed in):
-  - pass mosaics (`corona:1022-2104Fore` …) render from **z8**;
-  - individual frames (`corona:1104-2155df004` …) render from **z12**.
-  Below those zooms Leaflet creates no tile element and sends no request
-  (which also prevents the request/DOM flood that crashed the site with the
-  previous approach).
-- `maxNativeZoom: 15` — the server pyramids end at z15 (verified in the
-  captures); above z15 the tiles are overzoomed, exactly like the original
-  viewer does past its grid's top level.
-- The premium red coverage rectangle now hides from z8 (when real pass tiles
-  begin) instead of z11.
-
-### Verified Romania layer list (corrected 2026-08-12)
-
-Pass mosaics (6): `corona:1104-2155Fore`, `corona:1104-2155Aft`,
-`corona:1036-2139Fore`, `corona:1103-1058Aft`, `corona:1103-1058Fore`,
-`corona:1026-2088Aft`.
-
-Frames (3): `corona:1104-2155df004`, `corona:1104-2155df007`,
-`corona:1104-2155df011`.
-
-Each entry is a `{ name, bounds }` descriptor. **Names are not derived from
-the naming pattern** — that is what caused the bug — they were confirmed
-against the live server (the layer resolves on GeoWebCache, and
-`GetFeatureInfo` returns non-zero `GRAY_INDEX` inside Romania), and `bounds`
-is the layer's own KML footprint clipped to Romania.
+| File | Role |
+|---|---|
+| `netlify/lib/corona-catalog.mjs` | `fetchCoronaCatalog()`, `slimCatalog()`, `buildCatalogPayload()`, `parseBbox()`, geometry helpers. Deliberately **outside** `netlify/functions/`, which treats every subdirectory as a function. |
+| `netlify/functions/corona-rasters.mjs` | `GET /api/corona/rasters?bbox=…`. 12 h warm-container memory cache, `Cache-Control: max-age=3600`, `Netlify-CDN-Cache-Control: s-maxage=604800, stale-while-revalidate=86400`, serves stale on upstream failure, CORS `*`. |
+| `netlify.toml` | functions directory + the `/api/corona/rasters` redirect. |
+| `tools/build-corona-europe-catalog.mjs` | regenerates the static snapshot: `node tools/build-corona-europe-catalog.mjs [--bbox=…] [--out=…]` (Node ≥ 18, no npm deps). Run it from a machine with plain internet access to CAST and commit the result. |
 
 ---
 
-## 3. Files changed
+## 4. Coverage outlines (the KML)
 
-- `js/corona-wms-layer.js` — rewritten: faithful tile layer + URL builder
-  (no queue / IndexedDB / manual gating).
-- `js/map-app.js` — Sat60 IIFE rewritten: per-layer tile layers, automatic
-  fetching, zoom gating z8/z12; coverage-rectangle entry updated
-  (`coverageMinZoom: 8`).
-- `index.html` — script comments/versions updated
-  (`?v=20260812-layers`); the old "Load images here" UI note removed.
-- `js/translations.js` — `sat60_*` UI strings removed (the on-demand button
-  is gone); `layer_satellite60s` label kept.
-- `css/styles.css` — `.sat60-bottom-ui` styles removed.
-- `sw.js` — precache entries updated to the new version.
-- `test-sat60-fetch.js` — new test; the four old on-demand tests
-  (`test-sat60-bottom-ui.js`, `test-sat60-discovery.js`,
-  `test-sat60-ondemand.js`, `test-sat60-zoom-guard.js`) were deleted with the
-  removed behaviour.
+`js/corona-coverage-layer.js` draws
+`https://dacboefvooxgsngxkavx.supabase.co/storage/v1/object/public/Harti/corona2.kml`
+(CORS-enabled, 666 KB, CDN-cached) as a thin amber outline with a 7 % fill, in
+its own pane on a canvas renderer, non-interactive so it never steals clicks.
 
-## 4. Tests
+- **Lazy** — nothing is downloaded until the outlines are shown for the first
+  time; the parsed rings are then reused.
+- **Clipped** — the KML is a dissolved worldwide multipolygon (including polar
+  passes); only rings intersecting `CoronaAtlas.EUROPE_BBOX` are kept.
+- **Simplified** — the shapefile was buffered, so each corner carries ~16
+  near-identical vertices; a distance filter (`SIMPLIFY_EPS` 0.001° ≈ 110 m)
+  removes them with no visible difference.
+- `window.CoronaCoverage`: `load()`, `show(map)`, `hide()`, `isVisible()`,
+  `parseKml(text, bbox)`, `simplifyRing()`, `getLayer()`, `getRings()`.
+  Override the URL with `window.CORONA_COVERAGE_KML_URL`.
+
+UI: turning *Satellite imagery 60's* on also shows the outlines; a dedicated
+switch (`#satellite60sCoverageToggle`, label key `layer_sat60_coverage`,
+translated in all 25 languages) turns them off for users who only want the
+imagery. The KML is **coverage only** — it has no per-pass names and can never
+be used as a product catalogue.
+
+---
+
+## 5. Tests
 
 ```bash
-node test-sat60-fetch.js    # request format is byte-identical to the original
-node test-sat60-layers.js   # layer names exist on the server and cover Romania
+node test-sat60-fetch.js          # 63 checks — request format, zoom constants
+node test-sat60-layers.js         # 50 checks — catalogue handling, product names
+node test-sat60-mobile-crash.js   # 51 checks — gesture volume limits
+node test-corona-europe.js        # 43 checks — catalogue proxy + coverage KML
+node test-tile-perf.js            # 83 checks — shared tile-performance budget
 ```
 
-`test-sat60-layers.js` pins the regression: it fails if any of the
-non-existent names (including `corona:1107-1074Fore`) or any of the
-wrong-continent layers reappear, if a configured layer is not on the verified
-list, if a layer loses its footprint `bounds`, or if the `tileerror` handling
-is removed.
+What each one pins:
 
-Verifies: the generated request URL is byte-identical (parameter names,
-order, encoding) to the original's captured traffic, the BBOX is the standard
-Web-Mercator tile grid in EPSG:900913 metres (same z15 tile x=19312/y=13536 as
-the captured request, agreeing to sub-centimetre float noise), exactly one
-layer per request, no manual gating / queue / database in the layer, and the
-map-app wiring (z8/z12 zoom gates, `createCoronaWmsLayer` usage, removed
-on-demand machinery).
+- **`test-sat60-fetch.js`** — the generated URL is byte-identical to the
+  atlas's captured traffic (parameter names, order, encoding), the BBOX is the
+  standard EPSG:900913 tile grid (same z15 tile `x=19312, y=13536` as a 2020
+  Wayback capture), exactly one layer per request, and `map-app.js` drives the
+  manager instead of a hardcoded list.
+- **`test-sat60-layers.js`** — the ten guessed/wrong-continent names
+  (`corona:1107-1074Fore`, `corona:1110-2289Aft`, …) can never reappear in
+  executable code; `normalizeCatalog()` is exercised on a verbatim 4-record
+  CAST fixture (the Chinese and Kazakh passes must be clipped out, the
+  Marmara and Moscow ones kept); zoom gating z6/z9/z11/z13/z21; the rotated
+  strip must beat a bbox test; the catalogue source order must stay CORS-safe.
+- **`test-sat60-mobile-crash.js`** — the four mitigations below, the
+  `moveend zoomend`-only sync, the caps, `_evictUnused`, `maxNativeZoom: 17`,
+  the `tileerror` hide-and-log-once handler, plus a simulated pan/zoom gesture
+  across a synthetic European catalogue.
+- **`test-corona-europe.js`** — the slimming/clipping/rounding of the proxy,
+  `parseBbox` normalisation, the function route + caching headers +
+  stale-on-error, the `netlify.toml` redirect, KML parsing/clipping/
+  simplification, and the UI wiring (script order, toggle, translations,
+  service-worker precache).
 
-## 5. Notes / caveats
+---
 
-- The captured BBOX of the original differs from the exact grid values by
-  ~1.4 mm (float noise in the original client's computation). This is
-  irrelevant for GeoWebCache: the WMS-C path resolves the tile index from the
-  grid, so the request hits the same cached tiles. The URL is rounded to
-  6 decimals of a metre (sub-micrometre) for tidiness.
-- The original atlas allows downloading the raw GeoTIFF/NITF per frame; that
-  is a download feature, not tile fetching, and is out of scope here.
-- If `geoserve.cast.uark.edu` is ever unreachable, the layer simply shows
-  nothing (like the original); the fallback inside `_sat60MakeLayer` keeps a
-  plain `L.tileLayer.wms` in case `corona-wms-layer.js` fails to load.
+## 6. Mobile crash on fast zoom (still fixed)
 
-## 6. Mobile crash on fast zoom / sudden movement (fixed)
+The earlier crash (fast pinch-zoom killing the tab on mobile, including in
+"Desktop site" mode) came from tile volume, not from the request format. The
+four mitigations are unchanged and now apply to a manager that can see the
+whole continent, which makes them more important, not less:
 
-**Symptom.** With the layer working and drawing imagery, zooming in quickly or
-making a sudden map movement crashed the site on mobile browsers — including
-"Desktop site" mode and the installed PWA. Desktop was unaffected.
+1. `updateWhenZooming: false` — zoom frames are pure CSS transforms; tiles
+   load once, at the end of the gesture.
+2. `updateWhenIdle: true` — set explicitly, so a spoofed desktop UA cannot
+   opt a phone into per-frame pan updates.
+3. `keepBuffer: 1` on low-power devices (desktop keeps Leaflet's `2`).
+4. Attach/detach on `moveend zoomend` only, padded by `viewportPad`, with the
+   `maxActivePasses` / `maxActiveFrames` ceilings and `_evictUnused()` on top.
 
-**Cause.** Not a leak, and not the request format: pure volume. The layer is
-nine tile layers (6 pass mosaics + 3 frames) in one pane, and Leaflet 1.9.4's
-per-layer defaults are the worst case for that stack:
+Typical z13 view: ~3 attached products × 15 tiles ≈ 45 live tiles.
 
-| option | default | effect here |
-|---|---|---|
-| `updateWhenZooming` | `true` | every frame of a pinch/scroll zoom re-runs `_update()` and queues tiles — ×9 layers |
-| `updateWhenIdle` | `L.Browser.mobile` | **`false` when the UA is spoofed by "Desktop site"**, so every pan frame does the same |
-| `keepBuffer` | `2` | a 2-tile ring of off-screen tiles retained per layer |
+---
 
-On top of that `_pruneTiles()` retains up to 5 ancestor levels and 2 descendant
-levels per layer while the zoom is changing. A fast gesture therefore produced
-hundreds of in-flight requests and decoded 256×256 PNGs within about a second.
-For a 390×780 phone viewport that is 63 tiles/layer × 9 layers = 567 live
-tiles before retained levels — well past the point where mobile WebKit /
-Chromium terminates the tab for memory.
+## 7. History — why layer names must come from the catalogue
 
-**Fix** (`js/map-app.js`, Sat60 block). Nothing about *what* is requested
-changed — same endpoint, same byte-identical WMS-C URL and parameter order,
-same nine verified layer names, same footprints, same z8/z12 gating. Only
-*how often* and *how many* tiles stay alive:
+The first implementation guessed CORONA layer names from the naming pattern.
+Verified live against `geoserve.cast.uark.edu`:
 
-1. `updateWhenZooming: false` — zoom-animation frames become pure CSS
-   transforms (`_setView` short-circuits to `_setZoomTransforms`); tiles load
-   once, at the end of the zoom.
-2. `updateWhenIdle: true` — set explicitly rather than inherited from the
-   user-agent sniff, so "Desktop site" mode no longer opts phones into
-   per-frame pan updates.
-3. `keepBuffer: 1` on touch / low-memory devices (desktop keeps Leaflet's `2`).
-   Detection (`_sat60IsLowPowerDevice`) combines `L.Browser.mobile`, a coarse
-   pointer plus touch points (survives UA spoofing), and
-   `navigator.deviceMemory <= 4`. Override with
-   `window.SAT60_LOW_POWER_TILES = true/false`.
-4. `_sat60SyncActiveLayers()` detaches passes/frames that cannot draw in the
-   current view (footprint off-screen, or min zoom not reached) so they stop
-   holding containers, retained levels and tiles. It runs on `moveend zoomend`
-   only — never during a gesture — and pads the viewport by
-   `SAT60_VIEWPORT_PAD` (0.35) so a drag never uncovers imagery before the
-   re-sync. Whatever covers the screen is always attached, so the visible
-   result is unchanged.
+| Old entry | Reality on the server |
+|---|---|
+| `corona:1107-1074Fore`, `corona:1103-2155Fore`, `corona:1110-2289Aft`, `corona:1103-2139Aft`, `corona:1106-1042Aft`, `corona:1105-2235Aft` | **do not exist** → `400 Unknown layer` |
+| `corona:1107-1074Aft` | exists, but images **Greece** |
+| `corona:1110-2289Fore` | exists, but images **Peru** |
+| `corona:1105-2235Fore` | exists, but images the **Middle East** |
+| `corona:1103-2167df101` | exists, but images **China** |
 
-Typical z13 view: ~3 relevant layers × 15 tiles = 45 live tiles instead of 567.
+Those names are now banned by `test-sat60-layers.js`. The six passes that were
+verified by hand (`1104-2155Fore`, `1104-2155Aft`, `1036-2139Fore`,
+`1103-1058Aft`, `1103-1058Fore`, `1026-2088Aft`) survive only as
+`CoronaAtlas.FALLBACK_BLOCKS`, used when every catalogue source fails.
 
-**Also fixed:** `js/map-app.js` did not parse at all. A bad paste had left a
-dangling `var tl =` followed by a duplicated block inside `readSerial()`
-(line ~5826), a `SyntaxError` that prevented the *entire* file from loading.
-It was present at HEAD (`d690808`) and is unrelated to the mobile crash, but
-nothing in `map-app.js` could run until it was repaired.
+Also removed earlier and **not** reintroduced: the "Load images here" button,
+the client-side request queue, the IndexedDB tile cache, viewport probes and
+manual zoom-gated loading. The original atlas has none of them, and neither
+does DetectLab now.
 
-```
-node test-sat60-mobile-crash.js   # gesture volume limits + imagery unchanged
-```
+---
 
-`test-sat60-mobile-crash.js` fails if the file stops parsing, if the truncated
-paste reappears, if any of the four mitigations is removed or weakened, if the
-sync is wired to a per-frame event, or if the requests/layers/gating change.
-It also simulates the viewport sync against the real configuration to prove
-that every layer whose footprint covers the view stays attached.
+## 8. Operating notes
+
+- **Refreshing the snapshot:** run `tools/build-corona-europe-catalog.mjs` and
+  commit `data/corona-europe-catalog.json`. Without the snapshot the layer
+  silently falls back to the live proxy; without both, to the six passes.
+- **Coverage gaps are real.** Even continent-wide, CORONA covers Europe in
+  strips: the archive is the *"Corona Atlas of the Middle East"* extended with
+  other declassified missions. Empty areas are a property of the source — the
+  coverage outlines exist precisely to make that obvious.
+- **Cache busting:** `index.html` loads
+  `js/map-app.js?v=20261006-corona-europe`, `js/corona-wms-layer.js` and
+  `js/corona-coverage-layer.js` at `?v=20261006-europe`; `sw.js` is
+  `detectlab-v154-corona-europe` and precaches all three.

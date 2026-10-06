@@ -215,14 +215,22 @@ const mapApp = fs.readFileSync(path.join(__dirname, 'js/map-app.js'), 'utf8');
 });
 check('no "Load images here" UI strings remain', mapApp.indexOf('sat60_load_here') === -1);
 
-// Faithful wiring:
-check('uses createCoronaWmsLayer (faithful layer)', mapApp.indexOf('createCoronaWmsLayer') !== -1);
+// Faithful wiring. The endpoint, the zoom gating and the per-product tile
+// layers now live in js/corona-wms-layer.js (the Europe-wide raster manager,
+// the Leaflet twin of the atlas's rasterManager); map-app.js only drives it.
+const coronaLib = fs.readFileSync(path.join(__dirname, 'js/corona-wms-layer.js'), 'utf8');
 check('endpoint is the original GWC WMS-C URL',
-    mapApp.indexOf('https://geoserve.cast.uark.edu/geoserver/gwc/service/wms') !== -1);
-check('pass mosaics start at z8 (SAT60_PASS_MIN_ZOOM = 8)', /SAT60_PASS_MIN_ZOOM\s*=\s*8/.test(mapApp));
-check('frames start at z12 (SAT60_FRAME_MIN_ZOOM = 12)', /SAT60_FRAME_MIN_ZOOM\s*=\s*12/.test(mapApp));
-check('one tile layer per corona layer (layerGroup)',
-    mapApp.indexOf('L.layerGroup(') !== -1 && mapApp.indexOf('_sat60MakeLayer') !== -1);
+    coronaLib.indexOf('https://geoserve.cast.uark.edu/geoserver/gwc/service/wms') !== -1);
+check('the manager builds its tile layers with createCoronaWmsLayer',
+    coronaLib.indexOf('createCoronaWmsLayer') !== -1);
+eq('pass mosaics live at z8 (atlas layerSettings.layerGroup.minZoom)', W.CoronaAtlas.PASS_MIN_ZOOM, 8);
+eq('pass mosaics stop at z11 (atlas layerSettings.layerGroup.maxZoom)', W.CoronaAtlas.PASS_MAX_ZOOM, 11);
+eq('frames start at z12 (atlas layerSettings.layer.minZoom)', W.CoronaAtlas.FRAME_MIN_ZOOM, 12);
+eq('frames stop at z20 (atlas layerSettings.layer.maxZoom)', W.CoronaAtlas.FRAME_MAX_ZOOM, 20);
+check('map-app.js drives the catalogue-based manager',
+    /CoronaAtlas/.test(mapApp) && /createManager/.test(mapApp));
+check('one Leaflet layer group still carries the active products',
+    mapApp.indexOf('L.layerGroup(') !== -1 && mapApp.indexOf('_sat60MapLayer') !== -1);
 check('coverage rectangle hides at z8 (coverageMinZoom: 8)',
     mapApp.indexOf('coverageMinZoom: 8') !== -1);
 
