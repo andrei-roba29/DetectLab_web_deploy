@@ -2015,15 +2015,23 @@
                             <div class="lidar-country-row" id="lidarNlAhnRow">
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
                                     <span style="display:flex;align-items:center;gap:5px;">
-                                        <span>Netherlands · AHN6 DSM 0.5 m</span>
-                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Netherlands · AHN6 DSM (0.5 m)','Source: AHN6 DSM 50 cm ImageServer — https://ahn.arcgisonline.nl/arcgis/rest/services/Hoogtebestand/AHN6_DSM_50cm/ImageServer. Licence: CC0 1.0 Universal.')" title="Layer info">ⓘ</button>
+                                        <span>Netherlands · AHN relief (0.5 m)</span>
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Netherlands · AHN relief (0.5 m)','AHN hillshade © AHN / Esri Nederland (CC BY 4.0). Live /exportImage tiles from the AHN ArcGIS ImageServers (ahn.arcgisonline.nl). AHN4 is used by default because it is the only campaign with complete national coverage; AHN5 and AHN6 are newer but still partly flown. Visible from zoom 8.')" title="Layer info">ⓘ</button>
                                     </span>
                                     <label class="apm-toggle-switch" title="Toggle Netherlands LiDAR" style="transform:scale(0.85);transform-origin:right center;">
                                         <input type="checkbox" id="lidarNlAhnToggle" onchange="toggleInternationalLidar('nlAhn', this.checked)">
                                         <span class="apm-toggle-track"></span>
                                     </label>
                                 </div>
-                                <div class="transp-layer-label" style="margin-bottom:5px;"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarNlAhnPct">80%</span></div>
+                                <select id="netherlandsLidarModeSelect" class="lidar-country-select" aria-label="AHN product (hillshade, relief, slope, DSM, AHN5, AHN6)" onchange="setNetherlandsLidarMode(this.value)">
+                                    <option value="dtm">AHN4 DTM · hillshade (0.5 m, full cover)</option>
+                                    <option value="relief">AHN4 DTM · colour shaded relief</option>
+                                    <option value="slope">AHN4 DTM · slope (colour)</option>
+                                    <option value="dsm">AHN4 DSM · surface hillshade (0.5 m)</option>
+                                    <option value="ahn5">AHN5 DTM · hillshade (newer, partial cover)</option>
+                                    <option value="ahn6">AHN6 DTM · hillshade (newest, partial cover)</option>
+                                </select>
+                                <div class="transp-layer-label" style="margin:5px 0;"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarNlAhnPct">80%</span></div>
                                 <input type="range" class="lidar-country-opacity" id="lidarNlAhnOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('nlAhn', this.value)">
                             </div>
 
@@ -4610,10 +4618,12 @@
     <script src="js/geoportal-nmt-layer.js?v=20261006-poland"></script>
     <!-- Spain: IGN/IDEE WMTS relief (PNOA-LiDAR MDT), config at the top of the file. -->
     <script src="js/ign-mdt-layer.js?v=20261006-spain"></script>
+    <!-- Netherlands: AHN ImageServer relief, config at the top of the file. -->
+    <script src="js/ahn-layer.js?v=20261006-ahn"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/globe-country-picker.js?v=20261005"></script>
-    <script src="js/map-app.js?v=20261006-spain-mdt"></script>
+    <script src="js/map-app.js?v=20261006-ahn-exportimage"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>

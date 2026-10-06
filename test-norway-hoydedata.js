@@ -424,8 +424,11 @@ const LIVE_RESPONSE = { objectId: 0, name: 'Pixel', value: '17.5408' };
         /Hillshade © Kartverket \(CC BY 4\.0\)/.test(mapApp));
 
     // Scope guard: this change must not touch the other LiDAR countries.
-    check('the Netherlands AHN6 builder is untouched',
-        /imageServerUrl \+ L\.Util\.getParamString\(params, imageServerUrl\)/.test(mapApp));
+    // (The Netherlands row was later moved to js/ahn-layer.js — see
+    // NETHERLANDS_LIDAR_AHN.md. This guard checks that the change under
+    // test did not rewrite it.)
+    check('the Netherlands layer still uses its own module',
+        /AhnLidar\.createLayer/.test(mapApp));
     ['POLAND_LIDAR_KRON86_WMS_URL', 'SPAIN_LIDAR_WMS_URL', 'SWITZERLAND_LIDAR_WMS_URL',
         'UK_LIDAR_WMS_URL', 'FRANCE_LIDAR_WMS_URL', 'DENMARK_LIDAR_WMS_URL'].forEach(function (name) {
         check('other country service kept: ' + name, mapApp.indexOf(name) !== -1);

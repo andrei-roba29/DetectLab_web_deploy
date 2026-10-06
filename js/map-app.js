@@ -5545,8 +5545,17 @@
             // Dutch national RD New projection (EPSG:28992), not as a tiled
             // WMS. The layer builder below requests Web-Mercator exportImage
             // tiles from this service so it lines up with Leaflet's map.
+            // The products, rendering rules, zoom window and opacity now live
+            // in the CONFIG block of js/ahn-layer.js. This constant is kept so
+            // external callers keep resolving, but the layer is built by the
+            // module: the old URL was requested *without* the /exportImage
+            // operation (200 text/html → blank tile) and AHN6 alone has only
+            // partial national coverage.
             var NETHERLANDS_LIDAR_IMAGE_SERVER_URL =
                 'https://ahn.arcgisonline.nl/arcgis/rest/services/Hoogtebestand/AHN6_DSM_50cm/ImageServer';
+            var NETHERLANDS_LIDAR_MODES = (window.AhnLidar && window.AhnLidar.MODES) || {};
+            var NETHERLANDS_LIDAR_DEFAULT_MODE =
+                (window.AhnLidar && window.AhnLidar.CONFIG.DEFAULT_MODE) || 'dtm';
             // Norway: Kartverket's national LiDAR terrain models, served as
             // dynamic ArcGIS ImageServers by hoydedata.no. The configuration
             // (service names, rendering rules, zoom window, opacity) lives in
@@ -5608,6 +5617,7 @@
             window.NORWAY_LIDAR_IMAGE_SERVER_HOST = NORWAY_LIDAR_IMAGE_SERVER_HOST;
             window.NORWAY_LIDAR_MODES = NORWAY_LIDAR_MODES;
             window.NETHERLANDS_LIDAR_IMAGE_SERVER_URL = NETHERLANDS_LIDAR_IMAGE_SERVER_URL;
+            window.NETHERLANDS_LIDAR_MODES = NETHERLANDS_LIDAR_MODES;
             window.POLAND_LIDAR_KRON86_WMS_URL = POLAND_LIDAR_KRON86_WMS_URL;
             window.POLAND_LIDAR_EVRF2007_WMS_URL = POLAND_LIDAR_EVRF2007_WMS_URL;
             window.POLAND_LIDAR_KRON86_WFS_URL = POLAND_LIDAR_KRON86_WFS_URL;
@@ -5868,15 +5878,15 @@
                 // remote layer is not constructed until its opacity is raised
                 // or its country switch is turned on.
                 nlAhn: {
-                    label: 'Netherlands · AHN6 DSM 0.5 m', enabled: false, opacity: 0.8,
-                    type: 'arcgis_image_server', url: NETHERLANDS_LIDAR_IMAGE_SERVER_URL,
-                    // Hillshade keeps the 0.5 m DSM legible over the basemap;
-                    // the source remains the AHN6 DSM ImageServer itself.
-                    renderingRule: 'AHN - Hillshade (Multidirectionaal)',
-                    bounds: [[50.70, 3.20], [53.60, 7.30]],
-                    maxNativeZoom: 18, minZoom: 7,
-                    crossOrigin: 'anonymous',
-                    attribution: 'Source: AHN6 DSM 50 cm — Rijkswaterstaat / PDOK. Licence: CC0 1.0 Universal.', leafletLayer: null
+                    // AHN terrain relief through js/ahn-layer.js: one
+                    // /exportImage request per Leaflet tile, AHN4 by default
+                    // (the only campaign with complete national coverage).
+                    label: 'Netherlands · AHN relief (0.5 m)', enabled: false,
+                    opacity: (window.AhnLidar && window.AhnLidar.CONFIG.OPACITY) || 0.8,
+                    factory: 'netherlands', mode: NETHERLANDS_LIDAR_DEFAULT_MODE,
+                    attribution: (window.AhnLidar && window.AhnLidar.CONFIG.ATTRIBUTION) ||
+                        'AHN hillshade © AHN / Esri Nederland (CC BY 4.0)',
+                    leafletLayer: null
                 },
                 noLidar: {
                     // Whole-country Kartverket LiDAR via hoydedata.no. Zoom
@@ -5953,6 +5963,23 @@
                         keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
                             ? window.DLTilePerf.config.keepBuffer
                             : window.GeoportalNMT.CONFIG.KEEP_BUFFER
+                    });
+                }
+                if (cfg.factory === 'netherlands') {
+                    // AHN ImageServers, no key, clipped to the Netherlands.
+                    if (!window.AhnLidar) {
+                        console.warn('[DetectLab] ahn-layer.js is not loaded — Netherlands LiDAR unavailable');
+                        return null;
+                    }
+                    return window.AhnLidar.createLayer({
+                        mode: cfg.mode || NETHERLANDS_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.AhnLidar.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.AhnLidar.CONFIG.KEEP_BUFFER
                     });
                 }
                 if (cfg.factory === 'spain') {
@@ -6092,7 +6119,11 @@
                             if (imageCfg.renderingRule) {
                                 params.renderingRule = JSON.stringify({ rasterFunction: imageCfg.renderingRule });
                             }
-                            return imageServerUrl + L.Util.getParamString(params, imageServerUrl);
+                            // The /exportImage operation is mandatory: the
+                            // ImageServer *root* with f=image answers 200 with
+                            // text/html, which an <img> renders as nothing.
+                            var operationUrl = imageServerUrl.replace(/\/+$/, '') + '/exportImage';
+                            return operationUrl + L.Util.getParamString(params, operationUrl);
                         },
 
                         setOpacity: function (opacity) {
@@ -6364,6 +6395,36 @@
                     : ((cfg && cfg.mode) || SPAIN_LIDAR_DEFAULT_MODE);
             }
             _populateSpainModeSelect();
+
+            window.setNetherlandsLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.nlAhn;
+                // Only the service name and rendering rule change, so redraw
+                // the existing grid layer instead of rebuilding it.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && NETHERLANDS_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
+                _replaceSelectableInternationalLayer('nlAhn', mode);
+            };
+
+            function _populateNetherlandsModeSelect() {
+                var select = document.getElementById('netherlandsLidarModeSelect');
+                if (!select || !window.AhnLidar) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.AhnLidar.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = NETHERLANDS_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.nlAhn;
+                select.value = (current && NETHERLANDS_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || NETHERLANDS_LIDAR_DEFAULT_MODE);
+            }
+            _populateNetherlandsModeSelect();
             window.setUkLidarMode = function (mode) {
                 _replaceSelectableInternationalLayer('ukLidar', mode);
             };
