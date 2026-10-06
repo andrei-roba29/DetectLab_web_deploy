@@ -13,3 +13,17 @@
   to = "https://detectlab.ro/:splat"
   status = 301
   force = true
+
+# ── CORONA ("Satellite imagery 60's") catalogue proxy ───────────────────────
+# The map needs the Corona Atlas product catalogue
+# (corona.cast.uark.edu/corona/get_raster_names). That endpoint sends no CORS
+# header and returns ~6 MB of worldwide coverage, so a Netlify function
+# fetches it server-side, clips it to Europe and caches it on the CDN.
+# See netlify/functions/corona-rasters.mjs.
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/corona/rasters"
+  to = "/.netlify/functions/corona-rasters"
+  status = 200

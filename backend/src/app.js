@@ -13,6 +13,7 @@ import paymentsRouter from './routes/payments.js';
 import promoRouter from './routes/promo.js';
 import evidenceRouter from './routes/evidence.js';
 import newsletterRouter from './routes/newsletter.js';
+import geoProxyRouter from './routes/geoProxy.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { startEvidenceWorker } from './services/evidence/ingestionWorker.js';
 
@@ -37,6 +38,9 @@ app.use('/api', paymentsRouter);
 app.use('/api', promoRouter);
 app.use('/api', evidenceRouter);
 app.use('/api', newsletterRouter);
+// Token-adding, caching proxy for Dataforsyningen (Denmark DHM hillshade).
+// Keeps the Danish token server-side; see backend/src/routes/geoProxy.js.
+app.use('/api', geoProxyRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

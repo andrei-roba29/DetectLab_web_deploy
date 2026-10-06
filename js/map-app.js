@@ -5545,10 +5545,41 @@
             // Dutch national RD New projection (EPSG:28992), not as a tiled
             // WMS. The layer builder below requests Web-Mercator exportImage
             // tiles from this service so it lines up with Leaflet's map.
+            // The products, rendering rules, zoom window and opacity now live
+            // in the CONFIG block of js/ahn-layer.js. This constant is kept so
+            // external callers keep resolving, but the layer is built by the
+            // module: the old URL was requested *without* the /exportImage
+            // operation (200 text/html → blank tile) and AHN6 alone has only
+            // partial national coverage.
             var NETHERLANDS_LIDAR_IMAGE_SERVER_URL =
                 'https://ahn.arcgisonline.nl/arcgis/rest/services/Hoogtebestand/AHN6_DSM_50cm/ImageServer';
-            var NORWAY_LIDAR_WMS_URL =
-                'https://wms.geonorge.no/skwms1/wms.hoyde-hoydedata-metadata-prosjekt';
+            var NETHERLANDS_LIDAR_MODES = (window.AhnLidar && window.AhnLidar.MODES) || {};
+            var NETHERLANDS_LIDAR_DEFAULT_MODE =
+                (window.AhnLidar && window.AhnLidar.CONFIG.DEFAULT_MODE) || 'dtm';
+            // Norway: Kartverket's national LiDAR terrain models, served as
+            // dynamic ArcGIS ImageServers by hoydedata.no. The configuration
+            // (service names, rendering rules, zoom window, opacity) lives in
+            // the CONFIG block of js/hoydedata-layer.js.
+            //
+            // This replaces the former Geonorge WMS
+            // (wms.hoyde-hoydedata-metadata-prosjekt): its layers are *per
+            // survey project*, so outside the one selected project the server
+            // answered 200 with a fully transparent PNG and the map looked
+            // empty everywhere.
+            var NORWAY_LIDAR_IMAGE_SERVER_HOST =
+                (window.Hoydedata && window.Hoydedata.CONFIG.HOST) ||
+                'https://hoydedata.no/arcgis/rest/services';
+            // Poland: terrain SHADING from the GUGiK ISOK/NMT services
+            // (js/geoportal-nmt-layer.js holds the CONFIG block).
+            //
+            // The two "Skorowidze" WMS endpoints that used to back this row
+            // publish the INDEX SHEETS of the LiDAR measurement data — survey
+            // metadata, not imagery — which is why the tiles came back 200 and
+            // empty. They are kept below only as a reference to the catalogue
+            // (the WFS twins), never as a display layer.
+            var POLAND_NMT_WMS_BASE =
+                (window.GeoportalNMT && window.GeoportalNMT.CONFIG.WMS_BASE) ||
+                'https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WMS/';
             var POLAND_LIDAR_KRON86_WMS_URL =
                 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomNMT/WMS/SkorowidzeWUkladzieKRON86';
             var POLAND_LIDAR_EVRF2007_WMS_URL =
@@ -5561,64 +5592,91 @@
                 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomiaroweLidarKRON86/WFS/Skorowidze';
             var POLAND_LIDAR_EVRF2007_WFS_URL =
                 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomiaroweLidarEVRF2007/WFS/Skorowidze';
+            // Spain: the IGN/IDEE WMTS tile cache of the PNOA-LiDAR MDT
+            // ("Relieve" hillshade). Config lives in js/ign-mdt-layer.js; the
+            // legacy INSPIRE WMS constant is kept for any external caller.
             var SPAIN_LIDAR_WMS_URL = 'https://servicios.idee.es/wms-inspire/mdt';
+            var SPAIN_LIDAR_WMTS_URL =
+                (window.IgnMdt && window.IgnMdt.CONFIG.WMTS_URL) || 'https://servicios.idee.es/wmts/mdt';
+            var SPAIN_LIDAR_MODES = (window.IgnMdt && window.IgnMdt.MODES) || {};
+            var SPAIN_LIDAR_DEFAULT_MODE =
+                (window.IgnMdt && window.IgnMdt.CONFIG.DEFAULT_MODE) || 'relieve';
+            // Switzerland: swisstopo's public RESTful WMTS cache of the
+            // swissALTI3D / swissSURFACE3D relief shading. Config lives in
+            // js/swisstopo-relief-layer.js. The old WMS constant is kept for
+            // external callers, but the row no longer requests
+            // ch.swisstopo.swisssurface3d.metadata (acquisition footprints,
+            // not terrain imagery).
             var SWITZERLAND_LIDAR_WMS_URL = 'https://wms.geo.admin.ch/';
+            var SWITZERLAND_LIDAR_WMTS_HOST =
+                (window.SwisstopoRelief && window.SwisstopoRelief.CONFIG.HOST) || 'https://wmts.geo.admin.ch';
+            var SWITZERLAND_LIDAR_MODES = (window.SwisstopoRelief && window.SwisstopoRelief.MODES) || {};
+            var SWITZERLAND_LIDAR_DEFAULT_MODE =
+                (window.SwisstopoRelief && window.SwisstopoRelief.CONFIG.DEFAULT_MODE) || 'relief';
+            // The UK row now uses the Environment Agency's cached WMTS
+            // (WebMercatorQuad = standard XYZ). The old per-tile WMS endpoint
+            // is kept only for external callers of window.UK_LIDAR_WMS_URL.
             var UK_LIDAR_WMS_URL =
                 'https://environment.data.gov.uk/geoservices/datasets/13787b9a-26a4-4775-8523-806d13af58fc/wms';
+            var UK_LIDAR_WMTS_HOST =
+                (window.EaLidarWmts && window.EaLidarWmts.CONFIG.HOST) || 'https://environment.data.gov.uk';
+            var UK_LIDAR_DEFAULT_MODE =
+                (window.EaLidarWmts && window.EaLidarWmts.CONFIG.DEFAULT_MODE) || 'hillshade';
             var FRANCE_LIDAR_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
+            // Denmark now streams Danmarks Højdemodel from Dataforsyningen
+            // through the site's own token-adding proxy (see
+            // js/dataforsyningen-dhm-layer.js). The old Datafordeler WMS
+            // constant stays for external callers only.
             var DENMARK_LIDAR_WMS_URL = 'https://wms.datafordeler.dk/DHMNedboer/dhm/1.0.0/WMS';
+            var DENMARK_LIDAR_MODES = (window.DataforsyningenDHM && window.DataforsyningenDHM.MODES) || {};
+            var DENMARK_LIDAR_DEFAULT_MODE =
+                (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.DEFAULT_MODE) || 'terrain';
 
-            // Norway publishes one WMS catalog rather than one service per
-            // project. These two entries make the control useful immediately;
-            // the complete catalog is requested from GetCapabilities below and
-            // replaces/extends this fallback list when the service permits CORS.
-            var NORWAY_LIDAR_REGIONS = [
-                { name: 'Vestfold 10pkt 2025', year: '2025', wmsLayer: 'Vestfold 10pkt 2025:multiskyggerelieff' },
-                { name: 'Vest-Telemark Søndre 10pkt 2025', year: '2025', wmsLayer: 'Vest-Telemark Søndre 10pkt 2025:multiskyggerelieff' }
-            ];
-            var NORWAY_LIDAR_CATALOG_URL = NORWAY_LIDAR_WMS_URL +
-                '?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0';
+            // The Norway control now switches between whole-country products
+            // (bare terrain, surface, local relief) instead of 1,356 survey
+            // projects, so there is no catalogue request to make at start-up.
+            var NORWAY_LIDAR_MODES = (window.Hoydedata && window.Hoydedata.MODES) || {};
+            var NORWAY_LIDAR_DEFAULT_MODE =
+                (window.Hoydedata && window.Hoydedata.CONFIG.DEFAULT_MODE) || 'dtm';
 
-            window.NORWAY_LIDAR_WMS_URL = NORWAY_LIDAR_WMS_URL;
-            window.NORWAY_LIDAR_REGIONS = NORWAY_LIDAR_REGIONS;
+            window.NORWAY_LIDAR_IMAGE_SERVER_HOST = NORWAY_LIDAR_IMAGE_SERVER_HOST;
+            window.NORWAY_LIDAR_MODES = NORWAY_LIDAR_MODES;
             window.NETHERLANDS_LIDAR_IMAGE_SERVER_URL = NETHERLANDS_LIDAR_IMAGE_SERVER_URL;
+            window.NETHERLANDS_LIDAR_MODES = NETHERLANDS_LIDAR_MODES;
             window.POLAND_LIDAR_KRON86_WMS_URL = POLAND_LIDAR_KRON86_WMS_URL;
             window.POLAND_LIDAR_EVRF2007_WMS_URL = POLAND_LIDAR_EVRF2007_WMS_URL;
             window.POLAND_LIDAR_KRON86_WFS_URL = POLAND_LIDAR_KRON86_WFS_URL;
             window.POLAND_LIDAR_EVRF2007_WFS_URL = POLAND_LIDAR_EVRF2007_WFS_URL;
             window.SPAIN_LIDAR_WMS_URL = SPAIN_LIDAR_WMS_URL;
+            window.SPAIN_LIDAR_WMTS_URL = SPAIN_LIDAR_WMTS_URL;
+            window.SPAIN_LIDAR_MODES = SPAIN_LIDAR_MODES;
             window.SWITZERLAND_LIDAR_WMS_URL = SWITZERLAND_LIDAR_WMS_URL;
+            window.SWITZERLAND_LIDAR_WMTS_HOST = SWITZERLAND_LIDAR_WMTS_HOST;
+            window.SWITZERLAND_LIDAR_MODES = SWITZERLAND_LIDAR_MODES;
             window.UK_LIDAR_WMS_URL = UK_LIDAR_WMS_URL;
+            window.UK_LIDAR_WMTS_HOST = UK_LIDAR_WMTS_HOST;
+            window.UK_LIDAR_MODES = UK_LIDAR_MODES;
             window.FRANCE_LIDAR_WMS_URL = FRANCE_LIDAR_WMS_URL;
             window.DENMARK_LIDAR_WMS_URL = DENMARK_LIDAR_WMS_URL;
+            window.DENMARK_LIDAR_MODES = DENMARK_LIDAR_MODES;
 
             // The WMS services use different layer catalogues, so the select
             // controls below swap a complete layer instead of stacking several
             // incompatible rasters on top of each other.
-            var POLAND_LIDAR_MODES = {
-                kron86: {
-                    label: 'PL-KRON86-NH · 2011–2019',
-                    url: POLAND_LIDAR_KRON86_WMS_URL,
-                    indexUrl: POLAND_LIDAR_KRON86_WFS_URL,
-                    layers: 'gugik:SkorowidzDanychPomiarowychLIDAR2011,gugik:SkorowidzDanychPomiarowychLIDAR2012,gugik:SkorowidzDanychPomiarowychLIDAR2013,gugik:SkorowidzDanychPomiarowychLIDAR2014,gugik:SkorowidzDanychPomiarowychLIDAR2015,gugik:SkorowidzDanychPomiarowychLIDAR2016,gugik:SkorowidzDanychPomiarowychLIDAR2017,gugik:SkorowidzDanychPomiarowychLIDAR2018,gugik:SkorowidzDanychPomiarowychLIDAR2019'
-                },
-                evrf2007: {
-                    label: 'PL-EVRF2007-NH · 2018–2026',
-                    url: POLAND_LIDAR_EVRF2007_WMS_URL,
-                    indexUrl: POLAND_LIDAR_EVRF2007_WFS_URL,
-                    layers: 'gugik:SkorowidzDanychPomiarowychLIDAR2018,gugik:SkorowidzDanychPomiarowychLIDAR2019,gugik:SkorowidzDanychPomiarowychLIDAR2020,gugik:SkorowidzDanychPomiarowychLIDAR2021,gugik:SkorowidzDanychPomiarowychLIDAR2022,gugik:SkorowidzDanychPomiarowychLIDAR2023,gugik:SkorowidzDanychPomiarowychLIDAR2024,gugik:SkorowidzDanychPomiarowychLIDAR2025,gugik:SkorowidzDanychPomiarowychLIDAR2026'
-                }
-            };
+            var POLAND_LIDAR_MODES = (window.GeoportalNMT && window.GeoportalNMT.MODES) || {};
+            var POLAND_LIDAR_DEFAULT_MODE =
+                (window.GeoportalNMT && window.GeoportalNMT.CONFIG.DEFAULT_MODE) || 'cieniowanie';
+            window.POLAND_NMT_WMS_BASE = POLAND_NMT_WMS_BASE;
+            window.POLAND_LIDAR_MODES = POLAND_LIDAR_MODES;
+
             var FRANCE_LIDAR_MODES = {
                 terrain: { label: 'MNT · Terrain', layers: 'IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' },
                 surface: { label: 'MNS · Surface', layers: 'IGNF_LIDAR-HD_MNS_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' },
                 height: { label: 'MNH · Height', layers: 'IGNF_LIDAR-HD_MNH_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' }
             };
-            var UK_LIDAR_MODES = {
-                dtm: { label: 'DTM 1 m', layers: 'Lidar_Composite_DTM_1m' },
-                elevation: { label: 'Elevation DTM 1 m', layers: 'Lidar_Composite_Elevation_DTM_1m', styles: 'elevation' },
-                hillshade: { label: 'Hillshade DTM 1 m', layers: 'Lidar_Composite_Hillshade_DTM_1m', styles: 'hillshade' }
-            };
+            // England: layer identifiers, zoom caps and extents all come from
+            // the live GetCapabilities (see js/ea-lidar-wmts-layer.js).
+            var UK_LIDAR_MODES = (window.EaLidarWmts && window.EaLidarWmts.MODES) || {};
 
             function _lidarWmsOptions(extra) {
                 var options = extra || {};
@@ -5652,100 +5710,96 @@
                 return L.tileLayer.wms(url, options);
             }
 
-            function createNorwayLidarLayer(region) {
-                if (!region || !region.wmsLayer) return null;
-                return L.tileLayer.wms(NORWAY_LIDAR_WMS_URL, _lidarWmsOptions({
-                    layers: region.wmsLayer,
-                    format: 'image/png',
-                    transparent: true,
-                    version: '1.3.0',
-                    opacity: 0.75,
-                    attribution: '© Kartverket'
-                }));
+            // Norway · hoydedata.no ImageServer (js/hoydedata-layer.js).
+            // One exportImage request per Leaflet tile, EPSG:3857 in and out,
+            // reprojected on the fly by the server from its native EPSG:25833.
+            function createNorwayLidarLayer(cfg) {
+                if (!window.Hoydedata) {
+                    console.warn('[DetectLab] hoydedata-layer.js is not loaded — Norway LiDAR unavailable');
+                    return null;
+                }
+                var modeKey = (cfg && cfg.mode) || NORWAY_LIDAR_DEFAULT_MODE;
+                return window.Hoydedata.createLayer({
+                    mode: modeKey,
+                    pane: 'pane_lidar',
+                    opacity: (cfg && cfg.opacity !== undefined)
+                        ? cfg.opacity
+                        : window.Hoydedata.CONFIG.OPACITY,
+                    keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                        ? window.DLTilePerf.config.keepBuffer
+                        : window.Hoydedata.CONFIG.KEEP_BUFFER
+                });
             }
             window.createNorwayLidarLayer = createNorwayLidarLayer;
 
-            function _norwayRegionFromLayerName(layerName) {
-                var raw = String(layerName || '').trim();
-                if (!raw || raw.indexOf(':multiskyggerelieff') === -1) return null;
-                var name = raw.replace(/:multiskyggerelieff$/, '');
-                var yearMatch = name.match(/(19|20)\d{2}$/);
-                return { name: name, year: yearMatch ? yearMatch[0] : '', wmsLayer: raw };
-            }
-
-            function _populateNorwayRegionSelect() {
+            function _populateNorwayModeSelect() {
                 var select = document.getElementById('norwayLidarRegionSelect');
-                if (!select) return;
+                if (!select || !window.Hoydedata) return;
                 var current = select.value;
                 select.innerHTML = '';
-                NORWAY_LIDAR_REGIONS.forEach(function (region) {
+                window.Hoydedata.modeKeys().forEach(function (key) {
                     var option = document.createElement('option');
-                    option.value = region.wmsLayer;
-                    option.textContent = region.name + (region.year ? ' (' + region.year + ')' : '');
+                    option.value = key;
+                    option.textContent = NORWAY_LIDAR_MODES[key].label;
                     select.appendChild(option);
                 });
-                if (current && NORWAY_LIDAR_REGIONS.some(function (r) { return r.wmsLayer === current; })) {
-                    select.value = current;
-                }
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.noLidar;
+                select.value = (current && NORWAY_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || NORWAY_LIDAR_DEFAULT_MODE);
             }
 
-            function _loadNorwayLidarCatalog() {
-                return fetch(NORWAY_LIDAR_CATALOG_URL).then(function (response) {
-                    if (!response.ok) throw new Error('Norway LiDAR catalog HTTP ' + response.status);
-                    return response.text();
-                }).then(function (xmlText) {
-                    var xml = new DOMParser().parseFromString(xmlText, 'text/xml');
-                    var names = xml.getElementsByTagNameNS
-                        ? xml.getElementsByTagNameNS('*', 'Name')
-                        : xml.getElementsByTagName('Name');
-                    var regions = [], seen = {};
-                    for (var i = 0; i < names.length; i++) {
-                        var region = _norwayRegionFromLayerName(names[i].textContent);
-                        if (region && !seen[region.wmsLayer]) {
-                            seen[region.wmsLayer] = true;
-                            regions.push(region);
-                        }
-                    }
-                    if (!regions.length) throw new Error('Norway LiDAR catalog has no hillshade layers');
-                    regions.sort(function (a, b) { return a.name.localeCompare(b.name, 'nb'); });
-                    NORWAY_LIDAR_REGIONS = regions;
-                    window.NORWAY_LIDAR_REGIONS = NORWAY_LIDAR_REGIONS;
-                    _populateNorwayRegionSelect();
-                    var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.noLidar;
-                    if (cfg && !NORWAY_LIDAR_REGIONS.some(function (r) { return r.wmsLayer === cfg.region.wmsLayer; })) {
-                        cfg.region = NORWAY_LIDAR_REGIONS[0];
-                        var select = document.getElementById('norwayLidarRegionSelect');
-                        if (select) select.value = cfg.region.wmsLayer;
-                    }
-                    return regions;
-                }).catch(function (error) {
-                    // The fallback entries still provide a working control when
-                    // the public capabilities document blocks browser CORS.
-                    console.warn('[DetectLab] Norway LiDAR catalog unavailable; using fallback regions', error);
-                    _populateNorwayRegionSelect();
-                    return NORWAY_LIDAR_REGIONS;
-                });
-            }
-
-            function _selectedRegion(list, value) {
-                return list.filter(function (region) { return region.wmsLayer === value; })[0] || list[0];
-            }
-
-            window.setNorwayLidarRegion = function (wmsLayer) {
+            // DTM ⇄ DSM ⇄ local relief. The layer object is reused: only the
+            // service name inside the exportImage URL changes, so Leaflet just
+            // redraws the tiles that are already on screen.
+            window.setNorwayLidarMode = function (modeKey) {
                 var cfg = LIDAR_SUB_LAYERS.noLidar;
-                if (!cfg) return;
-                var selected = _selectedRegion(NORWAY_LIDAR_REGIONS, wmsLayer);
-                if (!selected) return;
-                cfg.region = selected;
-                if (cfg.leafletLayer) {
-                    if (_lidarGroup.hasLayer(cfg.leafletLayer)) _lidarGroup.removeLayer(cfg.leafletLayer);
-                    cfg.leafletLayer = createNorwayLidarLayer(selected);
-                    if (cfg.leafletLayer) {
-                        cfg.leafletLayer.setOpacity(cfg.opacity);
-                        if (_lidarVisible && cfg.enabled) _lidarGroup.addLayer(cfg.leafletLayer);
-                    }
+                if (!cfg || !NORWAY_LIDAR_MODES[modeKey]) return;
+                cfg.mode = modeKey;
+                if (cfg.leafletLayer && cfg.leafletLayer.setMode) {
+                    cfg.leafletLayer.setMode(modeKey);
                 }
             };
+            // Backwards-compatible alias (the control used to pick a project).
+            window.setNorwayLidarRegion = window.setNorwayLidarMode;
+
+            // Click → "Elevation: N m", straight from the ImageServer identify
+            // operation. Verified CORS-safe: hoydedata.no reflects the request
+            // Origin, so a plain fetch() works with no proxy. The handler is
+            // attached only while the Norway layer is actually on the map, and
+            // ignores the click that ends a pan.
+            var _norwayIdentifyPopup = null;
+            function _norwayIdentifyClick(e) {
+                var cfg = LIDAR_SUB_LAYERS.noLidar;
+                if (!cfg || !window.Hoydedata || !window.Hoydedata.CONFIG.IDENTIFY.ENABLED) return;
+                if (!cfg.leafletLayer || !_lidarGroup.hasLayer(cfg.leafletLayer)) return;
+                if (typeof map._draggableMoved === 'function' && map._draggableMoved(map)) return;
+                if (map.getZoom() < window.Hoydedata.CONFIG.MIN_ZOOM) return;
+                var bounds = cfg.leafletLayer.options.bounds;
+                if (bounds && !bounds.contains(e.latlng)) return;
+
+                _norwayIdentifyPopup = L.popup({ className: 'hoydedata-identify-popup' })
+                    .setLatLng(e.latlng)
+                    .setContent('…')
+                    .openOn(map);
+                var popup = _norwayIdentifyPopup;
+                window.Hoydedata.identify(e.latlng, cfg.mode).then(function (result) {
+                    if (popup !== _norwayIdentifyPopup) return;
+                    popup.setContent(window.Hoydedata.formatIdentify(result));
+                }).catch(function () {
+                    if (popup !== _norwayIdentifyPopup) return;
+                    popup.setContent('Elevation unavailable');
+                });
+            }
+            function _setNorwayIdentifyEnabled(on) {
+                map.off('click', _norwayIdentifyClick);
+                if (on) map.on('click', _norwayIdentifyClick);
+                if (!on && _norwayIdentifyPopup) {
+                    map.closePopup(_norwayIdentifyPopup);
+                    _norwayIdentifyPopup = null;
+                }
+            }
+            window._setNorwayIdentifyEnabled = _setNorwayIdentifyEnabled;
 
             // Sub-layer definitions
             var LIDAR_SUB_LAYERS = {
@@ -5852,45 +5906,77 @@
                 // remote layer is not constructed until its opacity is raised
                 // or its country switch is turned on.
                 nlAhn: {
-                    label: 'Netherlands · AHN6 DSM 0.5 m', enabled: false, opacity: 0.8,
-                    type: 'arcgis_image_server', url: NETHERLANDS_LIDAR_IMAGE_SERVER_URL,
-                    // Hillshade keeps the 0.5 m DSM legible over the basemap;
-                    // the source remains the AHN6 DSM ImageServer itself.
-                    renderingRule: 'AHN - Hillshade (Multidirectionaal)',
-                    bounds: [[50.70, 3.20], [53.60, 7.30]],
-                    maxNativeZoom: 18, minZoom: 7,
-                    crossOrigin: 'anonymous',
-                    attribution: 'Source: AHN6 DSM 50 cm — Rijkswaterstaat / PDOK. Licence: CC0 1.0 Universal.', leafletLayer: null
+                    // AHN terrain relief through js/ahn-layer.js: one
+                    // /exportImage request per Leaflet tile, AHN4 by default
+                    // (the only campaign with complete national coverage).
+                    label: 'Netherlands · AHN relief (0.5 m)', enabled: false,
+                    opacity: (window.AhnLidar && window.AhnLidar.CONFIG.OPACITY) || 0.8,
+                    factory: 'netherlands', mode: NETHERLANDS_LIDAR_DEFAULT_MODE,
+                    attribution: (window.AhnLidar && window.AhnLidar.CONFIG.ATTRIBUTION) ||
+                        'AHN hillshade © AHN / Esri Nederland (CC BY 4.0)',
+                    leafletLayer: null
                 },
                 noLidar: {
-                    label: 'Norway · Kartverket', enabled: false, opacity: 0.75,
-                    factory: 'norway', region: NORWAY_LIDAR_REGIONS[0], leafletLayer: null
+                    // Whole-country Kartverket LiDAR via hoydedata.no. Zoom
+                    // window, opacity and service names come from the CONFIG
+                    // block of js/hoydedata-layer.js.
+                    label: 'Norway · Kartverket', enabled: false,
+                    opacity: (window.Hoydedata && window.Hoydedata.CONFIG.OPACITY) || 0.7,
+                    factory: 'norway', mode: NORWAY_LIDAR_DEFAULT_MODE,
+                    attribution: (window.Hoydedata && window.Hoydedata.CONFIG.ATTRIBUTION) ||
+                        'Hillshade © Kartverket (CC BY 4.0)',
+                    leafletLayer: null
                 },
                 plLidar: {
-                    label: 'Poland · LIDAR measurements', enabled: false, opacity: 0.8,
-                    factory: 'poland', mode: 'kron86', attribution: '© GUGiK — Polish national LIDAR measurements (free data).', leafletLayer: null
+                    // Terrain shading (ISOK/NMT 1 m), not the survey index sheets.
+                    label: 'Poland · GUGiK NMT shading', enabled: false,
+                    opacity: (window.GeoportalNMT && window.GeoportalNMT.CONFIG.OPACITY) || 0.7,
+                    factory: 'poland', mode: POLAND_LIDAR_DEFAULT_MODE,
+                    attribution: (window.GeoportalNMT && window.GeoportalNMT.CONFIG.ATTRIBUTION) ||
+                        'Cieniowanie: © GUGiK / Geoportal.gov.pl (dane ISOK/NMT)',
+                    leafletLayer: null
                 },
                 esLidar: {
-                    label: 'Spain · LiDAR-derived DTM', enabled: false, opacity: 0.8,
-                    type: 'wms', url: SPAIN_LIDAR_WMS_URL, wmsLayers: 'EL.ElevationGridCoverage', styles: 'Elevaciones',
-                    attribution: '© IGN España — PNOA LiDAR', leafletLayer: null
+                    // IGN/IDEE WMTS cache of the PNOA-LiDAR MDT. The
+                    // GoogleMapsCompatible matrix set is the standard XYZ grid,
+                    // so this is a plain tile layer — see js/ign-mdt-layer.js.
+                    label: 'Spain · IGN relief (PNOA-LiDAR MDT)', enabled: false,
+                    opacity: (window.IgnMdt && window.IgnMdt.CONFIG.OPACITY) || 0.7,
+                    factory: 'spain', mode: SPAIN_LIDAR_DEFAULT_MODE,
+                    attribution: (window.IgnMdt && window.IgnMdt.CONFIG.ATTRIBUTION) ||
+                        'Relieve © Instituto Geográfico Nacional de España (CC BY 4.0)',
+                    leafletLayer: null
                 },
                 chLidar: {
-                    label: 'Switzerland · swissSURFACE3D', enabled: false, opacity: 0.8,
-                    type: 'wms', url: SWITZERLAND_LIDAR_WMS_URL, wmsLayers: 'ch.swisstopo.swisssurface3d.metadata',
-                    attribution: '© swisstopo — swissSURFACE3D LiDAR', leafletLayer: null
+                    // swisstopo WMTS relief of swissALTI3D (LiDAR DTM). The
+                    // "3857" matrix set is the standard XYZ grid, so this is a
+                    // plain tile layer — see js/swisstopo-relief-layer.js.
+                    label: 'Switzerland · swisstopo relief (swissALTI3D)', enabled: false,
+                    opacity: (window.SwisstopoRelief && window.SwisstopoRelief.CONFIG.OPACITY) || 0.7,
+                    factory: 'switzerland', mode: SWITZERLAND_LIDAR_DEFAULT_MODE,
+                    attribution: (window.SwisstopoRelief && window.SwisstopoRelief.CONFIG.ATTRIBUTION) ||
+                        '© swisstopo',
+                    leafletLayer: null
                 },
                 ukLidar: {
-                    label: 'United Kingdom · Environment Agency', enabled: false, opacity: 0.8,
-                    factory: 'uk', mode: 'dtm', attribution: '© Environment Agency / Defra — LiDAR Composite DTM.', leafletLayer: null
+                    label: 'England · EA LIDAR Composite hillshade (DTM 1 m)', enabled: false,
+                    opacity: (window.EaLidarWmts && window.EaLidarWmts.CONFIG.OPACITY) || 0.7,
+                    factory: 'uk', mode: UK_LIDAR_DEFAULT_MODE,
+                    attribution: (window.EaLidarWmts && window.EaLidarWmts.CONFIG.ATTRIBUTION) ||
+                        '© Environment Agency copyright and/or database right 2022',
+                    leafletLayer: null
                 },
                 frLidar: {
                     label: 'France · LiDAR HD', enabled: false, opacity: 0.8,
                     factory: 'france', mode: 'terrain', attribution: '© IGN France — LiDAR HD.', leafletLayer: null
                 },
                 dkLidar: {
-                    label: 'Denmark · DHM terrain hillshade', enabled: false, opacity: 0.8,
-                    factory: 'denmark', attribution: '© Datafordeler / Danish Geodata Agency — Danmarks Højdemodel.', leafletLayer: null
+                    label: 'Denmark · DHM hillshade (Dataforsyningen)', enabled: false,
+                    opacity: (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.OPACITY) || 0.6,
+                    factory: 'denmark', mode: DENMARK_LIDAR_DEFAULT_MODE,
+                    attribution: (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.ATTRIBUTION) ||
+                        'Indeholder data fra Klimadatastyrelsen, Danmarks Højdemodel (CC BY 4.0)',
+                    leafletLayer: null
                 }
             };
 
@@ -5904,18 +5990,93 @@
             function _createSelectableEuropeanLidarLayer(cfg) {
                 var mode;
                 if (cfg.factory === 'poland') {
-                    mode = POLAND_LIDAR_MODES[cfg.mode] || POLAND_LIDAR_MODES.kron86;
-                    return _createFreeLidarWmsLayer(mode.url, mode.layers, {
-                        opacity: cfg.opacity,
-                        attribution: cfg.attribution
+                    // GUGiK ISOK/NMT shading — one WMS GetMap per Leaflet tile
+                    // in EPSG:3857, no token, bounded to Poland.
+                    if (!window.GeoportalNMT) {
+                        console.warn('[DetectLab] geoportal-nmt-layer.js is not loaded — Poland LiDAR unavailable');
+                        return null;
+                    }
+                    return window.GeoportalNMT.createLayer({
+                        mode: cfg.mode || POLAND_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.GeoportalNMT.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.GeoportalNMT.CONFIG.KEEP_BUFFER
+                    });
+                }
+                if (cfg.factory === 'netherlands') {
+                    // AHN ImageServers, no key, clipped to the Netherlands.
+                    if (!window.AhnLidar) {
+                        console.warn('[DetectLab] ahn-layer.js is not loaded — Netherlands LiDAR unavailable');
+                        return null;
+                    }
+                    return window.AhnLidar.createLayer({
+                        mode: cfg.mode || NETHERLANDS_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.AhnLidar.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.AhnLidar.CONFIG.KEEP_BUFFER
+                    });
+                }
+                if (cfg.factory === 'switzerland') {
+                    // swisstopo WMTS, no key, clipped to the published extent
+                    // and capped at each product's own maximum zoom.
+                    if (!window.SwisstopoRelief) {
+                        console.warn('[DetectLab] swisstopo-relief-layer.js is not loaded — Switzerland LiDAR unavailable');
+                        return null;
+                    }
+                    return window.SwisstopoRelief.createLayer({
+                        mode: cfg.mode || SWITZERLAND_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.SwisstopoRelief.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.SwisstopoRelief.CONFIG.KEEP_BUFFER
+                    });
+                }
+                if (cfg.factory === 'spain') {
+                    // IGN/IDEE WMTS (no key, no token), clipped to Spain's
+                    // coverage and capped at the service's real maximum zoom.
+                    if (!window.IgnMdt) {
+                        console.warn('[DetectLab] ign-mdt-layer.js is not loaded — Spain LiDAR unavailable');
+                        return null;
+                    }
+                    return window.IgnMdt.createLayer({
+                        mode: cfg.mode || SPAIN_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.IgnMdt.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.IgnMdt.CONFIG.KEEP_BUFFER
                     });
                 }
                 if (cfg.factory === 'uk') {
-                    mode = UK_LIDAR_MODES[cfg.mode] || UK_LIDAR_MODES.dtm;
-                    return _createFreeLidarWmsLayer(UK_LIDAR_WMS_URL, mode.layers, {
-                        opacity: cfg.opacity,
-                        styles: mode.styles,
-                        attribution: cfg.attribution
+                    // Environment Agency WMTS (no key, no token), clipped to
+                    // the published England extent and capped at the service's
+                    // real maximum zoom.
+                    if (!window.EaLidarWmts) {
+                        console.warn('[DetectLab] ea-lidar-wmts-layer.js is not loaded — UK LiDAR unavailable');
+                        return null;
+                    }
+                    return window.EaLidarWmts.createLayer({
+                        mode: cfg.mode || UK_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.EaLidarWmts.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.EaLidarWmts.CONFIG.KEEP_BUFFER
                     });
                 }
                 if (cfg.factory === 'france') {
@@ -5926,17 +6087,27 @@
                     });
                 }
                 if (cfg.factory === 'denmark') {
-                    // Datafordeler requires the key as a query parameter. It is
-                    // intentionally supplied at runtime rather than committed
-                    // to the public repository. Deployments can set it before
-                    // map initialisation with window.DETECTLAB_DK_API_KEY.
-                    var apiKey = window.DETECTLAB_DK_API_KEY || '';
-                    var separator = DENMARK_LIDAR_WMS_URL.indexOf('?') === -1 ? '?' : '&';
-                    return _createFreeLidarWmsLayer(
-                        DENMARK_LIDAR_WMS_URL + separator + 'apikey=' + encodeURIComponent(apiKey),
-                        'dhm_terraen_skyggekort',
-                        { opacity: cfg.opacity, attribution: cfg.attribution }
-                    );
+                    // Dataforsyningen WMS in EPSG:3857, clipped to Denmark.
+                    // The token is NEVER in this file: tiles go through the
+                    // site's own /api/geo/dk-dhm proxy, which adds it
+                    // server-side (backend/src/routes/geoProxy.js). A static
+                    // deployment with no backend can set
+                    // window.DETECTLAB_DK_TOKEN instead — insecure, see
+                    // DENMARK_LIDAR_DATAFORSYNINGEN.md.
+                    if (!window.DataforsyningenDHM) {
+                        console.warn('[DetectLab] dataforsyningen-dhm-layer.js is not loaded — Denmark LiDAR unavailable');
+                        return null;
+                    }
+                    return window.DataforsyningenDHM.createLayer({
+                        mode: cfg.mode || DENMARK_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.DataforsyningenDHM.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.DataforsyningenDHM.CONFIG.KEEP_BUFFER
+                    });
                 }
                 return null;
             }
@@ -6029,7 +6200,11 @@
                             if (imageCfg.renderingRule) {
                                 params.renderingRule = JSON.stringify({ rasterFunction: imageCfg.renderingRule });
                             }
-                            return imageServerUrl + L.Util.getParamString(params, imageServerUrl);
+                            // The /exportImage operation is mandatory: the
+                            // ImageServer *root* with f=image answers 200 with
+                            // text/html, which an <img> renders as nothing.
+                            var operationUrl = imageServerUrl.replace(/\/+$/, '') + '/exportImage';
+                            return operationUrl + L.Util.getParamString(params, operationUrl);
                         },
 
                         setOpacity: function (opacity) {
@@ -6057,7 +6232,7 @@
                 }
 
                 if (cfg.factory === 'norway') {
-                    return createNorwayLidarLayer(cfg.region);
+                    return createNorwayLidarLayer(cfg);
                 }
                 if (cfg.factory) {
                     return _createSelectableEuropeanLidarLayer(cfg);
@@ -6182,6 +6357,10 @@
                 if (key === 'dj917' && window._updateDj917ZoomHint) window._updateDj917ZoomHint();
                 if (key === 'gj917' && window._updateGj917ZoomHint) window._updateGj917ZoomHint();
                 if (key === 'mh917' && window._updateMh917ZoomHint) window._updateMh917ZoomHint();
+                // Click-to-read-elevation only exists while Norway is on map.
+                if (key === 'noLidar' && window._setNorwayIdentifyEnabled) {
+                    window._setNorwayIdentifyEnabled(!!on && !!cfg.leafletLayer);
+                }
             };
 
             // ── European country controls ─────────────────────────────────
@@ -6239,23 +6418,191 @@
             }
 
             window.setPolandLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.plLidar;
+                // Cieniowanie ⇄ Hipsometria only changes the service name in
+                // the GetMap URL, so redraw instead of rebuilding the layer.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && POLAND_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
                 _replaceSelectableInternationalLayer('plLidar', mode);
             };
+
+            function _populatePolandModeSelect() {
+                var select = document.getElementById('polandLidarModeSelect');
+                if (!select || !window.GeoportalNMT) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.GeoportalNMT.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = POLAND_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.plLidar;
+                select.value = (current && POLAND_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || POLAND_LIDAR_DEFAULT_MODE);
+            }
+            _populatePolandModeSelect();
+
+            window.setSpainLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.esLidar;
+                // Relieve ⇄ Elevación only swaps the layer name in the WMTS
+                // URL, so retarget the existing tile layer instead of rebuilding.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && SPAIN_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
+                _replaceSelectableInternationalLayer('esLidar', mode);
+            };
+
+            function _populateSpainModeSelect() {
+                var select = document.getElementById('spainLidarModeSelect');
+                if (!select || !window.IgnMdt) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.IgnMdt.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = SPAIN_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.esLidar;
+                select.value = (current && SPAIN_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || SPAIN_LIDAR_DEFAULT_MODE);
+            }
+            _populateSpainModeSelect();
+
+            window.setNetherlandsLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.nlAhn;
+                // Only the service name and rendering rule change, so redraw
+                // the existing grid layer instead of rebuilding it.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && NETHERLANDS_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
+                _replaceSelectableInternationalLayer('nlAhn', mode);
+            };
+
+            function _populateNetherlandsModeSelect() {
+                var select = document.getElementById('netherlandsLidarModeSelect');
+                if (!select || !window.AhnLidar) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.AhnLidar.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = NETHERLANDS_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.nlAhn;
+                select.value = (current && NETHERLANDS_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || NETHERLANDS_LIDAR_DEFAULT_MODE);
+            }
+            _populateNetherlandsModeSelect();
+
+            window.setSwitzerlandLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.chLidar;
+                // Only the layer name (and its maxNativeZoom) changes, so
+                // retarget the existing tile layer instead of rebuilding it.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && SWITZERLAND_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
+                _replaceSelectableInternationalLayer('chLidar', mode);
+            };
+
+            function _populateSwitzerlandModeSelect() {
+                var select = document.getElementById('switzerlandLidarModeSelect');
+                if (!select || !window.SwisstopoRelief) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.SwisstopoRelief.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = SWITZERLAND_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.chLidar;
+                select.value = (current && SWITZERLAND_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || SWITZERLAND_LIDAR_DEFAULT_MODE);
+            }
+            _populateSwitzerlandModeSelect();
             window.setUkLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.ukLidar;
+                // Only the layer name (plus its extent and zoom cap) changes,
+                // so retarget the existing tile layer instead of rebuilding it.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && UK_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
                 _replaceSelectableInternationalLayer('ukLidar', mode);
             };
+
+            window.setDenmarkLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.dkLidar;
+                // Only the WMS layer name changes, so redraw in place.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && DENMARK_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
+                _replaceSelectableInternationalLayer('dkLidar', mode);
+            };
+
+            function _populateDenmarkModeSelect() {
+                var select = document.getElementById('denmarkLidarModeSelect');
+                if (!select || !window.DataforsyningenDHM) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.DataforsyningenDHM.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = DENMARK_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.dkLidar;
+                select.value = (current && DENMARK_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || DENMARK_LIDAR_DEFAULT_MODE);
+            }
+            _populateDenmarkModeSelect();
+
+            function _populateUkModeSelect() {
+                var select = document.getElementById('ukLidarModeSelect');
+                if (!select || !window.EaLidarWmts) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.EaLidarWmts.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = UK_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.ukLidar;
+                select.value = (current && UK_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || UK_LIDAR_DEFAULT_MODE);
+            }
+            _populateUkModeSelect();
             window.setFranceLidarMode = function (mode) {
                 _replaceSelectableInternationalLayer('frLidar', mode);
             };
 
-            // Populate the Norway selector immediately, then ask Kartverket for
-            // the full project catalog (the service currently contains roughly
-            // 1,356 project regions and can change over time).
-            _populateNorwayRegionSelect();
-            _loadNorwayLidarCatalog();
+            // Norway: three whole-country products, no catalogue request.
+            _populateNorwayModeSelect();
             var norwaySelect = document.getElementById('norwayLidarRegionSelect');
             if (norwaySelect) norwaySelect.addEventListener('change', function () {
-                window.setNorwayLidarRegion(this.value);
+                window.setNorwayLidarMode(this.value);
             });
 
             // ── Public: expand/collapse sub-layer panel ──
@@ -11453,11 +11800,14 @@
                 },
 
                 satellite60s: {
-                    // CORONA imagery (CAST GeoServer) — covers Romania on .ro, and the
-                    // entire European / Eastern Mediterranean corridor on .eu.
-                    // CORONA has footprints across the Central/Eastern European
-                    // corridor, not only inside Romania.
-                    bounds: [[34.0, 15.0], [58.0, 38.0]],
+                    // CORONA imagery (CAST GeoServer) — the catalogue is now
+                    // loaded for the WHOLE of Europe (js/corona-wms-layer.js,
+                    // CoronaAtlas.EUROPE_BBOX), so the "where is this layer"
+                    // rectangle spans Europe too. The exact strips covered by
+                    // the 1960s passes are drawn by the coverage outlines
+                    // (js/corona-coverage-layer.js); this rectangle only marks
+                    // the region below the zoom at which tiles start.
+                    bounds: [[34.0, -25.0], [72.0, 60.0]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer',
                     coverageMinZoom: 8
@@ -11693,11 +12043,11 @@
                     nlAhn: [[50.70, 3.20], [53.60, 7.30]],
                     noLidar: [[57.90, 4.00], [71.30, 31.50]],
                     plLidar: [[49.00, 14.00], [54.90, 24.20]],
-                    esLidar: [[27.50, -18.50], [43.90, 4.50]],
-                    chLidar: [[45.80, 5.90], [47.90, 10.60]],
-                    ukLidar: [[49.70, -8.70], [60.90, 2.10]],
+                    esLidar: [[27.63, -18.22], [43.95, 4.78]],
+                    chLidar: [[45.398181, 5.140242], [48.230651, 11.47757]],
+                    ukLidar: [[49.850605, -7.104776], [55.877087, 2.084282]],
                     frLidar: [[41.30, -5.50], [51.20, 9.70]],
-                    dkLidar: [[54.40, 7.90], [57.80, 15.70]]
+                    dkLidar: [[54.4265, 7.99125], [57.7781, 15.5995]]
                 };
 
                 // Central config: each leaf layer with its bounds and row getter
@@ -12912,107 +13262,75 @@
                 };
             })();
 
-            // ── SATELIT 60s (CORONA — replicating corona.cast.uark.edu/atlas) ──
-            // The original Corona Atlas (https://corona.cast.uark.edu/atlas)
-            // serves the declassified 1960s CORONA imagery as GeoWebCache
-            // WMS-C tiles:
+            // ── SATELIT 60s (CORONA) — the Corona Atlas logic, Europe-wide ──
+            // Port of how https://corona.cast.uark.edu/atlas fetches its tiles
+            // (read from the atlas's own source: assets/libraries/custom/
+            // maputils.js → "CORONA RASTER MANAGER/FUNCTIONS"), applied to the
+            // whole of Europe instead of a hand-written Romania list:
             //
-            //   endpoint : https://geoserve.cast.uark.edu/geoserver/gwc/service/wms
-            //   request  : WMS 1.1.1 GetMap · tiled=true · 256×256 ·
-            //              TRANSPARENT PNG · SRS=EPSG:900913 · BBOX in Web
-            //              Mercator metres aligned to the standard tile grid ·
-            //              ONE Corona layer per request
-            //              (LAYERS=corona:<pass> / corona:<frame>).
+            //   1. CATALOGUE — the atlas calls GET /corona/get_raster_names and
+            //      receives every CORONA product the CAST GeoServer publishes:
+            //      a pass mosaic per orbit ("1104-2155Fore") plus the individual
+            //      frames inside it ("1104-2155df004"), each with its WGS84
+            //      footprint polygon. DetectLab loads the same catalogue through
+            //      js/corona-wms-layer.js (static snapshot → /api/corona/rasters
+            //      proxy → built-in fallback; the CAST endpoint itself sends no
+            //      CORS header and is ~6 MB of worldwide coverage).
+            //   2. TILES — one ol.source.TileWMS per product against
+            //      geoserve.cast.uark.edu/geoserver/gwc/service/wms, WMS 1.1.1
+            //      GetMap, tiled=true, 256×256, SRS=EPSG:900913, a single
+            //      LAYERS=corona:<product> per request, limited to the product's
+            //      own footprint. window.createCoronaWmsLayer() emits exactly
+            //      those URLs.
+            //   3. ZOOM GATING — rasterSettings.layerSettings: pass mosaics live
+            //      at z8–z11, individual frames at z12–z20.
+            //   4. VISIBILITY — rasterLayer.checkZoom(), re-run on every moveend
+            //      (corona.zoomChanged()): a product draws only while its
+            //      POLYGON (not its bbox) intersects the view.
             //
-            // This block replicates that exactly: every Corona pass mosaic or
-            // individual frame in the VERIFIED Romania list below becomes its
-            // own tile layer that issues those same requests, and tiles are
-            // fetched by the browser like any normal map layer — no manual
-            // "Load images here" button, no client-side request queue, no
-            // IndexedDB cache. Zoom gating mirrors the original: pass mosaics
-            // are requested from mid zoom (z8+), individual frames only when
-            // zoomed in (z12+); below those zooms the atlas shows nothing for
-            // this layer either (its docs: "only active at or below a certain
-            // zoom level"), so no tile request is ever sent.
+            // The one deliberate difference is memory hygiene: the atlas builds
+            // an OpenLayers layer for every product up front; here a Leaflet tile
+            // layer is created when the product first enters the view and dropped
+            // when it leaves, which keeps a Europe-wide catalogue affordable on a
+            // phone. The requests that reach the server are identical.
+            //
+            // Coverage outlines (js/corona-coverage-layer.js) are shown together
+            // with the layer so the empty space between passes reads as "no
+            // imagery here", not as a broken layer.
             (function () {
                 map.createPane("pane_sat60");
                 map.getPane("pane_sat60").style.zIndex = 648;
                 map.getPane("pane_sat60").style.pointerEvents = "none";
 
-                var SAT60_WMS_URL = "https://geoserve.cast.uark.edu/geoserver/gwc/service/wms";
                 var SAT60_OPACITY = 0.85;
-                var SAT60_MAX_NATIVE_ZOOM = 15;
+                var Atlas = window.CoronaAtlas;
 
-                // CORONA passes that really exist on the CAST GeoServer AND
-                // really cover Romanian territory.
-                //
-                // IMPORTANT — why this list is short and why it is hard-checked:
-                // the CAST archive is the "Corona Atlas of the Middle East";
-                // its Romanian coverage is limited to a handful of passes.
-                // The previous list here was guessed from the naming pattern
-                // and most of those names do not exist on the server at all
-                // (GeoWebCache answers `400 Unknown layer corona:…`, e.g. the
-                // reported `corona:1107-1074Fore`), while the few that do
-                // exist (`corona:1107-1074Aft`, `corona:1110-2289Fore`, …)
-                // image Greece and Peru, not Romania — so the layer could
-                // never draw anything.
-                //
-                // Every entry below was verified against the live server via
-                // WMS GetFeatureInfo (non-zero GRAY_INDEX = real pixels) and
-                // its footprint read from the layer's own KML LookAt, then
-                // clipped to Romania. `bounds` keeps Leaflet from requesting
-                // tiles outside the pass's real footprint, so no request can
-                // 404/400 and the browser is not flooded with empty tiles.
-                var SAT60_PASS_LAYERS = [
-                    // Transylvania / Central Europe / Balkans corridor (mission 1104, pass 2155)
-                    { name: "corona:1104-2155Fore", bounds: [[43.50, 19.50], [47.73, 26.77]] },
-                    { name: "corona:1104-2155Aft",  bounds: [[43.50, 19.53], [47.72, 26.63]] },
-                    // Eastern Europe / Balkans corridor (mission 1036, pass 2139)
-                    { name: "corona:1036-2139Fore", bounds: [[43.50, 21.08], [46.50, 27.78]] },
-                    // Muntenia / Eastern Europe corridor (mission 1103, pass 1058)
-                    { name: "corona:1103-1058Aft",  bounds: [[43.50, 23.46], [45.82, 27.38]] },
-                    { name: "corona:1103-1058Fore", bounds: [[43.50, 22.62], [46.01, 28.34]] },
-                    // Carpathians / Southeast Europe (mission 1026, pass 2088)
-                    { name: "corona:1026-2088Aft",  bounds: [[43.50, 21.52], [46.29, 27.45]] }
-                ];
-                // Individual frames (…df### Fore / …da### Aft) — full detail.
-                // Verified the same way; df004 is the Transylvania frame at
-                // ~22.90E/46.58N (GRAY_INDEX 255 = real imagery).
-                var SAT60_FRAME_LAYERS = [
-                    { name: "corona:1104-2155df004", bounds: [[45.28, 21.01], [47.87, 24.78]] },
-                    { name: "corona:1104-2155df007", bounds: [[44.91, 21.12], [47.50, 24.86]] },
-                    { name: "corona:1104-2155df011", bounds: [[44.42, 21.25], [47.00, 24.95]] }
-                ];
-
-                // The original atlas requests pass-level tiles from mid zoom
-                // and frame-level tiles only when zoomed well in. Below these
-                // zooms Leaflet creates no tile element and sends no request,
-                // which is also what keeps this layer from flooding the page
-                // with requests/DOM at Romania-overview zoom.
-                var SAT60_PASS_MIN_ZOOM = 8;
-                var SAT60_FRAME_MIN_ZOOM = 12;
-
-                var _sat60Layers = [];
                 var _sat60MapLayer = L.layerGroup([]);
+                var _sat60Manager = null;
+                var _sat60Opacity = SAT60_OPACITY;
+                var _sat60On = false;
+                var _sat60CatalogPromise = null;
+
+                // Used by the premium coverage-rectangle system and by the tests.
+                window._sat60MapLayer = _sat60MapLayer;
+                window._sat60Layers = [];
 
                 // ── Mobile safety: why this layer used to crash phones ──────
-                // Nine CORONA tile layers share one pane. On a phone (incl.
+                // Several CORONA tile layers share one pane. On a phone (incl.
                 // "Desktop site" / PWA, where Leaflet's own L.Browser.mobile
                 // sniff is defeated by the spoofed user-agent) Leaflet's
                 // defaults are the worst case for that stack:
                 //   • updateWhenIdle  = L.Browser.mobile → false when the UA
-                //     is spoofed, so EVERY pan frame re-runs _update() nine
-                //     times and queues new tiles while the finger is moving;
-                //   • updateWhenZooming = true → the same happens on every
-                //     frame of a pinch/scroll zoom animation;
-                //   • keepBuffer = 2 → each layer keeps a two-tile ring
-                //     around the viewport, i.e. (w+4)×(h+4) live <img> nodes
-                //     per layer, ×9 layers, plus up to 5 retained parent
-                //     levels while zooming.
+                //     is spoofed, so EVERY pan frame re-runs _update() for
+                //     every layer and queues new tiles while the finger moves;
+                //   • updateWhenZooming = true → the same on every frame of a
+                //     pinch/scroll zoom animation;
+                //   • keepBuffer = 2 → each layer keeps a two-tile ring around
+                //     the viewport.
                 // The result is hundreds of in-flight requests and decoded
                 // 256×256 PNGs within a second → mobile WebKit/Chromium kills
                 // the tab (out of memory). Nothing below changes WHAT is
-                // requested (same endpoint, same WMS-C URL, same layers, same
+                // requested (same endpoint, same WMS-C URL, same products, same
                 // zoom gating, same footprints) — only HOW OFTEN and HOW MANY
                 // tiles are kept alive on constrained devices.
                 var _sat60LowPowerCache = null;
@@ -13029,17 +13347,12 @@
                     if (_sat60LowPowerCache !== null) return _sat60LowPowerCache;
                     var lowPower = false;
                     try {
-                        // Leaflet's UA sniff (true on a normal mobile browser).
                         if (L.Browser && L.Browser.mobile) lowPower = true;
-                        // "Desktop site" / PWA on a phone defeats the UA sniff,
-                        // but a touch-first device still reports a coarse
-                        // pointer and touch points.
                         var coarse = !!(window.matchMedia &&
                             window.matchMedia("(pointer: coarse)").matches);
                         var touchPoints = (navigator.maxTouchPoints || 0) > 0 ||
                             ("ontouchstart" in window);
                         if (coarse && touchPoints) lowPower = true;
-                        // Low-memory devices benefit from the same limits.
                         if (typeof navigator.deviceMemory === "number" &&
                             navigator.deviceMemory > 0 && navigator.deviceMemory <= 4) {
                             lowPower = true;
@@ -13051,164 +13364,115 @@
                     return lowPower;
                 }
 
-                // How far outside the viewport a pass/frame still counts as
-                // "visible" (fraction of the viewport size). Small enough to
-                // keep memory down, large enough that a normal drag does not
-                // uncover an empty area before moveend fires.
-                var SAT60_VIEWPORT_PAD = 0.35;
-
-                function _sat60MakeLayer(entry, minZoom) {
-                    // Accept both a plain layer name and a {name, bounds}
-                    // descriptor; `bounds` is the pass's verified footprint
-                    // (clipped to Romania on RO domain, expanded across Europe on EU domain)
-                    // so Leaflet never asks the server for a tile the pass does not cover.
-                    var name = (typeof entry === "string") ? entry : entry.name;
-                    // Preserve the descriptor footprint, then widen it to the shared
-                    // Central/Eastern-European corridor. Restricting the layer
-                    // to ROMANIA_BOUNDS made valid 200 responses outside
-                    // Romania disappear before Leaflet could display them.
-                    var layerBounds = L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]);
-                    if (typeof entry !== "string" && entry.bounds) {
-                        layerBounds = L.latLngBounds(entry.bounds);
-                    }
-                    layerBounds.extend(L.latLngBounds([[34.0, 15.0], [58.0, 38.0]]));
+                function _sat60EnsureManager() {
+                    if (_sat60Manager || !Atlas) return _sat60Manager;
                     var lowPower = _sat60IsLowPowerDevice();
-                    var opts = {
-                        layers: name,
-                        coronaLayer: name,
-                        format: "image/png",
-                        transparent: true,
-                        attribution: "© Corona 1960s (CAST UARK)",
-                        tileSize: 256,
-                        opacity: SAT60_OPACITY,
+
+                    _sat60Manager = Atlas.createManager(map, {
+                        group: _sat60MapLayer,
                         pane: "pane_sat60",
-                        bounds: layerBounds,
-                        minZoom: minZoom,
-                        maxNativeZoom: SAT60_MAX_NATIVE_ZOOM,
-                        maxZoom: 20,
-                        // Never queue tiles for the intermediate frames of a
-                        // zoom animation: Leaflet then only re-transforms the
-                        // levels it already has and loads the final zoom once,
-                        // on zoomend. This alone removes the burst that killed
-                        // the tab on a fast pinch/scroll zoom.
-                        updateWhenZooming: false,
-                        // Same idea for panning: load after the gesture ends
-                        // instead of on every move frame. Forced on regardless
-                        // of the user-agent (Leaflet's default is the mobile
-                        // sniff, which "Desktop site" mode defeats).
-                        updateWhenIdle: true,
-                        // One extra tile around the viewport on phones covers
-                        // the zoom handoff without restoring the 2-tile ring
-                        // that filled memory (9 layers × the ring). Desktop
-                        // keeps Leaflet's default of 2.
-                        keepBuffer: lowPower ? 1 : 2
-                    };
-                    var layer;
-                    if (typeof window.createCoronaWmsLayer === "function") {
-                        // Faithful layer: emits the original atlas's exact
-                        // WMS-C request URLs (see js/corona-wms-layer.js).
-                        layer = window.createCoronaWmsLayer(SAT60_WMS_URL, opts);
-                    } else {
-                        // Fallback if corona-wms-layer.js is missing: plain WMS
-                        // tile layer against the same GWC endpoint.
-                        layer = L.tileLayer.wms(SAT60_WMS_URL, opts);
-                    }
-                    // A tile that the server refuses (e.g. the layer was
-                    // renamed/retired upstream: GeoWebCache answers
-                    // "400 Unknown layer …" instead of a PNG) must not leave a
-                    // broken <img> on the map — hide it and log the layer name
-                    // once so the cause is visible instead of silent.
-                    layer.on("tileerror", function (e) {
-                        if (e && e.tile) { e.tile.style.display = "none"; }
-                        if (!layer._sat60ErrorLogged) {
-                            layer._sat60ErrorLogged = true;
-                            console.warn("[Sat60] CORONA layer unavailable on the CAST server: " + name);
+                        opacity: _sat60Opacity,
+                        // A product slightly off-screen still counts as visible,
+                        // so a normal drag does not uncover an empty area before
+                        // moveend fires.
+                        viewportPad: lowPower ? 0.2 : 0.35,
+                        // Safety caps: a dense Corona corridor can put dozens of
+                        // frames in one view; beyond these the extra layers add
+                        // memory, not imagery.
+                        maxActivePasses: lowPower ? 8 : 18,
+                        maxActiveFrames: lowPower ? 10 : 24,
+                        tileLayerOptions: {
+                            // Never queue tiles for the intermediate frames of a
+                            // zoom animation: Leaflet then only re-transforms the
+                            // levels it already has and loads the final zoom once,
+                            // on zoomend.
+                            updateWhenZooming: false,
+                            // Same idea for panning: load after the gesture ends
+                            // instead of on every move frame. Forced on regardless
+                            // of the user-agent (Leaflet's default is the mobile
+                            // sniff, which "Desktop site" mode defeats).
+                            updateWhenIdle: true,
+                            keepBuffer: lowPower ? 1 : 2
+                        },
+                        onChange: function (active) {
+                            window._sat60Layers = _sat60Manager.getActiveLayers();
+                            window._sat60ActiveProducts = active;
                         }
                     });
-                    // The pass's footprint, kept for the viewport check in
-                    // _sat60SyncActiveLayers (options.bounds is normalised by
-                    // Leaflet; this stays a plain LatLngBounds).
-                    layer._sat60Bounds = L.latLngBounds(layerBounds);
-                    return layer;
+
+                    // The atlas re-runs checkZoom() on every moveend
+                    // (corona.zoomChanged()) — never during the gesture.
+                    map.on("moveend zoomend", function () {
+                        if (_sat60On && _sat60Manager) _sat60Manager.update();
+                    });
+                    return _sat60Manager;
                 }
 
-                // Attach only the passes/frames that can actually draw in the
-                // current view. A layer whose footprint is off-screen, or
-                // whose min zoom is not reached, never produces a visible
-                // tile anyway (Leaflet's `bounds`/`minZoom` already reject
-                // those requests) — but while it is attached it still keeps
-                // its container, its retained tile levels and its share of the
-                // per-frame update work alive. Detaching it frees that memory,
-                // and re-attaching costs nothing but the tiles it really needs.
-                // What the user sees is unchanged: whatever imagery covers the
-                // screen is always attached.
-                function _sat60SyncActiveLayers() {
-                    if (!_sat60Layers.length || !map.hasLayer(_sat60MapLayer)) return;
-                    var zoom = map.getZoom();
-                    var view;
-                    try {
-                        view = map.getBounds().pad(SAT60_VIEWPORT_PAD);
-                    } catch (err) {
-                        return; // map not laid out yet — leave membership as is
-                    }
-                    _sat60Layers.forEach(function (layer) {
-                        var wanted = zoom >= (layer.options.minZoom || 0) &&
-                            (!layer._sat60Bounds || layer._sat60Bounds.intersects(view));
-                        var attached = _sat60MapLayer.hasLayer(layer);
-                        if (wanted && !attached) {
-                            _sat60MapLayer.addLayer(layer);
-                        } else if (!wanted && attached) {
-                            _sat60MapLayer.removeLayer(layer);
-                        }
-                    });
-                }
-
-                function ensureSat60Layers() {
-                    if (_sat60Layers.length > 0) return true;
-                    SAT60_PASS_LAYERS.forEach(function (entry) {
-                        _sat60Layers.push(_sat60MakeLayer(entry, SAT60_PASS_MIN_ZOOM));
-                    });
-                    SAT60_FRAME_LAYERS.forEach(function (entry) {
-                        _sat60Layers.push(_sat60MakeLayer(entry, SAT60_FRAME_MIN_ZOOM));
-                    });
-                    _sat60MapLayer = L.layerGroup(_sat60Layers);
-                    window._sat60Layers = _sat60Layers;
-                    // Used by the premium coverage-rectangle system.
-                    window._sat60MapLayer = _sat60MapLayer;
-                    // Re-evaluate which passes/frames are worth keeping alive
-                    // once each gesture has settled (never during it).
-                    map.on("moveend zoomend", _sat60SyncActiveLayers);
-                    return true;
+                function _sat60LoadCatalog() {
+                    if (_sat60CatalogPromise) return _sat60CatalogPromise;
+                    if (!Atlas) return Promise.resolve(null);
+                    _sat60CatalogPromise = Atlas.loadCatalog({ bbox: Atlas.EUROPE_BBOX })
+                        .then(function (result) {
+                            var manager = _sat60EnsureManager();
+                            if (manager) {
+                                manager.setCatalog(result.blocks);
+                                window._sat60Catalog = result;
+                                if (_sat60On) manager.update();
+                            }
+                            return result;
+                        });
+                    return _sat60CatalogPromise;
                 }
 
                 window.toggleSatellite60sMap = function (on) {
-                    // Strat premium de sine stătător: switch-ul lui nu mai
-                    // pornește grupul "Historical Maps" (nu mai e substrat
-                    // al acestuia) și nu mai e oprit de switch-ul mare al
-                    // grupului — see HIST_PREMIUM_SUBLAYER_TOGGLES.
+                    // Strat premium de sine stătător: switch-ul lui nu pornește
+                    // grupul "Historical Maps" și nu e oprit de switch-ul mare
+                    // al grupului — see HIST_PREMIUM_SUBLAYER_TOGGLES.
+                    _sat60On = !!on;
                     if (on) {
-                        ensureSat60Layers();
+                        _sat60EnsureManager();
                         if (!map.hasLayer(_sat60MapLayer)) {
                             _sat60MapLayer.addTo(map);
                         }
-                        _sat60SyncActiveLayers();
+                        _sat60LoadCatalog();
+                        if (_sat60Manager) _sat60Manager.update();
+                        // Where does this layer actually have imagery? The
+                        // outlines answer that before the user hunts for tiles.
+                        if (window.CoronaCoverage && window.SAT60_COVERAGE_OUTLINES !== false) {
+                            window.CoronaCoverage.show(map);
+                            var outlinesToggle = document.getElementById("satellite60sCoverageToggle");
+                            if (outlinesToggle) outlinesToggle.checked = true;
+                        }
                     } else {
                         if (map.hasLayer(_sat60MapLayer)) {
                             map.removeLayer(_sat60MapLayer);
                         }
+                        if (window.CoronaCoverage) window.CoronaCoverage.hide();
+                        var offToggle = document.getElementById("satellite60sCoverageToggle");
+                        if (offToggle) offToggle.checked = false;
                     }
                     if (typeof window.updatePremiumMapCoverageVisibility === "function") {
                         window.updatePremiumMapCoverageVisibility();
                     }
                 };
 
+                // Independent switch for the coverage outlines (the row under
+                // the layer's opacity slider).
+                window.toggleSatellite60sCoverage = function (on) {
+                    window.SAT60_COVERAGE_OUTLINES = !!on;
+                    if (!window.CoronaCoverage) return;
+                    if (on) {
+                        window.CoronaCoverage.show(map);
+                    } else {
+                        window.CoronaCoverage.hide();
+                    }
+                };
+
                 window.setSatellite60sMapOpacity = function (val) {
                     var pct = document.getElementById("satellite60sMapPct");
                     if (pct) pct.textContent = val + "%";
-                    var opacity = val / 100;
-                    _sat60Layers.forEach(function (layer) {
-                        if (layer && layer.setOpacity) layer.setOpacity(opacity);
-                    });
+                    _sat60Opacity = val / 100;
+                    if (_sat60Manager) _sat60Manager.setOpacity(_sat60Opacity);
                 };
             })();
 

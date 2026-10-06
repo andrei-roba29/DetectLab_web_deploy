@@ -324,7 +324,7 @@
 //   map. css/country-selector.css and js/country-selector.js are retired.
 // v153: Netherlands LiDAR now uses the AHN6 DSM 50 cm ArcGIS ImageServer
 //   (dynamic exportImage tiles in Web Mercator) instead of the older PDOK WMS.
-const CACHE_NAME = 'detectlab-v153-ahn6-dsm';
+const CACHE_NAME = 'detectlab-v161-dk-dhm';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -396,6 +396,28 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20260915-patrimoniu-pwa-zoom-fix',
   'js/corona-wms-layer.js',
   'js/corona-wms-layer.js?v=20260812-layers',
+  'js/corona-wms-layer.js?v=20261006-europe',
+  'js/corona-coverage-layer.js',
+  'js/corona-coverage-layer.js?v=20261006-europe',
+  'js/hoydedata-layer.js',
+  'js/hoydedata-layer.js?v=20261006-norway',
+  'js/map-app.js?v=20261006-corona-europe',
+  'js/geoportal-nmt-layer.js',
+  'js/geoportal-nmt-layer.js?v=20261006-poland',
+  'js/ign-mdt-layer.js',
+  'js/ign-mdt-layer.js?v=20261006-spain',
+  'js/ahn-layer.js',
+  'js/ahn-layer.js?v=20261006-ahn',
+  'js/swisstopo-relief-layer.js',
+  'js/swisstopo-relief-layer.js?v=20261006-swisstopo',
+  'js/ea-lidar-wmts-layer.js',
+  'js/ea-lidar-wmts-layer.js?v=20261006-ea-lidar',
+  'js/dataforsyningen-dhm-layer.js',
+  'js/dataforsyningen-dhm-layer.js?v=20261006-dk-dhm',
+  'js/map-app.js?v=20261006-norway-hoydedata',
+  'js/map-app.js?v=20261006-spain-mdt',
+  'js/map-app.js?v=20261006-ahn-exportimage',
+  'js/map-app.js?v=20261006-dk-dhm-wms',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',
