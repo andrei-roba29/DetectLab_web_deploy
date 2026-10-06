@@ -5613,8 +5613,15 @@
             var SWITZERLAND_LIDAR_MODES = (window.SwisstopoRelief && window.SwisstopoRelief.MODES) || {};
             var SWITZERLAND_LIDAR_DEFAULT_MODE =
                 (window.SwisstopoRelief && window.SwisstopoRelief.CONFIG.DEFAULT_MODE) || 'relief';
+            // The UK row now uses the Environment Agency's cached WMTS
+            // (WebMercatorQuad = standard XYZ). The old per-tile WMS endpoint
+            // is kept only for external callers of window.UK_LIDAR_WMS_URL.
             var UK_LIDAR_WMS_URL =
                 'https://environment.data.gov.uk/geoservices/datasets/13787b9a-26a4-4775-8523-806d13af58fc/wms';
+            var UK_LIDAR_WMTS_HOST =
+                (window.EaLidarWmts && window.EaLidarWmts.CONFIG.HOST) || 'https://environment.data.gov.uk';
+            var UK_LIDAR_DEFAULT_MODE =
+                (window.EaLidarWmts && window.EaLidarWmts.CONFIG.DEFAULT_MODE) || 'hillshade';
             var FRANCE_LIDAR_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
             var DENMARK_LIDAR_WMS_URL = 'https://wms.datafordeler.dk/DHMNedboer/dhm/1.0.0/WMS';
 
@@ -5640,6 +5647,8 @@
             window.SWITZERLAND_LIDAR_WMTS_HOST = SWITZERLAND_LIDAR_WMTS_HOST;
             window.SWITZERLAND_LIDAR_MODES = SWITZERLAND_LIDAR_MODES;
             window.UK_LIDAR_WMS_URL = UK_LIDAR_WMS_URL;
+            window.UK_LIDAR_WMTS_HOST = UK_LIDAR_WMTS_HOST;
+            window.UK_LIDAR_MODES = UK_LIDAR_MODES;
             window.FRANCE_LIDAR_WMS_URL = FRANCE_LIDAR_WMS_URL;
             window.DENMARK_LIDAR_WMS_URL = DENMARK_LIDAR_WMS_URL;
 
@@ -5657,11 +5666,9 @@
                 surface: { label: 'MNS · Surface', layers: 'IGNF_LIDAR-HD_MNS_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' },
                 height: { label: 'MNH · Height', layers: 'IGNF_LIDAR-HD_MNH_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' }
             };
-            var UK_LIDAR_MODES = {
-                dtm: { label: 'DTM 1 m', layers: 'Lidar_Composite_DTM_1m' },
-                elevation: { label: 'Elevation DTM 1 m', layers: 'Lidar_Composite_Elevation_DTM_1m', styles: 'elevation' },
-                hillshade: { label: 'Hillshade DTM 1 m', layers: 'Lidar_Composite_Hillshade_DTM_1m', styles: 'hillshade' }
-            };
+            // England: layer identifiers, zoom caps and extents all come from
+            // the live GetCapabilities (see js/ea-lidar-wmts-layer.js).
+            var UK_LIDAR_MODES = (window.EaLidarWmts && window.EaLidarWmts.MODES) || {};
 
             function _lidarWmsOptions(extra) {
                 var options = extra || {};
@@ -5944,8 +5951,12 @@
                     leafletLayer: null
                 },
                 ukLidar: {
-                    label: 'United Kingdom · Environment Agency', enabled: false, opacity: 0.8,
-                    factory: 'uk', mode: 'dtm', attribution: '© Environment Agency / Defra — LiDAR Composite DTM.', leafletLayer: null
+                    label: 'England · EA LIDAR Composite hillshade (DTM 1 m)', enabled: false,
+                    opacity: (window.EaLidarWmts && window.EaLidarWmts.CONFIG.OPACITY) || 0.7,
+                    factory: 'uk', mode: UK_LIDAR_DEFAULT_MODE,
+                    attribution: (window.EaLidarWmts && window.EaLidarWmts.CONFIG.ATTRIBUTION) ||
+                        '© Environment Agency copyright and/or database right 2022',
+                    leafletLayer: null
                 },
                 frLidar: {
                     label: 'France · LiDAR HD', enabled: false, opacity: 0.8,
@@ -6038,11 +6049,22 @@
                     });
                 }
                 if (cfg.factory === 'uk') {
-                    mode = UK_LIDAR_MODES[cfg.mode] || UK_LIDAR_MODES.dtm;
-                    return _createFreeLidarWmsLayer(UK_LIDAR_WMS_URL, mode.layers, {
-                        opacity: cfg.opacity,
-                        styles: mode.styles,
-                        attribution: cfg.attribution
+                    // Environment Agency WMTS (no key, no token), clipped to
+                    // the published England extent and capped at the service's
+                    // real maximum zoom.
+                    if (!window.EaLidarWmts) {
+                        console.warn('[DetectLab] ea-lidar-wmts-layer.js is not loaded — UK LiDAR unavailable');
+                        return null;
+                    }
+                    return window.EaLidarWmts.createLayer({
+                        mode: cfg.mode || UK_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.EaLidarWmts.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.EaLidarWmts.CONFIG.KEEP_BUFFER
                     });
                 }
                 if (cfg.factory === 'france') {
@@ -6493,8 +6515,34 @@
             }
             _populateSwitzerlandModeSelect();
             window.setUkLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.ukLidar;
+                // Only the layer name (plus its extent and zoom cap) changes,
+                // so retarget the existing tile layer instead of rebuilding it.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && UK_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
                 _replaceSelectableInternationalLayer('ukLidar', mode);
             };
+
+            function _populateUkModeSelect() {
+                var select = document.getElementById('ukLidarModeSelect');
+                if (!select || !window.EaLidarWmts) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.EaLidarWmts.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = UK_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.ukLidar;
+                select.value = (current && UK_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || UK_LIDAR_DEFAULT_MODE);
+            }
+            _populateUkModeSelect();
             window.setFranceLidarMode = function (mode) {
                 _replaceSelectableInternationalLayer('frLidar', mode);
             };
@@ -11946,7 +11994,7 @@
                     plLidar: [[49.00, 14.00], [54.90, 24.20]],
                     esLidar: [[27.63, -18.22], [43.95, 4.78]],
                     chLidar: [[45.398181, 5.140242], [48.230651, 11.47757]],
-                    ukLidar: [[49.70, -8.70], [60.90, 2.10]],
+                    ukLidar: [[49.850605, -7.104776], [55.877087, 2.084282]],
                     frLidar: [[41.30, -5.50], [51.20, 9.70]],
                     dkLidar: [[54.40, 7.90], [57.80, 15.70]]
                 };
