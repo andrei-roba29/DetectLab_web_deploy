@@ -5601,7 +5601,18 @@
             var SPAIN_LIDAR_MODES = (window.IgnMdt && window.IgnMdt.MODES) || {};
             var SPAIN_LIDAR_DEFAULT_MODE =
                 (window.IgnMdt && window.IgnMdt.CONFIG.DEFAULT_MODE) || 'relieve';
+            // Switzerland: swisstopo's public RESTful WMTS cache of the
+            // swissALTI3D / swissSURFACE3D relief shading. Config lives in
+            // js/swisstopo-relief-layer.js. The old WMS constant is kept for
+            // external callers, but the row no longer requests
+            // ch.swisstopo.swisssurface3d.metadata (acquisition footprints,
+            // not terrain imagery).
             var SWITZERLAND_LIDAR_WMS_URL = 'https://wms.geo.admin.ch/';
+            var SWITZERLAND_LIDAR_WMTS_HOST =
+                (window.SwisstopoRelief && window.SwisstopoRelief.CONFIG.HOST) || 'https://wmts.geo.admin.ch';
+            var SWITZERLAND_LIDAR_MODES = (window.SwisstopoRelief && window.SwisstopoRelief.MODES) || {};
+            var SWITZERLAND_LIDAR_DEFAULT_MODE =
+                (window.SwisstopoRelief && window.SwisstopoRelief.CONFIG.DEFAULT_MODE) || 'relief';
             var UK_LIDAR_WMS_URL =
                 'https://environment.data.gov.uk/geoservices/datasets/13787b9a-26a4-4775-8523-806d13af58fc/wms';
             var FRANCE_LIDAR_WMS_URL = 'https://data.geopf.fr/wms-r/wms';
@@ -5626,6 +5637,8 @@
             window.SPAIN_LIDAR_WMTS_URL = SPAIN_LIDAR_WMTS_URL;
             window.SPAIN_LIDAR_MODES = SPAIN_LIDAR_MODES;
             window.SWITZERLAND_LIDAR_WMS_URL = SWITZERLAND_LIDAR_WMS_URL;
+            window.SWITZERLAND_LIDAR_WMTS_HOST = SWITZERLAND_LIDAR_WMTS_HOST;
+            window.SWITZERLAND_LIDAR_MODES = SWITZERLAND_LIDAR_MODES;
             window.UK_LIDAR_WMS_URL = UK_LIDAR_WMS_URL;
             window.FRANCE_LIDAR_WMS_URL = FRANCE_LIDAR_WMS_URL;
             window.DENMARK_LIDAR_WMS_URL = DENMARK_LIDAR_WMS_URL;
@@ -5920,9 +5933,15 @@
                     leafletLayer: null
                 },
                 chLidar: {
-                    label: 'Switzerland · swissSURFACE3D', enabled: false, opacity: 0.8,
-                    type: 'wms', url: SWITZERLAND_LIDAR_WMS_URL, wmsLayers: 'ch.swisstopo.swisssurface3d.metadata',
-                    attribution: '© swisstopo — swissSURFACE3D LiDAR', leafletLayer: null
+                    // swisstopo WMTS relief of swissALTI3D (LiDAR DTM). The
+                    // "3857" matrix set is the standard XYZ grid, so this is a
+                    // plain tile layer — see js/swisstopo-relief-layer.js.
+                    label: 'Switzerland · swisstopo relief (swissALTI3D)', enabled: false,
+                    opacity: (window.SwisstopoRelief && window.SwisstopoRelief.CONFIG.OPACITY) || 0.7,
+                    factory: 'switzerland', mode: SWITZERLAND_LIDAR_DEFAULT_MODE,
+                    attribution: (window.SwisstopoRelief && window.SwisstopoRelief.CONFIG.ATTRIBUTION) ||
+                        '© swisstopo',
+                    leafletLayer: null
                 },
                 ukLidar: {
                     label: 'United Kingdom · Environment Agency', enabled: false, opacity: 0.8,
@@ -5980,6 +5999,24 @@
                         keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
                             ? window.DLTilePerf.config.keepBuffer
                             : window.AhnLidar.CONFIG.KEEP_BUFFER
+                    });
+                }
+                if (cfg.factory === 'switzerland') {
+                    // swisstopo WMTS, no key, clipped to the published extent
+                    // and capped at each product's own maximum zoom.
+                    if (!window.SwisstopoRelief) {
+                        console.warn('[DetectLab] swisstopo-relief-layer.js is not loaded — Switzerland LiDAR unavailable');
+                        return null;
+                    }
+                    return window.SwisstopoRelief.createLayer({
+                        mode: cfg.mode || SWITZERLAND_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.SwisstopoRelief.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.SwisstopoRelief.CONFIG.KEEP_BUFFER
                     });
                 }
                 if (cfg.factory === 'spain') {
@@ -6425,6 +6462,36 @@
                     : ((cfg && cfg.mode) || NETHERLANDS_LIDAR_DEFAULT_MODE);
             }
             _populateNetherlandsModeSelect();
+
+            window.setSwitzerlandLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.chLidar;
+                // Only the layer name (and its maxNativeZoom) changes, so
+                // retarget the existing tile layer instead of rebuilding it.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && SWITZERLAND_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
+                _replaceSelectableInternationalLayer('chLidar', mode);
+            };
+
+            function _populateSwitzerlandModeSelect() {
+                var select = document.getElementById('switzerlandLidarModeSelect');
+                if (!select || !window.SwisstopoRelief) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.SwisstopoRelief.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = SWITZERLAND_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.chLidar;
+                select.value = (current && SWITZERLAND_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || SWITZERLAND_LIDAR_DEFAULT_MODE);
+            }
+            _populateSwitzerlandModeSelect();
             window.setUkLidarMode = function (mode) {
                 _replaceSelectableInternationalLayer('ukLidar', mode);
             };
@@ -11878,7 +11945,7 @@
                     noLidar: [[57.90, 4.00], [71.30, 31.50]],
                     plLidar: [[49.00, 14.00], [54.90, 24.20]],
                     esLidar: [[27.63, -18.22], [43.95, 4.78]],
-                    chLidar: [[45.80, 5.90], [47.90, 10.60]],
+                    chLidar: [[45.398181, 5.140242], [48.230651, 11.47757]],
                     ukLidar: [[49.70, -8.70], [60.90, 2.10]],
                     frLidar: [[41.30, -5.50], [51.20, 9.70]],
                     dkLidar: [[54.40, 7.90], [57.80, 15.70]]

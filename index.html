@@ -2096,11 +2096,17 @@
                             <!-- Switzerland -->
                             <div class="lidar-country-row" id="lidarChLidarRow">
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
-                                    <span style="display:flex;align-items:center;gap:5px;"><span>Switzerland · swissSURFACE3D</span><button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Switzerland LiDAR','© swisstopo — swissSURFACE3D LiDAR')" title="Layer info">ⓘ</button></span>
+                                    <span style="display:flex;align-items:center;gap:5px;"><span>Switzerland · swisstopo relief (swissALTI3D)</span><button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Switzerland LiDAR','© swisstopo. Relief shading of the national LiDAR terrain models (swissALTI3D, swissSURFACE3D, swissBATHY3D), served live as WMTS tiles by geo.admin.ch (wmts.geo.admin.ch, time: current). Covers Switzerland and Liechtenstein up to zoom 18 (bathymetry 17).')" title="Layer info">ⓘ</button></span>
                                     <label class="apm-toggle-switch" title="Toggle Switzerland LiDAR" style="transform:scale(0.85);transform-origin:right center;"><input type="checkbox" id="lidarChLidarToggle" onchange="toggleInternationalLidar('chLidar', this.checked)"><span class="apm-toggle-track"></span></label>
                                 </div>
-                                <div class="transp-layer-label" style="margin-bottom:5px"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarChLidarPct">80%</span></div>
-                                <input type="range" class="lidar-country-opacity" id="lidarChLidarOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('chLidar', this.value)">
+                                <select id="switzerlandLidarModeSelect" class="lidar-country-select" aria-label="swisstopo relief product (swissALTI3D, swissSURFACE3D, swissBATHY3D)" onchange="setSwitzerlandLidarMode(this.value)">
+                                    <option value="relief">swissALTI3D · multidirectional relief</option>
+                                    <option value="mono">swissALTI3D · mono-directional relief (NW)</option>
+                                    <option value="surface">swissSURFACE3D · surface relief</option>
+                                    <option value="bathy">swissBATHY3D · lake-floor relief</option>
+                                </select>
+                                <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarChLidarPct">70%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarChLidarOpacitySlider" min="0" max="100" value="70" oninput="setInternationalLidarOpacity('chLidar', this.value)">
                             </div>
 
                             <!-- UK -->
@@ -4620,10 +4626,12 @@
     <script src="js/ign-mdt-layer.js?v=20261006-spain"></script>
     <!-- Netherlands: AHN ImageServer relief, config at the top of the file. -->
     <script src="js/ahn-layer.js?v=20261006-ahn"></script>
+    <!-- Switzerland: swisstopo WMTS relief, config at the top of the file. -->
+    <script src="js/swisstopo-relief-layer.js?v=20261006-swisstopo"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/globe-country-picker.js?v=20261005"></script>
-    <script src="js/map-app.js?v=20261006-ahn-exportimage"></script>
+    <script src="js/map-app.js?v=20261006-swisstopo-wmts"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
