@@ -2067,13 +2067,22 @@
                             </div>
 
                             <!-- Spain -->
+                            <!-- Spain: IGN/IDEE WMTS cache of the PNOA-LiDAR MDT.
+                                 Options are filled from js/ign-mdt-layer.js. -->
                             <div class="lidar-country-row" id="lidarEsLidarRow">
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
-                                    <span style="display:flex;align-items:center;gap:5px;"><span>Spain · LiDAR-derived DTM</span><button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Spain LiDAR','© IGN España — PNOA LiDAR')" title="Layer info">ⓘ</button></span>
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <span>Spain · IGN relief (PNOA-LiDAR MDT)</span>
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Spain LiDAR','Relieve © Instituto Geográfico Nacional de España (CC BY 4.0). Hillshade of the national digital terrain model derived from PNOA-LiDAR, served live as WMTS tiles by IGN/IDEE (servicios.idee.es/wmts/mdt). Covers the peninsula, Balearic and Canary Islands up to zoom 20.')" title="Layer info">ⓘ</button>
+                                    </span>
                                     <label class="apm-toggle-switch" title="Toggle Spain LiDAR" style="transform:scale(0.85);transform-origin:right center;"><input type="checkbox" id="lidarEsLidarToggle" onchange="toggleInternationalLidar('esLidar', this.checked)"><span class="apm-toggle-track"></span></label>
                                 </div>
-                                <div class="transp-layer-label" style="margin-bottom:5px"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarEsLidarPct">80%</span></div>
-                                <input type="range" class="lidar-country-opacity" id="lidarEsLidarOpacitySlider" min="0" max="100" value="80" oninput="setInternationalLidarOpacity('esLidar', this.value)">
+                                <select id="spainLidarModeSelect" class="lidar-country-select" aria-label="Spain IGN MDT product (relief or elevation)" onchange="setSpainLidarMode(this.value)">
+                                    <option value="relieve">Relieve · hillshade (MDT)</option>
+                                    <option value="elevacion">Elevación · INSPIRE colour ramp</option>
+                                </select>
+                                <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarEsLidarPct">70%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarEsLidarOpacitySlider" min="0" max="100" value="70" oninput="setInternationalLidarOpacity('esLidar', this.value)">
                             </div>
 
                             <!-- Switzerland -->
@@ -4599,10 +4608,12 @@
     <script src="js/hoydedata-layer.js?v=20261006-norway"></script>
     <!-- Poland LiDAR shading (GUGiK ISOK/NMT WMS) — must load before map-app.js -->
     <script src="js/geoportal-nmt-layer.js?v=20261006-poland"></script>
+    <!-- Spain: IGN/IDEE WMTS relief (PNOA-LiDAR MDT), config at the top of the file. -->
+    <script src="js/ign-mdt-layer.js?v=20261006-spain"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/globe-country-picker.js?v=20261005"></script>
-    <script src="js/map-app.js?v=20261006-poland-nmt"></script>
+    <script src="js/map-app.js?v=20261006-spain-mdt"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>

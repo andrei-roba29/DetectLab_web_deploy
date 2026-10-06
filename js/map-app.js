@@ -5583,7 +5583,15 @@
                 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomiaroweLidarKRON86/WFS/Skorowidze';
             var POLAND_LIDAR_EVRF2007_WFS_URL =
                 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomiaroweLidarEVRF2007/WFS/Skorowidze';
+            // Spain: the IGN/IDEE WMTS tile cache of the PNOA-LiDAR MDT
+            // ("Relieve" hillshade). Config lives in js/ign-mdt-layer.js; the
+            // legacy INSPIRE WMS constant is kept for any external caller.
             var SPAIN_LIDAR_WMS_URL = 'https://servicios.idee.es/wms-inspire/mdt';
+            var SPAIN_LIDAR_WMTS_URL =
+                (window.IgnMdt && window.IgnMdt.CONFIG.WMTS_URL) || 'https://servicios.idee.es/wmts/mdt';
+            var SPAIN_LIDAR_MODES = (window.IgnMdt && window.IgnMdt.MODES) || {};
+            var SPAIN_LIDAR_DEFAULT_MODE =
+                (window.IgnMdt && window.IgnMdt.CONFIG.DEFAULT_MODE) || 'relieve';
             var SWITZERLAND_LIDAR_WMS_URL = 'https://wms.geo.admin.ch/';
             var UK_LIDAR_WMS_URL =
                 'https://environment.data.gov.uk/geoservices/datasets/13787b9a-26a4-4775-8523-806d13af58fc/wms';
@@ -5605,6 +5613,8 @@
             window.POLAND_LIDAR_KRON86_WFS_URL = POLAND_LIDAR_KRON86_WFS_URL;
             window.POLAND_LIDAR_EVRF2007_WFS_URL = POLAND_LIDAR_EVRF2007_WFS_URL;
             window.SPAIN_LIDAR_WMS_URL = SPAIN_LIDAR_WMS_URL;
+            window.SPAIN_LIDAR_WMTS_URL = SPAIN_LIDAR_WMTS_URL;
+            window.SPAIN_LIDAR_MODES = SPAIN_LIDAR_MODES;
             window.SWITZERLAND_LIDAR_WMS_URL = SWITZERLAND_LIDAR_WMS_URL;
             window.UK_LIDAR_WMS_URL = UK_LIDAR_WMS_URL;
             window.FRANCE_LIDAR_WMS_URL = FRANCE_LIDAR_WMS_URL;
@@ -5889,9 +5899,15 @@
                     leafletLayer: null
                 },
                 esLidar: {
-                    label: 'Spain · LiDAR-derived DTM', enabled: false, opacity: 0.8,
-                    type: 'wms', url: SPAIN_LIDAR_WMS_URL, wmsLayers: 'EL.ElevationGridCoverage', styles: 'Elevaciones',
-                    attribution: '© IGN España — PNOA LiDAR', leafletLayer: null
+                    // IGN/IDEE WMTS cache of the PNOA-LiDAR MDT. The
+                    // GoogleMapsCompatible matrix set is the standard XYZ grid,
+                    // so this is a plain tile layer — see js/ign-mdt-layer.js.
+                    label: 'Spain · IGN relief (PNOA-LiDAR MDT)', enabled: false,
+                    opacity: (window.IgnMdt && window.IgnMdt.CONFIG.OPACITY) || 0.7,
+                    factory: 'spain', mode: SPAIN_LIDAR_DEFAULT_MODE,
+                    attribution: (window.IgnMdt && window.IgnMdt.CONFIG.ATTRIBUTION) ||
+                        'Relieve © Instituto Geográfico Nacional de España (CC BY 4.0)',
+                    leafletLayer: null
                 },
                 chLidar: {
                     label: 'Switzerland · swissSURFACE3D', enabled: false, opacity: 0.8,
@@ -5937,6 +5953,24 @@
                         keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
                             ? window.DLTilePerf.config.keepBuffer
                             : window.GeoportalNMT.CONFIG.KEEP_BUFFER
+                    });
+                }
+                if (cfg.factory === 'spain') {
+                    // IGN/IDEE WMTS (no key, no token), clipped to Spain's
+                    // coverage and capped at the service's real maximum zoom.
+                    if (!window.IgnMdt) {
+                        console.warn('[DetectLab] ign-mdt-layer.js is not loaded — Spain LiDAR unavailable');
+                        return null;
+                    }
+                    return window.IgnMdt.createLayer({
+                        mode: cfg.mode || SPAIN_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.IgnMdt.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.IgnMdt.CONFIG.KEEP_BUFFER
                     });
                 }
                 if (cfg.factory === 'uk') {
@@ -6300,6 +6334,36 @@
                     : ((cfg && cfg.mode) || POLAND_LIDAR_DEFAULT_MODE);
             }
             _populatePolandModeSelect();
+
+            window.setSpainLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.esLidar;
+                // Relieve ⇄ Elevación only swaps the layer name in the WMTS
+                // URL, so retarget the existing tile layer instead of rebuilding.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && SPAIN_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
+                _replaceSelectableInternationalLayer('esLidar', mode);
+            };
+
+            function _populateSpainModeSelect() {
+                var select = document.getElementById('spainLidarModeSelect');
+                if (!select || !window.IgnMdt) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.IgnMdt.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = SPAIN_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.esLidar;
+                select.value = (current && SPAIN_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || SPAIN_LIDAR_DEFAULT_MODE);
+            }
+            _populateSpainModeSelect();
             window.setUkLidarMode = function (mode) {
                 _replaceSelectableInternationalLayer('ukLidar', mode);
             };
@@ -11752,7 +11816,7 @@
                     nlAhn: [[50.70, 3.20], [53.60, 7.30]],
                     noLidar: [[57.90, 4.00], [71.30, 31.50]],
                     plLidar: [[49.00, 14.00], [54.90, 24.20]],
-                    esLidar: [[27.50, -18.50], [43.90, 4.50]],
+                    esLidar: [[27.63, -18.22], [43.95, 4.78]],
                     chLidar: [[45.80, 5.90], [47.90, 10.60]],
                     ukLidar: [[49.70, -8.70], [60.90, 2.10]],
                     frLidar: [[41.30, -5.50], [51.20, 9.70]],
