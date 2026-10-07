@@ -5927,15 +5927,15 @@
                 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomiaroweLidarKRON86/WFS/Skorowidze';
             var POLAND_LIDAR_EVRF2007_WFS_URL =
                 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/DanePomiaroweLidarEVRF2007/WFS/Skorowidze';
-            // Spain: the IGN/IDEE WMTS tile cache of the PNOA-LiDAR MDT
-            // ("Relieve" hillshade). Config lives in js/ign-mdt-layer.js; the
-            // legacy INSPIRE WMS constant is kept for any external caller.
-            var SPAIN_LIDAR_WMS_URL = 'https://servicios.idee.es/wms-inspire/mdt';
-            var SPAIN_LIDAR_WMTS_URL =
-                (window.IgnMdt && window.IgnMdt.CONFIG.WMTS_URL) || 'https://servicios.idee.es/wmts/mdt';
+            // Spain: the IDEE/IGN "Mapa LiDAR" WMS — a shaded LiDAR digital
+            // surface model with vegetation/building heights and hydrography,
+            // rendered per GetMap tile in EPSG:3857. Config lives in
+            // js/ign-mdt-layer.js.
+            var SPAIN_LIDAR_WMS_URL =
+                (window.IgnMdt && window.IgnMdt.CONFIG.WMS_URL) || 'https://wms-mapa-lidar.idee.es/lidar';
             var SPAIN_LIDAR_MODES = (window.IgnMdt && window.IgnMdt.MODES) || {};
             var SPAIN_LIDAR_DEFAULT_MODE =
-                (window.IgnMdt && window.IgnMdt.CONFIG.DEFAULT_MODE) || 'relieve';
+                (window.IgnMdt && window.IgnMdt.CONFIG.DEFAULT_MODE) || 'mapa_lidar';
             // Switzerland: swisstopo's public RESTful WMTS cache of the
             // swissALTI3D / swissSURFACE3D relief shading. Config lives in
             // js/swisstopo-relief-layer.js. The old WMS constant is kept for
@@ -5996,7 +5996,6 @@
             window.POLAND_LIDAR_KRON86_WFS_URL = POLAND_LIDAR_KRON86_WFS_URL;
             window.POLAND_LIDAR_EVRF2007_WFS_URL = POLAND_LIDAR_EVRF2007_WFS_URL;
             window.SPAIN_LIDAR_WMS_URL = SPAIN_LIDAR_WMS_URL;
-            window.SPAIN_LIDAR_WMTS_URL = SPAIN_LIDAR_WMTS_URL;
             window.SPAIN_LIDAR_MODES = SPAIN_LIDAR_MODES;
             window.SWITZERLAND_LIDAR_WMS_URL = SWITZERLAND_LIDAR_WMS_URL;
             window.SWITZERLAND_LIDAR_WMTS_HOST = SWITZERLAND_LIDAR_WMTS_HOST;
@@ -6287,14 +6286,14 @@
                     leafletLayer: null
                 },
                 esLidar: {
-                    // IGN/IDEE WMTS cache of the PNOA-LiDAR MDT. The
-                    // GoogleMapsCompatible matrix set is the standard XYZ grid,
-                    // so this is a plain tile layer — see js/ign-mdt-layer.js.
+                    // IDEE/IGN "Mapa LiDAR" WMS (layer EL.GridCoverage): a
+                    // shaded LiDAR surface model rendered per GetMap tile in
+                    // EPSG:3857 — see js/ign-mdt-layer.js.
                     label: 'Spain · IGN relief (PNOA-LiDAR MDT)', enabled: false,
                     opacity: (window.IgnMdt && window.IgnMdt.CONFIG.OPACITY) || 0.7,
                     factory: 'spain', mode: SPAIN_LIDAR_DEFAULT_MODE,
                     attribution: (window.IgnMdt && window.IgnMdt.CONFIG.ATTRIBUTION) ||
-                        'Relieve © Instituto Geográfico Nacional de España (CC BY 4.0)',
+                        'Mapa LiDAR © IDEE / Instituto Geográfico Nacional (IGN/CNIG) — CC BY 4.0',
                     leafletLayer: null
                 },
                 chLidar: {
@@ -6402,8 +6401,9 @@
                     });
                 }
                 if (cfg.factory === 'spain') {
-                    // IGN/IDEE WMTS (no key, no token), clipped to Spain's
-                    // coverage and capped at the service's real maximum zoom.
+                    // IDEE/IGN "Mapa LiDAR" WMS (no key, no token): one GetMap
+                    // per Leaflet tile in EPSG:3857, clipped to the coverage
+                    // the capabilities declare.
                     if (!window.IgnMdt) {
                         console.warn('[DetectLab] ign-mdt-layer.js is not loaded — Spain LiDAR unavailable');
                         return null;
@@ -6838,8 +6838,10 @@
 
             window.setSpainLidarMode = function (mode) {
                 var cfg = LIDAR_SUB_LAYERS.esLidar;
-                // Relieve ⇄ Elevación only swaps the layer name in the WMTS
-                // URL, so retarget the existing tile layer instead of rebuilding.
+                // The Mapa LiDAR WMS publishes a single product today, so this
+                // is a no-op unless the module ever exposes more than one mode.
+                // When it does, retarget the existing tile layer instead of
+                // rebuilding it — only the LAYERS/STYLES pair would change.
                 if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && SPAIN_LIDAR_MODES[mode]) {
                     cfg.mode = mode;
                     cfg.leafletLayer.setMode(mode);
@@ -12471,7 +12473,10 @@
                     nlAhn: [[50.70, 3.20], [53.60, 7.30]],
                     noLidar: [[57.90, 4.00], [71.30, 31.50]],
                     plLidar: [[49.00, 14.00], [54.90, 24.20]],
-                    esLidar: [[27.63, -18.22], [43.95, 4.78]],
+                    // España: the extent the Mapa LiDAR WMS declares in its
+                    // capabilities (−19 27 → 5 44) — peninsula, Balearics and
+                    // Canaries, with the surrounding sea margin.
+                    esLidar: [[27, -19], [44, 5]],
                     chLidar: [[45.398181, 5.140242], [48.230651, 11.47757]],
                     ukLidar: [[49.850605, -7.104776], [55.877087, 2.084282]],
                     frLidar: [[41.30, -5.50], [51.20, 9.70]],

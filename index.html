@@ -2129,19 +2129,20 @@
                             </div>
 
                             <!-- Spain -->
-                            <!-- Spain: IGN/IDEE WMTS cache of the PNOA-LiDAR MDT.
+                            <!-- Spain: IDEE/IGN "Mapa LiDAR" WMS (EL.GridCoverage) —
+                                 LiDAR surface model with vegetation/building
+                                 heights and hydrography in EPSG:3857.
                                  Options are filled from js/ign-mdt-layer.js. -->
                             <div class="lidar-country-row" id="lidarEsLidarRow">
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
                                     <span style="display:flex;align-items:center;gap:5px;">
                                         <span>Spain · IGN relief (PNOA-LiDAR MDT)</span>
-                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Spain LiDAR','Relieve © Instituto Geográfico Nacional de España (CC BY 4.0). Hillshade of the national digital terrain model derived from PNOA-LiDAR, served live as WMTS tiles by IGN/IDEE (servicios.idee.es/wmts/mdt). Covers the peninsula, Balearic and Canary Islands up to zoom 20.')" title="Layer info">ⓘ</button>
+                                        <button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Spain LiDAR','Mapa LiDAR © IDEE / Instituto Geográfico Nacional (IGN-CNIG), CC BY 4.0. Shaded LiDAR digital surface model of Spain: PNOA-LiDAR vegetation (green) and building (red) heights over the shaded surface, plus the Sistema Cartográfico Nacional hydrography (blue). Served live as WMS tiles by IDEE (wms-mapa-lidar.idee.es/lidar, layer EL.GridCoverage, EPSG:3857). Covers the peninsula, Balearic and Canary Islands (-19°..5° E, 27°..44° N) up to zoom 20; building and vegetation heights are readable at approx. 1:20.000.')" title="Layer info">ⓘ</button>
                                     </span>
                                     <label class="apm-toggle-switch" title="Toggle Spain LiDAR" style="transform:scale(0.85);transform-origin:right center;"><input type="checkbox" id="lidarEsLidarToggle" onchange="toggleInternationalLidar('esLidar', this.checked)"><span class="apm-toggle-track"></span></label>
                                 </div>
-                                <select id="spainLidarModeSelect" class="lidar-country-select" aria-label="Spain IGN MDT product (relief or elevation)" onchange="setSpainLidarMode(this.value)">
-                                    <option value="relieve">Relieve · hillshade (MDT)</option>
-                                    <option value="elevacion">Elevación · INSPIRE colour ramp</option>
+                                <select id="spainLidarModeSelect" class="lidar-country-select" aria-label="Spain IDEE Mapa LiDAR product" onchange="setSpainLidarMode(this.value)">
+                                    <option value="mapa_lidar">Mapa LiDAR · MDS (vegetation, buildings, water)</option>
                                 </select>
                                 <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarEsLidarPct">70%</span></div>
                                 <input type="range" class="lidar-country-opacity" id="lidarEsLidarOpacitySlider" min="0" max="100" value="70" oninput="setInternationalLidarOpacity('esLidar', this.value)">
@@ -4696,8 +4697,9 @@
     <script src="js/hoydedata-layer.js?v=20261006-norway"></script>
     <!-- Poland LiDAR shading (GUGiK ISOK/NMT WMS) — must load before map-app.js -->
     <script src="js/geoportal-nmt-layer.js?v=20261006-poland"></script>
-    <!-- Spain: IGN/IDEE WMTS relief (PNOA-LiDAR MDT), config at the top of the file. -->
-    <script src="js/ign-mdt-layer.js?v=20261006-spain"></script>
+    <!-- Spain: IDEE/IGN "Mapa LiDAR" WMS (PNOA-LiDAR surface model),
+         config at the top of the file. -->
+    <script src="js/ign-mdt-layer.js?v=20261007-spain-mapa-lidar"></script>
     <!-- Netherlands: AHN ImageServer relief, config at the top of the file. -->
     <script src="js/ahn-layer.js?v=20261006-ahn"></script>
     <!-- Switzerland: swisstopo WMTS relief, config at the top of the file. -->
@@ -4714,7 +4716,7 @@
          through window.DetectLabGlobeGate) and before map-app.js, which
          attaches it to the Leaflet map. -->
     <script src="js/country-dock.js?v=20261008"></script>
-    <script src="js/map-app.js?v=20261008-corona-coverage"></script>
+    <script src="js/map-app.js?v=20261007-spain-mapa-lidar"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>

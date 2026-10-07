@@ -361,7 +361,16 @@
 //   centred in the lower part of the screen: it releases the lock and reopens
 //   the globe so another country can be chosen. See COUNTRY_SELECTION_DOCK.md,
 //   js/country-dock.js and js/globe-country-picker.js.
-const CACHE_NAME = 'detectlab-v167-country-dock';
+// v168: Spain LiDAR switches from the IDEE WMTS relief cache
+//   (servicios.idee.es/wmts/mdt) to the official IDEE/IGN "Mapa LiDAR" WMS
+//   (wms-mapa-lidar.idee.es/lidar, layer EL.GridCoverage): the LiDAR surface
+//   model with vegetation/building heights and hydrography, one GetMap per
+//   Leaflet tile in EPSG:3857, clipped to the extent the capabilities declare
+//   (see js/ign-mdt-layer.js and SPAIN_LIDAR_IGN_WMS.md). The GetMap URLs are
+//   recognised by the offline-tile lookup ("request=getmap") and fall straight
+//   through to the network on a cache miss, never into the app shell; idee.es
+//   is listed in PASSTHROUGH_HOSTS like the other WMS tile hosts.
+const CACHE_NAME = 'detectlab-v168-spain-mapa-lidar';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -444,6 +453,7 @@ const PRECACHE_URLS = [
   'js/geoportal-nmt-layer.js?v=20261006-poland',
   'js/ign-mdt-layer.js',
   'js/ign-mdt-layer.js?v=20261006-spain',
+  'js/ign-mdt-layer.js?v=20261007-spain-mapa-lidar',
   'js/ahn-layer.js',
   'js/ahn-layer.js?v=20261006-ahn',
   'js/swisstopo-relief-layer.js',
@@ -463,6 +473,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20261007-se-hojdmodell',
   'js/map-app.js?v=20261008-eu-places-search',
   'js/map-app.js?v=20261008-corona-coverage',
+  'js/map-app.js?v=20261007-spain-mapa-lidar',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',
@@ -991,7 +1002,8 @@ const PASSTHROUGH_HOSTS = [
   'atlas.ihpan.edu.pl', // IH PAN PastMaps portal
   'imperium.ahlfeldt.se', // Digital Atlas of the Roman Empire (DARE) API
   'cast.uark.edu', // CORONA Atlas of the Near East / GeoServer (CAST UARK)
-  'geoserve.cast.uark.edu' // CORONA GeoWebCache WMS-C tile server
+  'geoserve.cast.uark.edu', // CORONA GeoWebCache WMS-C tile server
+  'idee.es'         // IDEE/IGN tile services — "Mapa LiDAR" WMS (Spain LiDAR)
 ];
 
 // ── Install event: pre-cache essential static files ──
