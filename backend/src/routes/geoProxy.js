@@ -1,5 +1,12 @@
 /*
- * geoProxy.js — token-adding, caching proxy for Dataforsyningen (Denmark).
+ * geoProxy.js — credential-adding, caching proxy for national LiDAR services.
+ * ───────────────────────────────────────────────────────────────────────────
+ * Two routes live here:
+ *   /api/geo/dk-dhm        Denmark  · Dataforsyningen  (token header)
+ *   /api/geo/se-hojdmodell Sweden   · Lantmäteriet     (Basic or Bearer)
+ * Both follow the same rules: a fixed upstream host, an allowlist of layers,
+ * formats and request types, a size cap, a 7-day cache, and a secret that
+ * never leaves this process.
  * ───────────────────────────────────────────────────────────────────────────
  * The Danish Agency's WMS/WMTS require a token on every request. A token in
  * client-side JavaScript is visible to every visitor, so the browser instead
@@ -151,6 +158,136 @@ router.get('/geo/dk-dhm', async (req, res) => {
     return res.send(buffer);
   } catch (err) {
     logger.error({ err: err?.message }, 'Dataforsyningen proxy request failed');
+    return res.status(502).json({ error: 'upstream_unreachable' });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  SWEDEN — Lantmäteriet "Markhöjdmodell Visning" (terrängskuggning)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Why a proxy at all: the hillshade WMS is a LICENSED, fee-based product.
+ * Its real access point, https://maps.lantmateriet.se/hojdmodell/wms/v1.1,
+ * answers "401 Authorization Required" without credentials. Those credentials
+ * are issued per organisation through Geotorget and must never be shipped to
+ * a browser, so the map asks THIS server for tiles and the Authorization
+ * header is attached here.
+ *
+ *   browser →  GET /api/geo/se-hojdmodell?SERVICE=WMS&REQUEST=GetMap&…
+ *   server  →  GET https://maps.lantmateriet.se/hojdmodell/wms/v1.1?…
+ *              Authorization: Basic <base64(user:password)>
+ *
+ * Configuration (never committed) — backend/.env:
+ *   LANTMATERIET_WMS_USER=…        # Geotorget consumer account
+ *   LANTMATERIET_WMS_PASSWORD=…
+ * or, if your agreement issues an OAuth2 access token instead:
+ *   LANTMATERIET_WMS_TOKEN=…       # sent as "Authorization: Bearer …"
+ * Optional override (e.g. to point at a different licensed endpoint):
+ *   LANTMATERIET_WMS_URL=https://maps.lantmateriet.se/hojdmodell/wms/v1.1
+ *
+ * The credentials are never logged and never echoed back in a response.
+ * See SWEDEN_LIDAR_LANTMATERIET.md for how to obtain them.
+ */
+
+const SE_UPSTREAM_DEFAULT = 'https://maps.lantmateriet.se/hojdmodell/wms/v1.1';
+
+// Layer names exactly as published by the service's GetCapabilities.
+const SE_ALLOWED_LAYERS = new Set([
+  'terrangskuggning',
+  'terranglutning',
+  'terranglutning_brunton',
+  'ursprung_kvalitet',
+]);
+
+const SE_ALLOWED_FORMATS = new Set(['image/png', 'image/jpeg', 'image/png; mode=8bit']);
+
+/** Build the Authorization header from whichever credential style is set. */
+function lantmaterietAuthHeader() {
+  const token = process.env.LANTMATERIET_WMS_TOKEN;
+  if (token) return `Bearer ${token}`;
+  const user = process.env.LANTMATERIET_WMS_USER;
+  const password = process.env.LANTMATERIET_WMS_PASSWORD;
+  if (user && password) {
+    return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`;
+  }
+  return null;
+}
+
+router.get('/geo/se-hojdmodell', async (req, res) => {
+  const authorization = lantmaterietAuthHeader();
+  if (!authorization) {
+    // The client turns this into the non-blocking
+    // "Missing or invalid Lantmäteriet (Geotorget) credentials" notice.
+    return res.status(401).json({ error: 'lantmateriet_credentials_missing' });
+  }
+
+  const params = req.query || {};
+  const request = String(params.request || params.REQUEST || '').toLowerCase();
+  if (!ALLOWED_REQUESTS.has(request)) {
+    return res.status(400).json({ error: 'unsupported_request' });
+  }
+
+  if (request === 'getmap') {
+    const layers = String(params.layers || params.LAYERS || '');
+    if (!layers.split(',').every((l) => SE_ALLOWED_LAYERS.has(l.trim()))) {
+      return res.status(400).json({ error: 'layer_not_allowed' });
+    }
+    const format = String(params.format || params.FORMAT || '');
+    if (!SE_ALLOWED_FORMATS.has(format)) {
+      return res.status(400).json({ error: 'format_not_allowed' });
+    }
+    const width = Number(params.width || params.WIDTH || 0);
+    const height = Number(params.height || params.HEIGHT || 0);
+    // The service advertises MaxWidth/MaxHeight = 4096; we only ever need 256.
+    if (!(width > 0 && height > 0 && width <= MAX_PIXELS && height <= MAX_PIXELS)) {
+      return res.status(400).json({ error: 'bad_image_size' });
+    }
+  }
+
+  // Rebuild the upstream query from the client's parameters. Any credential
+  // supplied by the client is dropped on purpose — ours is the only one used.
+  const upstream = new URL(process.env.LANTMATERIET_WMS_URL || SE_UPSTREAM_DEFAULT);
+  for (const [key, value] of Object.entries(params)) {
+    const lower = key.toLowerCase();
+    if (lower === 'token' || lower === 'user' || lower === 'pass' || lower === 'password') continue;
+    upstream.searchParams.set(key, Array.isArray(value) ? value[0] : String(value));
+  }
+
+  const cacheKey = `se|${upstream.search}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    res.set('Content-Type', cached.type);
+    res.set('Cache-Control', 'public, max-age=604800, immutable');
+    res.set('X-Proxy-Cache', 'HIT');
+    return res.send(cached.body);
+  }
+
+  try {
+    const upstreamRes = await fetch(upstream.toString(), { headers: { authorization } });
+    const type = upstreamRes.headers.get('content-type') || 'application/octet-stream';
+    const buffer = Buffer.from(await upstreamRes.arrayBuffer());
+
+    if (!upstreamRes.ok || type.includes('xml') || type.includes('html')) {
+      // MapServer answers 200 + an OGC ServiceException for a bad request,
+      // and nginx answers 401 + HTML for bad credentials, so sniff both.
+      const body = buffer.toString('utf8', 0, 2000);
+      const unauthorized = upstreamRes.status === 401 || upstreamRes.status === 403 ||
+        /authorization required|not authori[sz]ed|unauthorized/i.test(body);
+      logger.warn(
+        { status: upstreamRes.status, type, unauthorized },
+        'Lantmäteriet upstream refused a request',
+      );
+      return res
+        .status(unauthorized ? 401 : 502)
+        .json({ error: unauthorized ? 'lantmateriet_credentials_invalid' : 'upstream_error' });
+    }
+
+    cacheSet(cacheKey, { body: buffer, type, expires: Date.now() + CACHE_TTL_MS });
+    res.set('Content-Type', type);
+    res.set('Cache-Control', 'public, max-age=604800, immutable');
+    res.set('X-Proxy-Cache', 'MISS');
+    return res.send(buffer);
+  } catch (err) {
+    logger.error({ err: err?.message }, 'Lantmäteriet proxy request failed');
     return res.status(502).json({ error: 'upstream_unreachable' });
   }
 });

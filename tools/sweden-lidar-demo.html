@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sweden · Lantmäteriet terrängskuggning — standalone check</title>
+
+<!-- Leaflet 1.x, served from this repo. No build step, no CDN. -->
+<link rel="stylesheet" href="../css/leaflet.css">
+
+<style>
+    html, body { height: 100%; margin: 0; font: 14px/1.45 system-ui, sans-serif; }
+    #map { position: absolute; inset: 0; }
+
+    #panel {
+        position: absolute; top: 12px; right: 12px; z-index: 1000;
+        width: 290px; max-width: calc(100vw - 24px);
+        background: rgba(20,18,16,0.92); color: #f5f0eb;
+        border: 1px solid rgba(245,240,235,0.22); border-radius: 10px;
+        padding: 12px 14px; box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+    }
+    #panel h1 { font-size: 0.95rem; margin: 0 0 2px; }
+    #panel .sub { font-size: 0.72rem; opacity: 0.6; margin-bottom: 10px; }
+    #panel label { display: block; font-size: 0.74rem; opacity: 0.75; margin: 10px 0 4px; }
+    #panel select, #panel input[type=range] { width: 100%; }
+    #panel select {
+        background: rgba(255,255,255,0.07); color: #f5f0eb; font-size: 0.78rem;
+        border: 1px solid rgba(245,240,235,0.25); border-radius: 6px; padding: 5px 6px;
+    }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .warn {
+        margin-top: 12px; padding: 8px 10px; border-radius: 6px; font-size: 0.72rem;
+        background: rgba(214,120,40,0.18); border: 1px solid rgba(214,120,40,0.5);
+    }
+    .warn b { color: #ffb870; }
+    #status { margin-top: 10px; font-size: 0.72rem; opacity: 0.8; min-height: 1.3em; }
+    code { font-size: 0.7rem; background: rgba(255,255,255,0.08); padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+    <h1>Sweden · Terrängskuggning</h1>
+    <div class="sub">Lantmäteriet höjdmodell 1 m · live WMS 1.1.1 · EPSG:3857</div>
+
+    <div class="row">
+        <label style="margin:0">Layer on</label>
+        <input type="checkbox" id="onoff" checked>
+    </div>
+
+    <label for="mode">Product</label>
+    <select id="mode"></select>
+
+    <label for="opacity">Opacity · <span id="pct">70%</span></label>
+    <input type="range" id="opacity" min="0" max="100" value="70">
+
+    <label for="src">Service</label>
+    <select id="src">
+        <option value="minkarta">Min karta backend (evaluation only)</option>
+        <option value="geotorget">Licensed service via /api/geo/se-hojdmodell</option>
+    </select>
+
+    <div class="warn" id="srcWarn">
+        <b>Evaluation only.</b> The Min karta backend is the fee-based product
+        <i>Markhöjdmodell Visning</i> and is <b>not licensed</b> for third-party
+        sites. Use it to check alignment, never in production.
+        See <code>SWEDEN_LIDAR_LANTMATERIET.md</code>.
+    </div>
+
+    <div id="status"></div>
+</div>
+
+<script src="../js/leaflet.js"></script>
+<script>
+/* Pick the source BEFORE the module is evaluated. This page defaults to the
+ * Min karta backend precisely because it is the only one that answers without
+ * credentials — the whole point of the page is to let a human confirm, with
+ * their own eyes, that the hillshade lands on the basemap. */
+window.DETECTLAB_SE_WMS_SOURCE = 'minkarta';
+</script>
+<script src="../js/lantmateriet-hojdmodell-layer.js"></script>
+
+<script>
+(function () {
+    'use strict';
+    var SE = window.LantmaterietHojdmodell;
+
+    // Stockholm — the archipelago shoreline is the best alignment reference
+    // in Sweden: hundreds of small islands with unmistakable outlines.
+    var map = L.map('map', { center: [59.33, 18.07], zoom: 13 });
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    var layer = null;
+
+    function build() {
+        if (layer) { map.removeLayer(layer); layer = null; }
+        layer = SE.createLayer({
+            mode: document.getElementById('mode').value || SE.CONFIG.DEFAULT_MODE,
+            opacity: Number(document.getElementById('opacity').value) / 100
+        });
+        if (document.getElementById('onoff').checked) layer.addTo(map);
+        layer.on('tileerror', function () {
+            document.getElementById('status').textContent =
+                'Some tiles failed — they fall back to a transparent PNG (no broken images).';
+        });
+    }
+
+    // Fill the dropdown straight from the module's published layer list.
+    var sel = document.getElementById('mode');
+    SE.modeKeys().forEach(function (key) {
+        var o = document.createElement('option');
+        o.value = key;
+        o.textContent = SE.MODES[key].label;
+        sel.appendChild(o);
+    });
+    sel.value = SE.CONFIG.DEFAULT_MODE;
+
+    sel.onchange = function () {
+        if (layer && layer.setMode) layer.setMode(sel.value); else build();
+    };
+
+    document.getElementById('onoff').onchange = function () {
+        if (!layer) return build();
+        if (this.checked) layer.addTo(map); else map.removeLayer(layer);
+    };
+
+    document.getElementById('opacity').oninput = function () {
+        document.getElementById('pct').textContent = this.value + '%';
+        if (layer) layer.setOpacity(Number(this.value) / 100);
+    };
+
+    document.getElementById('src').onchange = function () {
+        window.DETECTLAB_SE_WMS_SOURCE = this.value;
+        document.getElementById('srcWarn').style.display =
+            this.value === 'minkarta' ? '' : 'none';
+        document.getElementById('status').textContent = this.value === 'geotorget'
+            ? 'Now requesting /api/geo/se-hojdmodell — needs the proxy and Geotorget credentials.'
+            : '';
+        build();
+    };
+
+    // Live read-out of what is actually on the wire, so the CRS and bbox can
+    // be checked without opening DevTools.
+    function report() {
+        if (!layer || !layer._map) return;
+        var c = map.getCenter(), z = map.getZoom();
+        var p = map.project(c, z).divideBy(256).floor();
+        var url = layer.getTileUrl({ x: p.x, y: p.y, z: z });
+        document.getElementById('status').innerHTML =
+            'z' + z + ' · ' + (SE.isProxied() ? 'proxied' : 'direct') +
+            '<br><code>' + url.replace(/^[^?]*\?/, '').slice(0, 150) + '…</code>';
+    }
+    map.on('moveend zoomend', report);
+
+    build();
+    setTimeout(report, 400);
+})();
+</script>
+</body>
+</html>

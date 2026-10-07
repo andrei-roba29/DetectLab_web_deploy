@@ -5632,6 +5632,19 @@
             var DENMARK_LIDAR_DEFAULT_MODE =
                 (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.DEFAULT_MODE) || 'terrain';
 
+            // Sweden streams Lantmäteriet's terrängskuggning / terränglutning
+            // through the site's own credential-adding proxy (see
+            // js/lantmateriet-hojdmodell-layer.js). The service is the
+            // licensed product "Markhöjdmodell Visning"; the unauthenticated
+            // Min karta backend is evaluation-only and is NOT the default.
+            var SWEDEN_LIDAR_WMS_URL =
+                (window.LantmaterietHojdmodell && window.LantmaterietHojdmodell.CONFIG.GEOTORGET_URL) ||
+                'https://maps.lantmateriet.se/hojdmodell/wms/v1.1';
+            var SWEDEN_LIDAR_MODES = (window.LantmaterietHojdmodell && window.LantmaterietHojdmodell.MODES) || {};
+            var SWEDEN_LIDAR_DEFAULT_MODE =
+                (window.LantmaterietHojdmodell && window.LantmaterietHojdmodell.CONFIG.DEFAULT_MODE) ||
+                'terrangskuggning';
+
             // The Norway control now switches between whole-country products
             // (bare terrain, surface, local relief) instead of 1,356 survey
             // projects, so there is no catalogue request to make at start-up.
@@ -5659,6 +5672,8 @@
             window.FRANCE_LIDAR_WMS_URL = FRANCE_LIDAR_WMS_URL;
             window.DENMARK_LIDAR_WMS_URL = DENMARK_LIDAR_WMS_URL;
             window.DENMARK_LIDAR_MODES = DENMARK_LIDAR_MODES;
+            window.SWEDEN_LIDAR_WMS_URL = SWEDEN_LIDAR_WMS_URL;
+            window.SWEDEN_LIDAR_MODES = SWEDEN_LIDAR_MODES;
 
             // The WMS services use different layer catalogues, so the select
             // controls below swap a complete layer instead of stacking several
@@ -5977,6 +5992,14 @@
                     attribution: (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.ATTRIBUTION) ||
                         'Indeholder data fra Klimadatastyrelsen, Danmarks Højdemodel (CC BY 4.0)',
                     leafletLayer: null
+                },
+                seLidar: {
+                    label: 'Sweden · Terrängskuggning (Lantmäteriet höjdmodell)', enabled: false,
+                    opacity: (window.LantmaterietHojdmodell && window.LantmaterietHojdmodell.CONFIG.OPACITY) || 0.7,
+                    factory: 'sweden', mode: SWEDEN_LIDAR_DEFAULT_MODE,
+                    attribution: (window.LantmaterietHojdmodell && window.LantmaterietHojdmodell.CONFIG.ATTRIBUTION) ||
+                        'Terrängskuggning © Lantmäteriet',
+                    leafletLayer: null
                 }
             };
 
@@ -5984,7 +6007,8 @@
                 nlAhn: 'lidarNlAhnToggle', noLidar: 'lidarNoLidarToggle',
                 plLidar: 'lidarPlLidarToggle', esLidar: 'lidarEsLidarToggle',
                 chLidar: 'lidarChLidarToggle', ukLidar: 'lidarUkLidarToggle',
-                frLidar: 'lidarFrLidarToggle', dkLidar: 'lidarDkLidarToggle'
+                frLidar: 'lidarFrLidarToggle', dkLidar: 'lidarDkLidarToggle',
+                seLidar: 'lidarSeLidarToggle'
             };
 
             function _createSelectableEuropeanLidarLayer(cfg) {
@@ -6107,6 +6131,31 @@
                         keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
                             ? window.DLTilePerf.config.keepBuffer
                             : window.DataforsyningenDHM.CONFIG.KEEP_BUFFER
+                    });
+                }
+                if (cfg.factory === 'sweden') {
+                    // Lantmäteriet's height-model WMS in EPSG:3857, clipped to
+                    // Sweden. The Geotorget credentials are NEVER in this file:
+                    // tiles go through the site's own /api/geo/se-hojdmodell
+                    // proxy, which adds the Authorization header server-side
+                    // (backend/src/routes/geoProxy.js, or the Netlify twin in
+                    // netlify/functions/se-hojdmodell.mjs). For a local look
+                    // without an agreement, set
+                    // window.DETECTLAB_SE_WMS_SOURCE = 'minkarta' — evaluation
+                    // only, see SWEDEN_LIDAR_LANTMATERIET.md.
+                    if (!window.LantmaterietHojdmodell) {
+                        console.warn('[DetectLab] lantmateriet-hojdmodell-layer.js is not loaded — Sweden LiDAR unavailable');
+                        return null;
+                    }
+                    return window.LantmaterietHojdmodell.createLayer({
+                        mode: cfg.mode || SWEDEN_LIDAR_DEFAULT_MODE,
+                        pane: 'pane_lidar',
+                        opacity: (cfg.opacity !== undefined)
+                            ? cfg.opacity
+                            : window.LantmaterietHojdmodell.CONFIG.OPACITY,
+                        keepBuffer: (window.DLTilePerf && window.DLTilePerf.config)
+                            ? window.DLTilePerf.config.keepBuffer
+                            : window.LantmaterietHojdmodell.CONFIG.KEEP_BUFFER
                     });
                 }
                 return null;
@@ -6577,6 +6626,35 @@
             }
             _populateDenmarkModeSelect();
 
+            window.setSwedenLidarMode = function (mode) {
+                var cfg = LIDAR_SUB_LAYERS.seLidar;
+                // Only the WMS layer name changes, so redraw in place.
+                if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && SWEDEN_LIDAR_MODES[mode]) {
+                    cfg.mode = mode;
+                    cfg.leafletLayer.setMode(mode);
+                    return;
+                }
+                _replaceSelectableInternationalLayer('seLidar', mode);
+            };
+
+            function _populateSwedenModeSelect() {
+                var select = document.getElementById('swedenLidarModeSelect');
+                if (!select || !window.LantmaterietHojdmodell) return;
+                var current = select.value;
+                select.innerHTML = '';
+                window.LantmaterietHojdmodell.modeKeys().forEach(function (key) {
+                    var option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = SWEDEN_LIDAR_MODES[key].label;
+                    select.appendChild(option);
+                });
+                var cfg = LIDAR_SUB_LAYERS && LIDAR_SUB_LAYERS.seLidar;
+                select.value = (current && SWEDEN_LIDAR_MODES[current])
+                    ? current
+                    : ((cfg && cfg.mode) || SWEDEN_LIDAR_DEFAULT_MODE);
+            }
+            _populateSwedenModeSelect();
+
             function _populateUkModeSelect() {
                 var select = document.getElementById('ukLidarModeSelect');
                 if (!select || !window.EaLidarWmts) return;
@@ -7031,7 +7109,8 @@
 
             map.on('zoomend', function() {
                 ['ar', 'hd', 'ab', 'bh', 'cs', 'ro2m', 'ro1m', 'cs917', 'dj917', 'gj917', 'mh917',
-                 'nlAhn', 'noLidar', 'plLidar', 'esLidar', 'chLidar', 'ukLidar', 'frLidar', 'dkLidar'].forEach(function(key) {
+                 'nlAhn', 'noLidar', 'plLidar', 'esLidar', 'chLidar', 'ukLidar', 'frLidar', 'dkLidar',
+                 'seLidar'].forEach(function(key) {
                     var cfg = LIDAR_SUB_LAYERS[key];
                     if (cfg && cfg.leafletLayer && cfg.enabled && _lidarVisible) {
                         cfg.leafletLayer.options.opacity = cfg.opacity;
@@ -12047,7 +12126,11 @@
                     chLidar: [[45.398181, 5.140242], [48.230651, 11.47757]],
                     ukLidar: [[49.850605, -7.104776], [55.877087, 2.084282]],
                     frLidar: [[41.30, -5.50], [51.20, 9.70]],
-                    dkLidar: [[54.4265, 7.99125], [57.7781, 15.5995]]
+                    dkLidar: [[54.4265, 7.99125], [57.7781, 15.5995]],
+                    // Sweden proper. The service's own capabilities box
+                    // (6.31918 53.90617 → 29.28575 72.0992) spills into the
+                    // Baltic, Norway and Finland where there is no data.
+                    seLidar: [[55.20, 10.80], [69.20, 24.30]]
                 };
 
                 // Central config: each leaf layer with its bounds and row getter
@@ -12158,7 +12241,8 @@
                         chLidar: 'lidarChLidarOpacitySlider',
                         ukLidar: 'lidarUkLidarOpacitySlider',
                         frLidar: 'lidarFrLidarOpacitySlider',
-                        dkLidar: 'lidarDkLidarOpacitySlider'
+                        dkLidar: 'lidarDkLidarOpacitySlider',
+                        seLidar: 'lidarSeLidarOpacitySlider'
                     };
                     var realSliderId = mapping[k] || sliderId;
                     layerDefs.push({
@@ -12186,7 +12270,8 @@
                         nlAhn: 'lidarNlAhnOpacitySlider', noLidar: 'lidarNoLidarOpacitySlider',
                         plLidar: 'lidarPlLidarOpacitySlider', esLidar: 'lidarEsLidarOpacitySlider',
                         chLidar: 'lidarChLidarOpacitySlider', ukLidar: 'lidarUkLidarOpacitySlider',
-                        frLidar: 'lidarFrLidarOpacitySlider', dkLidar: 'lidarDkLidarOpacitySlider'
+                        frLidar: 'lidarFrLidarOpacitySlider', dkLidar: 'lidarDkLidarOpacitySlider',
+                        seLidar: 'lidarSeLidarOpacitySlider'
                     }[k] || sliderId;
                     internationalLayerDefs.push({
                         key: 'lidar_' + k,

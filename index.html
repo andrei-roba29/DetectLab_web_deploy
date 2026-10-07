@@ -2148,6 +2148,23 @@
                                 <input type="range" class="lidar-country-opacity" id="lidarDkLidarOpacitySlider" min="0" max="100" value="60" oninput="setInternationalLidarOpacity('dkLidar', this.value)">
                             </div>
 
+                            <!-- Sweden · Lantmäteriet terrängskuggning (WMS 1.1.1, EPSG:3857).
+                                 LICENSED, fee-based service: tiles go through this site's own
+                                 /api/geo/se-hojdmodell proxy, which adds the Geotorget
+                                 credentials server-side. Nothing secret is in the page.
+                                 Options are filled from js/lantmateriet-hojdmodell-layer.js. -->
+                            <div class="lidar-country-row" id="lidarSeLidarRow">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-bottom:5px;gap:5px;">
+                                    <span style="display:flex;align-items:center;gap:5px;"><span>Sweden · Terrängskuggning (höjdmodell 1 m)</span><button type="button" class="layer-info-btn" onclick="event.stopPropagation();showLayerInfo('Sweden · Lantmäteriet terrängskuggning','Terrain shading and slope images computed from Lantmäteriet&#39;s national LiDAR-based height model (1 m grid), streamed live as WMS 1.1.1 GetMap tiles in EPSG:3857 so they line up with the basemap. Visible from zoom 8, native detail to zoom 17. © Lantmäteriet. NOTE: this is the licensed product &quot;Markhöjdmodell Visning&quot; — it is NOT open data and it is NOT free. The site adds its Geotorget credentials server-side through its own proxy; no credentials are ever sent to the browser. See SWEDEN_LIDAR_LANTMATERIET.md.')" title="Layer info">ⓘ</button></span>
+                                    <label class="apm-toggle-switch" title="Toggle Sweden LiDAR" style="transform:scale(0.85);transform-origin:right center;"><input type="checkbox" id="lidarSeLidarToggle" onchange="toggleInternationalLidar('seLidar', this.checked)"><span class="apm-toggle-track"></span></label>
+                                </div>
+                                <select id="swedenLidarModeSelect" class="lidar-country-select" aria-label="Sweden height-model product (terrain shading or slope)" onchange="setSwedenLidarMode(this.value)">
+                                    <option value="terrangskuggning">Terrängskuggning · hillshade (DTM 1 m)</option><option value="terranglutning">Terränglutning · slope, greyscale</option><option value="terranglutning_brunton">Terränglutning · slope, brown/purple</option><option value="ursprung_kvalitet">Ursprung och kvalitet · source &amp; quality</option>
+                                </select>
+                                <div class="transp-layer-label" style="margin:5px 0"><span style="font-size:0.72rem;opacity:0.6">Opacity</span><span class="pct" id="lidarSeLidarPct">70%</span></div>
+                                <input type="range" class="lidar-country-opacity" id="lidarSeLidarOpacitySlider" min="0" max="100" value="70" oninput="setInternationalLidarOpacity('seLidar', this.value)">
+                            </div>
+
                         </div><!-- /lidarEuropeanSubLayers -->
 
                         <div id="lidarSubLayers" style="margin-top:0;padding-left:6px;border-left:2px solid rgba(79,195,247,0.3);display:flex;flex-direction:column;gap:8px;overflow:hidden;transition:max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;max-height:0;opacity:0;">
@@ -4633,10 +4650,11 @@
     <script src="js/swisstopo-relief-layer.js?v=20261006-swisstopo"></script>
     <script src="js/ea-lidar-wmts-layer.js?v=20261006-ea-lidar"></script>
     <script src="js/dataforsyningen-dhm-layer.js?v=20261006-dk-dhm"></script>
+    <script src="js/lantmateriet-hojdmodell-layer.js?v=20261007-se-hojdmodell"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/globe-country-picker.js?v=20261007"></script>
-    <script src="js/map-app.js?v=20261006-dk-dhm-wms"></script>
+    <script src="js/map-app.js?v=20261007-se-hojdmodell"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>

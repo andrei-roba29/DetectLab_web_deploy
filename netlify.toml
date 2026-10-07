@@ -27,3 +27,16 @@
   from = "/api/corona/rasters"
   to = "/.netlify/functions/corona-rasters"
   status = 200
+
+# ── SWEDEN · Lantmäteriet terrängskuggning tile proxy ──────────────────────
+# The Swedish hillshade WMS ("Markhöjdmodell Visning") is a licensed,
+# fee-based product: maps.lantmateriet.se answers 401 without credentials,
+# and those credentials must never reach a browser. This function attaches
+# them server-side and pins the rendered tiles on the CDN for 7 days.
+# Set LANTMATERIET_WMS_USER / LANTMATERIET_WMS_PASSWORD (or
+# LANTMATERIET_WMS_TOKEN) in the Netlify environment.
+# See netlify/functions/se-hojdmodell.mjs and SWEDEN_LIDAR_LANTMATERIET.md.
+[[redirects]]
+  from = "/api/geo/se-hojdmodell"
+  to = "/.netlify/functions/se-hojdmodell"
+  status = 200
