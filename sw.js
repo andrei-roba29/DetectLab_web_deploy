@@ -327,7 +327,7 @@
 // v162: Sweden · Lantmäteriet terrängskuggning (höjdmodell 1 m) as live WMS
 //   1.1.1 tiles in EPSG:3857, behind the site's own credential-adding proxy
 //   (js/lantmateriet-hojdmodell-layer.js).
-const CACHE_NAME = 'detectlab-v162-se-hojdmodell';
+const CACHE_NAME = 'detectlab-v163-dk-dhm-wmts';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';

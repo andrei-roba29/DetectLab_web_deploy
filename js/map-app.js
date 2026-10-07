@@ -5986,7 +5986,7 @@
                     factory: 'france', mode: 'terrain', attribution: '© IGN France — LiDAR HD.', leafletLayer: null
                 },
                 dkLidar: {
-                    label: 'Denmark · DHM hillshade (Dataforsyningen)', enabled: false,
+                    label: 'Denmark · DHM hillshade (Dataforsyningen WMTS)', enabled: false,
                     opacity: (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.OPACITY) || 0.6,
                     factory: 'denmark', mode: DENMARK_LIDAR_DEFAULT_MODE,
                     attribution: (window.DataforsyningenDHM && window.DataforsyningenDHM.CONFIG.ATTRIBUTION) ||
@@ -6112,12 +6112,17 @@
                 }
                 if (cfg.factory === 'denmark') {
                     // Dataforsyningen WMS in EPSG:3857, clipped to Denmark.
+                    // Dataforsyningen's DHM skyggekort WMTS. Its only grid,
+                    // View1, is EPSG:25832 (ETRS89 / UTM 32N), so the layer
+                    // reprojects each tile onto a canvas rather than putting
+                    // the whole map into a Danish CRS — OSM and the other
+                    // national LiDAR layers keep lining up.
                     // The token is NEVER in this file: tiles go through the
                     // site's own /api/geo/dk-dhm proxy, which adds it
-                    // server-side (backend/src/routes/geoProxy.js). A static
-                    // deployment with no backend can set
-                    // window.DETECTLAB_DK_TOKEN instead — insecure, see
-                    // DENMARK_LIDAR_DATAFORSYNINGEN.md.
+                    // server-side (backend/src/routes/geoProxy.js, or
+                    // netlify/functions/dk-dhm.mjs). A static deployment with
+                    // no backend can set window.DETECTLAB_DK_TOKEN instead —
+                    // insecure, see DENMARK_LIDAR_DATAFORSYNINGEN.md.
                     if (!window.DataforsyningenDHM) {
                         console.warn('[DetectLab] dataforsyningen-dhm-layer.js is not loaded — Denmark LiDAR unavailable');
                         return null;
@@ -6599,7 +6604,8 @@
 
             window.setDenmarkLidarMode = function (mode) {
                 var cfg = LIDAR_SUB_LAYERS.dkLidar;
-                // Only the WMS layer name changes, so redraw in place.
+                // Terrain and surface share the View1 grid, so only the
+                // WMTS layer name changes: redraw in place.
                 if (cfg && cfg.leafletLayer && cfg.leafletLayer.setMode && DENMARK_LIDAR_MODES[mode]) {
                     cfg.mode = mode;
                     cfg.leafletLayer.setMode(mode);

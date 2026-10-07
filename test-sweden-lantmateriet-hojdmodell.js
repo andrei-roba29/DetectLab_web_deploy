@@ -419,7 +419,13 @@ check('the zoom handler keeps the Sweden opacity in sync',
 
 check('the service worker precaches the module',
     /lantmateriet-hojdmodell-layer\.js/.test(sw));
-check('…and its cache name was bumped', /detectlab-v162-se-hojdmodell/.test(sw));
+// Pin that the cache was versioned past the one that shipped this layer,
+// not the exact string — every later feature bumps it again.
+check('…and its cache name was bumped past v162 (when this layer shipped)',
+    (function () {
+        const m = /CACHE_NAME = 'detectlab-v(\d+)-/.exec(sw);
+        return m !== null && Number(m[1]) >= 162;
+    }()));
 
 // Nothing else moved: the other countries keep their factories.
 ['netherlands', 'poland', 'spain', 'switzerland', 'uk', 'france', 'denmark']

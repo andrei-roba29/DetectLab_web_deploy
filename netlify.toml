@@ -40,3 +40,15 @@
   from = "/api/geo/se-hojdmodell"
   to = "/.netlify/functions/se-hojdmodell"
   status = 200
+
+# ── DENMARK · Dataforsyningen DHM skyggekort WMTS tile proxy ───────────────
+# api.dataforsyningen.dk refuses every imagery request without a token, and
+# that token is account-wide (no documented domain/IP restriction), so it
+# must never reach a browser. This function attaches it server-side as the
+# "token" header and pins the tiles on the CDN for 7 days.
+# Set DATAFORSYNINGEN_TOKEN in the Netlify environment.
+# See netlify/functions/dk-dhm.mjs and DENMARK_LIDAR_DATAFORSYNINGEN.md.
+[[redirects]]
+  from = "/api/geo/dk-dhm"
+  to = "/.netlify/functions/dk-dhm"
+  status = 200

@@ -2,29 +2,35 @@
  * geoProxy.js — credential-adding, caching proxy for national LiDAR services.
  * ───────────────────────────────────────────────────────────────────────────
  * Two routes live here:
- *   /api/geo/dk-dhm        Denmark  · Dataforsyningen  (token header)
- *   /api/geo/se-hojdmodell Sweden   · Lantmäteriet     (Basic or Bearer)
+ *   /api/geo/dk-dhm        Denmark  · Dataforsyningen  (WMTS, token header)
+ *   /api/geo/se-hojdmodell Sweden   · Lantmäteriet     (WMS, Basic or Bearer)
  * Both follow the same rules: a fixed upstream host, an allowlist of layers,
  * formats and request types, a size cap, a 7-day cache, and a secret that
  * never leaves this process.
  * ───────────────────────────────────────────────────────────────────────────
- * The Danish Agency's WMS/WMTS require a token on every request. A token in
- * client-side JavaScript is visible to every visitor, so the browser instead
- * asks THIS server for tiles and the token is added here, server-side, as the
- * "token" HTTP header (the method Dataforsyningen's own documentation
- * recommends over the query parameter).
+ * Dataforsyningen requires a token on every request. A token in client-side
+ * JavaScript is visible to every visitor, so the browser instead asks THIS
+ * server for tiles and the token is added here, server-side, as the "token"
+ * HTTP header (the method Dataforsyningen's own documentation recommends
+ * over the query parameter, because it keeps the secret out of access logs,
+ * Referer headers and browser history).
  *
- *   browser  →  GET /api/geo/dk-dhm?service=WMS&request=GetMap&…   (no token)
- *   server   →  GET https://api.dataforsyningen.dk/dhm_DAF?…       (token: …)
+ *   browser → GET /api/geo/dk-dhm?service=WMTS&request=GetTile&…    (no token)
+ *   server  → GET https://api.dataforsyningen.dk/dhm_terraen_skyggekort_DAF?…
+ *                                                           + header token:…
+ *
+ * The client never names an upstream host. It sends the WMTS layer, and the
+ * LAYER_UPSTREAM table below decides which api.dataforsyningen.dk service
+ * that maps to — so the route can never be turned into an open proxy.
  *
  * Configuration (never committed):
  *   DATAFORSYNINGEN_TOKEN=<your 32-character token>    # backend/.env
  *
  * The token is never logged and never echoed back in a response or an error.
  *
- * Safety: this is NOT an open proxy. Only GetMap/GetCapabilities on a fixed
- * host, a fixed service and a whitelist of layers and formats are forwarded,
- * and the image size is capped.
+ * Safety: this is NOT an open proxy. Only GetTile/GetCapabilities are
+ * forwarded, only to a host and service chosen from a fixed table, and only
+ * for an allowlisted layer, format, tile-matrix-set and tile index.
  *
  * Caching: successful tiles are kept in a small in-process LRU for 7 days and
  * are returned with "Cache-Control: public, max-age=604800, immutable" so any
@@ -39,20 +45,24 @@ const router = express.Router();
 
 /* ── configuration ──────────────────────────────────────────────────────── */
 
-const UPSTREAM = 'https://api.dataforsyningen.dk/dhm_DAF';
-
-// Only these layers may be requested through the proxy.
-const ALLOWED_LAYERS = new Set([
-  'dhm_terraen_skyggekort',
-  'dhm_overflade_skyggekort',
-  'dhm_kurve_traditionel',
-  'dhm_kurve_0_5_m',
-  'dhm_kurve_0_25_m',
+// WMTS layer → the api.dataforsyningen.dk service that publishes it. This
+// table is the ONLY way an upstream URL can be chosen, which is what stops
+// the route from becoming an open proxy.
+const LAYER_UPSTREAM = new Map([
+  ['dhm_terraen_skyggekort', 'https://api.dataforsyningen.dk/dhm_terraen_skyggekort_DAF'],
+  ['dhm_overflade_skyggekort', 'https://api.dataforsyningen.dk/dhm_overflade_skyggekort_DAF'],
 ]);
 
-const ALLOWED_FORMATS = new Set(['image/png', 'image/jpeg']);
-const ALLOWED_REQUESTS = new Set(['getmap', 'getcapabilities']);
-const MAX_PIXELS = 1024; // width/height cap — tiles are 256
+const DEFAULT_UPSTREAM = LAYER_UPSTREAM.get('dhm_terraen_skyggekort');
+
+// image/jpeg is the only format the DHM skyggekort WMTS publishes.
+const ALLOWED_FORMATS = new Set(['image/jpeg']);
+const ALLOWED_REQUESTS = new Set(['gettile', 'getcapabilities']);
+const ALLOWED_TILEMATRIXSETS = new Set(['view1']);
+
+// View1 has levels 0…13; its largest matrix is 17188 × 11719 tiles.
+const MAX_TILEMATRIX = 13;
+const MAX_TILE_INDEX = 17187;
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const CACHE_MAX_ENTRIES = 2000;               // ≈ a few hundred MB at most
@@ -95,31 +105,57 @@ router.get('/geo/dk-dhm', async (req, res) => {
     return res.status(400).json({ error: 'unsupported_request' });
   }
 
-  if (request === 'getmap') {
-    const layers = String(params.layers || params.LAYERS || '');
-    if (!layers.split(',').every((l) => ALLOWED_LAYERS.has(l.trim()))) {
+  // Parameter names are case-insensitive in OGC KVP, so look them up that way.
+  const pick = (name) => {
+    const key = Object.keys(params).find((k) => k.toLowerCase() === name);
+    if (key === undefined) return '';
+    const value = params[key];
+    return String(Array.isArray(value) ? value[0] : value);
+  };
+
+  let target = DEFAULT_UPSTREAM;
+
+  if (request === 'gettile') {
+    const layer = pick('layer');
+    if (!LAYER_UPSTREAM.has(layer)) {
       return res.status(400).json({ error: 'layer_not_allowed' });
     }
-    const format = String(params.format || params.FORMAT || '');
-    if (!ALLOWED_FORMATS.has(format)) {
+    target = LAYER_UPSTREAM.get(layer);
+
+    if (!ALLOWED_FORMATS.has(pick('format'))) {
       return res.status(400).json({ error: 'format_not_allowed' });
     }
-    const width = Number(params.width || params.WIDTH || 0);
-    const height = Number(params.height || params.HEIGHT || 0);
-    if (!(width > 0 && height > 0 && width <= MAX_PIXELS && height <= MAX_PIXELS)) {
-      return res.status(400).json({ error: 'bad_image_size' });
+    if (!ALLOWED_TILEMATRIXSETS.has(pick('tilematrixset').toLowerCase())) {
+      return res.status(400).json({ error: 'tilematrixset_not_allowed' });
     }
+
+    // "7" is what this server wants; tolerate the "View1:7" spelling used by
+    // the Layer's TileMatrixSetLimits so either client works.
+    const matrix = Number(pick('tilematrix').replace(/^View1:/i, ''));
+    const col = Number(pick('tilecol'));
+    const row = Number(pick('tilerow'));
+    const whole = (n, max) => Number.isInteger(n) && n >= 0 && n <= max;
+    if (!whole(matrix, MAX_TILEMATRIX) ||
+        !whole(col, MAX_TILE_INDEX) ||
+        !whole(row, MAX_TILE_INDEX)) {
+      return res.status(400).json({ error: 'bad_tile_index' });
+    }
+  } else {
+    // GetCapabilities: let the caller choose which of the two services, but
+    // still only from the table.
+    const layer = pick('layer');
+    if (layer && LAYER_UPSTREAM.has(layer)) target = LAYER_UPSTREAM.get(layer);
   }
 
   // Rebuild the upstream query from the client's parameters. A token supplied
   // by the client is ignored on purpose — ours is the only one used.
-  const upstream = new URL(UPSTREAM);
+  const upstream = new URL(target);
   for (const [key, value] of Object.entries(params)) {
     if (key.toLowerCase() === 'token') continue;
     upstream.searchParams.set(key, Array.isArray(value) ? value[0] : String(value));
   }
 
-  const cacheKey = upstream.search;
+  const cacheKey = upstream.pathname + upstream.search;
   const cached = cacheGet(cacheKey);
   if (cached) {
     res.set('Content-Type', cached.type);

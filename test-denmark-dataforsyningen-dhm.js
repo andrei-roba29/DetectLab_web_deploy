@@ -1,16 +1,28 @@
 /*
  * test-denmark-dataforsyningen-dhm.js
  * ──────────────────────────────────────────────────────────────────────────
- * Denmark LiDAR layer — Danmarks Højdemodel hillshade from Dataforsyningen.
+ * Denmark LiDAR layer — Danmarks Højdemodel hillshade from Dataforsyningen's
+ * WMTS (dhm_terraen_skyggekort_DAF / dhm_overflade_skyggekort_DAF, the View1
+ * grid in EPSG:25832).
  *
  * What this pins:
  *   • NO TOKEN is present anywhere in the repository, and the browser gets
  *     its tiles from this site's own proxy path, not from the Danish service;
- *   • the request is a WMS 1.3.0 GetMap in EPSG:3857 (the WMTS "View1" grid
- *     is EPSG:25832 and would not line up with the Web-Mercator basemap);
- *   • TRANSPARENT is spelled in upper case, which the service insists on;
- *   • the layer is clipped to the published Danish extent;
- *   • 401/403 produces one non-blocking notice, never console spam;
+ *   • the View1 grid constants reproduce the live GetCapabilities exactly —
+ *     all 14 resolutions and all 14 MatrixWidth×MatrixHeight pairs;
+ *   • the EPSG:25832 projection in the module is the right one: it round
+ *     trips exactly and it reproduces the service's own published
+ *     WGS84BoundingBox from the View1 extent;
+ *   • the brief's two example tiles decode to places inside Denmark;
+ *   • the request is a WMTS 1.0.0 KVP GetTile with style=default, a bare
+ *     integer TileMatrix and image/jpeg;
+ *   • THE REPROJECTION IS CORRECT: §9 drives the real createTile() through a
+ *     recording canvas and checks that known Danish coordinates land on the
+ *     right destination pixel to a fraction of a pixel;
+ *   • the layer is clipped to the published Danish extent and never asks for
+ *     a tile outside the matrix;
+ *   • a missing token produces one non-blocking notice, never console spam
+ *     and never a broken-image icon;
  *   • only the Denmark row of the app changed.
  *
  * Run:  node test-denmark-dataforsyningen-dhm.js
@@ -41,7 +53,13 @@ function near(name, actual, expected, tol) {
         'expected ' + expected + ' ±' + tol + ', got ' + actual);
 }
 
-/* ── Leaflet 1.x stub (enough of L.TileLayer for a real tile URL) ───────── */
+const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
+const exists = (f) => fs.existsSync(path.join(__dirname, f));
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Stubs: just enough Leaflet 1.x, DOM canvas and Image to run the real layer
+ * ═════════════════════════════════════════════════════════════════════════ */
+
 const R = 6378137;
 const HALF = Math.PI * R;
 
@@ -66,64 +84,47 @@ function makeLeaflet() {
 
     const CRS = {
         EPSG3857: {
+            code: 'EPSG:3857',
             project: (ll) => new Point(R * ll.lng * Math.PI / 180,
                 R * Math.log(Math.tan(Math.PI / 4 + ll.lat * Math.PI / 360))),
             unproject: (p) => new LatLng((2 * Math.atan(Math.exp(p.y / R)) - Math.PI / 2) * 180 / Math.PI,
-                p.x / R * 180 / Math.PI),
-            scale: (z) => 256 * Math.pow(2, z),
-            pointToLatLng: function (point, z) {
-                const scale = this.scale(z);
-                return this.unproject(new Point((point.x / scale - 0.5) * 2 * HALF,
-                    (0.5 - point.y / scale) * 2 * HALF));
-            }
+                p.x / R * 180 / Math.PI)
         }
     };
 
-    function TileLayer() {}
-    TileLayer.prototype.options = {};
-    TileLayer.prototype.initialize = function (url, options) {
-        this._url = url;
+    // L.GridLayer — the base class the Denmark layer now extends.
+    function GridLayer() {}
+    GridLayer.prototype.options = {};
+    GridLayer.prototype.initialize = function (options) {
         this.options = Object.assign({}, this.options, options || {});
     };
-    TileLayer.prototype.getTileSize = function () {
+    GridLayer.prototype.getTileSize = function () {
         const s = this.options.tileSize || 256;
         return new Point(s, s);
     };
-    TileLayer.prototype._tileCoordsToBounds = function (coords) {
-        const size = this.getTileSize().x;
-        const nw = CRS.EPSG3857.pointToLatLng(new Point(coords.x * size, coords.y * size), coords.z);
-        const se = CRS.EPSG3857.pointToLatLng(new Point((coords.x + 1) * size, (coords.y + 1) * size), coords.z);
-        return new LatLngBounds(nw, se);
-    };
-    TileLayer.prototype.onAdd = function () { this._added = true; };
-    TileLayer.prototype.onRemove = function () { this._added = false; };
-    TileLayer.prototype.redraw = function () { this._redrawn = (this._redrawn || 0) + 1; return this; };
-    TileLayer.prototype.on = function (ev, fn, ctx) {
+    GridLayer.prototype.onAdd = function () { this._added = true; };
+    GridLayer.prototype.onRemove = function () { this._added = false; };
+    GridLayer.prototype.redraw = function () { this._redrawn = (this._redrawn || 0) + 1; return this; };
+    GridLayer.prototype.on = function (ev, fn, ctx) {
         (this._events = this._events || {})[ev] = fn.bind(ctx || this);
         return this;
     };
-    TileLayer.prototype.off = function (ev) {
-        if (this._events) delete this._events[ev];
-        return this;
-    };
-    TileLayer.prototype.fire = function (ev, data) {
+    GridLayer.prototype.off = function (ev) { if (this._events) delete this._events[ev]; return this; };
+    GridLayer.prototype.fire = function (ev, data) {
         if (this._events && this._events[ev]) this._events[ev](data || {});
         return this;
     };
-    TileLayer.extend = function (proto) {
+    GridLayer.extend = function (proto) {
         function Child(options) { if (this.initialize) this.initialize(options); }
-        Child.prototype = Object.create(TileLayer.prototype);
+        Child.prototype = Object.create(GridLayer.prototype);
         Object.assign(Child.prototype, proto);
-        Child.prototype.options = Object.assign({}, TileLayer.prototype.options, proto.options || {});
+        Child.prototype.options = Object.assign({}, GridLayer.prototype.options, proto.options || {});
         Child.prototype.constructor = Child;
         return Child;
     };
 
     return {
-        LatLng: LatLng,
-        Point: Point,
-        CRS: CRS,
-        TileLayer: TileLayer,
+        LatLng, Point, CRS, GridLayer,
         latLngBounds: function (a, b) {
             if (Array.isArray(a) && !b) return new LatLngBounds(a[0], a[1]);
             if (a instanceof LatLngBounds) return a;
@@ -136,10 +137,69 @@ function makeLeaflet() {
     };
 }
 
-function loadModule(windowExtras) {
+/** A 2-D context that records exactly what the warp draws. */
+function makeRecordingContext(record) {
+    let rect = null;
+    let transform = null;
+    return {
+        imageSmoothingEnabled: false,
+        imageSmoothingQuality: 'low',
+        save() {},
+        beginPath() {},
+        rect(x, y, w, h) { rect = [x, y, w, h]; },
+        clip() {},
+        setTransform(a, b, c, d, e, f) { transform = [a, b, c, d, e, f]; },
+        drawImage(img, x, y) {
+            if (transform) record.cells.push({ rect, transform });
+            else record.mosaic.push({ img, x, y });
+        },
+        restore() { transform = null; }
+    };
+}
+
+function makeDom(record) {
+    return {
+        body: null,
+        createElement(tag) {
+            if (tag !== 'canvas') return { style: {}, setAttribute() {}, appendChild() {} };
+            const canvas = {
+                width: 0, height: 0, style: {},
+                setAttribute() {},
+                getContext() {
+                    // The first canvas created per render is the destination,
+                    // the second is the source mosaic.
+                    return canvas.__isMosaic
+                        ? { drawImage(img, x, y) { record.mosaic.push({ img, x, y }); } }
+                        : makeRecordingContext(record);
+                }
+            };
+            record.canvases.push(canvas);
+            if (record.canvases.length > 1) canvas.__isMosaic = true;
+            return canvas;
+        }
+    };
+}
+
+/** An Image that always "loads", recording the URL it was given. */
+function makeImage(record, failAll) {
+    return function Image() {
+        const img = {};
+        Object.defineProperty(img, 'src', {
+            set(value) {
+                record.urls.push(value);
+                setImmediate(() => (failAll ? img.onerror && img.onerror()
+                    : img.onload && img.onload()));
+            },
+            get() { return undefined; }
+        });
+        return img;
+    };
+}
+
+function loadModule(windowExtras, record) {
     const L = makeLeaflet();
     const sandbox = {
-        L: L,
+        L,
         console: {
             log: () => {},
             warn: (...a) => sandbox.__warnings.push(a.join(' ')),
@@ -147,19 +207,23 @@ function loadModule(windowExtras) {
         },
         __warnings: [],
         setTimeout: () => 0,
+        setImmediate,
+        Promise,
+        Map,
         fetch: undefined,
-        document: undefined
+        document: record ? makeDom(record) : undefined,
+        Image: record ? makeImage(record, false) : undefined
     };
     Object.assign(sandbox, windowExtras || {});
     sandbox.window = sandbox;
     vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync(path.join(__dirname, 'js/dataforsyningen-dhm-layer.js'), 'utf8'),
-        sandbox, { filename: 'dataforsyningen-dhm-layer.js' });
-    return { D: sandbox.DataforsyningenDHM, L: L, sandbox: sandbox };
+    vm.runInContext(read('js/dataforsyningen-dhm-layer.js'), sandbox,
+        { filename: 'dataforsyningen-dhm-layer.js' });
+    return { D: sandbox.DataforsyningenDHM, L, sandbox };
 }
 
-const { D, L, sandbox } = loadModule();
-const moduleSource = fs.readFileSync(path.join(__dirname, 'js/dataforsyningen-dhm-layer.js'), 'utf8');
+const { D } = loadModule();
+const moduleSource = read('js/dataforsyningen-dhm-layer.js');
 const executableSource = moduleSource
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
@@ -170,275 +234,537 @@ const executableSource = moduleSource
 console.log('\n[1] Token hygiene');
 
 const repoFiles = ['js/dataforsyningen-dhm-layer.js', 'js/map-app.js', 'index.html',
-    'sw.js', 'backend/src/routes/geoProxy.js', 'DENMARK_LIDAR_DATAFORSYNINGEN.md']
-    .filter((f) => fs.existsSync(path.join(__dirname, f)));
+    'sw.js', 'backend/src/routes/geoProxy.js', 'netlify/functions/dk-dhm.mjs',
+    'netlify.toml', 'tools/denmark-lidar-demo.html',
+    'DENMARK_LIDAR_DATAFORSYNINGEN.md', 'test-denmark-dataforsyningen-dhm.js']
+    .filter(exists);
 // A Dataforsyningen token is 32 hexadecimal characters.
 const TOKEN_SHAPE = /\b[0-9a-f]{32}\b/;
 repoFiles.forEach(function (file) {
     // The public Cloudflare R2 bucket host (pub-<32 hex>.r2.dev) is not a
     // secret and predates this work, so it is excluded from the scan.
-    const body = fs.readFileSync(path.join(__dirname, file), 'utf8')
-        .replace(/pub-[0-9a-f]{32}\.r2\.dev/g, 'pub-R2BUCKET.r2.dev');
+    const body = read(file).replace(/pub-[0-9a-f]{32}\.r2\.dev/g, 'pub-R2BUCKET.r2.dev');
     check('no 32-hex token literal in ' + file, !TOKEN_SHAPE.test(body),
         (body.match(TOKEN_SHAPE) || [''])[0]);
     check('no token=<value> literal in ' + file,
-        !/[?&]token=(?!\{|'|"|\s|$|YOUR_TOKEN|&)[A-Za-z0-9]/.test(body));
+        !/[?&]token=(?!\{|'|"|\s|$|YOUR_TOKEN|&|<)[A-Za-z0-9]/.test(body));
 });
 check('the README only ever shows YOUR_TOKEN',
-    !fs.existsSync(path.join(__dirname, 'DENMARK_LIDAR_DATAFORSYNINGEN.md')) ||
-    !/token=[0-9a-f]{8}/i.test(
-        fs.readFileSync(path.join(__dirname, 'DENMARK_LIDAR_DATAFORSYNINGEN.md'), 'utf8')));
+    !exists('DENMARK_LIDAR_DATAFORSYNINGEN.md') ||
+    !/token=[0-9a-f]{8}/i.test(read('DENMARK_LIDAR_DATAFORSYNINGEN.md')));
 check('the backend reads the token from the environment',
-    /process\.env\.DATAFORSYNINGEN_TOKEN/.test(
-        fs.readFileSync(path.join(__dirname, 'backend/src/routes/geoProxy.js'), 'utf8')));
+    /process\.env\.DATAFORSYNINGEN_TOKEN/.test(read('backend/src/routes/geoProxy.js')));
+check('the Netlify function reads the token from the environment',
+    /process\.env\.DATAFORSYNINGEN_TOKEN/.test(read('netlify/functions/dk-dhm.mjs')));
 check('.env files are gitignored',
-    /^\.env$/m.test(fs.readFileSync(path.join(__dirname, '.gitignore'), 'utf8')) &&
-    /backend\/\.env/.test(fs.readFileSync(path.join(__dirname, '.gitignore'), 'utf8')));
+    /^\.env$/m.test(read('.gitignore')) && /backend\/\.env/.test(read('.gitignore')));
 check('the token is not part of the CONFIG block',
     !('TOKEN' in D.CONFIG) && !/TOKEN\s*:/.test(executableSource.split('end of configuration')[0]));
+check('.env.example ships a placeholder, not a real token',
+    /DATAFORSYNINGEN_TOKEN=YOUR_TOKEN/.test(read('backend/.env.example')));
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 2. Configuration — only what the live GetCapabilities publishes
+ * 2. The View1 grid reproduces the live GetCapabilities
  * ═════════════════════════════════════════════════════════════════════════ */
-console.log('\n[2] Configuration block');
+console.log('\n[2] View1 grid vs GetCapabilities');
 
-eq('the default route is this site\'s own proxy', D.CONFIG.PROXY_PATH, '/api/geo/dk-dhm');
-eq('the direct service is the public WMS', D.CONFIG.DIRECT_URL,
-    'https://api.dataforsyningen.dk/dhm_DAF');
-check('the direct service is https', D.CONFIG.DIRECT_URL.indexOf('https://') === 0);
-eq('WMS 1.3.0', D.CONFIG.WMS_VERSION, '1.3.0');
-eq('tiles are requested in Web Mercator so they match the basemap',
-    D.CONFIG.CRS, 'EPSG:3857');
-eq('PNG, so the hillshade can be made semi-transparent', D.CONFIG.FORMAT, 'image/png');
-eq('TRANSPARENT is upper case (the service rejects "true")',
-    D.CONFIG.TRANSPARENT, 'TRUE');
-eq('256 px tiles', D.CONFIG.TILE_SIZE, 256);
-eq('the default product is the bare-earth terrain hillshade',
-    D.CONFIG.DEFAULT_MODE, 'terrain');
-eq('…with the published layer name', D.MODES.terrain.layer, 'dhm_terraen_skyggekort');
-eq('the surface hillshade is the published layer', D.MODES.surface.layer,
-    'dhm_overflade_skyggekort');
-eq('the 2.5 m contours are the published layer', D.MODES.contours.layer,
-    'dhm_kurve_traditionel');
-eq('the 0.5 m contours are the published layer', D.MODES.contoursFine.layer,
-    'dhm_kurve_0_5_m');
-check('each product carries the minimum zoom implied by its MaxScaleDenominator',
-    D.MODES.terrain.minZoom === 6 && D.MODES.surface.minZoom === 6 &&
-    D.MODES.contours.minZoom === 12 && D.MODES.contoursFine.minZoom === 15);
-eq('default opacity is 0.6', D.CONFIG.OPACITY, 0.6);
-check('keepBuffer stays small on a public agency server', D.CONFIG.KEEP_BUFFER <= 1);
-check('the attribution names Klimadatastyrelsen and Danmarks Højdemodel',
-    /Klimadatastyrelsen/.test(D.CONFIG.ATTRIBUTION) &&
-    /Danmarks Højdemodel/.test(D.CONFIG.ATTRIBUTION), D.CONFIG.ATTRIBUTION);
-check('…and the CC BY 4.0 licence', /CC BY 4\.0/.test(D.CONFIG.ATTRIBUTION));
-eq('the 401/403 message is the one the brief asked for',
-    D.CONFIG.AUTH_MESSAGE, 'Invalid or missing Dataforsyningen token');
+eq('CRS is EPSG:25832 (ETRS89 / UTM 32N)', D.CONFIG.SOURCE_EPSG, 25832);
+eq('TopLeftCorner easting', D.CONFIG.GRID_ORIGIN_X, 120000);
+eq('TopLeftCorner northing', D.CONFIG.GRID_ORIGIN_Y, 6500000);
+check('TileMatrixSet extent 120000 5900000 → 1000000 6500000',
+    JSON.stringify(D.CONFIG.GRID_EXTENT) === JSON.stringify([120000, 5900000, 1000000, 6500000]));
+eq('tiles are 256 px', D.CONFIG.SOURCE_TILE_SIZE, 256);
+eq('14 levels (0…13)', D.CONFIG.SOURCE_LEVELS, 14);
+eq('TileMatrixSet identifier', D.CONFIG.TILEMATRIXSET, 'View1');
 
-// Coverage from the WMS capabilities: 7.99125 54.4265 → 15.5995 57.7781.
-const b = D.CONFIG.BOUNDS;
-near('the south bound matches the capabilities', b[0][0], 54.4265, 1e-6);
-near('the west bound matches the capabilities', b[0][1], 7.99125, 1e-6);
-near('the north bound matches the capabilities', b[1][0], 57.7781, 1e-6);
-near('the east bound matches the capabilities', b[1][1], 15.5995, 1e-6);
+// ScaleDenominator × 0.00028 for each of the 14 TileMatrix elements.
+const SCALE_DENOMINATORS = [
+    5851428.571428571, 2925714.285714286, 1462857.142857143, 731428.5714285714,
+    365714.2857142857, 182857.1428571429, 91428.57142857143, 45714.28571428571,
+    22857.14285714286, 11428.57142857143, 5714.285714285714, 2857.142857142857,
+    1428.571428571429, 714.2857142857143
+];
+let ladderOk = true;
+SCALE_DENOMINATORS.forEach((scale, level) => {
+    if (Math.abs(D.GRID.resolution(level) - scale * 0.00028) > 1e-9) ladderOk = false;
+});
+check('all 14 resolutions equal ScaleDenominator × 0.00028 (1638.4 → 0.2 m/px)', ladderOk);
+near('level 0 is 1638.4 m/px', D.GRID.resolution(0), 1638.4, 1e-9);
+near('level 13 is 0.2 m/px', D.GRID.resolution(13), 0.2, 1e-9);
 
-check('the EPSG:25832 WMTS grid is documented as rejected, not used',
-    /View1/.test(moduleSource) && !/View1/.test(executableSource));
-
-/* ══════════════════════════════════════════════════════════════════════════
- * 3. The GetMap request
- * ═════════════════════════════════════════════════════════════════════════ */
-console.log('\n[3] WMS GetMap request');
-
-const BBOX = [1392000, 7484000, 1394000, 7486000];   // Copenhagen, EPSG:3857
-const proxied = D.tileUrl('terrain', BBOX, 256, '');
-check('by default the browser calls our own origin, not Denmark',
-    proxied.indexOf('/api/geo/dk-dhm?') === 0, proxied);
-check('…and no token travels with it', proxied.indexOf('token') === -1, proxied);
-check('service=WMS & request=GetMap', /service=WMS/.test(proxied) && /request=GetMap/.test(proxied));
-check('version=1.3.0', proxied.indexOf('version=1.3.0') !== -1);
-check('crs=EPSG:3857 (1.3.0 spells it CRS, not SRS)',
-    proxied.indexOf('crs=EPSG:3857') !== -1 && proxied.indexOf('srs=') === -1);
-check('the bbox is minx,miny,maxx,maxy — no lat/lon swap in a metric CRS',
-    proxied.indexOf('bbox=1392000,7484000,1394000,7486000') !== -1, proxied);
-check('width and height are the tile size',
-    proxied.indexOf('width=256&height=256') !== -1);
-check('format is percent-encoded image/png',
-    proxied.indexOf('format=image%2Fpng') !== -1);
-check('transparent=TRUE in upper case', proxied.indexOf('transparent=TRUE') !== -1);
-check('switching product only changes the layer name',
-    D.tileUrl('surface', BBOX, 256, '') ===
-    proxied.replace('layers=dhm_terraen_skyggekort', 'layers=dhm_overflade_skyggekort'));
-check('an unknown product falls back to the default',
-    D.tileUrl('nope', BBOX, 256, '') === proxied);
-
-const direct = D.tileUrl('terrain', BBOX, 256, 'YOUR_TOKEN');
-check('the insecure client-token mode calls the Danish service directly',
-    direct.indexOf('https://api.dataforsyningen.dk/dhm_DAF?') === 0, direct);
-check('…and appends the token as the service expects',
-    direct.indexOf('&token=YOUR_TOKEN') !== -1);
-check('the proxy is the default: no client token ⇒ isProxied()', D.isProxied() === true);
-eq('endpoint() is the proxy path when no client token is set',
-    D.endpoint(), '/api/geo/dk-dhm');
-
-const insecure = loadModule({ DETECTLAB_DK_TOKEN: 'YOUR_TOKEN' });
-check('a client-side token switches the module to direct mode',
-    insecure.D.isProxied() === false &&
-    insecure.D.endpoint() === 'https://api.dataforsyningen.dk/dhm_DAF');
-
-/* ══════════════════════════════════════════════════════════════════════════
- * 4. Tile geometry — the hillshade must line up with the basemap
- * ═════════════════════════════════════════════════════════════════════════ */
-console.log('\n[4] Tile geometry (EPSG:3857)');
-
-const layer = D.createLayer({ mode: 'terrain' });
-layer._map = { options: { crs: L.CRS.EPSG3857 } };
-// The tile containing Copenhagen (55.6761 N, 12.5683 E) at z12.
-function tileOf(lat, lng, z) {
-    const n = Math.pow(2, z);
-    const r = lat * Math.PI / 180;
-    return {
-        x: Math.floor((lng + 180) / 360 * n),
-        y: Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n),
-        z: z
-    };
-}
-const coords = tileOf(55.6761, 12.5683, 12);
-eq('Copenhagen sits in tile 2190/1282 at z12', coords.x + '/' + coords.y, '2190/1282');
-const builtUrl = layer.getTileUrl(coords);
-const bbox = decodeURIComponent(builtUrl.match(/bbox=([^&]+)/)[1]).split(',').map(Number);
-const HALF_M = Math.PI * 6378137;
-const span12 = (2 * HALF_M) / Math.pow(2, 12);
-near('the tile west edge is on the standard Web-Mercator grid',
-    bbox[0], -HALF_M + coords.x * span12, 0.5);
-near('the tile north edge is on the standard Web-Mercator grid',
-    bbox[3], HALF_M - coords.y * span12, 0.5);
-// Copenhagen in EPSG:3857 is 1399096.8 E, 7494204.7 N.
-check('the bbox really covers Copenhagen',
-    bbox[0] <= 1399096.8 && bbox[2] >= 1399096.8 &&
-    bbox[1] <= 7494204.7 && bbox[3] >= 7494204.7,
-    bbox.join(','));
-check('the tile bbox comes from Leaflet, not hand-rolled Mercator maths',
-    /_tileCoordsToBounds/.test(moduleSource) && !/20037508/.test(executableSource));
-
-/* ══════════════════════════════════════════════════════════════════════════
- * 5. Layer behaviour
- * ═════════════════════════════════════════════════════════════════════════ */
-console.log('\n[5] Layer behaviour');
-
-eq('minZoom comes from the product', layer.options.minZoom, 6);
-eq('the attribution travels with the layer', layer.options.attribution, D.CONFIG.ATTRIBUTION);
-eq('opacity default', layer.options.opacity, 0.6);
-eq('keepBuffer is tiny (no far-viewport preloading)', layer.options.keepBuffer, 1);
-check('the layer is bounded to Denmark',
-    layer.options.bounds.contains(new L.LatLng(55.6761, 12.5683)) &&   // Copenhagen
-    layer.options.bounds.contains(new L.LatLng(57.59, 9.96)) &&        // Skagen
-    !layer.options.bounds.contains(new L.LatLng(59.33, 18.07)) &&      // Stockholm
-    !layer.options.bounds.contains(new L.LatLng(53.55, 9.99)));        // Hamburg
-eq('failed tiles fall back to a transparent pixel',
-    layer.options.errorTileUrl, D.BLANK_TILE);
-check('the fallback really is a transparent PNG data URI',
-    D.BLANK_TILE.indexOf('data:image/png;base64,') === 0);
-check('no tile churn during gestures', layer.options.updateWhenZooming === false &&
-    layer.options.updateWhenIdle === true);
-check('the layer does not wrap around the world', layer.options.noWrap === true);
-
-layer.setMode('contours');
-eq('setMode switches the product', layer.getMode(), 'contours');
-eq('…and raises minZoom to the product\'s scale limit', layer.options.minZoom, 12);
-check('the URL follows the switch',
-    layer.getTileUrl(coords).indexOf('layers=dhm_kurve_traditionel') !== -1);
-check('switching redraws instead of rebuilding', layer._redrawn >= 1);
-check('an unknown mode is ignored', layer.setMode('nope').getMode() === 'contours');
-layer.setMode('terrain');
-eq('switching back restores the terrain hillshade', layer.options.minZoom, 6);
-
-// Tile errors: one warning for the whole layer, never one per tile.
-const errLayer = D.createLayer({ mode: 'terrain' });
-errLayer._map = { options: { crs: L.CRS.EPSG3857 } };
-errLayer.onAdd({});
-const before = sandbox.__warnings.length;
-errLayer.fire('tileerror', {});
-errLayer.fire('tileerror', {});
-errLayer.fire('tileerror', {});
-eq('tile errors are logged once, not once per tile',
-    sandbox.__warnings.length - before, 1);
-errLayer.onRemove({});
-check('removing the layer detaches the error handler',
-    !errLayer._events || !errLayer._events.tileerror);
-
-// 401 → exactly one non-blocking notice, and it says what the brief asked.
-let fetched = 0;
-const authCtx = loadModule({
-    fetch: function (url) {
-        fetched++;
-        return Promise.resolve({ status: 401, headers: { get: () => 'application/json' } });
+// MatrixWidth × MatrixHeight, verbatim from the capabilities.
+const MATRIX = [[3, 2], [5, 3], [9, 6], [17, 12], [34, 23], [68, 46], [135, 92],
+    [269, 184], [538, 367], [1075, 733], [2149, 1465], [4297, 2930],
+    [8594, 5860], [17188, 11719]];
+let matrixOk = true;
+MATRIX.forEach((m, level) => {
+    const got = D.GRID.matrixSize(level);
+    if (got[0] !== m[0] || got[1] !== m[1]) {
+        matrixOk = false;
+        console.error('      level ' + level + ': expected ' + m + ' got ' + got);
     }
 });
-const authLayer = authCtx.D.createLayer({ mode: 'terrain' });
-authLayer._map = { options: { crs: authCtx.L.CRS.EPSG3857 } };
-authLayer.onAdd({});
-authLayer.fire('tileerror', {});
-authLayer.fire('tileerror', {});
-authLayer.fire('tileerror', {});
-eq('a 401 is probed exactly once, not once per tile', fetched, 1);
-check('the module exposes the notice helper for the app to reuse',
-    typeof authCtx.D.showAuthNotice === 'function');
-check('the probe never carries a token in proxy mode',
-    /tileUrl\(this\.options\.mode[\s\S]{0,200}clientToken\(\)\)/.test(moduleSource));
+check('all 14 MatrixWidth × MatrixHeight pairs reproduce exactly', matrixOk);
+check('tiles outside the matrix are rejected',
+    !D.GRID.isValidTile(13, 17188, 0) && !D.GRID.isValidTile(13, 0, 11719) &&
+    !D.GRID.isValidTile(14, 0, 0) && !D.GRID.isValidTile(0, -1, 0));
+check('tiles inside the matrix are accepted',
+    D.GRID.isValidTile(13, 17187, 11718) && D.GRID.isValidTile(0, 0, 0));
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 6. The server-side proxy
+ * 3. The EPSG:25832 projection is the right one
  * ═════════════════════════════════════════════════════════════════════════ */
-console.log('\n[6] Server-side token proxy');
+console.log('\n[3] ETRS89 / UTM 32N projection');
 
-const proxySrc = fs.readFileSync(path.join(__dirname, 'backend/src/routes/geoProxy.js'), 'utf8');
-const appSrc = fs.readFileSync(path.join(__dirname, 'backend/src/app.js'), 'utf8');
-check('the route matches the path the client calls', /\/geo\/dk-dhm/.test(proxySrc));
-check('it is mounted on the API', /geoProxyRouter/.test(appSrc) &&
-    /app\.use\('\/api', geoProxyRouter\)/.test(appSrc));
-check('the token is sent as a header, not a query parameter',
-    /headers:\s*\{\s*token\s*\}/.test(proxySrc));
-check('a client-supplied token is ignored',
-    /key\.toLowerCase\(\) === 'token'/.test(proxySrc));
-check('a missing token answers 401 so the client can show the notice',
-    /dataforsyningen_token_missing/.test(proxySrc) && /status\(401\)/.test(proxySrc));
-check('an upstream refusal is translated to 401',
-    /dataforsyningen_token_invalid/.test(proxySrc));
-check('it is not an open proxy: fixed upstream host',
-    /const UPSTREAM = 'https:\/\/api\.dataforsyningen\.dk\/dhm_DAF'/.test(proxySrc));
-check('…a layer whitelist', /ALLOWED_LAYERS/.test(proxySrc) &&
-    /dhm_terraen_skyggekort/.test(proxySrc));
-check('…a format whitelist', /ALLOWED_FORMATS/.test(proxySrc));
-check('…and an image-size cap', /MAX_PIXELS/.test(proxySrc));
-check('tiles are cached for 7 days', /7 \* 24 \* 60 \* 60 \* 1000/.test(proxySrc) &&
-    /max-age=604800/.test(proxySrc));
-check('the cache is bounded', /CACHE_MAX_ENTRIES/.test(proxySrc));
-check('the token is never logged',
-    !/logger\.[a-z]+\([^)]*token[^)]*\)/.test(proxySrc.replace(/token_missing|token_invalid/g, '')));
+let worstRoundTrip = 0;
+[[54.5, 8.0], [55.5, 10.0], [56.5, 12.0], [57.5, 15.0], [55.676, 12.568]].forEach(([lat, lon]) => {
+    const en = D.UTM.forward(lat, lon);
+    const back = D.UTM.inverse(en[0], en[1]);
+    worstRoundTrip = Math.max(worstRoundTrip,
+        Math.abs(back[0] - lat) * 111320, Math.abs(back[1] - lon) * 62000);
+});
+check('forward/inverse round trip is exact over Denmark (< 1 mm)',
+    worstRoundTrip < 0.001, worstRoundTrip + ' m');
+
+// The central meridian of zone 32 must come back as the false easting.
+near('9°E maps to the 500 000 m false easting', D.UTM.forward(0, 9)[0], 500000, 1e-6);
+near('the equator maps to northing 0', D.UTM.forward(0, 9)[1], 0, 1e-6);
+
+// AUTHORITATIVE: transforming the View1 extent must reproduce the service's
+// own <ows:WGS84BoundingBox> 2.478420 53.015000 → 17.557800 58.640300.
+(function () {
+    const e = D.CONFIG.GRID_EXTENT;
+    let minLat = Infinity, minLon = Infinity, maxLat = -Infinity, maxLon = -Infinity;
+    for (let i = 0; i <= 200; i++) {
+        const x = e[0] + (e[2] - e[0]) * i / 200;
+        const y = e[1] + (e[3] - e[1]) * i / 200;
+        [D.UTM.inverse(x, e[1]), D.UTM.inverse(x, e[3]),
+         D.UTM.inverse(e[0], y), D.UTM.inverse(e[2], y)].forEach(([la, lo]) => {
+            minLat = Math.min(minLat, la); maxLat = Math.max(maxLat, la);
+            minLon = Math.min(minLon, lo); maxLon = Math.max(maxLon, lo);
+        });
+    }
+    near('View1 extent → published WGS84 west  2.47842', minLon, 2.47842, 0.0001);
+    near('View1 extent → published WGS84 south 53.015', minLat, 53.015, 0.0001);
+    near('View1 extent → published WGS84 east  17.5578', maxLon, 17.5578, 0.0001);
+    near('View1 extent → published WGS84 north 58.6403', maxLat, 58.6403, 0.0001);
+}());
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 7. Wiring in the app (Denmark row only)
+ * 4. The brief's two example tiles land inside Denmark
  * ═════════════════════════════════════════════════════════════════════════ */
-console.log('\n[7] Wiring in the app');
+console.log("\n[4] The brief's example tiles");
 
-const mapApp = fs.readFileSync(path.join(__dirname, 'js/map-app.js'), 'utf8');
-const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
+const DENMARK = { south: 54.4, north: 57.9, west: 7.9, east: 15.7 };
+[
+    { z: 10, col: 1027, row: 620, lat: 56.3555, lon: 9.6613, where: 'central Jutland' },
+    { z: 4, col: 15, row: 13, lat: 55.4604, lon: 9.4163, where: 'Kolding / Vejle' }
+].forEach(function (t) {
+    const label = 'TileMatrix=' + t.z + ' TileCol=' + t.col + ' TileRow=' + t.row;
+    check(label + ' is a valid index in the ' + MATRIX[t.z].join('×') + ' matrix',
+        D.GRID.isValidTile(t.z, t.col, t.row));
 
-const scriptSrcs = (indexHtml.match(/<script[^>]+src="[^"]+"/g) || [])
-    .map((tag) => tag.match(/src="([^"?]+)/)[1]);
-check('index.html loads dataforsyningen-dhm-layer.js before map-app.js',
-    scriptSrcs.indexOf('js/dataforsyningen-dhm-layer.js') !== -1 &&
-    scriptSrcs.indexOf('js/dataforsyningen-dhm-layer.js') < scriptSrcs.indexOf('js/map-app.js'));
-check('the service worker pre-caches it', sw.indexOf('js/dataforsyningen-dhm-layer.js') !== -1);
-check('the service worker cache name was bumped', /detectlab-v1[6-9]\d/.test(sw));
-check('the Denmark layer is built by the module',
-    /DataforsyningenDHM\.createLayer/.test(mapApp));
-check('the old Datafordeler apikey path is gone',
-    !/DETECTLAB_DK_API_KEY/.test(mapApp) && !/apikey=/.test(mapApp));
-check('the product dropdown offers all four products',
-    /value="terrain"/.test(indexHtml) && /value="surface"/.test(indexHtml) &&
-    /value="contours"/.test(indexHtml) && /value="contoursFine"/.test(indexHtml));
+    const b = D.GRID.tileBounds(t.z, t.col, t.row);
+    const centre = D.UTM.inverse((b[0] + b[2]) / 2, (b[1] + b[3]) / 2);
+    near(label + ' centre latitude (' + t.where + ')', centre[0], t.lat, 0.001);
+    near(label + ' centre longitude (' + t.where + ')', centre[1], t.lon, 0.001);
+    check(label + ' is INSIDE Denmark',
+        centre[0] > DENMARK.south && centre[0] < DENMARK.north &&
+        centre[1] > DENMARK.west && centre[1] < DENMARK.east,
+        centre.join(', '));
+
+    // The trap the brief flagged: these are NOT XYZ indices.
+    const ll = D.GRID.tileLatLngBounds(t.z, t.col, t.row);
+    check(label + ' bbox is a square in EPSG:25832',
+        Math.abs((b[2] - b[0]) - (b[3] - b[1])) < 1e-6 &&
+        Math.abs((b[2] - b[0]) - 256 * D.GRID.resolution(t.z)) < 1e-6);
+    check(label + ' geographic bbox brackets its centre',
+        centre[0] > ll[0] && centre[0] < ll[2] && centre[1] > ll[1] && centre[1] < ll[3]);
+});
+check('level 10 column 1027 is beyond the XYZ range (0…1023) — proves View1 ≠ XYZ',
+    1027 > Math.pow(2, 10) - 1);
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 5. GetTile URLs
+ * ═════════════════════════════════════════════════════════════════════════ */
+console.log('\n[5] WMTS GetTile URLs');
+
+const proxied = D.tileUrl('terrain', 10, 1027, 620, '');
+check('by default the browser talks to our own proxy',
+    proxied.indexOf('/api/geo/dk-dhm?') === 0, proxied);
+check('…and carries no token at all', proxied.indexOf('token') === -1);
+check('service=WMTS', /[?&]service=WMTS(&|$)/.test(proxied));
+check('request=GetTile', /[?&]request=GetTile(&|$)/.test(proxied));
+check('version=1.0.0', /[?&]version=1\.0\.0(&|$)/.test(proxied));
+check('layer=dhm_terraen_skyggekort', /[?&]layer=dhm_terraen_skyggekort(&|$)/.test(proxied));
+check('style=default (what Dataforsyningen documents)', /[?&]style=default(&|$)/.test(proxied));
+check('tilematrixset=View1', /[?&]tilematrixset=View1(&|$)/.test(proxied));
+check('format=image/jpeg — the only format published',
+    /[?&]format=image%2Fjpeg(&|$)/.test(proxied));
+check('TileMatrix is a BARE INTEGER, not "View1:10"',
+    /[?&]TileMatrix=10(&|$)/.test(proxied) && proxied.indexOf('TileMatrix=View1') === -1);
+check('TileCol / TileRow are the View1 indices',
+    /[?&]TileCol=1027(&|$)/.test(proxied) && /[?&]TileRow=620(&|$)/.test(proxied));
+check('isProxied() is true when no client token is set', D.isProxied() === true);
+
+const surface = D.tileUrl('surface', 4, 15, 13, '');
+check('the surface product switches only the layer name',
+    /[?&]layer=dhm_overflade_skyggekort(&|$)/.test(surface) &&
+    surface.indexOf('/api/geo/dk-dhm?') === 0);
+
+// Insecure direct mode (explicitly opted into by setting a token).
+const direct = D.tileUrl('terrain', 4, 15, 13, 'YOUR_TOKEN');
+check('direct mode hits the product\'s own endpoint',
+    direct.indexOf('https://api.dataforsyningen.dk/dhm_terraen_skyggekort_DAF?') === 0, direct);
+check('direct mode appends the token (and only then)',
+    /[&?]token=YOUR_TOKEN$/.test(direct));
+const directSurface = D.tileUrl('surface', 4, 15, 13, 'YOUR_TOKEN');
+check('direct mode uses the surface service for the surface product',
+    directSurface.indexOf('https://api.dataforsyningen.dk/dhm_overflade_skyggekort_DAF?') === 0);
+eq('source() is the proxy path by default', D.source('terrain'), '/api/geo/dk-dhm');
+eq('exactly two products are offered', D.modeKeys().join(','), 'terrain,surface');
+check('no WMS GetMap request survives anywhere in the module',
+    !/GetMap/i.test(executableSource) && !/request=GetMap/i.test(moduleSource.replace(/\/\*[\s\S]*?\*\//g, '')));
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 6. Level selection
+ * ═════════════════════════════════════════════════════════════════════════ */
+console.log('\n[6] Source level selection');
+
+eq('1638.4 m/px → level 0', D.GRID.levelForResolution(1638.4), 0);
+eq('1.6 m/px → level 10', D.GRID.levelForResolution(1.6), 10);
+eq('0.2 m/px → level 13', D.GRID.levelForResolution(0.2), 13);
+eq('anything finer than 0.2 m/px is clamped to level 13',
+    D.GRID.levelForResolution(0.01), 13);
+eq('anything coarser than 1638.4 m/px is clamped to level 0',
+    D.GRID.levelForResolution(100000), 0);
+check('every level choice stays inside 0…13', [0.05, 0.9, 7, 300, 9000]
+    .every((r) => { const l = D.GRID.levelForResolution(r); return l >= 0 && l <= 13; }));
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 7. The affine inversion the warp depends on
+ * ═════════════════════════════════════════════════════════════════════════ */
+console.log('\n[7] Affine inversion');
+
+(function () {
+    const a = 1.7, b = 0.31, c = -0.22, d = 1.41, e = 12.5, f = -7.25;
+    const t = D.invertAffine(a, b, c, d, e, f);
+    let worst = 0;
+    [[0, 0], [1, 0], [0, 1], [37.5, -12.25], [255, 255]].forEach(([dx, dy]) => {
+        const sx = a * dx + c * dy + e, sy = b * dx + d * dy + f;
+        worst = Math.max(worst,
+            Math.abs(t[0] * sx + t[2] * sy + t[4] - dx),
+            Math.abs(t[1] * sx + t[3] * sy + t[5] - dy));
+    });
+    check('invertAffine round trips to machine precision', worst < 1e-9, String(worst));
+    check('a degenerate (zero-area) cell returns null',
+        D.invertAffine(0, 0, 0, 0, 1, 1) === null);
+}());
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 8. Layer configuration
+ * ═════════════════════════════════════════════════════════════════════════ */
+console.log('\n[8] Layer configuration');
+
+const layer = D.createLayer();
+eq('opacity defaults to 0.6', layer.options.opacity, 0.6);
+eq('CONFIG.OPACITY is 0.6 (JPEG has no transparency)', D.CONFIG.OPACITY, 0.6);
+eq('keepBuffer is 1 — a public agency server, so barely any preloading',
+    layer.options.keepBuffer, 1);
+check('no far-viewport preloading', layer.options.updateWhenIdle === true &&
+    layer.options.updateWhenZooming === false);
+eq('maxNativeZoom 19 — 0.2 m/px runs out just under z19', layer.options.maxNativeZoom, 19);
+eq('minZoom 6', layer.options.minZoom, 6);
+check('the layer is clipped to the published Danish extent',
+    layer.options.bounds.contains({ lat: 55.676, lng: 12.568 }) &&       // Copenhagen
+    layer.options.bounds.contains({ lat: 57.74, lng: 10.63 }) &&         // Skagen
+    !layer.options.bounds.contains({ lat: 59.33, lng: 18.07 }) &&        // Stockholm
+    !layer.options.bounds.contains({ lat: 53.55, lng: 9.99 }));          // Hamburg
+check('BOUNDS are the WMS-published skyggekort extent',
+    JSON.stringify(D.CONFIG.BOUNDS) === JSON.stringify([[54.4265, 7.99125], [57.7781, 15.5995]]));
+check('attribution names Klimadatastyrelsen, DHM and CC BY 4.0',
+    /Klimadatastyrelsen/.test(D.CONFIG.ATTRIBUTION) &&
+    /Danmarks Højdemodel/.test(D.CONFIG.ATTRIBUTION) &&
+    /CC BY 4\.0/.test(D.CONFIG.ATTRIBUTION));
+eq('the 401/403 message is the one the brief asked for',
+    D.CONFIG.AUTH_MESSAGE, 'Invalid or missing Dataforsyningen token');
+check('a transparent 1×1 PNG is available as the no-data fallback',
+    /^data:image\/png;base64,/.test(D.BLANK_TILE));
+eq('the warp mesh is 8 (sub-pixel everywhere in Denmark)', D.CONFIG.WARP_MESH, 8);
+check('source tiles per destination tile are capped', D.CONFIG.MAX_SOURCE_TILES <= 16);
+check('setMode switches product and redraws in place',
+    layer.setMode('surface').getMode() === 'surface');
+check('setMode ignores an unknown product',
+    layer.setMode('contours').getMode() === 'surface');
+check('every CONFIG key the brief listed lives in the one marked block',
+    ['PROXY_PATH', 'MODES', 'TILEMATRIXSET', 'MIN_ZOOM', 'MAX_ZOOM', 'BOUNDS',
+     'OPACITY', 'ATTRIBUTION', 'FORMAT'].every((k) => k in D.CONFIG));
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 9. THE REPROJECTION IS CORRECT  (drives the real createTile)
+ *
+ * This is the acceptance criterion "hillshade correctly aligned". For a real
+ * destination tile over Denmark we run the shipped code with a recording
+ * canvas, then take known Danish coordinates, work out independently
+ *   (a) where they belong in the destination tile  (Web Mercator), and
+ *   (b) where they are in the fetched View1 mosaic (UTM 32N),
+ * push (b) through the transform the warp actually installed for that mesh
+ * cell, and require the result to equal (a).
+ * ═════════════════════════════════════════════════════════════════════════ */
+console.log('\n[9] End-to-end reprojection alignment');
+
+function renderTile(z, x, y, mode) {
+    const record = { urls: [], canvases: [], cells: [], mosaic: [] };
+    const { D: DD } = loadModule({}, record);
+    const lyr = DD.createLayer({ mode: mode || 'terrain' });
+    lyr._map = { options: { crs: { code: 'EPSG:3857' } } };
+    return new Promise((resolve) => {
+        const canvas = lyr.createTile({ x, y, z }, () =>
+            resolve({ record, canvas, D: DD }));
+        record.destCanvas = canvas;
+    });
+}
+
+function tileXY(lat, lon, z) {
+    const n = Math.pow(2, z);
+    return {
+        x: Math.floor((lon + 180) / 360 * n),
+        y: Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) +
+            1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n)
+    };
+}
+
+(async function () {
+    const places = [
+        { name: 'Copenhagen', lat: 55.6761, lon: 12.5683, z: 12 },
+        { name: 'Skagen (north tip)', lat: 57.7400, lon: 10.6280, z: 10 },
+        { name: 'Esbjerg (west coast)', lat: 55.4670, lon: 8.4520, z: 14 },
+        { name: 'Bornholm (far east)', lat: 55.1000, lon: 14.9000, z: 9 },
+        { name: 'Jutland, example tile 1', lat: 56.3555, lon: 9.6613, z: 16 }
+    ];
+
+    for (const p of places) {
+        const t = tileXY(p.lat, p.lon, p.z);
+        const { record, canvas, D: DD } = await renderTile(p.z, t.x, t.y);
+
+        check(p.name + ' z' + p.z + ': the tile was drawn',
+            canvas.width === 256 && canvas.height === 256 && record.cells.length > 0);
+        eq(p.name + ' z' + p.z + ': one affine per mesh cell (8×8)',
+            record.cells.length, 64);
+
+        // Which View1 tiles were requested?
+        const reqs = record.urls.map((u) => ({
+            level: Number(/TileMatrix=(\d+)/.exec(u)[1]),
+            col: Number(/TileCol=(\d+)/.exec(u)[1]),
+            row: Number(/TileRow=(\d+)/.exec(u)[1])
+        }));
+        check(p.name + ' z' + p.z + ': ' + reqs.length +
+            ' View1 tile(s) requested, all valid indices inside the matrix',
+            reqs.length > 0 && reqs.length <= DD.CONFIG.MAX_SOURCE_TILES &&
+            reqs.every((r) => DD.GRID.isValidTile(r.level, r.col, r.row)),
+            JSON.stringify(reqs));
+        check(p.name + ' z' + p.z + ': every request goes to our own proxy, token-free',
+            record.urls.every((u) => u.indexOf('/api/geo/dk-dhm?') === 0 &&
+                u.indexOf('token') === -1));
+
+        const level = reqs[0].level;
+        check(p.name + ' z' + p.z + ': a single source level was used',
+            reqs.every((r) => r.level === level));
+
+        // Reconstruct the mosaic frame exactly as the layer did.
+        const span = DD.GRID.tileSpan(level);
+        const srcRes = DD.GRID.resolution(level);
+        const c0 = Math.min(...reqs.map((r) => r.col));
+        const r0 = Math.min(...reqs.map((r) => r.row));
+        const originX = DD.CONFIG.GRID_ORIGIN_X + c0 * span;
+        const originY = DD.CONFIG.GRID_ORIGIN_Y - r0 * span;
+
+        // Destination tile frame in EPSG:3857.
+        const res3857 = DD.webMercator.resolution(p.z, 256);
+        const x0 = -DD.webMercator.HALF + t.x * 256 * res3857;
+        const y0 = DD.webMercator.HALF - t.y * 256 * res3857;
+
+        // Probe 25 points spread across the tile. The 0.41 offset and the
+        // division by 5 deliberately keep every probe OFF the 32 px mesh
+        // nodes — on a node the affine is exact by construction and the
+        // check would prove nothing.
+        let worst = 0;
+        for (let gy = 0; gy < 5; gy++) {
+            for (let gx = 0; gx < 5; gx++) {
+                const px = (gx + 0.41) * 256 / 5,                // expected dest pixel
+                      py = (gy + 0.67) * 256 / 5;
+                const lat = DD.webMercator.lat(y0 - py * res3857);
+                const lon = DD.webMercator.lon(x0 + px * res3857);
+                const en = DD.UTM.forward(lat, lon);
+                const sx = (en[0] - originX) / srcRes;            // mosaic pixel
+                const sy = (originY - en[1]) / srcRes;
+
+                const cell = 256 / DD.CONFIG.WARP_MESH;
+                const i = Math.min(DD.CONFIG.WARP_MESH - 1, Math.floor(px / cell));
+                const j = Math.min(DD.CONFIG.WARP_MESH - 1, Math.floor(py / cell));
+                const tr = record.cells[j * DD.CONFIG.WARP_MESH + i].transform;
+
+                const gotX = tr[0] * sx + tr[2] * sy + tr[4];
+                const gotY = tr[1] * sx + tr[3] * sy + tr[5];
+                worst = Math.max(worst, Math.hypot(gotX - px, gotY - py));
+            }
+        }
+        check(p.name + ' z' + p.z + ': warped position is accurate to ' +
+            worst.toFixed(4) + ' px (need < 0.25)', worst < 0.25, worst + ' px');
+        check(p.name + ' z' + p.z + ': …and the probes were genuinely off-mesh-node',
+            worst > 0, 'exactly 0 px means every probe sat on a node');
+
+        // The source resolution must roughly match the destination's.
+        const groundRes = res3857 * Math.cos(p.lat * Math.PI / 180);
+        check(p.name + ' z' + p.z + ': source level ' + level + ' (' + srcRes +
+            ' m/px) matches the ~' + groundRes.toFixed(2) + ' m/px needed',
+            srcRes <= groundRes * 1.5 && srcRes >= groundRes / 3);
+
+        // Mesh cells must tile the whole 256×256 destination with no gap.
+        const covered = record.cells.every((c) => c.rect[2] >= 256 / 8 && c.rect[3] >= 256 / 8);
+        check(p.name + ' z' + p.z + ': mesh cells overlap slightly so there are no seams',
+            covered && record.cells[0].rect[0] === -0.5 && record.cells[0].rect[1] === -0.5);
+    }
+
+    /* ── a tile outside the View1 matrix must make no request at all ────── */
+    {
+        // Far west of the grid origin (Atlantic, well outside EPSG:25832's box).
+        const t = tileXY(55.0, -40.0, 8);
+        const { record } = await renderTile(8, t.x, t.y);
+        eq('a destination tile outside the View1 matrix requests nothing',
+            record.urls.length, 0);
+    }
+
+    /* ── every source tile failing must not throw or spam ───────────────── */
+    {
+        const record = { urls: [], canvases: [], cells: [], mosaic: [] };
+        const L = makeLeaflet();
+        const sandbox = {
+            L,
+            console: { log: () => {}, warn: (...a) => sandbox.__warnings.push(a.join(' ')),
+                error: (...a) => sandbox.__warnings.push(a.join(' ')) },
+            __warnings: [], setTimeout: () => 0, setImmediate, Promise, Map,
+            fetch: undefined,
+            document: makeDom(record),
+            Image: makeImage(record, true)        // every tile 404s
+        };
+        sandbox.window = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(read('js/dataforsyningen-dhm-layer.js'), sandbox,
+            { filename: 'dataforsyningen-dhm-layer.js' });
+
+        const lyr = sandbox.DataforsyningenDHM.createLayer();
+        lyr._map = { options: { crs: { code: 'EPSG:3857' } } };
+        const t = tileXY(55.6761, 12.5683, 12);
+
+        await new Promise((resolve) => {
+            const canvas = lyr.createTile({ x: t.x, y: t.y, z: 12 }, (err, tile) => {
+                check('all source tiles failing still calls done() without an error',
+                    err === null && tile === canvas);
+                check('…and leaves a blank 256×256 canvas, never a broken-image icon',
+                    canvas.width === 256 && canvas.height === 256);
+                resolve();
+            });
+        });
+
+        eq('…and logs exactly one warning, not one per tile',
+            sandbox.__warnings.length, 1);
+        check('…and that warning names the layer',
+            /dhm_terraen_skyggekort/.test(sandbox.__warnings[0]));
+
+        // A second failing tile must stay silent.
+        const t2 = tileXY(55.70, 12.60, 12);
+        await new Promise((resolve) => {
+            lyr.createTile({ x: t2.x, y: t2.y, z: 12 }, () => resolve());
+        });
+        eq('a second failure is silent', sandbox.__warnings.length, 1);
+    }
+
+    /* ── the surface product uses the same grid and the same tiles ──────── */
+    {
+        const t = tileXY(55.6761, 12.5683, 12);
+        const a = await renderTile(12, t.x, t.y, 'terrain');
+        const b = await renderTile(12, t.x, t.y, 'surface');
+        check('terrain and surface request the identical View1 indices',
+            JSON.stringify(a.record.urls.map((u) => u.replace(/layer=[^&]+/, ''))) ===
+            JSON.stringify(b.record.urls.map((u) => u.replace(/layer=[^&]+/, ''))));
+        check('…and differ only in the layer name',
+            b.record.urls.every((u) => /layer=dhm_overflade_skyggekort(&|$)/.test(u)));
+    }
+
+    runRemainingSyncChecks();
+}());
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 10 … 13 — static checks on the proxy, the app wiring and the docs
+ * ═════════════════════════════════════════════════════════════════════════ */
+function runRemainingSyncChecks() {
+
+console.log('\n[10] Server-side proxy (Express) and its Netlify twin');
+
+const proxy = read('backend/src/routes/geoProxy.js');
+const fn = read('netlify/functions/dk-dhm.mjs');
+
+[['Express route', proxy], ['Netlify function', fn]].forEach(([what, src]) => {
+    check(what + ': upstream is chosen from a fixed layer→service table',
+        /LAYER_UPSTREAM/.test(src) &&
+        /dhm_terraen_skyggekort_DAF/.test(src) && /dhm_overflade_skyggekort_DAF/.test(src));
+    check(what + ': only GetTile and GetCapabilities are forwarded',
+        /ALLOWED_REQUESTS[\s\S]{0,80}gettile[\s\S]{0,40}getcapabilities/.test(src));
+    check(what + ': only image/jpeg is allowed',
+        /ALLOWED_FORMATS = new Set\(\['image\/jpeg'\]\)/.test(src));
+    check(what + ': only the View1 tile-matrix-set is allowed',
+        /ALLOWED_TILEMATRIXSETS/.test(src) && /view1/.test(src));
+    check(what + ': tile indices are bounds-checked against the matrix',
+        /MAX_TILEMATRIX = 13/.test(src) && /MAX_TILE_INDEX = 17187/.test(src) &&
+        /bad_tile_index/.test(src));
+    check(what + ': a client-supplied token is dropped, never forwarded',
+        /token/.test(src) && (/key\.toLowerCase\(\) === 'token'/.test(src) ||
+            /STRIPPED_PARAMS/.test(src)));
+    check(what + ': the token goes upstream as a header, not a query parameter',
+        /headers:\s*\{\s*token\s*\}/.test(src));
+    check(what + ': tiles are cached for 7 days',
+        /max-age=604800/.test(src));
+    check(what + ': a missing token answers 401 token_missing',
+        /dataforsyningen_token_missing/.test(src));
+    check(what + ': an upstream XML exception is turned into 401 token_invalid',
+        /dataforsyningen_token_invalid/.test(src) && /not authori/i.test(src));
+    check(what + ': the token is never echoed back to the client',
+        !/res\.(send|json)\([^)]*token[^)]*\)/.test(src.replace(/_token_(missing|invalid)/g, '_')));
+});
+check('netlify.toml routes /api/geo/dk-dhm to the function',
+    /from = "\/api\/geo\/dk-dhm"/.test(read('netlify.toml')) &&
+    /to = "\/\.netlify\/functions\/dk-dhm"/.test(read('netlify.toml')));
+check('the Netlify function declares the same public path',
+    /path: '\/api\/geo\/dk-dhm'/.test(fn));
+check('the Sweden proxy route is untouched', /\/geo\/se-hojdmodell/.test(proxy));
+// Everything from the start of the Denmark route to the first mention of
+// Sweden's upstream, i.e. the Denmark route body and nothing else.
+const dkRoute = (function () {
+    const from = proxy.indexOf("router.get('/geo/dk-dhm'");
+    const rest = proxy.slice(from);
+    const to = rest.search(/lantmateriet/i);
+    return to === -1 ? rest : rest.slice(0, to);
+}());
+check('the Denmark route body was isolated for the scan',
+    dkRoute.length > 500 && /dataforsyningen_token_missing/.test(dkRoute));
+check('no WMS GetMap handling is left in the Denmark route', !/getmap/i.test(dkRoute));
+check('the Denmark route speaks WMTS GetTile', /gettile/i.test(dkRoute));
+
+console.log('\n[11] App wiring');
+
+const mapApp = read('js/map-app.js');
+const indexHtml = read('index.html');
+
+check('the Denmark layer is built by its own module',
+    /window\.DataforsyningenDHM\.createLayer/.test(mapApp));
+check('the layer module is loaded by index.html with a fresh cache-buster',
+    /js\/dataforsyningen-dhm-layer\.js\?v=20261007-dk-dhm-wmts/.test(indexHtml));
+check('the service worker cache name was bumped',
+    /detectlab-v163-dk-dhm-wmts/.test(read('sw.js')));
+check('the product dropdown offers exactly the two WMTS hillshades',
+    /<option value="terrain">/.test(indexHtml) && /<option value="surface">/.test(indexHtml) &&
+    !/<option value="contours/.test(indexHtml));
 check('the dropdown is also filled from the module at runtime',
     /_populateDenmarkModeSelect/.test(mapApp) && /DataforsyningenDHM\.modeKeys\(\)/.test(mapApp));
 check('switching product uses setMode instead of rebuilding',
@@ -448,18 +774,39 @@ check('the on/off switch still drives the Denmark row',
 check('the opacity slider defaults to 60%',
     /id="lidarDkLidarOpacitySlider"[^>]*value="60"/.test(indexHtml) &&
     /id="lidarDkLidarPct">60%/.test(indexHtml));
-check('the info popup explains the licence and the proxy',
+check('the opacity slider is wired to the layer',
+    /setInternationalLidarOpacity\('dkLidar', this\.value\)/.test(indexHtml));
+check('the info popup explains the WMTS, the reprojection, the licence and the proxy',
+    /WMTS/.test(indexHtml) && /EPSG:25832/.test(indexHtml) &&
     /CC BY 4\.0/.test(indexHtml) && /token/.test(indexHtml));
 check('the fly-to bounds match the published extent',
     /dkLidar: \[\[54\.4265, 7\.99125\], \[57\.7781, 15\.5995\]\]/.test(mapApp));
 
-// Scope guard: only the Denmark row changed.
+console.log('\n[12] Documentation');
+
+const doc = read('DENMARK_LIDAR_DATAFORSYNINGEN.md');
+check('the README states the exact attribution text',
+    /Indeholder data fra Klimadatastyrelsen, Danmarks Højdemodel/.test(doc));
+check('the README names the licence', /CC BY 4\.0/.test(doc));
+check('the README documents the View1 grid', /View1/.test(doc) && /25832/.test(doc));
+check('the README covers token setup', /DATAFORSYNINGEN_TOKEN/.test(doc) && /YOUR_TOKEN/.test(doc));
+check('the README offers a proxy for each backend choice',
+    /Cloudflare/i.test(doc) && /Nginx/i.test(doc) && /PHP/i.test(doc) && /Express/i.test(doc));
+check('the README has a manual test checklist',
+    /Copenhagen/i.test(doc) && /DevTools/i.test(doc));
+check('the README lists known limitations', /limitation/i.test(doc));
+check('the README says what could NOT be verified', /not verif/i.test(doc));
+check('the standalone alignment demo page exists', exists('tools/denmark-lidar-demo.html'));
+
+console.log('\n[13] Scope guard — only the Denmark row changed');
+
 check('the Norway layer still uses its own module', /Hoydedata\.createLayer/.test(mapApp));
 check('the Poland layer still uses its own module', /GeoportalNMT\.createLayer/.test(mapApp));
 check('the Spain layer still uses its own module', /IgnMdt\.createLayer/.test(mapApp));
 check('the Netherlands layer still uses its own module', /AhnLidar\.createLayer/.test(mapApp));
 check('the Switzerland layer still uses its own module', /SwisstopoRelief\.createLayer/.test(mapApp));
 check('the England layer still uses its own module', /EaLidarWmts\.createLayer/.test(mapApp));
+check('the Sweden layer still uses its own module', /LantmaterietHojdmodell\.createLayer/.test(mapApp));
 check('other country service kept: FRANCE_LIDAR_WMS_URL',
     mapApp.indexOf('FRANCE_LIDAR_WMS_URL') !== -1);
 
@@ -468,4 +815,6 @@ if (failures > 0) {
     console.error(failures + ' FAILED');
     process.exit(1);
 }
-console.log('All Denmark / Dataforsyningen DHM checks passed.');
+console.log('All Denmark / Dataforsyningen DHM WMTS checks passed.');
+
+}
