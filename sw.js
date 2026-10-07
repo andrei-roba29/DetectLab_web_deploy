@@ -327,6 +327,11 @@
 // v162: Sweden · Lantmäteriet terrängskuggning (höjdmodell 1 m) as live WMS
 //   1.1.1 tiles in EPSG:3857, behind the site's own credential-adding proxy
 //   (js/lantmateriet-hojdmodell-layer.js).
+// v163 (dk-dhm-wmts): Denmark LiDAR switches from the dhm_DAF WMS to
+//   Dataforsyningen's DHM skyggekort WMTS (View1 / EPSG:25832), reprojected
+//   client-side (js/dataforsyningen-dhm-layer.js); tiles go through the
+//   same-origin /api/geo/dk-dhm proxy (netlify/functions/dk-dhm.mjs or the
+//   Express geoProxy), which adds the token server-side.
 // v164: the globe country gate is re-engineered on a plain 2D canvas
 //   (d3-geo orthographic + per-pixel Blue Marble texture) — MapLibre GL is
 //   retired from the shell; js/d3.min.js, js/topojson-client.min.js and
@@ -343,6 +348,9 @@
 //   retired. A static Europe catalogue snapshot is baked at deploy time
 //   (netlify.toml [build] → data/corona-europe-catalog.json) so the layer
 //   works for every covered country even without the runtime proxy.
+//   Also: the Denmark LiDAR auth probe now reports a 404 from the proxy as
+//   "proxy not deployed" instead of leaving the layer silently blank (the
+//   production v161 deploy had no /api/geo/dk-dhm function at all).
 const CACHE_NAME = 'detectlab-v166-corona-coverage';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
@@ -434,6 +442,8 @@ const PRECACHE_URLS = [
   'js/ea-lidar-wmts-layer.js?v=20261006-ea-lidar',
   'js/dataforsyningen-dhm-layer.js',
   'js/dataforsyningen-dhm-layer.js?v=20261006-dk-dhm',
+  'js/dataforsyningen-dhm-layer.js?v=20261007-dk-dhm-wmts',
+  'js/dataforsyningen-dhm-layer.js?v=20261008-dk-proxy-notice',
   'js/lantmateriet-hojdmodell-layer.js',
   'js/lantmateriet-hojdmodell-layer.js?v=20261007-se-hojdmodell',
   'js/map-app.js?v=20261006-norway-hoydedata',

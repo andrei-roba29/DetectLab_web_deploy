@@ -488,6 +488,14 @@ check('attribution names Klimadatastyrelsen, DHM and CC BY 4.0',
     /CC BY 4\.0/.test(D.CONFIG.ATTRIBUTION));
 eq('the 401/403 message is the one the brief asked for',
     D.CONFIG.AUTH_MESSAGE, 'Invalid or missing Dataforsyningen token');
+// A deployment without the same-origin proxy (the live v161 shell had no
+// /api/geo/dk-dhm Netlify function at all) answers 404 — the layer must say
+// so instead of staying silently blank.
+check('a 404 from the proxy names the real problem (route not deployed)',
+    /\/api\/geo\/dk-dhm/.test(String(D.CONFIG.PROXY_MISSING_MESSAGE || '')));
+check('the auth probe reports a missing proxy, in proxy mode only',
+    /res\.status === 404 && !clientToken\(\)/.test(read('js/dataforsyningen-dhm-layer.js')) &&
+    /showAuthNotice\(CONFIG\.PROXY_MISSING_MESSAGE\)/.test(read('js/dataforsyningen-dhm-layer.js')));
 check('a transparent 1×1 PNG is available as the no-data fallback',
     /^data:image\/png;base64,/.test(D.BLANK_TILE));
 eq('the warp mesh is 8 (sub-pixel everywhere in Denmark)', D.CONFIG.WARP_MESH, 8);
@@ -758,10 +766,18 @@ const indexHtml = read('index.html');
 
 check('the Denmark layer is built by its own module',
     /window\.DataforsyningenDHM\.createLayer/.test(mapApp));
-check('the layer module is loaded by index.html with a fresh cache-buster',
-    /js\/dataforsyningen-dhm-layer\.js\?v=20261007-dk-dhm-wmts/.test(indexHtml));
-check('the service worker cache name was bumped',
-    /detectlab-v163-dk-dhm-wmts/.test(read('sw.js')));
+const dhmTag = indexHtml.match(/js\/dataforsyningen-dhm-layer\.js\?v=([\w-]+)/);
+check('the layer module is loaded by index.html with a cache-buster', !!dhmTag);
+const swSource = read('sw.js');
+check('the service worker precaches the layer version index.html loads',
+    !!dhmTag && swSource.indexOf("'js/dataforsyningen-dhm-layer.js?v=" + dhmTag[1] + "'") !== -1);
+// The shell that shipped the WMTS rewrite was v163; later features keep
+// bumping the number, so assert the floor and the recorded history instead
+// of pinning the literal cache name.
+check('the service worker shell is v163 (dk-dhm-wmts) or newer',
+    Number((swSource.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]) >= 163);
+check('the shell history records the v163 WMTS switch',
+    /v163[^\n]*dk-dhm-wmts/.test(swSource));
 check('the product dropdown offers exactly the two WMTS hillshades',
     /<option value="terrain">/.test(indexHtml) && /<option value="surface">/.test(indexHtml) &&
     !/<option value="contours/.test(indexHtml));
