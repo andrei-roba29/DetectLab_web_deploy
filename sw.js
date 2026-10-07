@@ -327,7 +327,11 @@
 // v162: Sweden · Lantmäteriet terrängskuggning (höjdmodell 1 m) as live WMS
 //   1.1.1 tiles in EPSG:3857, behind the site's own credential-adding proxy
 //   (js/lantmateriet-hojdmodell-layer.js).
-const CACHE_NAME = 'detectlab-v163-dk-dhm-wmts';
+// v164: the globe country gate is re-engineered on a plain 2D canvas
+//   (d3-geo orthographic + per-pixel Blue Marble texture) — MapLibre GL is
+//   retired from the shell; js/d3.min.js, js/topojson-client.min.js and
+//   data/countries-50m.json ship locally instead.
+const CACHE_NAME = 'detectlab-v164-canvas-globe-gate';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -900,10 +904,11 @@ const PRECACHE_URLS = [
   // the ⓘ button that credits the Copernicus Land Monitoring Service.
   'css/styles.css?v=20260927-sat-copernicus-vhr',
   'css/styles.css?v=20261002-european-lidar',
-  'css/globe-country-picker.css?v=20261007',
-  'js/globe-country-picker.js?v=20261007',
-  'js/maplibre-gl.js?v=5.16.0',
-  'css/maplibre-gl.css?v=5.16.0',
+  'css/globe-country-picker.css?v=20261008',
+  'js/globe-country-picker.js?v=20261008',
+  'js/d3.min.js?v=7.9.0',
+  'js/topojson-client.min.js?v=3.1.0',
+  'data/countries-50m.json?v=20261008',
   'js/shapefile.js?v=0.6.6',
   'js/map-app.js?v=20260927-sat-copernicus-vhr',
   'js/map-app.js?v=20261002-european-lidar',

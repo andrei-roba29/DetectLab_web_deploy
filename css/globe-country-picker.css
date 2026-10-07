@@ -1,10 +1,11 @@
 /* ══════════════════════════════════════════════════════════════
    DetectLab — 3D Globe Country Gate
-   First screen shown after login: a MapLibre GL globe projection
-   with every European country tinted a translucent grey-violet and
-   outlined in black. Hovering a country swaps it to a translucent
-   neon-green; clicking it hands off to the normal 2D working map,
-   locked to that country's extent. See GLOBE_COUNTRY_GATE.md.
+   First screen shown after login: an orthographic globe drawn on a
+   plain 2D canvas (d3-geo, no WebGL) with every European country
+   tinted a translucent grey-violet and outlined in black. Hovering
+   a country swaps it to a translucent neon-green; clicking it hands
+   off to the normal 2D working map, locked to that country's
+   extent. See GLOBE_COUNTRY_GATE.md.
    ══════════════════════════════════════════════════════════════ */
 
 .globe-gate {
@@ -37,24 +38,42 @@
     height: 100%;
 }
 
-/* MapLibre injects its own canvas/controls into this container */
-.globe-gate-canvas .maplibregl-map {
+/* The module creates its own <canvas class="globe-gate-cv"> inside this
+   container (js/globe-country-picker.js → buildCanvas()). */
+.globe-gate-cv {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    font-family: inherit;
+    display: block;
+    touch-action: none;
+    cursor: grab;
+    outline: none;
 }
+.globe-gate-cv:active { cursor: grabbing; }
 
-.globe-gate-canvas .maplibregl-ctrl-attrib {
-    background: rgba(6,8,20,0.55) !important;
-    color: rgba(230,230,240,0.65) !important;
-    border-radius: 8px 0 0 0;
+/* ── Zoom buttons (bottom-right, like the old nav control) ── */
+.globe-gate-zoom {
+    position: absolute;
+    right: 14px;
+    bottom: 18px;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
-.globe-gate-canvas .maplibregl-ctrl-attrib a { color: rgba(185,255,0,0.85) !important; }
-.globe-gate-canvas .maplibregl-ctrl-bottom-right,
-.globe-gate-canvas .maplibregl-ctrl-top-right { z-index: 2; }
-.globe-gate-canvas .maplibregl-canvas:focus { outline: none; }
-.globe-gate-canvas .maplibregl-canvas-container.maplibregl-interactive { cursor: grab; }
-.globe-gate-canvas .maplibregl-canvas-container.maplibregl-interactive:active { cursor: grabbing; }
+.globe-gate-zoom button {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid rgba(185,255,0,0.45);
+    background: rgba(8,10,22,0.78);
+    color: #ddffb0;
+    font: 700 19px/1 system-ui, sans-serif;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4);
+}
+.globe-gate-zoom button:hover { background: rgba(185,255,0,0.16); }
 
 /* ── Chrome: title / description / legend, floating above the globe ── */
 .globe-gate-chrome {
