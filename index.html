@@ -26,6 +26,7 @@
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=20261002-european-lidar">
     <link rel="stylesheet" href="css/globe-country-picker.css?v=20261008">
+    <link rel="stylesheet" href="css/country-dock.css?v=20261008">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260922-mobile-fs-controls">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -1225,7 +1226,54 @@
                             <button class="map-search-clear" id="searchClearBtn" onclick="clearSearch()" title="Clear">✕</button>
                         </div>
                         <ul class="map-search-results" id="mapSearchResults"></ul>
+
+                        <!-- Country dock — glued under the search bar once a
+                             country has been picked on the globe: the
+                             slide-down button shows the current 2-letter code
+                             and drops open the full initials list (hover = full
+                             name), next to the small World-hillshade overlay
+                             checkbox. The basemap itself is never switched by
+                             a country selection. js/country-dock.js. -->
+                        <div class="country-dock" id="countryDock">
+                            <div class="country-dock-row">
+                                <button type="button" class="country-dock-btn" id="countryDockBtn"
+                                        aria-expanded="false" aria-controls="countryDockPanel"
+                                        title="Change country — the map view stays locked to the country you pick">
+                                    <span class="country-dock-globe" aria-hidden="true">🌍</span>
+                                    <span class="country-dock-code" id="countryDockCode">—</span>
+                                    <span class="country-dock-caret" aria-hidden="true">▾</span>
+                                </button>
+                                <label class="country-dock-hs" id="countryDockHillshadeWrap"
+                                       title="World Hillshade (Esri · USGS · NOAA, 30 m) — terrain shading laid over the current basemap">
+                                    <input type="checkbox" id="countryDockHillshade">
+                                    <span class="t" data-key="country_dock_hillshade">World hillshade</span>
+                                </label>
+                                <button type="button" class="country-dock-info" id="countryDockHsInfo"
+                                        title="Layer info — source and credits" aria-label="Layer info">ⓘ</button>
+                            </div>
+                            <div class="country-dock-panel" id="countryDockPanel" hidden>
+                                <div class="country-dock-panel-head">
+                                    <span class="t" data-key="country_dock_title">Change country</span>
+                                    <button type="button" class="country-dock-x" id="countryDockClose"
+                                            aria-label="Close">✕</button>
+                                </div>
+                                <div class="country-dock-grid" id="countryDockGrid" role="listbox"
+                                     aria-label="Countries"></div>
+                                <div class="country-dock-name" id="countryDockName" aria-live="polite"></div>
+                                <p class="country-dock-hint t" data-key="country_dock_hint">Hover a code for the country name. Picking one moves and locks the map view to it — the basemap stays as it is.</p>
+                            </div>
+                        </div>
                     </div>
+
+                    <!-- “Exit view” — appears in the middle of the lower edge
+                         only once the locked country view is zoomed all the
+                         way out; it releases the lock and reopens the globe so
+                         another country can be chosen. js/country-dock.js -->
+                    <button type="button" class="country-exit-view" id="countryExitViewBtn" hidden
+                            title="Leave the locked country view and choose another country">
+                        <span aria-hidden="true">✕</span>
+                        <span class="t" data-key="country_exit_view">Exit view</span>
+                    </button>
 
 
 
@@ -4660,6 +4708,12 @@
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
     <script src="js/globe-country-picker.js?v=20261008"></script>
+    <!-- Country dock: the slide-down country switcher glued under the search
+         bar, the small World-hillshade overlay checkbox and the bottom-centre
+         “Exit view” button. Loaded after the globe gate (it only talks to it
+         through window.DetectLabGlobeGate) and before map-app.js, which
+         attaches it to the Leaflet map. -->
+    <script src="js/country-dock.js?v=20261008"></script>
     <script src="js/map-app.js?v=20261008-corona-coverage"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>

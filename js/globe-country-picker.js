@@ -44,6 +44,24 @@
     var STORAGE_KEY = 'detectlab_selected_country_v1';
     var FETCH_TIMEOUT_MS = 20000;
 
+    /* ── Locked country view ─────────────────────────────────────────────
+       Once a country is picked the working map is pinned to it: the
+       maxBounds box keeps every drag inside the country (maxBoundsViscosity
+       1 snaps a gesture straight back) and the zoom floor is the fit zoom,
+       so the user cannot wander off the chosen country. Zooming out to that
+       floor is the signal for the “Exit view” button built by
+       js/country-dock.js; the only other way out is picking another country
+       from the dock glued to the search bar (or from this globe). The
+       basemap itself is never touched by a selection — see
+       COUNTRY_SELECTION_DOCK.md. */
+    var LOCK_PAD = 0.15;         // degrees of slack around the country bbox
+    // Leaflet snaps the zoom to whole levels by default, so the floor has to be
+    // a *reachable* step: one level below the fitted view. That is the “zoomed
+    // out at maximum” state the dock's Exit view button watches for, and it is
+    // also the only legal way out of a locked view (see js/country-dock.js).
+    var LOCK_ZOOM_SLACK = 1;
+    var FIT_MAX_ZOOM = 11;       // micro-states: never dive into a single street
+
     var CONTROL_IDS = ['mapSearchWrap', 'transpTab', 'transpPanel', 'verticalOpacityControl', 'verticalSatPeriodControl', 'mapHelpBtn'];
 
     // Every European (+ immediate-neighbour) ISO-3166-1 alpha-2 code the
@@ -223,27 +241,95 @@
         });
     }
 
+    function activeMap() { return state.leafletMap || window._dlMap || null; }
+
+    /* Remembers the map's own zoom limits the first time a country is locked,
+       so switching country to country never ratchets minZoom upwards. */
+    function rememberBaseZoom(map) {
+        if (state.baseMinZoom != null || !map) return;
+        var opts = map.options || {};
+        state.baseMinZoom = (typeof opts.minZoom === 'number') ? opts.minZoom : 2;
+        state.baseMaxZoom = (typeof opts.maxZoom === 'number') ? opts.maxZoom : 20;
+    }
+
+    // The zoom the country view opens at: the bbox fitted to the viewport,
+    // capped so micro-states (Monaco, Vatican…) don't fall into one street.
+    function countryFitZoom(map, padded) {
+        var fit = FIT_MAX_ZOOM;
+        try {
+            var z = map.getBoundsZoom(padded, false);
+            if (typeof z === 'number' && isFinite(z)) fit = Math.min(FIT_MAX_ZOOM, z);
+        } catch (e) { /* keep the cap */ }
+        return Math.max(state.baseMinZoom, Math.min(state.baseMaxZoom, fit));
+    }
+
+    /* Lock the working map to one country: pan pinned to the (slightly
+       padded) country box, zoom floor at the fit zoom. The basemap layers are
+       never switched here — a selection only moves the camera and locks it. */
     function restrictLeafletToCountry(map, bbox) {
         if (!map || !window.L) return;
         try {
+            rememberBaseZoom(map);
             var sw = window.L.latLng(bbox[1], bbox[0]);
             var ne = window.L.latLng(bbox[3], bbox[2]);
             var bounds = window.L.latLngBounds(sw, ne);
-            var padded = bounds.pad(0.25);
+            var padded = bounds.pad(LOCK_PAD);
+            var fitZoom = countryFitZoom(map, padded);
             map.setMaxBounds(null);
-            var fitZoom;
-            try { fitZoom = map.getBoundsZoom(padded, false); } catch (e) { fitZoom = null; }
-            if (typeof fitZoom === 'number' && isFinite(fitZoom)) {
-                var baseMin = (map.options && map.options.minZoom) || 2;
-                var baseMax = (map.options && map.options.maxZoom) || 20;
-                var newMin = Math.max(baseMin, Math.min(baseMax, fitZoom - 0.4));
-                map.setMinZoom(newMin);
-            }
             map.options.maxBoundsViscosity = 1;
             map.setMaxBounds(padded);
-            map.fitBounds(bounds, { padding: [24, 24], maxZoom: 9, animate: true });
+            map.setMinZoom(Math.max(state.baseMinZoom, fitZoom - LOCK_ZOOM_SLACK));
+            if (typeof map.setMaxZoom === 'function') map.setMaxZoom(state.baseMaxZoom);
+            map.fitBounds(bounds, { padding: [24, 24], maxZoom: fitZoom, animate: true });
+            state.locked = true;
+            state.fitZoom = fitZoom;
+            if (document.documentElement) document.documentElement.classList.add('country-view-locked');
+            fireLockChange(true);
         } catch (e) {
             console.warn('[DetectLab] Globe gate: could not restrict the map to the selected country', e);
+        }
+    }
+
+    /* Release the lock: free panning and the map's original zoom range.
+       Used by the “Exit view” button (js/country-dock.js) and by reset(). */
+    function unlockCountryView() {
+        var map = activeMap();
+        state.locked = false;
+        state.fitZoom = null;
+        if (document.documentElement) document.documentElement.classList.remove('country-view-locked');
+        if (map) {
+            try {
+                map.setMaxBounds(null);
+                if (map.options) map.options.maxBoundsViscosity = 0;
+                if (state.baseMinZoom != null && typeof map.setMinZoom === 'function') map.setMinZoom(state.baseMinZoom);
+                if (state.baseMaxZoom != null && typeof map.setMaxZoom === 'function') map.setMaxZoom(state.baseMaxZoom);
+            } catch (e) {
+                console.warn('[DetectLab] Globe gate: could not release the country lock', e);
+            }
+        }
+        // Layer coverage filtering belongs to the locked view — drop it so the
+        // whole catalogue is selectable again once the user roams freely.
+        if (typeof window.unfilterLayersForCountry === 'function') {
+            try { window.unfilterLayersForCountry(); } catch (e) {}
+        }
+        fireLockChange(false);
+    }
+
+    function fireLockChange(locked) {
+        var detail = {
+            locked: !!locked,
+            iso: window._detectlabSelectedCountry || null,
+            bbox: window._detectlabCountryBounds || null,
+            fitZoom: state.fitZoom
+        };
+        try {
+            document.dispatchEvent(new CustomEvent('detectlab:country-lockchange', { detail: detail }));
+        } catch (e) {
+            try {
+                var evt = document.createEvent('CustomEvent');
+                evt.initCustomEvent('detectlab:country-lockchange', true, true, detail);
+                document.dispatchEvent(evt);
+            } catch (e2) {}
         }
     }
 
@@ -272,7 +358,7 @@
                 cb({ feature: { properties: { ISO_A2: iso } }, getBounds: function () { return window.L.latLngBounds(sw, ne); } });
             }
         };
-        var leafletMap = state.leafletMap || window._dlMap;
+        var leafletMap = activeMap();
         if (leafletMap) restrictLeafletToCountry(leafletMap, bbox);
         document.documentElement.classList.add('country-selected');
         if (document.body) document.body.classList.add('country-selected');
@@ -810,6 +896,88 @@
         closeGate(true);
     }
 
+    /* ══════════════════════════════════════════════════════════
+       Switching country without the globe — the API behind
+       js/country-dock.js (the slide-down list glued to the search bar).
+       ══════════════════════════════════════════════════════════ */
+
+    // Last-resort bbox for a country whose geometry never loaded: the rough
+    // [lng, lat, zoom] table above still yields a sane locked view.
+    function approxBbox(iso) {
+        var c = APPROX_CENTER[iso] || [15, 48, 5];
+        var lonSpan = 360 / Math.pow(2, c[2]);   // ≈ the width the old picker zoomed to
+        var latSpan = lonSpan * 0.6;
+        return [c[0] - lonSpan / 2, c[1] - latSpan / 2, c[0] + lonSpan / 2, c[1] + latSpan / 2];
+    }
+
+    // What the dock renders: every selectable country with its 2-letter code,
+    // both names and the bbox it locks the map to (real geometry when it is
+    // loaded, the static approximation otherwise). Sorted for the current
+    // language, so the grid order follows the UI language like the rest of
+    // the site.
+    function listCountries() {
+        var lang = currentLang();
+        return Object.keys(NAMES).map(function (iso) {
+            var entry = G.byIso[iso];
+            return {
+                iso: iso,
+                code: iso,
+                name: displayName(iso, (entry && entry.name) || NAMES[iso].en),
+                en: NAMES[iso].en,
+                ro: NAMES[iso].ro,
+                bbox: (entry && entry.bboxEU) || approxBbox(iso),
+                fromGeometry: !!(entry && entry.bboxEU)
+            };
+        }).sort(function (a, b) {
+            return a.name.localeCompare(b.name, lang === 'ro' ? 'ro' : 'en');
+        });
+    }
+
+    function nameOf(iso) {
+        iso = String(iso || '').toUpperCase();
+        if (!NAMES[iso]) return null;
+        var entry = G.byIso[iso];
+        return displayName(iso, (entry && entry.name) || NAMES[iso].en);
+    }
+
+    /* Pick a country straight from the search-bar dock: the geometry is
+       loaded in the background (local atlas, one small fetch), then the map
+       is moved to the country and locked to it exactly like a globe pick —
+       same localStorage record and the same `detectlab:country-selected`
+       event, so search sources and layer filtering follow along unchanged. */
+    function selectCountryByIso(iso) {
+        iso = String(iso || '').toUpperCase();
+        if (!NAMES[iso]) return Promise.reject(new Error('Unknown country code: ' + iso));
+        return ensureReady().then(function () {
+            var entry = G.byIso[iso];
+            var bbox = (entry && entry.bboxEU) || approxBbox(iso);
+            var name = displayName(iso, (entry && entry.name) || NAMES[iso].en);
+            finishSelection(iso, name, bbox);
+            return { iso: iso, name: name, bbox: bbox };
+        });
+    }
+
+    // Warm d3/topojson/atlas in the background so the first dock click is
+    // instant (the globe gate itself only loads them when it opens).
+    function prefetch() {
+        return ensureReady().then(function () { return true; }, function () { return false; });
+    }
+
+    /* “Exit view” — the button js/country-dock.js shows in the middle of the
+       bottom edge once the locked country view is zoomed all the way out.
+       It releases the lock, pulls back to the European overview and reopens
+       the globe, so leaving a country always means choosing another one. */
+    function exitView() {
+        var map = activeMap();
+        unlockCountryView();
+        if (map && typeof map.setView === 'function') {
+            try {
+                map.setView([48.5, 14], Math.max(state.baseMinZoom || 2, 4), { animate: true });
+            } catch (e) {}
+        }
+        openGate();
+    }
+
     /* ── Data loading ── */
     function loadLibraries() {
         var need = [];
@@ -899,7 +1067,11 @@
     var state = {
         leafletMap: null,
         readyPromise: null,
-        globeFailed: false
+        globeFailed: false,
+        locked: false,          // is the working map pinned to a country right now?
+        fitZoom: null,          // the zoom the current country view opens at
+        baseMinZoom: null,      // the map's own zoom range, remembered once
+        baseMaxZoom: null
     };
 
     var els = {};
@@ -999,6 +1171,7 @@
         if (!els.root) return;
         els.root.classList.remove('hidden', 'is-leaving');
         els.root.setAttribute('aria-hidden', 'false');
+        if (document.documentElement) document.documentElement.classList.add('globe-gate-open');
         if (els.closeBtn) els.closeBtn.style.display = hasSelection() ? '' : 'none';
         setMapControlsHidden(true);
         G.selected = null;
@@ -1024,6 +1197,7 @@
             els.root.classList.add('hidden');
             els.root.classList.remove('is-leaving');
             els.root.setAttribute('aria-hidden', 'true');
+            if (document.documentElement) document.documentElement.classList.remove('globe-gate-open');
         }, 420);
         if (revealControls && hasSelection()) setMapControlsHidden(false);
     }
@@ -1111,6 +1285,7 @@
         hasSelection: hasSelection,
         reset: function () {
             clearStoredSelection();
+            unlockCountryView();
             window._detectlabSelectedCountry = null;
             window._detectlabSelectedCountryName = null;
             window._detectlabCountryBounds = null;
@@ -1120,6 +1295,17 @@
         getSelection: function () {
             return hasSelection() ? { iso: window._detectlabSelectedCountry, name: window._detectlabSelectedCountryName, bbox: window._detectlabCountryBounds } : null;
         },
+
+        /* ── Country switching & locked view (js/country-dock.js) ── */
+        listCountries: listCountries,          // [{iso, code, name, en, ro, bbox}]
+        nameOf: nameOf,                        // iso → localised name
+        selectCountry: selectCountryByIso,     // iso → Promise (no globe needed)
+        prefetch: prefetch,                    // warm atlas/geometry in the background
+        isLocked: function () { return !!state.locked; },
+        getLockZoom: function () { return state.fitZoom; },
+        unlock: unlockCountryView,
+        exitView: exitView,
+
         // Internal hooks for the node test-suite (test-globe-canvas-picker.js).
         // Not part of the public contract.
         _test: {
@@ -1132,7 +1318,15 @@
             getProj: getProj,
             displayName: displayName,
             draw: draw,
-            drawBase: drawBase
+            drawBase: drawBase,
+            state: state,
+            approxBbox: approxBbox,
+            listCountries: listCountries,
+            restrictLeafletToCountry: restrictLeafletToCountry,
+            unlockCountryView: unlockCountryView,
+            LOCK_PAD: LOCK_PAD,
+            LOCK_ZOOM_SLACK: LOCK_ZOOM_SLACK,
+            FIT_MAX_ZOOM: FIT_MAX_ZOOM
         }
     };
 })(window, document);

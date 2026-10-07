@@ -1607,6 +1607,15 @@
                 window.DetectLabGlobeGate.attach(map);
             }
 
+            // Country dock (js/country-dock.js): the slide-down country
+            // switcher + World-hillshade checkbox glued under the search bar
+            // and the bottom-centre “Exit view” button of the locked country
+            // view. It reads the country list / lock state from the gate, so
+            // it must be attached after it.
+            if (window.DetectLabCountryDock) {
+                window.DetectLabCountryDock.attach(map);
+            }
+
             // ── GLOBAL TILE GOVERNOR ──
             // js/tile-perf.js patches every tile layer of the app (LIDAR,
             // historical maps, APM 2.0, CORONA, basemap…) with gesture-safe
@@ -12869,6 +12878,22 @@
                     });
                     var panel = document.getElementById('transpPanel');
                     if (panel) panel.classList.add('country-filter-active');
+                };
+
+                // Leaving the locked country view (the “Exit view” button of
+                // js/country-dock.js) restores the full layer catalogue: the
+                // coverage dimming above only makes sense while the map is
+                // pinned to one country.
+                window.unfilterLayersForCountry = function () {
+                    layerDefs.concat(internationalLayerDefs).forEach(function (def) {
+                        var row = null;
+                        try { row = def.getRow(); } catch (e) {}
+                        if (!row) return;
+                        row.classList.remove('country-layer-unavailable');
+                        row.setAttribute('aria-hidden', 'false');
+                    });
+                    var panel = document.getElementById('transpPanel');
+                    if (panel) panel.classList.remove('country-filter-active');
                 };
 
                 // Auth handlers and PWA controls can change layout after this listener

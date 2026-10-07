@@ -11,12 +11,22 @@ hit-testing was unreliable. In the canvas engine every pixel is drawn by us
 and picking is pure geometry (`projection.invert` + `d3.geoContains`), so the
 initial render and the country selection can no longer miss.
 
+The gate is now the *start* of a locked country view rather than a one-off
+hand-off: picking a country pins the working map to it (tight `maxBounds` +
+zoom floor, basemap untouched) and the search-bar country dock takes over
+switching from there — see **COUNTRY_SELECTION_DOCK.md**.
+
 Files:
 
 - `js/globe-country-picker.js` — the whole feature (canvas globe engine,
-  hover/click picking, fly-to animation, Leaflet handoff, persistence).
+  hover/click picking, fly-to animation, Leaflet handoff, persistence) plus
+  the country-switching / locked-view API the dock uses
+  (`listCountries`, `selectCountry`, `isLocked`, `unlock`, `exitView`).
 - `css/globe-country-picker.css` — gate overlay, legend, zoom buttons,
   loading/error states, "Change Country" pill.
+- `js/country-dock.js` + `css/country-dock.css` — the search-bar country dock,
+  the World-hillshade checkbox and the "Exit view" button of the locked
+  country view (see COUNTRY_SELECTION_DOCK.md).
 - `js/d3.min.js` (7.9.0), `js/topojson-client.min.js` (3.1.0) — lazy-loaded
   **local** libraries (no CDN dependency; both precached by `sw.js`).
 - `data/countries-50m.json` — world-atlas 2 TopoJSON, the primary country
@@ -61,8 +71,14 @@ Files:
    hands off to the existing Leaflet map exactly like before:
    `window._detectlabSelectedCountry` / `..Name` / `..Bounds` +
    the `_detectlabCountryLayer` shim (so `filterLayersForCountry()` in
-   `js/map-app.js` keeps working unmodified), `setMaxBounds`/`setMinZoom`
-   locking, and the `detectlab:country-selected` CustomEvent.
+   `js/map-app.js` keeps working unmodified), locking, and the
+   `detectlab:country-selected` CustomEvent. The lock is deliberately tight —
+   `maxBounds` = country bbox padded by 0.15° with viscosity 1, and the zoom
+   floor one reachable step below the fitted zoom (Leaflet snaps zooms to whole
+   levels; opening zoom capped at 11 for micro-states) — and **never touches the
+   basemap**: a selection only moves the camera. The `<html>` element gets `country-view-locked` and a
+   `detectlab:country-lockchange` event fires, which is what the dock's
+   "Exit view" button reacts to (COUNTRY_SELECTION_DOCK.md).
 6. **Persistence & re-entry.** Unchanged: the `{iso, name, bbox}` selection
    is saved to `localStorage['detectlab_selected_country_v1']`, returning
    visitors skip the globe entirely, and the "Change Country" pill reopens
@@ -80,14 +96,19 @@ Files:
 
 ## Notes for future changes
 
+- `sw.js` (cache `v167`) precaches the picker, d3, topojson-client, the atlas
+  and the country dock; the two texture images are intentionally **not**
+  precached (≈1.8 MB, and the texture-less fallback looks fine offline).
+- Two suites guard this area: `node test-globe-canvas-picker.js` (globe,
+  picking, geometry) and `node test-country-dock.js` (country list API, lock
+  maths, dock UI, hillshade, exit view).
 - Country name → ISO resolution uses the bundled EN/RO name dictionary
   (`NAMES`, incl. `alt` spellings such as "Bosnia and Herz.", "Macedonia",
   "Vatican" used by world-atlas). `test-globe-canvas-picker.js` asserts all
   50 countries resolve from the shipped atlas and that picking works — run
   `node test-globe-canvas-picker.js` after touching any of this.
 - The module exposes `window.DetectLabGlobeGate` with the same API as
-  before (`attach/open/close/hasSelection/reset/getSelection`), plus a
-  `_test` hook for the node suite.
-- `sw.js` (cache `v164`) precaches the picker, d3, topojson-client and the
-  atlas; the two texture images are intentionally **not** precached (≈1.8 MB,
-  and the texture-less fallback looks fine offline).
+  before (`attach/open/close/hasSelection/reset/getSelection`), plus the
+  country-switching / lock API the dock builds on
+  (`listCountries/nameOf/selectCountry/prefetch/isLocked/getLockZoom/unlock/exitView`)
+  and a `_test` hook for the node suites.
