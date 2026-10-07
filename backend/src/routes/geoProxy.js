@@ -1,23 +1,36 @@
 /*
- * geoProxy.js — token-adding, caching proxy for Dataforsyningen (Denmark).
+ * geoProxy.js — credential-adding, caching proxy for national LiDAR services.
  * ───────────────────────────────────────────────────────────────────────────
- * The Danish Agency's WMS/WMTS require a token on every request. A token in
- * client-side JavaScript is visible to every visitor, so the browser instead
- * asks THIS server for tiles and the token is added here, server-side, as the
- * "token" HTTP header (the method Dataforsyningen's own documentation
- * recommends over the query parameter).
+ * Two routes live here:
+ *   /api/geo/dk-dhm        Denmark  · Dataforsyningen  (WMTS, token header)
+ *   /api/geo/se-hojdmodell Sweden   · Lantmäteriet     (WMS, Basic or Bearer)
+ * Both follow the same rules: a fixed upstream host, an allowlist of layers,
+ * formats and request types, a size cap, a 7-day cache, and a secret that
+ * never leaves this process.
+ * ───────────────────────────────────────────────────────────────────────────
+ * Dataforsyningen requires a token on every request. A token in client-side
+ * JavaScript is visible to every visitor, so the browser instead asks THIS
+ * server for tiles and the token is added here, server-side, as the "token"
+ * HTTP header (the method Dataforsyningen's own documentation recommends
+ * over the query parameter, because it keeps the secret out of access logs,
+ * Referer headers and browser history).
  *
- *   browser  →  GET /api/geo/dk-dhm?service=WMS&request=GetMap&…   (no token)
- *   server   →  GET https://api.dataforsyningen.dk/dhm_DAF?…       (token: …)
+ *   browser → GET /api/geo/dk-dhm?service=WMTS&request=GetTile&…    (no token)
+ *   server  → GET https://api.dataforsyningen.dk/dhm_terraen_skyggekort_DAF?…
+ *                                                           + header token:…
+ *
+ * The client never names an upstream host. It sends the WMTS layer, and the
+ * LAYER_UPSTREAM table below decides which api.dataforsyningen.dk service
+ * that maps to — so the route can never be turned into an open proxy.
  *
  * Configuration (never committed):
  *   DATAFORSYNINGEN_TOKEN=<your 32-character token>    # backend/.env
  *
  * The token is never logged and never echoed back in a response or an error.
  *
- * Safety: this is NOT an open proxy. Only GetMap/GetCapabilities on a fixed
- * host, a fixed service and a whitelist of layers and formats are forwarded,
- * and the image size is capped.
+ * Safety: this is NOT an open proxy. Only GetTile/GetCapabilities are
+ * forwarded, only to a host and service chosen from a fixed table, and only
+ * for an allowlisted layer, format, tile-matrix-set and tile index.
  *
  * Caching: successful tiles are kept in a small in-process LRU for 7 days and
  * are returned with "Cache-Control: public, max-age=604800, immutable" so any
@@ -32,20 +45,24 @@ const router = express.Router();
 
 /* ── configuration ──────────────────────────────────────────────────────── */
 
-const UPSTREAM = 'https://api.dataforsyningen.dk/dhm_DAF';
-
-// Only these layers may be requested through the proxy.
-const ALLOWED_LAYERS = new Set([
-  'dhm_terraen_skyggekort',
-  'dhm_overflade_skyggekort',
-  'dhm_kurve_traditionel',
-  'dhm_kurve_0_5_m',
-  'dhm_kurve_0_25_m',
+// WMTS layer → the api.dataforsyningen.dk service that publishes it. This
+// table is the ONLY way an upstream URL can be chosen, which is what stops
+// the route from becoming an open proxy.
+const LAYER_UPSTREAM = new Map([
+  ['dhm_terraen_skyggekort', 'https://api.dataforsyningen.dk/dhm_terraen_skyggekort_DAF'],
+  ['dhm_overflade_skyggekort', 'https://api.dataforsyningen.dk/dhm_overflade_skyggekort_DAF'],
 ]);
 
-const ALLOWED_FORMATS = new Set(['image/png', 'image/jpeg']);
-const ALLOWED_REQUESTS = new Set(['getmap', 'getcapabilities']);
-const MAX_PIXELS = 1024; // width/height cap — tiles are 256
+const DEFAULT_UPSTREAM = LAYER_UPSTREAM.get('dhm_terraen_skyggekort');
+
+// image/jpeg is the only format the DHM skyggekort WMTS publishes.
+const ALLOWED_FORMATS = new Set(['image/jpeg']);
+const ALLOWED_REQUESTS = new Set(['gettile', 'getcapabilities']);
+const ALLOWED_TILEMATRIXSETS = new Set(['view1']);
+
+// View1 has levels 0…13; its largest matrix is 17188 × 11719 tiles.
+const MAX_TILEMATRIX = 13;
+const MAX_TILE_INDEX = 17187;
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const CACHE_MAX_ENTRIES = 2000;               // ≈ a few hundred MB at most
@@ -88,31 +105,57 @@ router.get('/geo/dk-dhm', async (req, res) => {
     return res.status(400).json({ error: 'unsupported_request' });
   }
 
-  if (request === 'getmap') {
-    const layers = String(params.layers || params.LAYERS || '');
-    if (!layers.split(',').every((l) => ALLOWED_LAYERS.has(l.trim()))) {
+  // Parameter names are case-insensitive in OGC KVP, so look them up that way.
+  const pick = (name) => {
+    const key = Object.keys(params).find((k) => k.toLowerCase() === name);
+    if (key === undefined) return '';
+    const value = params[key];
+    return String(Array.isArray(value) ? value[0] : value);
+  };
+
+  let target = DEFAULT_UPSTREAM;
+
+  if (request === 'gettile') {
+    const layer = pick('layer');
+    if (!LAYER_UPSTREAM.has(layer)) {
       return res.status(400).json({ error: 'layer_not_allowed' });
     }
-    const format = String(params.format || params.FORMAT || '');
-    if (!ALLOWED_FORMATS.has(format)) {
+    target = LAYER_UPSTREAM.get(layer);
+
+    if (!ALLOWED_FORMATS.has(pick('format'))) {
       return res.status(400).json({ error: 'format_not_allowed' });
     }
-    const width = Number(params.width || params.WIDTH || 0);
-    const height = Number(params.height || params.HEIGHT || 0);
-    if (!(width > 0 && height > 0 && width <= MAX_PIXELS && height <= MAX_PIXELS)) {
-      return res.status(400).json({ error: 'bad_image_size' });
+    if (!ALLOWED_TILEMATRIXSETS.has(pick('tilematrixset').toLowerCase())) {
+      return res.status(400).json({ error: 'tilematrixset_not_allowed' });
     }
+
+    // "7" is what this server wants; tolerate the "View1:7" spelling used by
+    // the Layer's TileMatrixSetLimits so either client works.
+    const matrix = Number(pick('tilematrix').replace(/^View1:/i, ''));
+    const col = Number(pick('tilecol'));
+    const row = Number(pick('tilerow'));
+    const whole = (n, max) => Number.isInteger(n) && n >= 0 && n <= max;
+    if (!whole(matrix, MAX_TILEMATRIX) ||
+        !whole(col, MAX_TILE_INDEX) ||
+        !whole(row, MAX_TILE_INDEX)) {
+      return res.status(400).json({ error: 'bad_tile_index' });
+    }
+  } else {
+    // GetCapabilities: let the caller choose which of the two services, but
+    // still only from the table.
+    const layer = pick('layer');
+    if (layer && LAYER_UPSTREAM.has(layer)) target = LAYER_UPSTREAM.get(layer);
   }
 
   // Rebuild the upstream query from the client's parameters. A token supplied
   // by the client is ignored on purpose — ours is the only one used.
-  const upstream = new URL(UPSTREAM);
+  const upstream = new URL(target);
   for (const [key, value] of Object.entries(params)) {
     if (key.toLowerCase() === 'token') continue;
     upstream.searchParams.set(key, Array.isArray(value) ? value[0] : String(value));
   }
 
-  const cacheKey = upstream.search;
+  const cacheKey = upstream.pathname + upstream.search;
   const cached = cacheGet(cacheKey);
   if (cached) {
     res.set('Content-Type', cached.type);
@@ -151,6 +194,136 @@ router.get('/geo/dk-dhm', async (req, res) => {
     return res.send(buffer);
   } catch (err) {
     logger.error({ err: err?.message }, 'Dataforsyningen proxy request failed');
+    return res.status(502).json({ error: 'upstream_unreachable' });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  SWEDEN — Lantmäteriet "Markhöjdmodell Visning" (terrängskuggning)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Why a proxy at all: the hillshade WMS is a LICENSED, fee-based product.
+ * Its real access point, https://maps.lantmateriet.se/hojdmodell/wms/v1.1,
+ * answers "401 Authorization Required" without credentials. Those credentials
+ * are issued per organisation through Geotorget and must never be shipped to
+ * a browser, so the map asks THIS server for tiles and the Authorization
+ * header is attached here.
+ *
+ *   browser →  GET /api/geo/se-hojdmodell?SERVICE=WMS&REQUEST=GetMap&…
+ *   server  →  GET https://maps.lantmateriet.se/hojdmodell/wms/v1.1?…
+ *              Authorization: Basic <base64(user:password)>
+ *
+ * Configuration (never committed) — backend/.env:
+ *   LANTMATERIET_WMS_USER=…        # Geotorget consumer account
+ *   LANTMATERIET_WMS_PASSWORD=…
+ * or, if your agreement issues an OAuth2 access token instead:
+ *   LANTMATERIET_WMS_TOKEN=…       # sent as "Authorization: Bearer …"
+ * Optional override (e.g. to point at a different licensed endpoint):
+ *   LANTMATERIET_WMS_URL=https://maps.lantmateriet.se/hojdmodell/wms/v1.1
+ *
+ * The credentials are never logged and never echoed back in a response.
+ * See SWEDEN_LIDAR_LANTMATERIET.md for how to obtain them.
+ */
+
+const SE_UPSTREAM_DEFAULT = 'https://maps.lantmateriet.se/hojdmodell/wms/v1.1';
+
+// Layer names exactly as published by the service's GetCapabilities.
+const SE_ALLOWED_LAYERS = new Set([
+  'terrangskuggning',
+  'terranglutning',
+  'terranglutning_brunton',
+  'ursprung_kvalitet',
+]);
+
+const SE_ALLOWED_FORMATS = new Set(['image/png', 'image/jpeg', 'image/png; mode=8bit']);
+
+/** Build the Authorization header from whichever credential style is set. */
+function lantmaterietAuthHeader() {
+  const token = process.env.LANTMATERIET_WMS_TOKEN;
+  if (token) return `Bearer ${token}`;
+  const user = process.env.LANTMATERIET_WMS_USER;
+  const password = process.env.LANTMATERIET_WMS_PASSWORD;
+  if (user && password) {
+    return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`;
+  }
+  return null;
+}
+
+router.get('/geo/se-hojdmodell', async (req, res) => {
+  const authorization = lantmaterietAuthHeader();
+  if (!authorization) {
+    // The client turns this into the non-blocking
+    // "Missing or invalid Lantmäteriet (Geotorget) credentials" notice.
+    return res.status(401).json({ error: 'lantmateriet_credentials_missing' });
+  }
+
+  const params = req.query || {};
+  const request = String(params.request || params.REQUEST || '').toLowerCase();
+  if (!ALLOWED_REQUESTS.has(request)) {
+    return res.status(400).json({ error: 'unsupported_request' });
+  }
+
+  if (request === 'getmap') {
+    const layers = String(params.layers || params.LAYERS || '');
+    if (!layers.split(',').every((l) => SE_ALLOWED_LAYERS.has(l.trim()))) {
+      return res.status(400).json({ error: 'layer_not_allowed' });
+    }
+    const format = String(params.format || params.FORMAT || '');
+    if (!SE_ALLOWED_FORMATS.has(format)) {
+      return res.status(400).json({ error: 'format_not_allowed' });
+    }
+    const width = Number(params.width || params.WIDTH || 0);
+    const height = Number(params.height || params.HEIGHT || 0);
+    // The service advertises MaxWidth/MaxHeight = 4096; we only ever need 256.
+    if (!(width > 0 && height > 0 && width <= MAX_PIXELS && height <= MAX_PIXELS)) {
+      return res.status(400).json({ error: 'bad_image_size' });
+    }
+  }
+
+  // Rebuild the upstream query from the client's parameters. Any credential
+  // supplied by the client is dropped on purpose — ours is the only one used.
+  const upstream = new URL(process.env.LANTMATERIET_WMS_URL || SE_UPSTREAM_DEFAULT);
+  for (const [key, value] of Object.entries(params)) {
+    const lower = key.toLowerCase();
+    if (lower === 'token' || lower === 'user' || lower === 'pass' || lower === 'password') continue;
+    upstream.searchParams.set(key, Array.isArray(value) ? value[0] : String(value));
+  }
+
+  const cacheKey = `se|${upstream.search}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    res.set('Content-Type', cached.type);
+    res.set('Cache-Control', 'public, max-age=604800, immutable');
+    res.set('X-Proxy-Cache', 'HIT');
+    return res.send(cached.body);
+  }
+
+  try {
+    const upstreamRes = await fetch(upstream.toString(), { headers: { authorization } });
+    const type = upstreamRes.headers.get('content-type') || 'application/octet-stream';
+    const buffer = Buffer.from(await upstreamRes.arrayBuffer());
+
+    if (!upstreamRes.ok || type.includes('xml') || type.includes('html')) {
+      // MapServer answers 200 + an OGC ServiceException for a bad request,
+      // and nginx answers 401 + HTML for bad credentials, so sniff both.
+      const body = buffer.toString('utf8', 0, 2000);
+      const unauthorized = upstreamRes.status === 401 || upstreamRes.status === 403 ||
+        /authorization required|not authori[sz]ed|unauthorized/i.test(body);
+      logger.warn(
+        { status: upstreamRes.status, type, unauthorized },
+        'Lantmäteriet upstream refused a request',
+      );
+      return res
+        .status(unauthorized ? 401 : 502)
+        .json({ error: unauthorized ? 'lantmateriet_credentials_invalid' : 'upstream_error' });
+    }
+
+    cacheSet(cacheKey, { body: buffer, type, expires: Date.now() + CACHE_TTL_MS });
+    res.set('Content-Type', type);
+    res.set('Cache-Control', 'public, max-age=604800, immutable');
+    res.set('X-Proxy-Cache', 'MISS');
+    return res.send(buffer);
+  } catch (err) {
+    logger.error({ err: err?.message }, 'Lantmäteriet proxy request failed');
     return res.status(502).json({ error: 'upstream_unreachable' });
   }
 });

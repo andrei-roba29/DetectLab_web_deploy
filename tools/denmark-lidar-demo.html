@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<!--
+  tools/denmark-lidar-demo.html
+  ───────────────────────────────────────────────────────────────────────────
+  Standalone alignment check for the Denmark DHM hillshade layer.
+
+  This page exists for ONE job: to prove with your own eyes that the WMTS
+  "View1" tiles (EPSG:25832, a Danish national grid) land exactly on top of a
+  standard Web-Mercator basemap after the client-side reprojection in
+  js/dataforsyningen-dhm-layer.js. Pick a coastline or a lake, push the
+  opacity slider up and down, and look for an offset. There should be none.
+
+  How to run (from the repository root, so ../js and ../css resolve):
+
+      python3 -m http.server 8080
+      open http://localhost:8080/tools/denmark-lidar-demo.html
+
+  …but the tiles themselves need a Dataforsyningen token, so ALSO run one of
+  the proxies so that /api/geo/dk-dhm answers:
+
+      cd backend && DATAFORSYNINGEN_TOKEN=YOUR_TOKEN npm start      (Express)
+      netlify dev                                                   (Netlify)
+
+  If you have no proxy running, flip "Source" to "direct (insecure)" and paste
+  a token into the box. That token is kept in this page's memory only — it is
+  never written to disk, never committed, and it WILL be visible in the
+  DevTools Network tab, which is exactly why the proxy is the default.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Denmark · DHM skyggekort (Dataforsyningen WMTS) — alignment check</title>
+<link rel="stylesheet" href="../css/leaflet.css">
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; background: #14120f; color: #f5f0eb;
+               font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #map { position: absolute; inset: 0; }
+  .panel {
+    position: absolute; top: 12px; left: 12px; z-index: 1000; width: 330px;
+    max-height: calc(100% - 24px); overflow: auto;
+    background: rgba(20,18,16,0.93); border: 1px solid rgba(245,240,235,0.18);
+    border-radius: 10px; padding: 12px 14px; box-shadow: 0 6px 26px rgba(0,0,0,0.5);
+  }
+  .panel h1 { font-size: 0.95rem; margin: 0 0 2px; }
+  .panel p.sub { margin: 0 0 10px; font-size: 0.74rem; opacity: 0.62; }
+  .row { margin: 9px 0; }
+  label { display: block; font-size: 0.74rem; opacity: 0.72; margin-bottom: 3px; }
+  select, input[type=text] {
+    width: 100%; box-sizing: border-box; background: #262220; color: inherit;
+    border: 1px solid rgba(245,240,235,0.22); border-radius: 6px; padding: 5px 7px;
+    font: inherit; font-size: 0.8rem;
+  }
+  input[type=range] { width: 100%; }
+  .inline { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .places { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .places button {
+    background: #2c2724; color: inherit; border: 1px solid rgba(245,240,235,0.2);
+    border-radius: 999px; padding: 3px 9px; font-size: 0.72rem; cursor: pointer;
+  }
+  .places button:hover { background: #3a3431; }
+  code { font-size: 0.7rem; word-break: break-all; }
+  .readout {
+    margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(245,240,235,0.14);
+    font-size: 0.71rem; opacity: 0.8;
+  }
+  .readout b { opacity: 0.6; font-weight: 500; }
+  .warn { color: #ffc98a; font-size: 0.72rem; margin-top: 6px; display: none; }
+  .warn.on { display: block; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="panel">
+  <h1>Denmark · DHM skyggekort</h1>
+  <p class="sub">Dataforsyningen WMTS · TileMatrixSet <code>View1</code> (EPSG:25832)
+     reprojected to EPSG:3857 in the browser</p>
+
+  <div class="row">
+    <label for="product">Product</label>
+    <select id="product"></select>
+  </div>
+
+  <div class="row">
+    <label for="basemap">Basemap (check the hillshade against its coastline)</label>
+    <select id="basemap">
+      <option value="osm">OpenStreetMap</option>
+      <option value="carto">CARTO Positron — pale, best for spotting offsets</option>
+      <option value="none">None (hillshade only)</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <div class="inline"><label for="opacity" style="margin:0">Hillshade opacity</label>
+      <span id="opacityPct" style="font-size:0.74rem;opacity:0.7">60%</span></div>
+    <input type="range" id="opacity" min="0" max="100" value="60">
+  </div>
+
+  <div class="row inline">
+    <label for="visible" style="margin:0">Hillshade on</label>
+    <input type="checkbox" id="visible" checked>
+  </div>
+
+  <div class="row">
+    <label for="source">Source</label>
+    <select id="source">
+      <option value="proxy">same-origin proxy /api/geo/dk-dhm (no token in the browser)</option>
+      <option value="direct">direct to api.dataforsyningen.dk (INSECURE — token visible)</option>
+    </select>
+    <input type="text" id="token" placeholder="paste a token (direct mode only)"
+           style="margin-top:5px;display:none" autocomplete="off" spellcheck="false">
+    <div class="warn" id="tokenWarn">
+      Direct mode puts your token in every tile URL, visible to anyone with DevTools
+      or access to Dataforsyningen's logs. Use a disposable token and delete it after.
+    </div>
+  </div>
+
+  <div class="row">
+    <label>Jump to a sharp coastline / lake</label>
+    <div class="places">
+      <button data-at="55.6761,12.5683,13">Copenhagen</button>
+      <button data-at="57.7400,10.6280,12">Skagen spit</button>
+      <button data-at="56.0330,9.5300,13">Silkeborg lakes</button>
+      <button data-at="55.4670,8.4520,12">Esbjerg / Fanø</button>
+      <button data-at="55.1000,14.9000,12">Bornholm</button>
+      <button data-at="56.3555,9.6613,15">Example tile 1</button>
+      <button data-at="55.4604,9.4163,11">Example tile 2</button>
+      <button data-at="56.2,11.0,7">Whole country</button>
+    </div>
+  </div>
+
+  <div class="readout">
+    <div><b>centre</b> <span id="roCentre">—</span></div>
+    <div><b>map zoom</b> <span id="roZoom">—</span>
+         &nbsp;<b>View1 level</b> <span id="roLevel">—</span></div>
+    <div><b>EPSG:25832</b> <span id="roUtm">—</span></div>
+    <div style="margin-top:5px"><b>last tile URL</b><br><code id="roUrl">—</code></div>
+  </div>
+</div>
+
+<script src="../js/leaflet.js"></script>
+<script src="../js/dataforsyningen-dhm-layer.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var D = window.DataforsyningenDHM;
+  if (!D) { document.body.innerHTML = '<p style="padding:2rem">' +
+    'dataforsyningen-dhm-layer.js did not load — serve this page from the repository root.</p>'; return; }
+
+  var map = L.map('map', {
+    center: [55.6761, 12.5683], zoom: 13, minZoom: 5, maxZoom: 20,
+    zoomControl: true
+  });
+  L.control.scale({ imperial: false }).addTo(map);
+
+  /* ── basemaps ───────────────────────────────────────────────────────── */
+  var basemaps = {
+    osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap contributors' }),
+    carto: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap contributors © CARTO' }),
+    none: null
+  };
+  var base = basemaps.osm.addTo(map);
+
+  document.getElementById('basemap').onchange = function () {
+    if (base) map.removeLayer(base);
+    base = basemaps[this.value];
+    if (base) { base.addTo(map); base.bringToBack(); }
+  };
+
+  /* ── the hillshade ──────────────────────────────────────────────────── */
+  var hillshade = null;
+
+  function rebuild() {
+    if (hillshade) { map.removeLayer(hillshade); hillshade = null; }
+    D.clearSourceCache();
+    hillshade = D.createLayer({
+      mode: document.getElementById('product').value,
+      opacity: Number(document.getElementById('opacity').value) / 100
+    });
+    if (document.getElementById('visible').checked) hillshade.addTo(map);
+    refreshReadout();
+  }
+
+  var productSelect = document.getElementById('product');
+  D.modeKeys().forEach(function (key) {
+    var o = document.createElement('option');
+    o.value = key; o.textContent = D.MODES[key].label;
+    productSelect.appendChild(o);
+  });
+  productSelect.value = D.CONFIG.DEFAULT_MODE;
+  productSelect.onchange = function () {
+    if (hillshade) { hillshade.setMode(this.value); refreshReadout(); }
+  };
+
+  document.getElementById('opacity').oninput = function () {
+    document.getElementById('opacityPct').textContent = this.value + '%';
+    if (hillshade) hillshade.setOpacity(Number(this.value) / 100);
+  };
+
+  document.getElementById('visible').onchange = function () {
+    if (!hillshade) return;
+    if (this.checked) hillshade.addTo(map); else map.removeLayer(hillshade);
+  };
+
+  /* ── token source switch (the demo page's own escape hatch) ─────────── */
+  var sourceSelect = document.getElementById('source'),
+      tokenInput = document.getElementById('token'),
+      tokenWarn = document.getElementById('tokenWarn');
+
+  sourceSelect.onchange = function () {
+    var direct = this.value === 'direct';
+    tokenInput.style.display = direct ? 'block' : 'none';
+    tokenWarn.classList.toggle('on', direct);
+    if (!direct) { window.DETECTLAB_DK_TOKEN = ''; rebuild(); }
+  };
+  tokenInput.oninput = function () {
+    // Memory only. Never persisted, never logged.
+    window.DETECTLAB_DK_TOKEN = this.value.trim();
+    rebuild();
+  };
+
+  /* ── jump buttons ───────────────────────────────────────────────────── */
+  Array.prototype.forEach.call(document.querySelectorAll('.places button'), function (b) {
+    b.onclick = function () {
+      var p = b.getAttribute('data-at').split(',');
+      map.setView([Number(p[0]), Number(p[1])], Number(p[2]));
+    };
+  });
+
+  /* ── live read-out: what the layer is actually asking for ───────────── */
+  function refreshReadout() {
+    var c = map.getCenter(), z = map.getZoom();
+
+    // Replicate the layer's own level choice for the tile under the centre.
+    var res = D.webMercator.resolution(z, 256) * Math.cos(c.lat * Math.PI / 180),
+        level = D.GRID.levelForResolution(res),
+        en = D.UTM.forward(c.lat, c.lng),
+        span = D.GRID.tileSpan(level),
+        col = Math.floor((en[0] - D.CONFIG.GRID_ORIGIN_X) / span),
+        row = Math.floor((D.CONFIG.GRID_ORIGIN_Y - en[1]) / span);
+
+    document.getElementById('roCentre').textContent =
+      c.lat.toFixed(5) + ', ' + c.lng.toFixed(5);
+    document.getElementById('roZoom').textContent = z;
+    document.getElementById('roLevel').textContent =
+      level + '  (' + D.GRID.resolution(level) + ' m/px)';
+    document.getElementById('roUtm').textContent =
+      Math.round(en[0]) + ' E, ' + Math.round(en[1]) + ' N';
+
+    var url = D.GRID.isValidTile(level, col, row)
+      ? D.tileUrl(productSelect.value, level, col, row, window.DETECTLAB_DK_TOKEN || '')
+      : '(outside the View1 matrix — no request is made)';
+    // Never print a token on screen, even in direct mode.
+    document.getElementById('roUrl').textContent = url.replace(/token=[^&]*/, 'token=•••');
+  }
+
+  map.on('moveend zoomend', refreshReadout);
+  rebuild();
+}());
+</script>
+</body>
+</html>
