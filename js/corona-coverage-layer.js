@@ -9,26 +9,36 @@
  * strips. Outside them the layer is legitimately empty — which, without a
  * hint on the map, reads as "the layer is broken".
  *
- * This module draws the union of those footprints (the KML exported from the
- * coverage shapefile) as outlines, so a user can see at a glance where the
- * 1960s imagery actually exists before zooming in.
+ * HOW THE ORIGINAL ATLAS DOES IT (corona.cast.uark.edu/atlas): every product
+ * returned by /corona/get_raster_names carries its WGS84 footprint polygon,
+ * and the atlas draws those same polygons as a vector layer so the user can
+ * see at a glance where imagery exists before zooming in. The raster manager
+ * then uses the very same polygons to decide which WMS layers to activate.
  *
- * Source (CORS-enabled, cached by the CDN):
- *   https://dacboefvooxgsngxkavx.supabase.co/storage/v1/object/public/Harti/corona2.kml
- * Override with  window.CORONA_COVERAGE_KML_URL  before this script runs.
+ * This module does the same: the PRIMARY source of the outlines is the
+ * product catalogue already loaded for the imagery itself
+ * (js/corona-wms-layer.js → CoronaAtlas.loadCatalog()), so the outlines are
+ * always in perfect sync with the tiles — a strip is drawn exactly where a
+ * GetMap request can return imagery, for the whole of Europe.
+ *
+ * The buffered-union KML exported from the coverage shapefile
+ * (corona2.kml on Supabase) is kept only as a FALLBACK for the unlikely case
+ * where the catalogue cannot be loaded at all. That file is world-wide and
+ * its union contains a degenerate ring that walks the antimeridian and spans
+ * the entire planet; drawn as a polygon it fills the whole map with a
+ * semi-transparent sheet. parseKml() therefore also drops any ring whose
+ * bounding box is wider than a plausible CORONA footprint (MAX_RING_SPAN_DEG)
+ * — a real pass strip spans a few degrees, never a continent.
  *
  * Design notes
- *   • lazy: nothing is downloaded until the outlines are first shown;
- *   • the KML is a world-wide multipolygon — only the rings intersecting the
- *     configured bbox (Europe by default) are kept;
- *   • the shapefile was buffered, so every corner carries ~16 near-identical
- *     vertices; they are collapsed with a cheap distance filter, which cuts
- *     the vertex count by ~60% with no visible difference;
- *   • drawn on a canvas renderer in its own pane, non-interactive except for
- *     a tooltip, so it never steals clicks from the map tools.
+ *   • lazy: nothing is loaded until the outlines are first shown;
+ *   • zero extra network in the normal path: the catalogue promise is shared
+ *     with the imagery layer;
+ *   • drawn on a canvas renderer in its own pane, non-interactive, so it
+ *     never steals clicks from the map tools.
  *
  * Exposes:
- *   window.CoronaCoverage.load()            → Promise<GeoJSON-like rings>
+ *   window.CoronaCoverage.load()            → Promise<rings>
  *   window.CoronaCoverage.show(map)         → Promise<L.LayerGroup>
  *   window.CoronaCoverage.hide()
  *   window.CoronaCoverage.isVisible()
@@ -51,6 +61,12 @@
     // Collapse vertices closer than this (degrees ≈ 110 m) — the buffered
     // corners of the source shapefile.
     var SIMPLIFY_EPS = 0.001;
+
+    // A single CORONA pass footprint spans a few degrees. Any ring wider than
+    // this (in longitude or latitude) is a degenerate union artefact — the
+    // corona2.kml union contains one that walks the antimeridian around the
+    // whole planet, which used to render as a map-wide semi-transparent sheet.
+    var MAX_RING_SPAN_DEG = 20;
 
     var STYLE = {
         color: '#ffc832',
@@ -82,6 +98,10 @@
             var ring = parseCoordinateBlock(match[1]);
             if (ring.length < 4) continue;
             var ringBbox = ringBounds(ring);
+            // Degenerate world/continent-spanning union rings are artefacts,
+            // not footprints — see MAX_RING_SPAN_DEG above.
+            if (ringBbox[2] - ringBbox[0] > MAX_RING_SPAN_DEG ||
+                ringBbox[3] - ringBbox[1] > MAX_RING_SPAN_DEG) continue;
             if (!bboxIntersects(ringBbox, bbox)) continue;
             rings.push(simplifyRing(ring));
         }
@@ -133,6 +153,32 @@
         return out.length >= 4 ? out : ring;
     }
 
+    /**
+     * Catalogue → array of rings. The blocks are the pass mosaics returned by
+     * CoronaAtlas.loadCatalog() — their `rings` are the same WGS84 footprint
+     * polygons the original atlas receives from /corona/get_raster_names and
+     * draws as its coverage vector layer.
+     */
+    function ringsFromCatalog(blocks, bbox) {
+        bbox = bbox || DEFAULT_BBOX;
+        var rings = [];
+        if (!blocks || !blocks.length) return rings;
+        for (var i = 0; i < blocks.length; i++) {
+            var blockRings = blocks[i] && blocks[i].rings;
+            if (!blockRings) continue;
+            for (var j = 0; j < blockRings.length; j++) {
+                var ring = blockRings[j];
+                if (!ring || ring.length < 4) continue;
+                var ringBbox = ringBounds(ring);
+                if (ringBbox[2] - ringBbox[0] > MAX_RING_SPAN_DEG ||
+                    ringBbox[3] - ringBbox[1] > MAX_RING_SPAN_DEG) continue;
+                if (!bboxIntersects(ringBbox, bbox)) continue;
+                rings.push(ring);
+            }
+        }
+        return rings;
+    }
+
     /* ── Leaflet plumbing ─────────────────────────────────────────────────── */
 
     var _rings = null;
@@ -140,25 +186,58 @@
     var _layer = null;
     var _map = null;
     var _renderer = null;
+    var _source = null; // 'catalog' | 'kml' | null
 
     function kmlUrl() {
         return root.CORONA_COVERAGE_KML_URL || DEFAULT_KML_URL;
     }
 
-    function load(options) {
-        options = options || {};
-        if (_rings && !options.force) return Promise.resolve(_rings);
-        if (_promise && !options.force) return _promise;
-
-        var url = options.url || kmlUrl();
-        _promise = fetch(url, { credentials: 'omit' })
+    function loadFromKml(url, bbox) {
+        return fetch(url, { credentials: 'omit' })
             .then(function (response) {
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 return response.text();
             })
             .then(function (text) {
-                _rings = parseKml(text, options.bbox || DEFAULT_BBOX);
-                console.info('[Corona] coverage outlines: ' + _rings.length + ' footprints');
+                return parseKml(text, bbox);
+            });
+    }
+
+    function load(options) {
+        options = options || {};
+        if (_rings && _rings.length && !options.force) return Promise.resolve(_rings);
+        if (_promise && !options.force) return _promise;
+
+        var bbox = options.bbox || DEFAULT_BBOX;
+
+        // PRIMARY: the imagery catalogue — the same footprints the original
+        // atlas draws, and the same promise the WMS layer already awaits.
+        var primary;
+        if (root.CoronaAtlas && typeof root.CoronaAtlas.loadCatalog === 'function') {
+            primary = root.CoronaAtlas.loadCatalog({ bbox: bbox })
+                .then(function (result) {
+                    var rings = ringsFromCatalog(result && result.blocks, bbox);
+                    if (rings.length) _source = 'catalog';
+                    return rings;
+                })['catch'](function () { return []; });
+        } else {
+            primary = Promise.resolve([]);
+        }
+
+        _promise = primary
+            .then(function (rings) {
+                if (rings && rings.length) return rings;
+                // FALLBACK: the buffered-union KML of the coverage shapefile.
+                return loadFromKml(options.url || kmlUrl(), bbox)
+                    .then(function (kmlRings) {
+                        if (kmlRings.length) _source = 'kml';
+                        return kmlRings;
+                    });
+            })
+            .then(function (rings) {
+                _rings = rings || [];
+                console.info('[Corona] coverage outlines: ' + _rings.length +
+                    ' footprints' + (_source ? ' (' + _source + ')' : ''));
                 return _rings;
             })['catch'](function (err) {
                 console.warn('[Corona] coverage outlines unavailable: ' + (err && err.message));
@@ -218,14 +297,17 @@
     root.CoronaCoverage = {
         DEFAULT_KML_URL: DEFAULT_KML_URL,
         STYLE: STYLE,
+        MAX_RING_SPAN_DEG: MAX_RING_SPAN_DEG,
         parseKml: parseKml,
         simplifyRing: simplifyRing,
+        ringsFromCatalog: ringsFromCatalog,
         load: load,
         show: show,
         hide: hide,
         isVisible: isVisible,
         getLayer: function () { return _layer; },
-        getRings: function () { return _rings; }
+        getRings: function () { return _rings; },
+        getSource: function () { return _source; }
     };
 
 })(window);

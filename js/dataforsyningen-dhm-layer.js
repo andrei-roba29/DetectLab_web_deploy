@@ -212,6 +212,16 @@
         // OGC "User not authorized" exception body).
         AUTH_MESSAGE: 'Invalid or missing Dataforsyningen token',
 
+        // Shown once when the same-origin proxy route itself is absent (HTTP
+        // 404 in proxy mode): the deployment in front of the site predates
+        // netlify/functions/dk-dhm.mjs (or the Express geoProxy route is not
+        // mounted), so no tile request can ever reach Dataforsyningen. Seen
+        // live on detectlab.eu while production still served the v161 shell,
+        // whose deploy had no /api/geo/dk-dhm function — the layer stayed
+        // silently blank. A visible notice turns that into a one-glance
+        // diagnosis instead.
+        PROXY_MISSING_MESSAGE: 'Denmark LiDAR proxy (/api/geo/dk-dhm) is not deployed on this server — redeploy the site with its Netlify functions (or the Express backend) to enable Danmarks Højdemodel',
+
         /* ── products ────────────────────────────────────────────────────── */
 
         // Both WMTS endpoints publish the identical View1 grid, so switching
@@ -778,6 +788,14 @@
             fetch(url, { method: 'GET', cache: 'no-store' }).then(function (res) {
                 if (res.status === 401 || res.status === 403) {
                     showAuthNotice(CONFIG.AUTH_MESSAGE);
+                    return;
+                }
+                if (res.status === 404 && !clientToken()) {
+                    // Proxy mode only: api.dataforsyningen.dk never answers
+                    // 404 for this always-present Jutland tile, so a 404 can
+                    // only mean the same-origin /api/geo/dk-dhm route itself
+                    // is missing from the deployment.
+                    showAuthNotice(CONFIG.PROXY_MISSING_MESSAGE);
                     return;
                 }
                 var type = res.headers && res.headers.get && res.headers.get('content-type');

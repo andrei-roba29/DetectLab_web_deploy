@@ -25,7 +25,7 @@
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=20261002-european-lidar">
-    <link rel="stylesheet" href="css/globe-country-picker.css?v=20261007">
+    <link rel="stylesheet" href="css/globe-country-picker.css?v=20261008">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
     <link rel="stylesheet" href="css/tutorial.css?v=20260922-mobile-fs-controls">
     <link rel="stylesheet" href="css/offline-maps.css?v=20260916-pwa-panel-offline-exit">
@@ -1274,11 +1274,13 @@
                     </div>
 
                     <!-- 3D Globe country gate — the first thing an authenticated
-                         visitor sees in the map card. A MapLibre GL "globe"
-                         projection tints every European country translucent
-                         grey-violet with a black border; hovering flips it to
-                         translucent neon-green. Picking one hands off to the
-                         normal 2D map, locked to that country. See
+                         visitor sees in the map card. An orthographic globe is
+                         drawn on a plain 2D canvas (d3-geo, no WebGL): Blue
+                         Marble texture + hillshade, every European country
+                         tinted translucent grey-violet with a black border;
+                         hovering flips it to translucent neon-green. Picking
+                         one flies the camera there and hands off to the normal
+                         2D map, locked to that country. See
                          js/globe-country-picker.js. -->
                     <button type="button" class="globe-gate-reopen" id="globeGateReopenBtn" data-key="globe_gate_change_country">Change Country</button>
                     <div class="globe-gate hidden" id="globeGate" aria-hidden="true">
@@ -1292,6 +1294,10 @@
                             </div>
                         </div>
                         <button type="button" id="globeGateCloseBtn" class="globe-gate-reopen" style="display:none;top:auto;right:auto;left:14px" aria-label="Close">✕</button>
+                        <div class="globe-gate-zoom">
+                            <button type="button" id="globeGateZoomIn" aria-label="Zoom in">+</button>
+                            <button type="button" id="globeGateZoomOut" aria-label="Zoom out">−</button>
+                        </div>
                         <div class="globe-gate-hint" id="globeGateHint"></div>
                         <div class="globe-gate-loading" id="globeGateLoading">
                             <span class="globe-gate-spinner" aria-hidden="true"></span>
@@ -4637,7 +4643,7 @@
     <script src="js/corona-wms-layer.js?v=20261006-europe"></script>
     <!-- Coverage outlines of the CORONA passes (KML of the coverage shapefile),
          so the gaps between 1960s passes read as "no imagery here". -->
-    <script src="js/corona-coverage-layer.js?v=20261006-europe"></script>
+    <script src="js/corona-coverage-layer.js?v=20261008-corona-coverage"></script>
     <!-- Norway LiDAR (Kartverket hoydedata.no ImageServer) — must load before map-app.js -->
     <script src="js/hoydedata-layer.js?v=20261006-norway"></script>
     <!-- Poland LiDAR shading (GUGiK ISOK/NMT WMS) — must load before map-app.js -->
@@ -4649,12 +4655,12 @@
     <!-- Switzerland: swisstopo WMTS relief, config at the top of the file. -->
     <script src="js/swisstopo-relief-layer.js?v=20261006-swisstopo"></script>
     <script src="js/ea-lidar-wmts-layer.js?v=20261006-ea-lidar"></script>
-    <script src="js/dataforsyningen-dhm-layer.js?v=20261007-dk-dhm-wmts"></script>
+    <script src="js/dataforsyningen-dhm-layer.js?v=20261008-dk-proxy-notice"></script>
     <script src="js/lantmateriet-hojdmodell-layer.js?v=20261007-se-hojdmodell"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/globe-country-picker.js?v=20261007"></script>
-    <script src="js/map-app.js?v=20261007-se-hojdmodell"></script>
+    <script src="js/globe-country-picker.js?v=20261008"></script>
+    <script src="js/map-app.js?v=20261008-corona-coverage"></script>
     <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>

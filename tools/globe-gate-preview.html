@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!-- Dev-only harness: opens the globe country gate directly (no auth, no
+     Leaflet) so the canvas globe + hover/click selection can be verified
+     visually. Not linked from the site and not precached. -->
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DetectLab — Globe Gate preview</title>
+<link rel="stylesheet" href="../css/globe-country-picker.css">
+<style>
+  html, body { height: 100%; margin: 0; background: #0b0e14; font-family: system-ui, sans-serif; color: #eee; }
+  #frame { position: relative; width: 100%; height: 100%; overflow: hidden; }
+  #result { position: fixed; left: 12px; bottom: 12px; z-index: 20000; background: rgba(8,10,22,.85);
+            border: 1px solid rgba(185,255,0,.5); border-radius: 10px; padding: 10px 14px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="frame">
+  <button type="button" class="globe-gate-reopen" id="globeGateReopenBtn">Change Country</button>
+  <div class="globe-gate hidden" id="globeGate" aria-hidden="true">
+    <div class="globe-gate-canvas" id="globeGateCanvas"></div>
+    <div class="globe-gate-chrome">
+      <div class="globe-gate-title" id="globeGateTitle">Choose your country</div>
+      <p class="globe-gate-desc" id="globeGateDesc">Spin the globe and select a European country to start mapping.</p>
+      <div class="globe-gate-legend">
+        <span class="globe-gate-swatch globe-gate-swatch--default"></span><span>Available country</span>
+        <span class="globe-gate-swatch globe-gate-swatch--hover"></span><span>Hovered</span>
+      </div>
+    </div>
+    <button type="button" id="globeGateCloseBtn" class="globe-gate-reopen" style="display:none;top:auto;right:auto;left:14px" aria-label="Close">✕</button>
+    <div class="globe-gate-zoom">
+      <button type="button" id="globeGateZoomIn" aria-label="Zoom in">+</button>
+      <button type="button" id="globeGateZoomOut" aria-label="Zoom out">−</button>
+    </div>
+    <div class="globe-gate-hint" id="globeGateHint"></div>
+    <div class="globe-gate-loading" id="globeGateLoading">
+      <span class="globe-gate-spinner" aria-hidden="true"></span>
+      <span>Loading world map…</span>
+    </div>
+    <div class="globe-gate-error hidden" id="globeGateError">
+      <p id="globeGateErrorText">The world map could not load.</p>
+      <button type="button" id="globeGateRetryBtn">Retry</button>
+    </div>
+    <div class="globe-gate-fallback hidden" id="globeGateFallback">
+      <select id="globeGateFallbackSelect"></select>
+      <button type="button" id="globeGateFallbackBtn">OK</button>
+    </div>
+  </div>
+</div>
+<div id="result">Nicio țară selectată încă — dă click pe una.</div>
+<script>
+  // Preview runs from /tools/, the module fetches site-relative assets.
+  // A tiny <base> fix keeps those paths working.
+  document.write('<base href="../">');
+</script>
+<script src="../js/globe-country-picker.js"></script>
+<script>
+  localStorage.removeItem('detectlab_selected_country_v1');
+  document.addEventListener('detectlab:country-selected', function (e) {
+    document.getElementById('result').textContent =
+      'Selectat: ' + e.detail.name + ' (' + e.detail.iso + ')  bbox=' +
+      e.detail.bbox.map(function (v) { return v.toFixed(1); }).join(', ');
+  });
+  DetectLabGlobeGate.attach(null);
+  DetectLabGlobeGate.open();
+</script>
+</body>
+</html>
