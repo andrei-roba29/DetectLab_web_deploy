@@ -331,7 +331,12 @@
 //   (d3-geo orthographic + per-pixel Blue Marble texture) — MapLibre GL is
 //   retired from the shell; js/d3.min.js, js/topojson-client.min.js and
 //   data/countries-50m.json ship locally instead.
-const CACHE_NAME = 'detectlab-v164-canvas-globe-gate';
+// v165: the search bar honours the globe-selected country — non-RO countries
+//   stream their localities from europe-places.geojsonseq (Supabase) while
+//   Romania keeps OSM.geojson (see osmPlaceLookup / europePlaceLookup in
+//   js/map-app.js). The places file itself is NOT precached (too large;
+//   streamed + filtered per country at runtime).
+const CACHE_NAME = 'detectlab-v165-eu-places-search';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -428,6 +433,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20261006-ahn-exportimage',
   'js/map-app.js?v=20261006-dk-dhm-wms',
   'js/map-app.js?v=20261007-se-hojdmodell',
+  'js/map-app.js?v=20261008-eu-places-search',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',

@@ -70,6 +70,13 @@ Files:
 7. **Failure mode.** If d3/topojson/the atlas can't load at all, a plain
    `<select>` of countries (static name table, `APPROX_CENTER` bboxes)
    replaces the canvas so the gate never hard-locks the app.
+8. **Search bar follows the selection.** Once a non-RO country is active,
+   the map search bar serves that country's localities, streamed from the
+   project's Supabase `europe-places.geojsonseq` (NDJSON/RFC 8142, filtered
+   per country while streaming — only the selected country stays in memory).
+   Romania keeps the richer `OSM.geojson` source (real counties + manual
+   additions). See `osmPlaceLookup` / `europePlaceLookup` in `js/map-app.js`
+   and `test-europe-places-search.js`.
 
 ## Notes for future changes
 

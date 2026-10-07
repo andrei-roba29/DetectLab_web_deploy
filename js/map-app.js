@@ -200,6 +200,14 @@
             // alte funcționalități (ex. „Biblioteca din Babel”), ca toate să
             // găsească aceleași localități, insensibil la diacritice.
             function osmPlaceLookup(term, limit) {
+                // Cu o țară non-RO aleasă pe glob, căutarea folosește setul
+                // european (europe-places.geojsonseq, filtrat pe acea țară).
+                // România rămâne pe OSM.geojson — are județe reale și
+                // completările manuale din OSM_MANUAL_PLACES.
+                var selIso = String((window && window._detectlabSelectedCountry) || '').toUpperCase();
+                if (selIso && selIso !== 'RO' && EU_COUNTRY_TOKENS[selIso]) {
+                    return europePlaceLookup(selIso, term, limit);
+                }
                 var parsed = splitLocalityQuery(term);
                 var searchNorm = parsed.name;
                 var qualifier = parsed.qualifier;
@@ -353,6 +361,316 @@
             // Pornim încărcarea din timp, ca datele să fie deja în cache
             // când utilizatorul caută sau activează layerul.
             loadOsmGeojson();
+
+            // ── LOCALITĂȚI EUROPENE (europe-places.geojsonseq — Supabase) ─────
+            // După alegerea unei țări pe glob (js/globe-country-picker.js), bara
+            // de search trebuie să găsească localitățile ȚĂRII SELECTATE, nu doar
+            // pe cele din România (OSM.geojson acoperă doar RO). Sursa: fișierul
+            // NDJSON / GeoJSON Text Sequence cu localități europene din bucketul
+            // Supabase al proiectului. Fișierul e stream-uit (linie cu linie, cu
+            // suport pentru prefixul RS \x1e din RFC 8142) o singură dată per
+            // țară, iar DOAR localitățile țării selectate rămân în memorie.
+            // România păstrează sursa OSM.geojson (are județe reale + completările
+            // din OSM_MANUAL_PLACES) — vezi ghidul din osmPlaceLookup().
+            var EUROPE_PLACES_URL = 'https://dacboefvooxgsngxkavx.supabase.co/storage/v1/object/public/Harti/europe-places.geojsonseq';
+            var EUROPE_PLACES_MAX = 150000;    // plafon de memorie per țară
+            var _euPlacesByIso = {};           // ISO2 -> features anotate
+            var _euPlacesPromises = {};        // ISO2 -> promisiune în curs
+
+            // ISO2 -> [ISO3 + nume englezești] pentru aceleași 50 de țări ca
+            // globul de selecție. Proprietatea de țară din fișier poate fi cod
+            // ISO2, cod ISO3 sau numele țării — toate se rezolvă la ISO2.
+            var EU_COUNTRY_TOKENS = {
+                AL: ['ALB', 'albania'], AD: ['AND', 'andorra'], AM: ['ARM', 'armenia'],
+                AT: ['AUT', 'austria'], AZ: ['AZE', 'azerbaijan'], BY: ['BLR', 'belarus'],
+                BE: ['BEL', 'belgium'], BA: ['BIH', 'bosnia and herzegovina', 'bosnia and herz'],
+                BG: ['BGR', 'bulgaria'], HR: ['HRV', 'croatia'], CY: ['CYP', 'cyprus'],
+                CZ: ['CZE', 'czechia', 'czech republic'], DK: ['DNK', 'denmark'],
+                EE: ['EST', 'estonia'], FI: ['FIN', 'finland'], FR: ['FRA', 'france'],
+                GE: ['GEO', 'georgia'], DE: ['DEU', 'germany'], GR: ['GRC', 'greece'],
+                HU: ['HUN', 'hungary'], IS: ['ISL', 'iceland'], IE: ['IRL', 'ireland'],
+                IT: ['ITA', 'italy'], XK: ['XKX', 'KOS', 'kosovo'], LV: ['LVA', 'latvia'],
+                LI: ['LIE', 'liechtenstein'], LT: ['LTU', 'lithuania'], LU: ['LUX', 'luxembourg'],
+                MT: ['MLT', 'malta'], MD: ['MDA', 'moldova', 'republic of moldova'],
+                MC: ['MCO', 'monaco'], ME: ['MNE', 'montenegro'],
+                NL: ['NLD', 'netherlands', 'holland'], MK: ['MKD', 'north macedonia', 'macedonia'],
+                NO: ['NOR', 'norway'], PL: ['POL', 'poland'], PT: ['PRT', 'portugal'],
+                RO: ['ROU', 'romania'], RU: ['RUS', 'russia', 'russian federation'],
+                SM: ['SMR', 'san marino'], RS: ['SRB', 'serbia', 'republic of serbia'],
+                SK: ['SVK', 'slovakia'], SI: ['SVN', 'slovenia'], ES: ['ESP', 'spain'],
+                SE: ['SWE', 'sweden'], CH: ['CHE', 'switzerland'],
+                TR: ['TUR', 'turkey', 'turkiye'], UA: ['UKR', 'ukraine'],
+                GB: ['GBR', 'united kingdom', 'great britain'],
+                VA: ['VAT', 'vatican', 'vatican city', 'holy see']
+            };
+            var _euTokenToIso = {};
+            Object.keys(EU_COUNTRY_TOKENS).forEach(function (iso) {
+                _euTokenToIso[iso] = iso;
+                EU_COUNTRY_TOKENS[iso].forEach(function (tok) {
+                    _euTokenToIso[/^[A-Z]{2,3}$/.test(tok) ? tok : tok.toLowerCase()] = iso;
+                });
+            });
+
+            // Pliere generică de diacritice pentru nume europene: NFD + câteva
+            // litere fără descompunere (ß, ø, ł…). normalizeRoDiacritics acoperă
+            // doar literele românești — suficient pentru OSM.geojson (RO), dar
+            // „Munchen" trebuie să găsească „München", „Lodz" pe „Łódź" etc.
+            function _euFold(s) {
+                s = String(s || '').toLowerCase();
+                try { s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
+                return s
+                    .replace(/ß/g, 'ss').replace(/ø/g, 'o').replace(/đ/g, 'd')
+                    .replace(/ł/g, 'l').replace(/æ/g, 'ae').replace(/œ/g, 'oe')
+                    .replace(/þ/g, 'th').replace(/ð/g, 'd');
+            }
+
+            // „FR" / „FRA" / „France" / „Türkiye" → codul ISO2. Diacriticele
+            // generice sunt pliate, nu doar cele românești.
+            function _euResolveCountryToken(value) {
+                if (value == null) return null;
+                var s = String(value).trim();
+                if (!s) return null;
+                if (/^[A-Za-z]{2,3}$/.test(s)) return _euTokenToIso[s.toUpperCase()] || null;
+                var norm = _euFold(s).replace(/[^a-z0-9]+/g, ' ').trim();
+                return _euTokenToIso[norm] || null;
+            }
+
+            // Prima proprietate de țară REZOLVABILĂ câștigă (nu doar prima
+            // nenulă): un fișier poate avea și 'country_code' și 'country'.
+            var _EU_COUNTRY_PROPS = [
+                'iso_a2', 'ISO_A2', 'iso2', 'ISO2', 'country_code', 'COUNTRY_CODE', 'countryCode',
+                'cc', 'CC', 'cntr_id', 'CNTR_ID', 'cntr_code', 'CNTR_CODE',
+                'iso_3166_1', 'ISO3166-1', 'ISO3166_1',
+                'iso_a3', 'ISO_A3', 'iso3', 'ISO3', 'adm0_a3', 'ADM0_A3', 'sov_a3', 'SOV_A3',
+                'country', 'COUNTRY', 'Country', 'country_name', 'COUNTRY_NAME',
+                'cntr_name', 'CNTR_NAME', 'admin', 'ADMIN', 'adm0_name', 'ADM0_NAME',
+                'sovereignt', 'SOVEREIGNT', 'addr:country'
+            ];
+            function _euIsoOfPlaceProps(props) {
+                props = props || {};
+                for (var i = 0; i < _EU_COUNTRY_PROPS.length; i++) {
+                    var v = props[_EU_COUNTRY_PROPS[i]];
+                    if (v == null || v === '') continue;
+                    var iso = _euResolveCountryToken(v);
+                    if (iso) return iso;
+                }
+                return null;
+            }
+
+            // Punctul reprezentativ al unei facilități: geometria Point direct,
+            // altfel centrul bbox-ului primului inel (poligoane/linii).
+            function _euPlacePoint(geom) {
+                if (!geom) return null;
+                var c = geom.coordinates;
+                if (geom.type === 'Point') {
+                    return (c && isFinite(+c[0]) && isFinite(+c[1])) ? [+c[0], +c[1]] : null;
+                }
+                if (geom.type === 'MultiPoint') {
+                    return (c && c[0] && isFinite(+c[0][0])) ? [+c[0][0], +c[0][1]] : null;
+                }
+                var ring = null;
+                if (geom.type === 'Polygon') ring = c && c[0];
+                else if (geom.type === 'MultiPolygon') ring = c && c[0] && c[0][0];
+                else if (geom.type === 'LineString') ring = c;
+                else if (geom.type === 'MultiLineString') ring = c && c[0];
+                if (!ring || !ring.length) return null;
+                var w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+                for (var i = 0; i < ring.length; i++) {
+                    var x = +ring[i][0], y = +ring[i][1];
+                    if (!isFinite(x) || !isFinite(y)) continue;
+                    if (x < w) w = x; if (x > e) e = x;
+                    if (y < s) s = y; if (y > n) n = y;
+                }
+                return isFinite(w) ? [(w + e) / 2, (s + n) / 2] : null;
+            }
+
+            // GeoJSON Text Sequences (RFC 8142) pot prefixa fiecare înregistrare
+            // cu Record Separator (0x1E); NDJSON simplu nu o face niciodată.
+            function _euParseSeqLine(line) {
+                if (!line) return null;
+                line = String(line).replace(/^\u001e/, '').trim();
+                if (!line) return null;
+                try {
+                    var obj = JSON.parse(line);
+                    if (obj && obj.geometry) return obj;
+                } catch (e) {}
+                return null;
+            }
+
+            // Decide dacă o înregistrare aparține țării selectate și o anotează
+            // pentru search (nume/regiune normalizate — același tratament ca
+            // _annotateOsmFeature pentru sursa RO). Țara se ia din proprietăți;
+            // fără nicio proprietate de țară, cade pe testul bbox al țării
+            // selectate (bbox-ul predat de glob la selecție), cu o margine mică.
+            function _euAcceptPlace(obj, iso, bbox) {
+                if (!obj || !obj.geometry) return null;
+                var pt = _euPlacePoint(obj.geometry);
+                if (!pt) return null;
+                var props = obj.properties || {};
+                var propIso = _euIsoOfPlaceProps(props);
+                if (propIso) {
+                    if (propIso !== iso) return null;
+                } else if (bbox) {
+                    if (pt[0] < bbox[0] - 0.05 || pt[0] > bbox[2] + 0.05 ||
+                        pt[1] < bbox[1] - 0.05 || pt[1] > bbox[3] + 0.05) return null;
+                } else {
+                    return null;
+                }
+                var name = _pickOsmProp(props, [
+                    'name', 'NAME', 'Name', 'name_en', 'NAME_EN', 'asciiname', 'ASCIINAME',
+                    'place_name', 'PLACE_NAME', 'label', 'LABEL', 'namn', 'NAMN'
+                ]);
+                if (!name) return null;
+                obj._euLon = pt[0];
+                obj._euLat = pt[1];
+                obj._euName = String(name);
+                obj._lnameNorm = _euFold(obj._euName);
+                obj._euFclass = String(_pickOsmProp(props, [
+                    'fclass', 'FCLASS', 'place', 'PLACE', 'type', 'TYPE',
+                    'feature_code', 'FEATURE_CODE', 'fcode', 'FCODE', 'class', 'CLASS'
+                ]) || '');
+                var region = _pickOsmProp(props, [
+                    'adm1_name', 'ADM1_NAME', 'admin1', 'ADMIN1', 'admin1_name',
+                    'state', 'STATE', 'province', 'PROVINCE', 'region', 'REGION',
+                    'county', 'COUNTY', 'adm2_name', 'ADM2_NAME', 'NAME_1'
+                ]);
+                obj._euRegion = region ? String(region) : '';
+                obj._euRegionNorm = _euFold(obj._euRegion);
+                obj._euPop = Number(_pickOsmProp(props, [
+                    'population', 'POPULATION', 'pop', 'POP', 'pop_max', 'POP_MAX'
+                ])) || 0;
+                return obj;
+            }
+
+            // Stream-uiește fișierul și păstrează doar localitățile țării `iso`.
+            // Memoria rămâne proporțională cu o singură țară, indiferent cât de
+            // mare e fișierul european complet.
+            function _euStreamPlaces(iso, bbox) {
+                return fetch(EUROPE_PLACES_URL).then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    var kept = [];
+                    function take(line) {
+                        if (kept.length >= EUROPE_PLACES_MAX) return;
+                        var f = _euAcceptPlace(_euParseSeqLine(line), iso, bbox);
+                        if (f) kept.push(f);
+                    }
+                    if (!res.body || typeof TextDecoder === 'undefined' || !res.body.getReader) {
+                        return res.text().then(function (text) {
+                            var lines = text.split(/\r?\n/);
+                            for (var i = 0; i < lines.length; i++) take(lines[i]);
+                            return kept;
+                        });
+                    }
+                    var reader = res.body.getReader();
+                    var decoder = new TextDecoder('utf-8');
+                    var buffer = '';
+                    function pump() {
+                        return reader.read().then(function (r) {
+                            if (r.done) { take(buffer); return kept; }
+                            buffer += decoder.decode(r.value, { stream: true });
+                            var parts = buffer.split('\n');
+                            buffer = parts.pop();
+                            for (var i = 0; i < parts.length; i++) take(parts[i]);
+                            if (kept.length >= EUROPE_PLACES_MAX) {
+                                try { reader.cancel(); } catch (e) {}
+                                return kept;
+                            }
+                            return pump();
+                        });
+                    }
+                    return pump();
+                });
+            }
+
+            function loadEuropePlaces(iso) {
+                iso = String(iso || '').toUpperCase();
+                if (_euPlacesByIso[iso]) return Promise.resolve(_euPlacesByIso[iso]);
+                if (_euPlacesPromises[iso]) return _euPlacesPromises[iso];
+                var bbox = (window._detectlabSelectedCountry === iso &&
+                    Array.isArray(window._detectlabCountryBounds) &&
+                    window._detectlabCountryBounds.length === 4)
+                    ? window._detectlabCountryBounds : null;
+                _euPlacesPromises[iso] = _euStreamPlaces(iso, bbox)
+                    .then(function (features) {
+                        _euPlacesByIso[iso] = features;
+                        console.log('[EU Places] ' + features.length + ' localități pentru ' + iso + ' din europe-places.geojsonseq');
+                        return features;
+                    })
+                    .catch(function (err) {
+                        // nu memorăm eșecul: următoarea căutare poate reîncerca
+                        delete _euPlacesPromises[iso];
+                        console.warn('[EU Places] Eroare la încărcarea localităților pentru ' + iso + ':', err.message);
+                        throw err;
+                    });
+                return _euPlacesPromises[iso];
+            }
+
+            // Aceeași semantică de potrivire ca osmPlaceLookup (prefix pe numele
+            // normalizat, calificator „Localitate, Regiune", sortare exact →
+            // populație), dar pe setul european al țării selectate.
+            function europePlaceLookup(iso, term, limit) {
+                var parsed = splitLocalityQuery(term);
+                if (!parsed.name) return Promise.resolve([]);
+                // plierea generică se aplică și termenului căutat, ca ambele
+                // părți ale comparației să fie în aceeași formă de bază
+                var qName = _euFold(parsed.name);
+                var qQualifier = _euFold(parsed.qualifier);
+                return loadEuropePlaces(iso).then(function (features) {
+                    var matches = [];
+                    for (var i = 0; i < features.length; i++) {
+                        var f = features[i];
+                        if (!f._lnameNorm) continue;
+                        var hit = f._lnameNorm.indexOf(qName) === 0;
+                        var hitRegion = !hit && !qQualifier && f._euRegionNorm &&
+                            f._euRegionNorm.indexOf(qName) === 0;
+                        if (!hit && !hitRegion) continue;
+                        if (qQualifier && f._euRegionNorm.indexOf(qQualifier) !== 0 &&
+                            qQualifier.indexOf(f._euRegionNorm) !== 0) continue;
+                        matches.push({
+                            lat: f._euLat,
+                            lon: f._euLon,
+                            display_name: f._euName,
+                            fclass: f._euFclass,
+                            judet: '',             // eticheta „jud." e doar pentru sursa RO
+                            region: f._euRegion,
+                            population: f._euPop,
+                            _exact: f._lnameNorm === qName,
+                            _matchedByJudet: hitRegion
+                        });
+                    }
+                    matches.sort(function (a, b) {
+                        if (a._matchedByJudet !== b._matchedByJudet) {
+                            return a._matchedByJudet ? 1 : -1;
+                        }
+                        if (a._exact !== b._exact) return a._exact ? -1 : 1;
+                        return (b.population || 0) - (a.population || 0);
+                    });
+                    return matches.slice(0, limit || 8);
+                });
+            }
+
+            // Expus pentru teste (test-europe-places-search.js) și debugging.
+            window._dlEuroPlaces = {
+                url: EUROPE_PLACES_URL,
+                resolveCountry: _euResolveCountryToken,
+                isoOfProps: _euIsoOfPlaceProps,
+                parseLine: _euParseSeqLine,
+                accept: _euAcceptPlace,
+                load: loadEuropePlaces,
+                lookup: europePlaceLookup,
+                _cache: _euPlacesByIso
+            };
+
+            // Pre-încărcăm localitățile imediat ce globul predă o țară (inclusiv
+            // selecția restaurată din localStorage — applySelection() din gate
+            // dispatch-uiește același eveniment), ca prima căutare să fie rapidă.
+            document.addEventListener('detectlab:country-selected', function (e) {
+                var iso = e && e.detail && String(e.detail.iso || '').toUpperCase();
+                if (iso && iso !== 'RO' && EU_COUNTRY_TOKENS[iso]) {
+                    loadEuropePlaces(iso).catch(function () {});
+                }
+            });
+
 
             // ── SURSA DATE UAT/Buildings (fișier GeoJSON static pe Cloudflare R2) ──
             // Înlocuiește vechile tile-uri vectoriale .pbf (tippecanoe, OSM/pbf_tiles).
@@ -1049,7 +1367,11 @@
                     return;
                 }
 
-                var cacheKey = normalizeRoDiacritics(searchTerm.toLowerCase());
+                // Rezultatele depind de țara selectată pe glob (RO → OSM.geojson,
+                // restul → europe-places.geojsonseq), deci cheia de cache o
+                // include; altfel schimbarea țării ar servi rezultate vechi.
+                var cacheKey = String(window._detectlabSelectedCountry || '') + '|' +
+                    normalizeRoDiacritics(searchTerm.toLowerCase());
 
                 if (_searchCache[cacheKey]) {
                     displaySearchResults(_searchCache[cacheKey], searchTerm);
@@ -1083,9 +1405,13 @@
                     li.dataset.idx = i;
                     var name = item.display_name || '';
                     var typeLabel = item.fclass ? item.fclass.replace(/_/g, ' ') : '';
+                    // „jud. X” doar pentru sursa românească; localitățile din
+                    // setul european afișează regiunea/provincia fără prefix.
                     var meta = item.judet
                         ? ('jud. ' + item.judet) + (typeLabel ? ' · ' + typeLabel : '')
-                        : typeLabel;
+                        : (item.region
+                            ? item.region + (typeLabel ? ' · ' + typeLabel : '')
+                            : typeLabel);
                     li.innerHTML =
                         '<svg class="sr-icon" width="12" height="12" viewBox="0 0 12 12" fill="none">' +
                         '<circle cx="6" cy="5" r="2.5" stroke="#B8D8F0" stroke-width="1.2"/>' +
