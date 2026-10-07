@@ -237,9 +237,13 @@ function routedFetch(log) {
 
     /* ── 9. integrarea în shell: versiuni + UI meta ── */
     const indexHtml = fs.readFileSync('index.html', 'utf8');
-    assert(indexHtml.includes('js/map-app.js?v=20261008-eu-places-search'), 'index.html loads the re-versioned map-app.js');
+    const mapAppTag = indexHtml.match(/js\/map-app\.js\?v=([\w-]+)/);
+    assert(mapAppTag, 'index.html loads a versioned map-app.js');
     const swJs = fs.readFileSync('sw.js', 'utf8');
-    assert(swJs.includes("'js/map-app.js?v=20261008-eu-places-search'"), 'sw.js precaches the new map-app.js version');
+    assert(swJs.includes("'js/map-app.js?v=" + mapAppTag[1] + "'"),
+        'sw.js precaches the map-app.js version index.html loads (' + mapAppTag[1] + ')');
+    assert(swJs.includes("'js/map-app.js?v=20261008-eu-places-search'"),
+        'sw.js keeps the eu-places-search map-app.js entry (old shells still resolve)');
     assert(!/['"][^'"\n]*europe-places\.geojsonseq[^'"\n]*['"]/.test(swJs),
         'the big places file itself is NOT precached (comments may mention it)');
     const shellVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);

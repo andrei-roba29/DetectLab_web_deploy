@@ -13,3 +13,8 @@ backend/node_modules/
 # Python caches
 __pycache__/
 *.pyc
+
+# Build artefacts — generated at deploy time (see netlify.toml [build]):
+# the CORONA Europe catalogue snapshot is baked fresh on every deploy by
+# tools/build-corona-europe-catalog.mjs.
+data/corona-europe-catalog.json

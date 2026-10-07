@@ -14,6 +14,17 @@
   status = 301
   force = true
 
+# ── CORONA ("Satellite imagery 60's") static catalogue snapshot ────────────
+# At deploy time the Corona Atlas catalogue (every pass + frame footprint,
+# clipped to Europe) is baked into data/corona-europe-catalog.json. The map
+# prefers this same-origin, CDN-cached file over the runtime proxy below, so
+# the "Satellite imagery 60's" layer works across the whole of Europe with no
+# function invocation. `|| true` keeps the deploy alive if the CAST server is
+# momentarily down — the runtime proxy then covers for the missing snapshot.
+[build]
+  publish = "."
+  command = "node tools/build-corona-europe-catalog.mjs || true"
+
 # ── CORONA ("Satellite imagery 60's") catalogue proxy ───────────────────────
 # The map needs the Corona Atlas product catalogue
 # (corona.cast.uark.edu/corona/get_raster_names). That endpoint sends no CORS

@@ -177,26 +177,35 @@ async function testCatalogLib() {
 /* ══════════════════════════════════════════════════════════════════════════
  * B. The coverage outlines (js/corona-coverage-layer.js)
  * ═════════════════════════════════════════════════════════════════════════ */
-function testCoverageLayer() {
-    console.log('\n[B] Coverage outlines — KML of the Corona footprints');
+const MOCK_L = {
+    extend: function (t) {
+        for (let i = 1; i < arguments.length; i++) {
+            const s = arguments[i] || {};
+            for (const k in s) t[k] = s[k];
+        }
+        return t;
+    },
+    polygon: function (latlngs, options) { return { latlngs: latlngs, options: options }; },
+    layerGroup: function (layers) { return { layers: layers }; },
+    canvas: function (o) { return { canvas: true, options: o }; }
+};
 
-    const L = {
-        extend: function (t) {
-            for (let i = 1; i < arguments.length; i++) {
-                const s = arguments[i] || {};
-                for (const k in s) t[k] = s[k];
-            }
-            return t;
-        },
-        polygon: function (latlngs, options) { return { latlngs: latlngs, options: options }; },
-        layerGroup: function (layers) { return { layers: layers }; },
-        canvas: function (o) { return { canvas: true, options: o }; }
-    };
-    const sandbox = { console: console, L: L, fetch: function () { return Promise.reject(new Error('no network in tests')); }, Promise: Promise };
+function coverageSandbox(extra) {
+    const sandbox = Object.assign({
+        console: console, L: MOCK_L, Promise: Promise,
+        fetch: function () { return Promise.reject(new Error('no network in tests')); }
+    }, extra || {});
     sandbox.window = sandbox;
     vm.createContext(sandbox);
     vm.runInContext(fs.readFileSync(path.join(__dirname, 'js/corona-coverage-layer.js'), 'utf8'),
         sandbox, { filename: 'corona-coverage-layer.js' });
+    return sandbox;
+}
+
+async function testCoverageLayer() {
+    console.log('\n[B] Coverage outlines — KML parsing of the Corona footprints');
+
+    const sandbox = coverageSandbox();
     const Coverage = sandbox.CoronaCoverage;
 
     check('the module exposes a coverage API', typeof Coverage === 'object' && typeof Coverage.load === 'function');
@@ -220,6 +229,98 @@ function testCoverageLayer() {
     eq('with a world bbox every footprint is kept', far.length, 3);
     check('longitudes beyond ±180 are clamped',
         far.every((r) => r.every(([lon]) => lon >= -180 && lon <= 180)));
+
+    // The real corona2.kml union contains a degenerate ring that walks the
+    // antimeridian around the whole planet. Its bbox intersects every bbox,
+    // so before this filter it rendered as ONE map-wide semi-transparent
+    // sheet over Europe. A real pass strip spans a few degrees, never more
+    // than MAX_RING_SPAN_DEG.
+    const GIANT_RING_KML = `<?xml version="1.0"?><kml><Document><Placemark><Polygon>
+      <outerBoundaryIs><LinearRing><coordinates>
+        -180.01,3.80 -179.66,3.81 179.98,45.0 60.0,71.9 -24.9,50.0 -180.01,3.80
+      </coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></Document></kml>`;
+    eq('a world-spanning union ring is dropped (the "giant rectangle" bug)',
+        Coverage.parseKml(GIANT_RING_KML, [-25, 34, 60, 72]).length, 0);
+    check('a sane span cap exists and allows a real pass strip (~4°)',
+        Coverage.MAX_RING_SPAN_DEG >= 6 && Coverage.MAX_RING_SPAN_DEG <= 45,
+        String(Coverage.MAX_RING_SPAN_DEG));
+
+    console.log('\n[B3] Outlines come from the imagery catalogue — like the atlas');
+
+    // The original atlas draws the footprint polygons it receives from
+    // /corona/get_raster_names. Our outlines use the SAME catalogue (via
+    // CoronaAtlas.loadCatalog), so a strip is drawn exactly where a GetMap
+    // request can answer with imagery — Europe-wide, not just Romania.
+    const CATALOG_BLOCKS = [
+        { id: '1006-1025Aft', label: '1006-1025Aft (Jun 05, 1964)', location: '1006-1025Aft',
+          extent: [26.44465, 40.40059, 29.35305, 41.15143],
+          rings: [[[26.44465, 40.57536], [26.55175, 40.40059], [29.35305, 40.957], [29.33904, 41.15143], [26.44465, 40.57536]]] },
+        { id: '1104-2155Fore', label: '1104-2155Fore (Nov 04, 1968)', location: '1104-2155Fore',
+          extent: [21.5, 44.1, 26.8, 48.3],
+          rings: [[[21.5, 47.9], [22.1, 44.1], [26.8, 44.6], [26.2, 48.3], [21.5, 47.9]]] },
+        { id: 'degenerate', label: 'degenerate', location: 'degenerate',
+          extent: [-180, -90, 180, 90],
+          rings: [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]] }
+    ];
+
+    const fromCatalog = Coverage.ringsFromCatalog(CATALOG_BLOCKS, [-25, 34, 60, 72]);
+    eq('every real pass footprint becomes an outline', fromCatalog.length, 2);
+    check('degenerate world-sized catalogue rings are dropped too',
+        !fromCatalog.some((r) => r.some(([lon]) => lon === -180)));
+
+    // End-to-end: load() prefers the catalogue and never touches the KML.
+    let kmlFetches = 0;
+    const catSandbox = coverageSandbox({
+        CoronaAtlas: {
+            EUROPE_BBOX: [-25, 34, 60, 72],
+            loadCatalog: function () {
+                return Promise.resolve({ blocks: CATALOG_BLOCKS, source: 'data/corona-europe-catalog.json' });
+            }
+        },
+        fetch: function () { kmlFetches++; return Promise.reject(new Error('KML must not be needed')); }
+    });
+    const catRings = await catSandbox.CoronaCoverage.load();
+    eq('load() draws the outlines from the imagery catalogue', catRings.length, 2);
+    eq('the KML is not downloaded when the catalogue answers', kmlFetches, 0);
+    eq('the source is reported for diagnostics', catSandbox.CoronaCoverage.getSource(), 'catalog');
+
+    // And when the catalogue is empty/unreachable, the KML fallback still works.
+    let fallbackFetches = 0;
+    const kmlSandbox = coverageSandbox({
+        CoronaAtlas: {
+            EUROPE_BBOX: [-25, 34, 60, 72],
+            loadCatalog: function () { return Promise.reject(new Error('catalogue down')); }
+        },
+        fetch: function () {
+            fallbackFetches++;
+            return Promise.resolve({ ok: true, text: function () { return Promise.resolve(KML_FIXTURE); } });
+        }
+    });
+    const kmlRings = await kmlSandbox.CoronaCoverage.load();
+    eq('without a catalogue the KML fallback is used', fallbackFetches, 1);
+    eq('…and still yields the European footprints', kmlRings.length, 1);
+    eq('the fallback source is reported', kmlSandbox.CoronaCoverage.getSource(), 'kml');
+
+    console.log('\n[B4] The misleading Europe-wide red rectangle is retired');
+    const mapAppSrc = fs.readFileSync(path.join(__dirname, 'js/map-app.js'), 'utf8');
+    const satEntryStart = mapAppSrc.indexOf('satellite60s: {');
+    const satEntry = mapAppSrc.slice(satEntryStart, mapAppSrc.indexOf('},', satEntryStart));
+    check('the satellite60s coverage entry opts out of the red rectangle',
+        satEntryStart !== -1 && /noCoverageRect:\s*true/.test(satEntry));
+    check('the rectangle factory honours the opt-out',
+        /if\s*\(data\.noCoverageRect\)\s*return;/.test(mapAppSrc));
+    check('the entry keeps its bounds for the layer-row highlight',
+        /bounds:\s*\[\[34\.0,\s*-25\.0\],\s*\[72\.0,\s*60\.0\]\]/.test(satEntry));
+
+    console.log('\n[B5] The static snapshot is baked at deploy time');
+    const toml = fs.readFileSync(path.join(__dirname, 'netlify.toml'), 'utf8');
+    check('netlify.toml builds data/corona-europe-catalog.json on every deploy',
+        /\[build\]/.test(toml) && /build-corona-europe-catalog\.mjs/.test(toml));
+    check('a snapshot build failure cannot break the deploy (proxy covers it)',
+        /build-corona-europe-catalog\.mjs \|\| true/.test(toml));
+    const gitignore = fs.readFileSync(path.join(__dirname, '.gitignore'), 'utf8');
+    check('the generated snapshot is not committed',
+        gitignore.indexOf('data/corona-europe-catalog.json') !== -1);
 
     console.log('\n[B2] Wiring in the app');
     const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
@@ -257,7 +358,7 @@ function testCoverageLayer() {
 
 (async function main() {
     await testCatalogLib();
-    testCoverageLayer();
+    await testCoverageLayer();
 
     console.log('\n' + (checks - failures) + '/' + checks + ' checks passed');
     if (failures > 0) {

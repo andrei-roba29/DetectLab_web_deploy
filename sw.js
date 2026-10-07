@@ -336,7 +336,14 @@
 //   Romania keeps OSM.geojson (see osmPlaceLookup / europePlaceLookup in
 //   js/map-app.js). The places file itself is NOT precached (too large;
 //   streamed + filtered per country at runtime).
-const CACHE_NAME = 'detectlab-v165-eu-places-search';
+// v166: CORONA "Satellite imagery 60's" — the coverage outlines are drawn
+//   from the imagery catalogue itself (the same footprints the original
+//   Corona Atlas uses), the degenerate world-spanning ring of corona2.kml is
+//   filtered out, and the misleading Europe-wide red coverage rectangle is
+//   retired. A static Europe catalogue snapshot is baked at deploy time
+//   (netlify.toml [build] → data/corona-europe-catalog.json) so the layer
+//   works for every covered country even without the runtime proxy.
+const CACHE_NAME = 'detectlab-v166-corona-coverage';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -411,6 +418,7 @@ const PRECACHE_URLS = [
   'js/corona-wms-layer.js?v=20261006-europe',
   'js/corona-coverage-layer.js',
   'js/corona-coverage-layer.js?v=20261006-europe',
+  'js/corona-coverage-layer.js?v=20261008-corona-coverage',
   'js/hoydedata-layer.js',
   'js/hoydedata-layer.js?v=20261006-norway',
   'js/map-app.js?v=20261006-corona-europe',
@@ -434,6 +442,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20261006-dk-dhm-wms',
   'js/map-app.js?v=20261007-se-hojdmodell',
   'js/map-app.js?v=20261008-eu-places-search',
+  'js/map-app.js?v=20261008-corona-coverage',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',

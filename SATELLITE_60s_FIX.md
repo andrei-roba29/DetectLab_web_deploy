@@ -303,3 +303,44 @@ does DetectLab now.
   `js/map-app.js?v=20261006-corona-europe`, `js/corona-wms-layer.js` and
   `js/corona-coverage-layer.js` at `?v=20261006-europe`; `sw.js` is
   `detectlab-v154-corona-europe` and precaches all three.
+
+---
+
+## 9. 2026-10-08 — honest coverage, Europe-wide, like the atlas
+
+Two user-visible bugs were fixed together (`detectlab-v166-corona-coverage`):
+
+1. **"One big semi-transparent red rectangle over all of Europe."** Two
+   compounding causes:
+   - the premium coverage-rectangle system drew the satellite60s entry as a
+     red dashed rectangle over its bounds — which, since the Europe-wide
+     catalogue, is the whole continent. A Europe-wide rectangle reads as
+     "imagery everywhere", which is false for a strip archive. The entry now
+     carries `noCoverageRect: true` and the rectangle factory skips it; the
+     bounds stay for the layer-row visibility highlight.
+   - `corona2.kml` (the buffered union of the worldwide coverage shapefile)
+     contains a degenerate ring that walks the antimeridian around the whole
+     planet. Its bbox intersects every bbox, so it survived the Europe clip
+     and rendered as a map-wide sheet. `parseKml()` now drops any ring whose
+     bbox spans more than `MAX_RING_SPAN_DEG` (20°) — a real CORONA pass
+     strip spans a few degrees, never a continent.
+
+2. **"Works only for Romania."** The coverage outlines are no longer parsed
+   from the KML at all in the normal path: `CoronaCoverage.load()` now draws
+   the footprint polygons of the **imagery catalogue itself**
+   (`CoronaAtlas.loadCatalog()` — the same `/corona/get_raster_names`
+   footprints the original atlas renders as its vector layer and uses in
+   `rasterLayer.checkZoom()`). Outlines and tiles can no longer disagree: a
+   strip is drawn exactly where a GetMap request can answer, for all ~95
+   European passes. The KML remains only as a fallback when every catalogue
+   source fails. In addition, `netlify.toml` gained a `[build]` command that
+   bakes `data/corona-europe-catalog.json` fresh on every deploy (guarded by
+   `|| true`), so the first catalogue source is a same-origin, CDN-cached
+   static file and the layer no longer depends on the runtime proxy being up.
+   The snapshot is a build artefact and is gitignored.
+
+Covered by `test-corona-europe.js` sections B–B5 (giant-ring filter,
+catalogue-first outlines, KML fallback, red-rectangle opt-out, deploy-time
+snapshot). Shell: `index.html` loads `js/corona-coverage-layer.js` and
+`js/map-app.js` at `?v=20261008-corona-coverage`; `sw.js` is
+`detectlab-v166-corona-coverage`.

@@ -12211,17 +12211,21 @@
                 },
 
                 satellite60s: {
-                    // CORONA imagery (CAST GeoServer) — the catalogue is now
+                    // CORONA imagery (CAST GeoServer) — the catalogue is
                     // loaded for the WHOLE of Europe (js/corona-wms-layer.js,
-                    // CoronaAtlas.EUROPE_BBOX), so the "where is this layer"
-                    // rectangle spans Europe too. The exact strips covered by
-                    // the 1960s passes are drawn by the coverage outlines
-                    // (js/corona-coverage-layer.js); this rectangle only marks
-                    // the region below the zoom at which tiles start.
+                    // CoronaAtlas.EUROPE_BBOX). These bounds exist only for
+                    // the layer-row highlight; the red "where is this layer"
+                    // rectangle is suppressed (noCoverageRect) because a
+                    // Europe-wide rectangle reads as "imagery everywhere",
+                    // which is false — CORONA is a set of narrow 1960s pass
+                    // strips. The REAL footprints are drawn by the coverage
+                    // outlines (js/corona-coverage-layer.js), straight from
+                    // the same catalogue the original Corona Atlas uses.
                     bounds: [[34.0, -25.0], [72.0, 60.0]],
                     label: "Satellite imagery 60's",
                     layerVar: '_sat60MapLayer',
-                    coverageMinZoom: 8
+                    coverageMinZoom: 8,
+                    noCoverageRect: true
                 },
 
                 banat: {
@@ -12343,6 +12347,10 @@
             var premiumMapCoveragePolygons = {};
             Object.keys(premiumMapCoverageBounds).forEach(function(mapKey) {
                 var data = premiumMapCoverageBounds[mapKey];
+                // Layers whose true coverage is NOT a rectangle (CORONA pass
+                // strips) opt out — their footprints come from a dedicated
+                // outline layer instead (see satellite60s above).
+                if (data.noCoverageRect) return;
                 premiumMapCoveragePolygons[mapKey] = L.rectangle(data.bounds, {
                     color: '#FF2800',
                     weight: 2,
