@@ -894,8 +894,11 @@ const PRECACHE_URLS = [
   // the ⓘ button that credits the Copernicus Land Monitoring Service.
   'css/styles.css?v=20260927-sat-copernicus-vhr',
   'css/styles.css?v=20261002-european-lidar',
-  'css/globe-country-picker.css?v=20261005',
-  'js/globe-country-picker.js?v=20261005',
+  'css/globe-country-picker.css?v=20261007',
+  'js/globe-country-picker.js?v=20261007',
+  'js/maplibre-gl.js?v=5.16.0',
+  'css/maplibre-gl.css?v=5.16.0',
+  'js/shapefile.js?v=0.6.6',
   'js/map-app.js?v=20260927-sat-copernicus-vhr',
   'js/map-app.js?v=20261002-european-lidar',
   'js/map-app.js?v=20261005-ahn6-dsm',

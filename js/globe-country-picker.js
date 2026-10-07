@@ -24,11 +24,32 @@
     'use strict';
     if (!window || !document) return;
 
+    // Keep both engines local. The country gate is the entrance to the map, so
+    // a blocked third-party CDN must never downgrade it to a country list.
+    var SHAPEFILE_BASE_URL = 'https://dacboefvooxgsngxkavx.supabase.co/storage/v1/object/public/Harti/ne_10m_admin_0_countries';
     var GEOJSONSEQ_URL = 'https://dacboefvooxgsngxkavx.supabase.co/storage/v1/object/public/Harti/europe-places.geojsonseq';
     var FALLBACK_GEOJSON_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
-    var MAPLIBRE_JS = 'https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.min.js';
-    var MAPLIBRE_CSS = 'https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.min.css';
-    var BASE_STYLE = 'https://tiles.openfreemap.org/styles/dark';
+    var MAPLIBRE_JS = 'js/maplibre-gl.js?v=5.16.0';
+    var MAPLIBRE_CSS = 'css/maplibre-gl.css?v=5.16.0';
+    var SHAPEFILE_JS = 'js/shapefile.js?v=0.6.6';
+    // An inline style makes style.load deterministic. The raster is decoration;
+    // the globe and its country borders still render if the tile host is down.
+    var BASE_STYLE = {
+        version: 8,
+        sources: {
+            osm: {
+                type: 'raster',
+                tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                tileSize: 256,
+                attribution: '&copy; OpenStreetMap contributors',
+                maxzoom: 19
+            }
+        },
+        layers: [
+            { id: 'earth', type: 'background', paint: { 'background-color': '#162235' } },
+            { id: 'earth-imagery', type: 'raster', source: 'osm', paint: { 'raster-opacity': 0.78, 'raster-saturation': -0.35, 'raster-brightness-max': 0.72 } }
+        ]
+    };
     var STORAGE_KEY = 'detectlab_selected_country_v1';
     var MIN_USABLE_COUNTRIES = 15;
     var FETCH_TIMEOUT_MS = 20000;
@@ -288,18 +309,40 @@
         return { type: 'FeatureCollection', features: features, isoToIds: isoToIds, isoToBbox: isoToBbox, isoToName: isoToName };
     }
 
+    function validateCatalog(cat, sourceName) {
+        var count = Object.keys(cat.isoToBbox).length;
+        if (count < MIN_USABLE_COUNTRIES) {
+            throw new Error(sourceName + ' yielded only ' + count + ' usable countries');
+        }
+        console.info('[DetectLab] Globe gate: ' + count + ' countries loaded from ' + sourceName + '.');
+        return cat;
+    }
+
+    function loadShapefileCatalog() {
+        if (!window.shapefile || typeof window.shapefile.open !== 'function') {
+            return Promise.reject(new Error('Shapefile reader unavailable'));
+        }
+        // Natural Earth stores attributes in the companion .dbf.  Passing both
+        // files is essential: ISO_A2 from the DBF drives hover and selection.
+        return window.shapefile.open(SHAPEFILE_BASE_URL + '.shp', SHAPEFILE_BASE_URL + '.dbf')
+            .then(function (source) {
+                var raw = [];
+                function next() {
+                    return source.read().then(function (result) {
+                        if (result.done || raw.length >= MAX_STREAMED_FEATURES) return raw;
+                        if (result.value) raw.push(result.value);
+                        return next();
+                    });
+                }
+                return next();
+            })
+            .then(function (raw) { return validateCatalog(buildCatalog(raw), 'the Natural Earth shapefile'); });
+    }
+
     function loadSupabaseCatalog() {
         return fetchWithTimeout(GEOJSONSEQ_URL, FETCH_TIMEOUT_MS)
             .then(function (res) { return streamFeatures(res, MAX_STREAMED_FEATURES); })
-            .then(function (raw) {
-                var cat = buildCatalog(raw);
-                var count = Object.keys(cat.isoToBbox).length;
-                if (count < MIN_USABLE_COUNTRIES) {
-                    throw new Error('Supabase europe-places dataset yielded only ' + count + ' usable countries');
-                }
-                console.info('[DetectLab] Globe gate: ' + count + ' countries loaded from the Supabase dataset.');
-                return cat;
-            });
+            .then(function (raw) { return validateCatalog(buildCatalog(raw), 'the Supabase GeoJSON sequence'); });
     }
 
     function loadFallbackCatalog() {
@@ -313,14 +356,21 @@
     }
 
     function loadCatalog() {
-        return loadSupabaseCatalog().catch(function (err) {
-            console.warn('[DetectLab] Globe gate: Supabase dataset unavailable, falling back.', err && err.message);
+        // Use the exact Natural Earth data supplied for this feature first.
+        // Keep two independent fallbacks so borders remain available if either
+        // a companion DBF is missing or a storage object is temporarily down.
+        return loadShapefileCatalog().catch(function (shpErr) {
+            console.warn('[DetectLab] Globe gate: shapefile unavailable, trying GeoJSON sequence.', shpErr && shpErr.message);
+            return loadSupabaseCatalog();
+        }).catch(function (seqErr) {
+            console.warn('[DetectLab] Globe gate: Supabase datasets unavailable, using public fallback.', seqErr && seqErr.message);
             return loadFallbackCatalog();
         });
     }
 
     /* ── Lazy asset loading ── */
     var libPromise = null;
+    var shapefilePromise = null;
     function loadScript(src) {
         return new Promise(function (resolve, reject) {
             var s = document.createElement('script');
@@ -352,6 +402,11 @@
         loadCssOnce(MAPLIBRE_CSS);
         libPromise = loadScript(MAPLIBRE_JS);
         return libPromise;
+    }
+    function loadShapefileReader() {
+        if (window.shapefile) return Promise.resolve();
+        if (!shapefilePromise) shapefilePromise = loadScript(SHAPEFILE_JS);
+        return shapefilePromise;
     }
 
     /* ── Persistence ── */
@@ -581,14 +636,27 @@
                 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.5, 0.34]
             }
         });
+        // A pale casing keeps every border legible over dark sea, bright map
+        // tiles and high-contrast satellite imagery; the requested black line
+        // sits on top and remains visible at every zoom level.
+        map.addLayer({
+            id: 'dl-countries-line-casing',
+            type: 'line',
+            source: 'dl-countries',
+            paint: {
+                'line-color': 'rgba(255,255,255,0.72)',
+                'line-width': ['interpolate', ['linear'], ['zoom'], 0, 2.4, 6.5, 4],
+                'line-opacity': 0.86
+            }
+        });
         map.addLayer({
             id: 'dl-countries-line',
             type: 'line',
             source: 'dl-countries',
             paint: {
                 'line-color': '#000000',
-                'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 2.2, 1],
-                'line-opacity': 0.92
+                'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 2.4, 1.25],
+                'line-opacity': 1
             }
         });
 
@@ -652,7 +720,13 @@
         showError(false);
         showLoading(true);
 
-        var catalogPromise = loadCatalog().then(function (cat) { state.catalog = cat; });
+        var catalogPromise = loadShapefileReader()
+            .catch(function (err) {
+                // loadCatalog still has GeoJSON fallbacks and can proceed.
+                console.warn('[DetectLab] Globe gate: local shapefile reader did not load.', err && err.message);
+            })
+            .then(loadCatalog)
+            .then(function (cat) { state.catalog = cat; });
         var globePromise = loadMapLibre()
             .then(buildGlobe)
             .then(function () { state.globeFailed = false; })
