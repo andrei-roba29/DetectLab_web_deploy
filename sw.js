@@ -351,7 +351,17 @@
 //   Also: the Denmark LiDAR auth probe now reports a 404 from the proxy as
 //   "proxy not deployed" instead of leaving the layer silently blank (the
 //   production v161 deploy had no /api/geo/dk-dhm function at all).
-const CACHE_NAME = 'detectlab-v166-corona-coverage';
+// v167: Country dock — once a country is picked on the globe, a slide-down
+//   country switcher is glued under the map search bar (current 2-letter code
+//   + the full list of country initials, full name on hover) together with a
+//   small "World hillshade" checkbox that lays the Esri World Hillshade tiles
+//   over whichever basemap is already on screen (a selection never switches
+//   the basemap any more — it only moves and locks the view). When the locked
+//   country view is zoomed all the way out, an "Exit view" button appears
+//   centred in the lower part of the screen: it releases the lock and reopens
+//   the globe so another country can be chosen. See COUNTRY_SELECTION_DOCK.md,
+//   js/country-dock.js and js/globe-country-picker.js.
+const CACHE_NAME = 'detectlab-v167-country-dock';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -931,6 +941,11 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20261002-european-lidar',
   'css/globe-country-picker.css?v=20261008',
   'js/globe-country-picker.js?v=20261008',
+  // v167: country dock glued under the search bar (country switcher +
+  // World-hillshade checkbox) and the “Exit view” button of the locked
+  // country view. The hillshade tiles themselves stay network-only.
+  'css/country-dock.css?v=20261008',
+  'js/country-dock.js?v=20261008',
   'js/d3.min.js?v=7.9.0',
   'js/topojson-client.min.js?v=3.1.0',
   'data/countries-50m.json?v=20261008',
