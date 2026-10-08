@@ -1,5 +1,5 @@
 /* ============================================================
-   DetectLab — Service Worker v1.4.9
+   DetectLab — Service Worker v1.4.10
    ============================================================ */
 
 // Bump this when a client-side feature or data-sync fix ships so installed
@@ -380,7 +380,7 @@
 //   then — in its own pane above the data layers; both belong to the locked
 //   view and go away on “Exit view”. See js/map-app.js (filterLayersForCountry
 //   / unfilterLayersForCountry) and js/globe-country-picker.js.
-const CACHE_NAME = 'detectlab-v170-roman-reference';
+const CACHE_NAME = 'detectlab-v171-premium-history-roman';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -393,10 +393,14 @@ let lastKnownPosition = null;
 const PROTECTED_SITES_URL = 'https://detectlab-backend-production.up.railway.app/api/heritage-sites';
 const PROTECTED_SITES_CACHE_KEY = 'protected-sites';
 
+// v171: European CENAGIS sheets now live inside the one Premium Historical Maps
+//   group and are filtered by the selected country's partial/full footprint;
+//   Roman Empire DARE category icons/ISO2 reload, Pleiades sites, Herod and
+//   Hasmonean layers are wired, and Roman road NDJSON keeps progressive drawing.
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
   // European Historical Maps (CENAGIS / IH PAN)
-  'js/historical-eu-maps.js?v=20260929-eu-cenagis-maps',
+  'js/historical-eu-maps.js?v=20261008-country-overlap',
   'js/historical-eu-maps.js',
   // Host-aware market defaults for detectlab.ro and detectlab.eu.
   'js/site-config.js?v=20260928-eu-domain',
@@ -485,7 +489,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20261008-corona-coverage',
   'js/map-app.js?v=20261007-spain-mapa-lidar',
   'js/map-app.js?v=20261008-country-layer-filter',
-  'js/map-app.js?v=20261008-roman-reference',
+  'js/map-app.js?v=20261008-premium-historical-roman',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',
@@ -954,7 +958,7 @@ const PRECACHE_URLS = [
   // v141: + substratul SGU (VPP LSLOPE, anual); v142: + SGD (VPP RSLOPE).
   'js/map-app.js?v=20260926-vegfp-smx',
   'js/translations.js?v=20260926-vegfp-smx',
-  'js/subscriptions.js?v=20260926-vegfp-smx',
+  'js/subscriptions.js?v=20261008-premium-roman-guard',
   'js/vertical-opacity-control.js?v=20260926-vegfp-smx',
   // v144: Satellite „Istoric” = Copernicus VHR 2012 / 2018 / 2021 + 2025.
   // The panel slider grows from two stops to four, both the panel and the
@@ -962,7 +966,7 @@ const PRECACHE_URLS = [
   // the ⓘ button that credits the Copernicus Land Monitoring Service.
   'css/styles.css?v=20260927-sat-copernicus-vhr',
   'css/styles.css?v=20261002-european-lidar',
-  'css/styles.css?v=20261008-country-layer-filter',
+  'css/styles.css?v=20261008-roman-dare-icons',
   'css/globe-country-picker.css?v=20261008',
   'js/globe-country-picker.js?v=20261008',
   'js/globe-country-picker.js?v=20261008-country-bounds',

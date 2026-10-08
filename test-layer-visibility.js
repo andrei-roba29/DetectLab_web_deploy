@@ -69,6 +69,7 @@ class ElementMock extends EventTarget {
     constructor(tag, attrs, parent) {
         super();
         this.tagName = tag;
+        this.type = attrs.type || '';
         this.id = attrs.id || '';
         this.parentElement = parent;
         this.style = {};
@@ -334,16 +335,18 @@ test('all real historical, LIDAR and Roman rows resolve in the shared PWA panel'
     const leafRows = h.document.elements.filter(el =>
         ['histSubLayers', 'lidarSubLayers', 'romanSubLayers', 'histPremiumSubLayers'].includes(el.parentElement?.id) &&
         h.document.elements.some(control => {
-            if (control.tagName !== 'input') return false;
+            if (control.tagName !== 'input' || control.type === 'search') return false;
             for (let parent = control.parentElement; parent; parent = parent.parentElement) {
                 if (parent === el) return true;
             }
             return false;
         }));
-    assert.equal(leafRows.length, 61, '4 historical + 11 LIDAR + 28 Roman + 18 premium rows');
-    // These optional Roman definitions have no row in this deployment.
-    assert.equal(h.row('roman_shade_herod'), null);
-    assert.equal(h.row('roman_shade_hasmonean'), null);
+    assert.equal(leafRows.length, 65, '4 historical + 11 LIDAR + 32 Roman + 18 premium rows');
+    // The Pleiades, AWMC names and eastern Mediterranean political layers are
+    // now real rows in the shared Roman/Premium panel.
+    ['roman_places', 'roman_regional_names', 'roman_shade_herod', 'roman_shade_hasmonean'].forEach(id => {
+        assert(h.row(id), '#' + id + ' is present in the Roman sublayer UI');
+    });
     const pwaStack = h.row('pwa-br-stack');
     assert(pwaStack, 'PWA account stack keeps its id');
     leafRows.forEach(row => {

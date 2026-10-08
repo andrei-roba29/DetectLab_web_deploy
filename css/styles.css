@@ -8270,3 +8270,7 @@ a.dl-gmaps-directions-btn {
 .coord-popup-container.pin-popup a.dl-gmaps-directions-btn {
     margin-top: 0;
 }
+
+
+/* DARE category badges provide their own circular SVG background. */
+.leaflet-div-icon.dare-icon-marker { background: transparent; border: 0; }

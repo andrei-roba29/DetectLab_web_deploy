@@ -5356,7 +5356,7 @@
             // ── ROMAN EMPIRE — SUB-LAYER SYSTEM ──
             map.createPane('pane_roman');
             map.getPane('pane_roman').style.zIndex = 625;
-            map.getPane('pane_roman').style.pointerEvents = 'none';
+            map.getPane('pane_roman').style.pointerEvents = 'auto';
 
             var _romanOpacity = 0.70;
             var _romanVisible = false;
@@ -5375,27 +5375,31 @@
                     label: 'Roads', color: '#FF5A36', weight: 1.8, enabled: false,
                     type: 'ndjson'
                 },
+                places: {
+                    label: 'Roman Sites (Pleiades)', color: '#FFD60A', weight: 1, enabled: false,
+                    type: 'pleiades'
+                },
                 // ── POINTS & LABELS ──
-                dare_11: { label: 'Major Settlements', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_17: { label: 'Major Forts', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_13: { label: 'Civitas Capitals', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_12: { label: 'Regular Settlements', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_18: { label: 'Forts/Castrum', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_53: { label: 'Fortlets/Towers', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_16: { label: 'Roads/Coastal Stations', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_61: { label: 'Sanctuaries/Temples', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_66: { label: 'Baths', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_32: { label: 'Tumuli', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_63: { label: 'Cemeteries', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_21: { label: 'Monasteries', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_24: { label: 'Churches', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_14: { label: 'Villas', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_57: { label: 'Mines/Quarries', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_49: { label: 'Passes', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_51: { label: 'Bridges', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_55: { label: 'Roads/Milestones', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_52: { label: 'Aqueducts', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
-                dare_64: { label: 'Monuments', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
+                dare_11: { label: 'Major Settlements', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_17: { label: 'Major Forts', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_13: { label: 'Civitas Capitals', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_12: { label: 'Regular Settlements', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_18: { label: 'Forts/Castrum', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_53: { label: 'Fortlets/Towers', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_16: { label: 'Roads/Coastal Stations', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_61: { label: 'Sanctuaries/Temples', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_66: { label: 'Baths', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_32: { label: 'Tumuli', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_63: { label: 'Cemeteries', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_21: { label: 'Monasteries', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_24: { label: 'Churches', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_14: { label: 'Villas', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_57: { label: 'Mines/Quarries', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_49: { label: 'Passes', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_51: { label: 'Bridges', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_55: { label: 'Roads/Milestones', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_52: { label: 'Aqueducts', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
+                dare_64: { label: 'Monuments', color: '#CC2222', weight: 1.5, enabled: true, type: 'geojson', dare: true },
                 walls: {
                     label: 'Walls', color: '#E2BE64', weight: 2.4, enabled: false,
                     type: 'geojson',
@@ -5461,6 +5465,16 @@
             Object.keys(ROMAN_SUB_LAYERS).forEach(function(k) {
                 _romanEnabled[k] = ROMAN_SUB_LAYERS[k].enabled;
             });
+            // subscriptions.js calls this when Premium entitlement is applied:
+            // it restores the reference's default-checked DARE categories after
+            // the locked free-user UI has temporarily unchecked them.
+            window._syncRomanDareCategoryToggles = function () {
+                Object.keys(ROMAN_SUB_LAYERS).forEach(function (key) {
+                    if (key.indexOf('dare_') !== 0) return;
+                    var input = document.getElementById('roman_' + key);
+                    if (input) input.checked = !!_romanEnabled[key];
+                });
+            };
 
             var _romanGroup = L.layerGroup([], { pane: 'pane_roman' });
             window._romanGroup = _romanGroup;
@@ -5478,8 +5492,14 @@
             }
 
             // ── Romania bounds helper: on .ro non-shade Roman layers are Romania-only, on .eu full original scale ──
-            function _romanFeatureInBounds(feature) {
+            function _romanFeatureInBounds(feature, useDareCountryOverride) {
                 if (_isEuropeMarket()) return true; // Full original scale on detectlab.eu
+                if (useDareCountryOverride) {
+                    var countryField = document.getElementById('romanDareCountryCode');
+                    if (countryField && /^[A-Z]{2}$/.test(countryField.value.trim().toUpperCase())) {
+                        return true; // DARE's valid ISO2 cc parameter is authoritative.
+                    }
+                }
                 var b = ROMANIA_BOUNDS;
                 if (!b) return true;
                 function checkCoord(c) {
@@ -5516,7 +5536,8 @@
                     var isShade = key.indexOf('shade_') === 0;
                     return L.geoJSON(geojsonData, {
                         pane: 'pane_roman',
-                        filter: isShade ? null : _romanFeatureInBounds,
+                        filter: isShade ? null : function (feature) { return _romanFeatureInBounds(feature); },
+                        interactive: key === 'regional_names',
                         style: function() {
                             return {
                                 color: cfg.color,
@@ -5621,18 +5642,34 @@
                 var g = DARE_CAT_GLYPHS[String(type)];
                 return g ? '<path d="' + g + '"/>' : '<circle cx="12" cy="12" r="8"/>';
             }
-            // Badge 26×26 identic cu cel din harta de referință (cerc #0c111e 68%, contur #CC2222, glif #ffd9d9).
+            // Reuse one SVG for the 26px map markers and the 20px category legend.
+            function _dareIconSvg(type, size) {
+                var px = size || 26;
+                return '<svg xmlns="http://www.w3.org/2000/svg" width="' + px + '" height="' + px + '" viewBox="0 0 26 26" style="display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.55));">' +
+                    '<circle cx="13" cy="13" r="11.5" fill="#0c111e" fill-opacity=".68" stroke="' + _DARE_COLOR + '" stroke-width="1.5"/>' +
+                    '<g transform="translate(4.5 4.5) scale(0.7083)" fill="none" stroke="#ffd9d9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+                    _dareGlyph(type) + '</g></svg>';
+            }
             function getDareIcon(type) {
                 return L.divIcon({
-                    html: '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26" style="display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.55));">' +
-                        '<circle cx="13" cy="13" r="11.5" fill="#0c111e" fill-opacity=".68" stroke="' + _DARE_COLOR + '" stroke-width="1.5"/>' +
-                        '<g transform="translate(4.5 4.5) scale(0.7083)" fill="none" stroke="#ffd9d9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-                        _dareGlyph(type) + '</g></svg>',
+                    html: _dareIconSvg(type),
                     className: 'dare-icon-marker',
                     iconSize: [26, 26],
                     iconAnchor: [13, 13]
                 });
             }
+            function _renderDareCategoryIcons() {
+                document.querySelectorAll('#romanSubLayers input[id^="roman_dare_"]').forEach(function (input) {
+                    var type = parseInt(input.id.slice('roman_dare_'.length), 10);
+                    var row = input.parentElement && input.parentElement.parentElement;
+                    var legend = row && row.children && row.children[0];
+                    var icon = legend && legend.querySelector ? legend.querySelector('span') : null;
+                    if (!icon || !DARE_CAT_GLYPHS[type]) return;
+                    icon.style.cssText = 'width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:none;border:0;border-radius:0;';
+                    icon.innerHTML = _dareIconSvg(type, 20);
+                });
+            }
+            _renderDareCategoryIcons();
 
             function _createDareLayer() {
                 return L.geoJSON(null, {
@@ -5641,19 +5678,21 @@
                         return L.marker(latlng, {
                             pane: 'pane_roman',
                             icon: getDareIcon(_dareTypeNum(feature)),
-                            opacity: _romanOpacity
+                            opacity: _romanOpacity,
+                            interactive: true
                         });
                     },
                     onEachFeature: function (feature, layer) {
                         var p = feature.properties || {};
                         var displayName = (p.ancient && p.name) ? (p.ancient + ' (' + p.name + ')') : (p.ancient || p.name || 'Unnamed Roman Site');
                         var typeLabel = DARE_CAT_LABELS[_dareTypeNum(feature)] || p.type || '';
-                        var html = '<span style="font-family:\'Cinzel\',serif;font-size:0.78rem;color:#E8772A;">' + displayName + '</span>';
-                        if (typeLabel) html += '<br><span style="font-size:0.68rem;opacity:0.8;color:#E8772A;">Type: ' + typeLabel + '</span>';
+                        var html = '<span style="font-family:\'Cinzel\',serif;font-size:0.78rem;color:#E8772A;">' + _romanEscapeHtml(_fixMojibake(displayName)) + '</span>';
+                        if (typeLabel) html += '<br><span style="font-size:0.68rem;opacity:0.8;color:#E8772A;">Type: ' + _romanEscapeHtml(typeLabel) + '</span>';
                         html += '<br><span style="font-size:0.68rem;opacity:0.6;">DARE Roman Site · Roman Empire</span>';
                         var dareId = feature.id || p.id;
-                        if (dareId) html += '<br><a href="https://imperium.ahlfeldt.se/places/' + dareId + '.html" target="_blank" style="color:#E8772A;text-decoration:underline;font-size:0.68rem;pointer-events:auto;">View on DARE</a>';
+                        if (dareId) html += '<br><a href="https://imperium.ahlfeldt.se/places/' + encodeURIComponent(String(dareId)) + '.html" target="_blank" rel="noopener" style="color:#E8772A;text-decoration:underline;font-size:0.68rem;pointer-events:auto;">View on DARE</a>';
                         layer.bindTooltip(html, { className: 'map-search-tooltip', sticky: true });
+                        layer.bindPopup(html);
                     }
                 });
             }
@@ -5675,7 +5714,12 @@
 
             // ── DARE: cereri pe viewport, deduplicate, o singură cerere în zbor ──
             var _dareSeen = {};          // id → true (toate categoriile)
-            var _dareInflight = false, _dareAgain = false, _dareTimer = null;
+            var _dareInflight = false, _dareAgain = false, _dareTimer = null, _dareRequestVersion = 0;
+            var _pleiadesRows = null, _pleiadesLoading = false, _pleiadesPeriod = 'R';
+            var PLEIADES_URLS = [
+                'https://atlantides.org/downloads/pleiades/dumps/pleiades-places-latest.csv.gz',
+                'http://atlantides.org/downloads/pleiades/dumps/pleiades-places-latest.csv.gz'
+            ];
             var DARE_MIN_ZOOM = 7;
 
             function _dareAnyEnabled() {
@@ -5687,6 +5731,22 @@
                 if (!_romanLayers[key]) _romanLayers[key] = _createDareLayer();
                 return _romanLayers[key];
             }
+
+            function _clearDareSites() {
+                _dareRequestVersion++; // Ignore an older ISO2/viewport response still in flight.
+                _dareSeen = {};
+                Object.keys(_romanLayers).forEach(function (key) {
+                    if (key.indexOf('dare_') !== 0) return;
+                    var layer = _romanLayers[key];
+                    if (layer && typeof layer.clearLayers === 'function') layer.clearLayers();
+                });
+            }
+            var _dareCountryInput = document.getElementById('romanDareCountryCode');
+            if (_dareCountryInput) _dareCountryInput.addEventListener('change', function () {
+                _dareCountryInput.value = _dareCountryInput.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+                _clearDareSites();
+                if (_romanVisible && _dareAnyEnabled()) _loadDynamicDareSites();
+            });
             function _dareStatusFor(zoom) {
                 if (!_dareAnyEnabled()) return _romanStatus('dare', '');
                 if (zoom < DARE_MIN_ZOOM) return _romanStatus('dare', 'DARE: zoom in to level ' + DARE_MIN_ZOOM + '+ to load sites (now ' + zoom.toFixed(1) + ').');
@@ -5696,26 +5756,37 @@
                 clearTimeout(_dareTimer);
                 _dareTimer = setTimeout(_fetchDareNow, 150);
             }
+            // Keep DARE aligned with the current map viewport, just like the
+            // reference: pan/zoom events are debounced and serialized by the
+            // one-in-flight guard in _fetchDareNow().
+            map.on('moveend zoomend', function () {
+                if (_romanVisible && _dareAnyEnabled()) _loadDynamicDareSites();
+            });
             function _fetchDareNow() {
                 if (!_romanVisible || !_dareAnyEnabled()) { _romanStatus('dare', ''); return; }
                 var zoom = map.getZoom();
                 if (zoom < DARE_MIN_ZOOM) { _dareStatusFor(zoom); return; }
                 if (_dareInflight) { _dareAgain = true; return; }
                 _dareInflight = true;
+                var requestVersion = _dareRequestVersion;
 
                 var b = map.getBounds();
                 var bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(function (x) { return x.toFixed(4); }).join(',');
-                var ccParam = _isEuropeMarket() ? '' : '&cc=RO';
+                var countryField = document.getElementById('romanDareCountryCode');
+                var cc = countryField && countryField.value ? countryField.value.trim().toUpperCase() : '';
+                if (!/^[A-Z]{2}$/.test(cc)) cc = '';
+                if (!cc && !_isEuropeMarket()) cc = 'RO';
+                var ccParam = cc ? '&cc=' + encodeURIComponent(cc) : '';
                 var url = 'https://imperium.ahlfeldt.se/api/geojson.php?bbox=' + bbox + '&zoom=' + Math.min(Math.round(zoom), 10) + ccParam;
 
                 fetch(url)
                     .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                     .then(function (data) {
-                        if (!_romanVisible) return;
+                        if (!_romanVisible || !_dareAnyEnabled() || requestVersion !== _dareRequestVersion) return;
                         var batches = {}, added = 0;
                         ((data && data.features) || []).forEach(function (f) {
                             if (!f || !f.geometry || f.geometry.type !== 'Point') return;
-                            if (!_romanFeatureInBounds(f)) return;
+                            if (!_romanFeatureInBounds(f, true)) return;
                             var p = f.properties || {};
                             var id = String(f.id != null ? f.id : (p.id != null ? p.id : ''));
                             if (!id || _dareSeen[id]) return;
@@ -5744,6 +5815,169 @@
                         if (_dareAgain) { _dareAgain = false; _loadDynamicDareSites(); }
                     });
             }
+
+            // ── Pleiades: export CSV comprimat, filtrat după perioada selectată ──
+            function _parseRomanCsv(text) {
+                var rows = [], row = [], field = '', quoted = false;
+                for (var i = 0; i < text.length; i++) {
+                    var c = text[i];
+                    if (quoted) {
+                        if (c === '"') {
+                            if (text[i + 1] === '"') { field += '"'; i++; }
+                            else quoted = false;
+                        } else field += c;
+                    } else if (c === '"') quoted = true;
+                    else if (c === ',') { row.push(field); field = ''; }
+                    else if (c === '\n' || c === '\r') {
+                        if (c === '\r' && text[i + 1] === '\n') i++;
+                        row.push(field); field = '';
+                        if (row.length > 1 || row[0] !== '') rows.push(row);
+                        row = [];
+                    } else field += c;
+                }
+                if (field !== '' || row.length) { row.push(field); rows.push(row); }
+                return rows;
+            }
+            function _parsePleiadesCsv(text) {
+                var rows = _parseRomanCsv(text);
+                if (!rows.length) throw new Error('empty CSV');
+                var headers = rows[0].map(function (x) { return x.replace(/^\uFEFF/, '').trim().toLowerCase(); });
+                var ix = function (name) { return headers.indexOf(name); };
+                var iId = ix('id'), iTitle = ix('title'), iDesc = ix('description'), iTypes = ix('featuretypes');
+                var iLat = ix('reprlat'), iLon = ix('reprlong'), iLatLon = ix('reprlatlong');
+                var iKeys = ix('timeperiodskeys'), iPeriods = ix('timeperiods');
+                if (iLat < 0 && iLatLon < 0) throw new Error('no coordinate column');
+                if (iKeys < 0 && iPeriods < 0) throw new Error('no time period column');
+                var out = [];
+                for (var r = 1; r < rows.length; r++) {
+                    var row = rows[r], lat = parseFloat(row[iLat]), lon = parseFloat(row[iLon]);
+                    if ((!isFinite(lat) || !isFinite(lon)) && iLatLon >= 0) {
+                        var pair = String(row[iLatLon] || '').split(/[ ,]+/);
+                        lat = parseFloat(pair[0]); lon = parseFloat(pair[1]);
+                    }
+                    if (!isFinite(lat) || !isFinite(lon)) continue;
+                    var tokens = ((iKeys >= 0 ? row[iKeys] : '') + ',' + (iPeriods >= 0 ? row[iPeriods] : ''))
+                        .toLowerCase().split(/[\s,;|]+/).filter(Boolean);
+                    var isRoman = tokens.indexOf('r') >= 0 || tokens.indexOf('roman') >= 0;
+                    var isRepublican = tokens.indexOf('h') >= 0 || tokens.some(function (x) { return x.indexOf('hellenistic') === 0; });
+                    var isLate = tokens.indexOf('l') >= 0 || tokens.some(function (x) { return x.indexOf('late') === 0; });
+                    if (!(isRoman || isRepublican || isLate)) continue;
+                    out.push({
+                        pid: row[iId], title: row[iTitle] || '(untitled)', description: row[iDesc] || '',
+                        types: String(row[iTypes] || '').replace(/,/g, ', '), lat: lat, lon: lon,
+                        R: isRoman ? 1 : 0, H: isRepublican ? 1 : 0, L: isLate ? 1 : 0
+                    });
+                }
+                return out;
+            }
+            function _bytesToRomanText(buffer) {
+                var bytes = new Uint8Array(buffer);
+                if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+                    if (typeof DecompressionStream === 'undefined') throw new Error('gzip decompression is not supported in this browser');
+                    return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+                }
+                return Promise.resolve(new TextDecoder().decode(bytes));
+            }
+            function _romanEscapeHtml(value) {
+                return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+            }
+            function _pleiadesRowsForPeriod() {
+                return (_pleiadesRows || []).filter(function (row) {
+                    return _pleiadesPeriod === 'RH' ? (row.R || row.H)
+                        : _pleiadesPeriod === 'RL' ? (row.R || row.L) : row.R;
+                });
+            }
+            function _buildRomanPleiadesLayer() {
+                if (!_pleiadesRows) return;
+                var oldLayer = _romanLayers.places;
+                if (oldLayer && _romanGroup.hasLayer(oldLayer)) _romanGroup.removeLayer(oldLayer);
+                var rows = _pleiadesRowsForPeriod().filter(function (row) {
+                    return _romanFeatureInBounds({geometry: {type: 'Point', coordinates: [row.lon, row.lat]}});
+                });
+                var features = rows.map(function (row) {
+                    return {type: 'Feature', id: String(row.pid || ''), geometry: {type: 'Point', coordinates: [row.lon, row.lat]}, properties: row};
+                });
+                var layer = L.geoJSON({type: 'FeatureCollection', features: features}, {
+                    pane: 'pane_roman',
+                    pointToLayer: function (feature, latlng) {
+                        return L.circleMarker(latlng, {pane: 'pane_roman', radius: 4, color: '#111111', weight: 0.7,
+                            fillColor: '#FFD60A', fillOpacity: 0.95, opacity: _romanOpacity, interactive: true});
+                    },
+                    onEachFeature: function (feature, featureLayer) {
+                        var p = feature.properties || {};
+                        var title = _romanEscapeHtml(p.title || '(untitled)');
+                        var content = '<p>' + _romanEscapeHtml(p.description || '') + '</p><p><b>Types:</b> ' + _romanEscapeHtml(p.types || '–') + '</p>' +
+                            '<p><a href="https://pleiades.stoa.org/places/' + encodeURIComponent(p.pid || '') + '" target="_blank" rel="noopener">Open in Pleiades</a></p>';
+                        featureLayer.bindTooltip(title + '<br><span style="font-size:0.68rem;opacity:0.7">Pleiades · Roman-period site</span>',
+                            {className: 'map-search-tooltip', sticky: true});
+                        featureLayer.bindPopup(content);
+                    }
+                });
+                _romanLayers.places = layer;
+                if (_romanVisible && _romanEnabled.places) _romanGroup.addLayer(layer);
+                _romanStatus('places', 'Sites: ' + rows.length.toLocaleString() + ' Roman-period places (Pleiades).');
+            }
+            function _ingestRomanPleiades(buffer) {
+                return _bytesToRomanText(buffer).then(function (text) {
+                    _pleiadesRows = _parsePleiadesCsv(text);
+                    _buildRomanPleiadesLayer();
+                    return true;
+                }).catch(function (e) {
+                    _romanStatus('places', 'Sites: ' + e.message);
+                    return false;
+                });
+            }
+            function _showRomanPleiadesFilePicker() {
+                var fallback = document.getElementById('romanPlacesFallback');
+                if (fallback) fallback.style.display = 'block';
+            }
+            function _loadRomanPleiades() {
+                if (!_romanVisible || !_romanEnabled.places) return;
+                if (_pleiadesRows) { _buildRomanPleiadesLayer(); return; }
+                if (_pleiadesLoading) return;
+                _pleiadesLoading = true;
+                _romanStatus('places', 'Sites: downloading Pleiades export…');
+                (async function () {
+                    for (var i = 0; i < PLEIADES_URLS.length; i++) {
+                        try {
+                            var response = await fetch(PLEIADES_URLS[i]);
+                            if (!response.ok) throw new Error('HTTP ' + response.status);
+                            if (await _ingestRomanPleiades(await response.arrayBuffer())) return;
+                        } catch (e) { console.warn('[Roman] Pleiades source unavailable:', e && e.message); }
+                    }
+                    _romanStatus('places', 'Sites: Pleiades server unavailable. Select the CSV.GZ export file.');
+                    _showRomanPleiadesFilePicker();
+                })().finally(function () { _pleiadesLoading = false; });
+            }
+            var _romanPlacesFile = document.getElementById('romanPlacesFile');
+            if (_romanPlacesFile) _romanPlacesFile.addEventListener('change', function () {
+                var file = _romanPlacesFile.files && _romanPlacesFile.files[0];
+                if (!file) return;
+                _romanStatus('places', 'Sites: reading selected Pleiades file…');
+                file.arrayBuffer().then(_ingestRomanPleiades);
+            });
+            window.setRomanPlacesPeriod = function (period) {
+                _pleiadesPeriod = period === 'RH' || period === 'RL' ? period : 'R';
+                if (_pleiadesRows && _romanVisible && _romanEnabled.places) _buildRomanPleiadesLayer();
+            };
+            window.toggleRomanDareCategories = function (on) {
+                var ids = Object.keys(ROMAN_SUB_LAYERS).filter(function (key) { return key.indexOf('dare_') === 0; });
+                ids.forEach(function (key) {
+                    _romanEnabled[key] = !!on;
+                    var input = document.getElementById('roman_' + key);
+                    if (input) input.checked = !!on;
+                    var layer = _romanLayers[key];
+                    if (!on && layer && _romanGroup.hasLayer(layer)) _romanGroup.removeLayer(layer);
+                });
+                if (!on) _romanStatus('dare', '');
+                if (on && !_romanVisible) {
+                    var master = document.getElementById('romanToggle');
+                    if (master) master.checked = true;
+                    window.toggleRomanLayer(true);
+                } else if (on && _romanVisible) _loadDynamicDareSites();
+            };
 
             // ── Drumuri romane: NDJSON în flux, segmente desenate pe măsură ce sosesc ──
             var ROMAN_ROADS_URL = 'https://dacboefvooxgsngxkavx.supabase.co/storage/v1/object/public/Harti/route-segments-all-1791445468011.ndjson';
@@ -5895,6 +6129,7 @@
                     return;
                 }
                 if (cfg.type === 'ndjson') { _loadRomanRoads(); return; }
+                if (cfg.type === 'pleiades') { _loadRomanPleiades(); return; }
                 if (_romanLayers[key]) {
                     if (_romanEnabled[key] && _romanVisible && !_romanGroup.hasLayer(_romanLayers[key])) {
                         _romanGroup.addLayer(_romanLayers[key]);
@@ -5942,18 +6177,13 @@
                 if (toggleEl) toggleEl.checked = _romanVisible;
                 if (_romanVisible) {
                     _romanGroup.addTo(map);
-                    var anyEnabled = Object.keys(_romanEnabled).some(function(k){ return _romanEnabled[k]; });
-                    if (!anyEnabled) {
-                        // Enable a sensible default so the master toggle shows something
-                        _romanEnabled['roads'] = true;
-                        var roadsCb = document.getElementById('roman_roads');
-                        if (roadsCb) roadsCb.checked = true;
-                    }
                     _loadRomanData();
                 } else {
                     map.removeLayer(_romanGroup);
+                    _clearDareSites();
                     _romanStatus('dare', '');
                     _romanStatus('roads', '');
+                    _romanStatus('places', '');
                 }
             };
 
@@ -5971,6 +6201,7 @@
                     if (lyr && _romanGroup.hasLayer(lyr)) {
                         _romanGroup.removeLayer(lyr);
                     }
+                    if (key.indexOf('dare_') === 0 && !_dareAnyEnabled()) _romanStatus('dare', '');
                     return;
                 }
                 if (!_romanVisible) {
@@ -12925,22 +13156,26 @@
                     group: 'vegfp'
                 });
 
+                // The CENAGIS map catalog is rendered inside the single premium
+                // Historical Maps accordion. This bounds-only entry contributes
+                // to the accordion's viewport highlight; each individual map is
+                // country-filtered by historical-eu-maps.js from its own extent.
                 layerDefs.push({
-                    key: 'histEu_all',
+                    key: 'premium_cenagis_catalog',
                     bounds: toBounds([[45.0, 5.0], [59.0, 39.0]]),
-                    getRow: function() { return document.getElementById('histEuRow'); },
-                    group: 'histEu'
+                    getRow: function() { return null; },
+                    group: 'histPremium'
                 });
 
                 // Roman Empire sublayers (ROMANIA_BOUNDS on .ro, full Roman Empire bounds on .eu)
                 var ROMAN_EMPIRE_BOUNDS = toBounds([[20.0, -15.0], [60.0, 50.0]]);
                 var romanBoundsDef = _isEuropeMarket() ? ROMAN_EMPIRE_BOUNDS : ROMANIA_BOUNDS;
                 var romanToggleIds = [
-                    'roman_roads',
+                    'roman_roads', 'roman_places',
                     'roman_dare_11','roman_dare_17','roman_dare_13','roman_dare_12','roman_dare_18','roman_dare_53',
                     'roman_dare_16','roman_dare_61','roman_dare_66','roman_dare_32','roman_dare_63','roman_dare_21',
                     'roman_dare_24','roman_dare_14','roman_dare_57','roman_dare_49','roman_dare_51','roman_dare_55',
-                    'roman_dare_52','roman_dare_64','roman_walls',
+                    'roman_dare_52','roman_dare_64','roman_walls','roman_regional_names',
                     'roman_shade_117','roman_shade_60bce','roman_shade_200','roman_shade_alexander',
                     'roman_shade_persian','roman_shade_diocletian','roman_shade_herod','roman_shade_hasmonean'
                 ];
@@ -12966,8 +13201,7 @@
                     lidar: { expandIconId: 'lidarExpandIcon', sublayerKeys: Object.keys(LIDAR_COUNTY_BOUNDS).map(function(k){ return 'lidar_' + k; }) },
                     roman: { expandIconId: 'romanExpandIcon', sublayerKeys: romanToggleIds.map(function(tid){ return 'roman_' + tid; }) },
                     histPremium: { expandIconId: 'histPremiumExpandIcon', sublayerKeys: premiumKeys.map(function(it){ return 'premium_' + it.key; }) },
-                    vegfp: { expandIconId: 'vegfpExpandIcon', sublayerKeys: ['vegfp_ppi', 'vegfp_smx', 'vegfp_sgu', 'vegfp_sgd'] },
-                    histEu: { expandIconId: 'histEuExpandIcon', sublayerKeys: ['histEu_all'] }
+                    vegfp: { expandIconId: 'vegfpExpandIcon', sublayerKeys: ['vegfp_ppi', 'vegfp_smx', 'vegfp_sgu', 'vegfp_sgd'] }
                 };
 
                 function isIntersecting(mapBounds, layerBounds) {
@@ -13003,7 +13237,6 @@
                     if (!mapBounds) return;
 
                     var groupVisible = { hist: false, lidar: false, roman: false, histPremium: false, vegfp: false };
-                    if (groups.histEu) groupVisible.histEu = false;
                     layerDefs.forEach(function(def) {
                         var visible = isIntersecting(mapBounds, def.bounds);
                         if (def.group && visible) groupVisible[def.group] = true;
@@ -13027,11 +13260,8 @@
                 };
 
                 // Is a layer row nested inside a group row (LiDAR, historical,
-                // Roman, premium, vegetation, EU maps)? DOM containment first,
-                // with a parent-chain walk as fallback for minimal DOM stubs.
-                // Like Node.contains(), an element counts as inside itself —
-                // the EU-maps row hosts its own expand icon, so the row IS the
-                // group row there.
+                // Roman, premium, vegetation)? DOM containment first, with a
+                // parent-chain walk as fallback for minimal DOM stubs.
                 function rowInsideGroupRow(row, groupRow) {
                     if (!row || !groupRow) return false;
                     if (row === groupRow) return true;
@@ -13088,6 +13318,21 @@
                         row.setAttribute('aria-hidden', available ? 'false' : 'true');
                     });
 
+                    var euCatalog = window.DetectLabEuMaps;
+                    if (euCatalog && typeof euCatalog.filterForCountry === 'function') {
+                        var countryExtent = null;
+                        try {
+                            var west = typeof countryBounds.getWest === 'function' ? countryBounds.getWest() : countryBounds.west;
+                            var south = typeof countryBounds.getSouth === 'function' ? countryBounds.getSouth() : countryBounds.south;
+                            var east = typeof countryBounds.getEast === 'function' ? countryBounds.getEast() : countryBounds.east;
+                            var north = typeof countryBounds.getNorth === 'function' ? countryBounds.getNorth() : countryBounds.north;
+                            if ([west, south, east, north].every(function (v) { return isFinite(Number(v)); })) {
+                                countryExtent = [Number(west), Number(south), Number(east), Number(north)];
+                            }
+                        } catch (e) {}
+                        euCatalog.filterForCountry(iso, countryExtent);
+                    }
+
                     // A group row disappears too when none of its sublayers
                     // covers the selected country. The European (international)
                     // LiDAR rows carry no group key but live inside the LiDAR
@@ -13103,6 +13348,10 @@
                             if (!row || row.classList.contains('country-layer-unavailable')) return;
                             if (rowInsideGroupRow(row, groupRow)) anyAvailable = true;
                         });
+                        if (!anyAvailable && gKey === 'histPremium' && window.DetectLabEuMaps &&
+                            typeof window.DetectLabEuMaps.hasAvailableMaps === 'function') {
+                            anyAvailable = window.DetectLabEuMaps.hasAvailableMaps();
+                        }
                         groupRow.classList.toggle('country-layer-unavailable', !anyAvailable);
                         groupRow.setAttribute('aria-hidden', anyAvailable ? 'false' : 'true');
                     });
@@ -13116,6 +13365,9 @@
                 // coverage filtering above only makes sense while the map is
                 // pinned to one country.
                 window.unfilterLayersForCountry = function () {
+                    if (window.DetectLabEuMaps && typeof window.DetectLabEuMaps.filterForCountry === 'function') {
+                        window.DetectLabEuMaps.filterForCountry(null, null);
+                    }
                     layerDefs.concat(internationalLayerDefs).forEach(function (def) {
                         var row = null;
                         try { row = def.getRow(); } catch (e) {}
@@ -14228,6 +14480,9 @@
                         var fn = window[child.fnName];
                         if (typeof fn === 'function') fn(false);
                     });
+                    if (window.DetectLabEuMaps && typeof window.DetectLabEuMaps.toggleHistEuLayer === 'function') {
+                        window.DetectLabEuMaps.toggleHistEuLayer(false);
+                    }
                 }
 
                 // Actualizează vizibilitatea poligoanelor de acoperire

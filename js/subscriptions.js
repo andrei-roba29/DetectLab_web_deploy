@@ -685,6 +685,8 @@
         'toggleHistPremiumLayer',
         'toggleJosephineLayer',
         'toggleRomanLayer',
+        'toggleRomanSub',
+        'toggleRomanDareCategories',
         'toggleBattlesLayer',
         'toggleArcheoPotentialLayer',
         'toggleLidarScannerLayer',
@@ -699,7 +701,7 @@
         'toggleKdr100kMap',          // Karte des Deutschen Reiches 1:100k (CENAGIS WMS)
         'toggleKdrGbMap',            // Karte des Deutschen Reiches Großblatt (CENAGIS WMS)
         'toggleWig100kMap',          // Harta tactică a Poloniei – WIG 1:100k (CENAGIS WMS)
-        'toggleHistEuLayer',         // European Historical Maps (master group)
+        'toggleHistEuLayer',         // compatibility alias for the merged historical group
         'toggleVegfpLayer',          // Amprenta Vegetației (master premium group)
         'toggleVegfpPpiLayer',       // Amprenta Vegetației — substratul PPI
         'toggleVegfpSmxLayer',       // Amprenta Vegetației — substratul SMX (VPP MAXV)
@@ -713,7 +715,10 @@
             if (typeof fn !== 'function') return;
             window[fnName] = function (on) {
                 // Turning a layer ON is premium-only; turning OFF is free.
+                // Roman sub-layer controls receive (key, on), unlike the other
+                // one-argument toggles; guard their actual enabled argument.
                 var wantOn = (on === true || on === undefined);
+                if (fnName === 'toggleRomanSub') wantOn = arguments[1] === true;
                 if (wantOn && !isPremium()) {
                     // Some callers flip their checkbox before invoking the
                     // toggle — revert any premium checkbox to off, then
@@ -725,6 +730,20 @@
                 return fn.apply(this, arguments);
             };
         });
+
+        var euMaps = window.DetectLabEuMaps;
+        if (euMaps && typeof euMaps.toggleCenagisLayer === 'function' && !euMaps._premiumToggleWrapped) {
+            var toggleCenagisLayer = euMaps.toggleCenagisLayer;
+            euMaps.toggleCenagisLayer = function (mapKey, on) {
+                if (on === true && !isPremium()) {
+                    applyPremiumUI();
+                    openPremiumModal();
+                    return;
+                }
+                return toggleCenagisLayer.apply(this, arguments);
+            };
+            euMaps._premiumToggleWrapped = true;
+        }
     }
 
     // Keeps premium controls and the browseable locked catalogue in sync with
@@ -748,6 +767,10 @@
                 lock.tabIndex = prem ? -1 : 0;
             }
         });
+
+        if (prem && typeof window._syncRomanDareCategoryToggles === 'function') {
+            window._syncRomanDareCategoryToggles();
+        }
 
         var panelUpsell = document.getElementById('premiumPanelUpsell');
         if (panelUpsell) panelUpsell.classList.toggle('premium-member', prem);
