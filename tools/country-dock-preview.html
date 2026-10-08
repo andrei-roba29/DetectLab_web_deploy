@@ -150,8 +150,9 @@
 <div id="result">Pick a country on the globe. Then: zoom out to the fitted view → <b>Exit view</b> appears.</div>
 
 <!-- Mini layer window: the same filtering contract as the real app — after a
-     selection only layers covering the country stay visible, and the country
-     bounds are drawn on the map. Row ids mirror index.html. -->
+     selection only the selected country's own layers stay visible (national
+     services strictly by country; pan-European rows by coverage), and the
+     country bounds are drawn on the map. Row ids mirror index.html. -->
 <div class="transp-panel" id="transpPanel">
   <div class="mini-title">Layers — filtered by country</div>
 
@@ -211,20 +212,25 @@
   /* ── Mini layer filter: the same contract js/map-app.js implements ──
      The gate calls window.filterLayersForCountry(iso) after every selection
      and window.unfilterLayersForCountry() on unlock. Rows keep the same ids
-     and the same .country-layer-unavailable class as the real panel. */
+     and the same .country-layer-unavailable class as the real panel.
+     Country attribution (not rectangle intersection!) decides membership:
+     a national service shows ONLY for its own country — neighbouring
+     countries' rows must not leak in just because their box grazes the
+     selected country's bbox or sits in the locked viewport. Pan-European
+     rows (histEuRow) have no country list and keep the coverage rule. */
   var MINI_ROWS = {
-    lidarNlAhnRow: [[50.70, 3.20], [53.60, 7.30]],
-    lidarNoLidarRow: [[57.90, 4.00], [71.30, 31.50]],
-    lidarPlLidarRow: [[49.00, 14.00], [54.90, 24.20]],
-    lidarEsLidarRow: [[27, -19], [44, 5]],
-    lidarChLidarRow: [[45.398181, 5.140242], [48.230651, 11.47757]],
-    lidarUkLidarRow: [[49.850605, -7.104776], [55.877087, 2.084282]],
-    lidarFrLidarRow: [[41.30, -5.50], [51.20, 9.70]],
-    lidarDkLidarRow: [[54.4265, 7.99125], [57.7781, 15.5995]],
-    lidarSeLidarRow: [[55.20, 10.80], [69.20, 24.30]],
-    austrianMapRow: [[43.5, 19.5], [48.5, 30.5]],
-    lidarHdRow: [[45.20, 22.00], [46.20, 23.30]],
-    histEuRow: [[45.0, 5.0], [59.0, 39.0]]
+    lidarNlAhnRow: { countries: ['NL'], bounds: [[50.70, 3.20], [53.60, 7.30]] },
+    lidarNoLidarRow: { countries: ['NO'], bounds: [[57.90, 4.00], [71.30, 31.50]] },
+    lidarPlLidarRow: { countries: ['PL'], bounds: [[49.00, 14.00], [54.90, 24.20]] },
+    lidarEsLidarRow: { countries: ['ES'], bounds: [[27, -19], [44, 5]] },
+    lidarChLidarRow: { countries: ['CH'], bounds: [[45.398181, 5.140242], [48.230651, 11.47757]] },
+    lidarUkLidarRow: { countries: ['GB', 'UK'], bounds: [[49.850605, -7.104776], [55.877087, 2.084282]] },
+    lidarFrLidarRow: { countries: ['FR'], bounds: [[41.30, -5.50], [51.20, 9.70]] },
+    lidarDkLidarRow: { countries: ['DK'], bounds: [[54.4265, 7.99125], [57.7781, 15.5995]] },
+    lidarSeLidarRow: { countries: ['SE'], bounds: [[55.20, 10.80], [69.20, 24.30]] },
+    austrianMapRow: { countries: ['RO'], bounds: [[43.5, 19.5], [48.5, 30.5]] },
+    lidarHdRow: { countries: ['RO'], bounds: [[45.20, 22.00], [46.20, 23.30]] },
+    histEuRow: { countries: null, bounds: [[45.0, 5.0], [59.0, 39.0]] }
   };
   var MINI_GROUPS = { lidarExpandIcon: 'miniLidarGroupRow', histExpandIcon: 'miniHistGroupRow', histEuExpandIcon: 'histEuRow' };
   function miniGroupRow(iconId) {
@@ -239,14 +245,23 @@
     while (p) { if (p === groupRow) return true; p = p.parentElement; }
     return false;
   }
+  function miniIsoIn(list, code) {
+    return (list || []).some(function (c) {
+      return c === code || ((c === 'GB' || c === 'UK') && (code === 'GB' || code === 'UK'));
+    });
+  }
   window.filterLayersForCountry = function (iso) {
+    iso = String(iso || '').toUpperCase();
     var b = window._detectlabCountryBounds;
-    if (!Array.isArray(b) || b.length !== 4) return;
-    var countryBounds = L.latLngBounds([[b[1], b[0]], [b[3], b[2]]]);
+    var countryBounds = (Array.isArray(b) && b.length === 4)
+      ? L.latLngBounds([[b[1], b[0]], [b[3], b[2]]]) : null;
     Object.keys(MINI_ROWS).forEach(function (id) {
       var row = document.getElementById(id);
       if (!row) return;
-      var available = countryBounds.intersects(L.latLngBounds(MINI_ROWS[id]));
+      var def = MINI_ROWS[id];
+      var available = def.countries
+        ? miniIsoIn(def.countries, iso)
+        : !!(countryBounds && countryBounds.intersects(L.latLngBounds(def.bounds)));
       row.classList.toggle('country-layer-unavailable', !available);
       row.setAttribute('aria-hidden', available ? 'false' : 'true');
     });

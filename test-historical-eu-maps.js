@@ -26,16 +26,16 @@ assert(parentMarkup.includes('id="histEuMapsSection"'), 'CENAGIS catalog is insi
 ['histEuRow', 'histEuSubLayers', 'histEuToggle', 'histEuExpandBtn'].forEach(id => {
     assert(!indexHtml.includes('id="' + id + '"'), 'obsolete separate group #' + id + ' is removed');
 });
-assert(indexHtml.includes('js/historical-eu-maps.js?v=20261008-country-overlap'), 'versioned catalog is loaded');
-assert(indexHtml.includes('js/map-app.js?v=20261008-premium-historical-roman'), 'versioned country/Roman map app is loaded');
+assert(indexHtml.includes('js/historical-eu-maps.js?v=20261008-country-layers-strict'), 'versioned catalog is loaded');
+assert(indexHtml.includes('js/map-app.js?v=20261008-country-layers-strict'), 'versioned country/Roman map app is loaded');
 assert(indexHtml.includes('js/subscriptions.js?v=20261008-premium-roman-guard'), 'premium guard is versioned');
 assert(subscriptions.includes('toggleCenagisLayer'), 'dynamic CENAGIS toggle is Premium-guarded');
 assert(subscriptions.includes("'toggleRomanDareCategories'"), 'DARE All/None is Premium-guarded');
 assert(subscriptions.includes("'toggleRomanSub'"), 'Roman sublayers are Premium-guarded');
 console.log('  ✓ one premium parent group, versioned scripts and entitlement guards verified');
 
-assert(swJs.includes('js/historical-eu-maps.js?v=20261008-country-overlap'), 'service worker precaches the versioned catalog');
-assert(swJs.includes('js/map-app.js?v=20261008-premium-historical-roman'), 'service worker precaches the versioned map app');
+assert(swJs.includes('js/historical-eu-maps.js?v=20261008-country-layers-strict'), 'service worker precaches the versioned catalog');
+assert(swJs.includes('js/map-app.js?v=20261008-country-layers-strict'), 'service worker precaches the versioned map app');
 assert(swJs.includes('js/subscriptions.js?v=20261008-premium-roman-guard'), 'service worker precaches the versioned subscription guard');
 const shellVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);
 assert(shellVersion >= 171, 'service-worker cache bumped for the merged catalog (got v' + shellVersion + ')');
@@ -120,28 +120,45 @@ assert(!api.getMapsOverlappingBounds([6.62, 35.49, 18.52, 47.09], false).include
     'a shared legacy map is not duplicated in the dynamic catalog');
 console.log('  ✓ catalog metadata, partial-overlap logic and legacy de-duplication verified');
 
-// The dynamic section includes only sheets whose extent overlaps the selected
-// country (including a small/partial intersection). Non-overlap rows and rows
-// duplicated by the legacy controls remain hidden.
+// The dynamic section shows ONLY sheets attributed to the selected country:
+// the curated coverage lists (COUNTRIES_DATA) decide membership. Rectangle
+// overlap is not enough — a Polish WIG sheet whose box clips Denmark's bbox
+// is NOT a map of Denmark and must not leak into the window.
 const denmark = [8.08, 54.56, 15.19, 57.75];
-const availableCount = api.filterForCountry('DK', denmark);
-assert.strictEqual(availableCount, 2, 'two non-duplicate catalog sheets overlap Denmark in this row fixture');
 const byId = Object.fromEntries(rows.map(row => [row.getAttribute('data-map-id'), row]));
-assert.strictEqual(byId.wig300k.classList.contains('country-layer-unavailable'), false,
-    'WIG 300k remains available on a partial Denmark overlap');
-assert.strictEqual(byId.wig500k_1947.classList.contains('country-layer-unavailable'), false,
-    'WIG 500k remains available on a partial Denmark overlap');
-assert.strictEqual(byId.gaul.classList.contains('country-layer-unavailable'), true, 'non-overlapping Gaul sheet is hidden');
+const availableCount = api.filterForCountry('DK', denmark);
+assert.strictEqual(availableCount, 0,
+    'Denmark gets only its curated sheets — and those are all premium-hosted (shared) rows');
+assert.strictEqual(byId.wig300k.classList.contains('country-layer-unavailable'), true,
+    'WIG 300k (a Polish sheet whose box clips Denmark) is hidden for Denmark');
+assert.strictEqual(byId.wig500k_1947.classList.contains('country-layer-unavailable'), true,
+    'WIG 500k is hidden for Denmark despite the bbox graze');
+assert.strictEqual(byId.gaul.classList.contains('country-layer-unavailable'), true, 'non-covering Gaul sheet is hidden');
 assert.strictEqual(byId.kdr.classList.contains('country-layer-unavailable'), true, 'shared KDR sheet is not duplicated in the catalog');
 assert.strictEqual(byId.reymann.classList.contains('country-layer-unavailable'), true, 'shared Reymann sheet is not duplicated in the catalog');
-assert.strictEqual(api.hasAvailableMaps(), true, 'combined parent can query available dynamic maps');
-assert.strictEqual(noMaps.style.display, 'none', 'empty catalog message stays hidden when sheets overlap');
-assert(status.textContent.includes('Denmark'), 'status announces the matching country and overlap count');
+assert.strictEqual(api.hasAvailableMaps(), false, 'no dynamic rows available for Denmark');
+assert.strictEqual(noMaps.style.display, 'block', 'empty catalog message appears when only premium-hosted sheets cover the country');
+assert(status.textContent.includes('Denmark'), 'status announces the matching country');
+
+// Curated coverage beats overlap in the other direction too: Poland's own
+// sheets come back from the ISO list alone, with no geometry at all.
+assert.strictEqual(api.filterForCountry('PL', null), 3,
+    'Poland gets its curated non-shared sheets (WIG 300k, WIG 500k, Gaul) without any bounds');
+assert.strictEqual(byId.wig300k.classList.contains('country-layer-unavailable'), false,
+    'WIG 300k is a curated Polish sheet');
+assert.strictEqual(noMaps.style.display, 'none', 'empty message hidden once curated sheets are listed');
+
+// A country outside the curated analysis falls back to the sheets' extents,
+// and only substantial coverage counts.
+assert.strictEqual(api.filterForCountry('IT', [6.62, 35.49, 18.52, 47.09]), 0,
+    'no Polish catalog sheet substantially covers Italy');
+assert.strictEqual(api.filterForCountry('CA', [-141.0, 41.0, -52.0, 83.0]), 0,
+    'no catalog sheet covers Canada either');
 
 api.filterForCountry(null, null);
 assert(rows.every(row => !row.classList.contains('country-layer-unavailable')), 'clearing country filter restores all catalog rows');
 assert.strictEqual(api.hasAvailableMaps(), true, 'unfiltered catalog remains available');
-console.log('  ✓ country selection keeps partial overlaps, hides non-overlaps and restores the full catalog');
+console.log('  ✓ curated country lists gate the catalog; bbox grazes and non-covering sheets stay hidden');
 
 // Curated coverage remains available as a fallback when no country polygon is
 // supplied (e.g. a country selection with only an ISO code).
@@ -152,5 +169,41 @@ assert.strictEqual(noMaps.style.display, 'block', 'empty catalog message appears
     assert(api.countries.some(country => country.code === code), 'fallback coverage includes ' + code);
 });
 console.log('  ✓ country-ISO fallback catalog retained');
+
+// ── Drift guard: js/map-app.js keeps a static mirror of the curated coverage
+// for the premium rows that host the shared sheets (it runs before / without
+// this module). The mirror must equal the inversion of COUNTRIES_DATA.
+const mapAppSource = read('js/map-app.js');
+function mapAppLiteral(name) {
+    const match = mapAppSource.match(new RegExp('var ' + name + ' = (\\{[^}]*\\});'));
+    assert(match, name + ' is defined in js/map-app.js');
+    return vm.runInNewContext('(' + match[1] + ')');
+}
+const mirror = mapAppLiteral('SHARED_PREMIUM_COUNTRIES');
+const catalogKeys = mapAppLiteral('SHARED_PREMIUM_CATALOG_KEYS');
+const curatedCountries = mapAppLiteral('CURATED_COVERAGE_COUNTRIES');
+const inverted = {};
+api.countries.forEach(country => {
+    const codes = country.code === 'BE-LU' ? ['BE', 'LU'] : [country.code];
+    country.maps.forEach(entry => {
+        inverted[entry.id] = (inverted[entry.id] || []).concat(codes);
+    });
+});
+assert.deepStrictEqual(
+    new Set(Object.values(catalogKeys)), new Set(Object.keys(api.sharedPremiumMapKeys)),
+    'every shared premium sheet is mapped to its CENAGIS id exactly once');
+Object.keys(mirror).forEach(id => {
+    assert(inverted[id], 'COUNTRIES_DATA covers the mirrored sheet ' + id);
+    assert.deepStrictEqual([...mirror[id]].sort(), [...inverted[id]].sort(),
+        'mirror of ' + id + ' matches COUNTRIES_DATA');
+});
+const analyzed = new Set();
+api.countries.forEach(country => {
+    if (country.code === 'BE-LU') { analyzed.add('BE'); analyzed.add('LU'); }
+    else analyzed.add(country.code);
+});
+assert.deepStrictEqual(new Set(Object.keys(curatedCountries)), analyzed,
+    'CURATED_COVERAGE_COUNTRIES matches the COUNTRIES_DATA entries');
+console.log('  ✓ map-app.js curated-coverage mirror matches COUNTRIES_DATA');
 
 console.log('✅ test-historical-eu-maps.js passed all checks successfully.');

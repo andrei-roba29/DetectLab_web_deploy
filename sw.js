@@ -380,7 +380,7 @@
 //   then — in its own pane above the data layers; both belong to the locked
 //   view and go away on “Exit view”. See js/map-app.js (filterLayersForCountry
 //   / unfilterLayersForCountry) and js/globe-country-picker.js.
-const CACHE_NAME = 'detectlab-v171-premium-history-roman';
+const CACHE_NAME = 'detectlab-v172-country-layers-strict';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -397,10 +397,15 @@ const PROTECTED_SITES_CACHE_KEY = 'protected-sites';
 //   group and are filtered by the selected country's partial/full footprint;
 //   Roman Empire DARE category icons/ISO2 reload, Pleiades sites, Herod and
 //   Hasmonean layers are wired, and Roman road NDJSON keeps progressive drawing.
+// v172: the country-scoped layer window lists ONLY the selected country's
+//   layers (strict country attribution — see COUNTRY_LAYER_FILTER.md). National
+//   services of neighbouring countries no longer leak in through bbox grazes;
+//   shared CENAGIS sheets follow the curated coverage lists.
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
   // European Historical Maps (CENAGIS / IH PAN)
   'js/historical-eu-maps.js?v=20261008-country-overlap',
+  'js/historical-eu-maps.js?v=20261008-country-layers-strict',
   'js/historical-eu-maps.js',
   // Host-aware market defaults for detectlab.ro and detectlab.eu.
   'js/site-config.js?v=20260928-eu-domain',
@@ -490,6 +495,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20261007-spain-mapa-lidar',
   'js/map-app.js?v=20261008-country-layer-filter',
   'js/map-app.js?v=20261008-premium-historical-roman',
+  'js/map-app.js?v=20261008-country-layers-strict',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',
