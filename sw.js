@@ -380,7 +380,7 @@
 //   then — in its own pane above the data layers; both belong to the locked
 //   view and go away on “Exit view”. See js/map-app.js (filterLayersForCountry
 //   / unfilterLayersForCountry) and js/globe-country-picker.js.
-const CACHE_NAME = 'detectlab-v169-country-layer-filter';
+const CACHE_NAME = 'detectlab-v170-roman-reference';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -485,6 +485,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20261008-corona-coverage',
   'js/map-app.js?v=20261007-spain-mapa-lidar',
   'js/map-app.js?v=20261008-country-layer-filter',
+  'js/map-app.js?v=20261008-roman-reference',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',

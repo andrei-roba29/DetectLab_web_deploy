@@ -5372,9 +5372,8 @@
 
                 // ── INFRASTRUCTURE ──
                 roads: {
-                    label: 'Roads', color: '#CC2222', weight: 2.0, enabled: false,
-                    type: 'geojson',
-                    url: 'https://raw.githubusercontent.com/andrei-roba29/geo_data/d81cd21/Cultural-Data/roads/roman_routes_under25mb.geojson'
+                    label: 'Roads', color: '#FF5A36', weight: 1.8, enabled: false,
+                    type: 'ndjson'
                 },
                 // ── POINTS & LABELS ──
                 dare_11: { label: 'Major Settlements', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
@@ -5398,54 +5397,54 @@
                 dare_52: { label: 'Aqueducts', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
                 dare_64: { label: 'Monuments', color: '#CC2222', weight: 1.5, enabled: false, type: 'geojson', dare: true },
                 walls: {
-                    label: 'Walls', color: '#888888', weight: 2.0, enabled: false,
+                    label: 'Walls', color: '#E2BE64', weight: 2.4, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'walls/walls.geojson'
                 },
                 regional_names: {
-                    label: 'Regional Names', color: '#D4A0D4', weight: 1.5, enabled: false,
+                    label: 'Regional Names', color: '#FFFFFF', weight: 0.8, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'regional_name_linework/regional_names_linework.geojson'
                 },
 
                 // ── POLITICAL SHADING ──
                 shade_117: {
-                    label: 'Roman Empire 117 CE', color: '#C4532D', weight: 0.8, enabled: false,
+                    label: 'Roman Empire 117 CE', color: '#AA32AA', weight: 1.2, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'political_shading/roman_empire_ce_117_extent/roman_empire_ce_117_extent.geojson'
                 },
                 shade_60bce: {
-                    label: 'Roman Empire 60 BCE', color: '#B43C1E', weight: 0.8, enabled: false,
+                    label: 'Roman Empire 60 BCE', color: '#CC2222', weight: 1.2, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'political_shading/roman_empire_bce_60/roman_empire_bce_60.geojson'
                 },
                 shade_200: {
-                    label: 'Roman Empire 200 CE', color: '#D2641E', weight: 0.8, enabled: false,
+                    label: 'Roman Empire 200 CE', color: '#E17D28', weight: 1.2, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'political_shading/roman_empire_ce_200_extent/roman_empire_ce_200_extent.geojson'
                 },
                 shade_alexander: {
-                    label: "Alexander's Empire", color: '#5082DC', weight: 0.8, enabled: false,
+                    label: "Alexander's Empire", color: '#3CAA5A', weight: 1.2, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'political_shading/alexanders_empire/alexanders_empire.geojson'
                 },
                 shade_persian: {
-                    label: 'Persian Empire', color: '#B464C8', weight: 0.8, enabled: false,
+                    label: 'Persian Empire', color: '#875FCD', weight: 1.2, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'political_shading/persian_extent/extent_of_the_persian_empire.geojson'
                 },
                 shade_diocletian: {
-                    label: 'Roman Provinces after Diocletian', color: '#DCA032', weight: 0.8, enabled: false,
+                    label: 'Roman Provinces after Diocletian', color: '#3C8CCD', weight: 1.2, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'political_shading/roman_empire_provinces post_diocletian/roman_empire_provinces post_diocletian.geojson'
                 },
                 shade_herod: {
-                    label: "Herod's Empire", color: '#32B482', weight: 0.8, enabled: false,
+                    label: "Herod's Empire", color: '#EBC328', weight: 1.2, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'political_shading/herod/herods_kingdom.geojson'
                 },
                 shade_hasmonean: {
-                    label: 'Hasmonean Kingdom', color: '#32A064', weight: 0.8, enabled: false,
+                    label: 'Hasmonean Kingdom', color: '#28AFAF', weight: 1.2, enabled: false,
                     type: 'geojson',
                     url: _AWMC + 'political_shading/hasmonean/hasmonean_kingdom.geojson'
                 }
@@ -5555,51 +5554,80 @@
                 return null;
             }
 
-            // ── Load Roman Sites dynamically from DARE based on viewport ──
+            // ── ROMAN EMPIRE — DARE sites, roads & AWMC layers ──
+            // Aceeași logică de încărcare și aceleași pictograme ca în harta de
+            // referință (imperium / DARE): badge rotund 26px cu glif SVG pe
+            // categorie, cereri DARE pe viewport (zoom ≥ 7, plafon 10, cu
+            // deduplicare și o singură cerere în zbor), iar drumurile romane se
+            // citesc în flux (NDJSON) cu progres și segmentele apar pe măsură ce
+            // sosesc. Celelalte straturi AWMC rămân GeoJSON cu cache.
 
-            var _dareLoading = false;
-            var _dareFeaturesRaw = {}; // id -> feature
+            // Etichetele și glifele celor 20 de categorii DARE (numType → glif 24×24, stroke).
+            var DARE_CAT_LABELS = {
+                11: 'Major Settlements', 12: 'Regular Settlements', 13: 'Civitas Capitals', 14: 'Villas',
+                16: 'Roads / Coastal Stations', 17: 'Major Forts', 18: 'Forts / Castrum', 21: 'Monasteries',
+                24: 'Churches', 32: 'Tumuli', 49: 'Passes', 51: 'Bridges', 52: 'Aqueducts', 53: 'Fortlets / Towers',
+                55: 'Roads / Milestones', 57: 'Mines / Quarries', 61: 'Sanctuaries / Temples', 63: 'Cemeteries',
+                64: 'Monuments', 66: 'Baths'
+            };
+            var DARE_CAT_GLYPHS = {
+                11: 'M2 21h20M3 21V11h5v10M8 21V4h7v17M15 21V9h6v12M10.5 8h2M10.5 12h2M10.5 16h2',
+                12: 'M2 21h20M3 21v-8l4-4 4 4v8M13 21v-6l4-4 4 4v6M6 17h2M16 18h2',
+                13: 'M3 21V11l9-5 9 5v10M12 6V1.5M12 1.5h4.5v3H12M9.5 21v-6h5v6M2 21h20',
+                14: 'M2 11l10-7 10 7M4 10v11h16V10M8 21v-6M12 21v-6M16 21v-6M2 21h20',
+                16: 'M12 2v20M6 4.5h10l3 3-3 3H6zM18 13.5H8l-3 3 3 3h10zM9 22h6',
+                17: 'M3 21V6h4v3h2V6h6v3h2V6h4v15zM10 21v-5h4v5M3 21h18',
+                18: 'M6 6h12v12H6zM2.5 2.5h5v5h-5zM16.5 2.5h5v5h-5zM2.5 16.5h5v5h-5zM16.5 16.5h5v5h-5z',
+                21: 'M2 21h20M3 21V12l9-6 9 6v9M12 8.5v5M9.5 11h5M9 21v-4.5h6V21',
+                24: 'M12 1.5v5M9.8 3.7h4.4M5 21v-9l7-5 7 5v9zM10 21v-5h4v5M2 21h20',
+                32: 'M2 20h20M3.5 20C3.5 13 7.5 9 12 9s8.5 4 8.5 11M12 9V4M12 4h4l-1.2 1.5L16 7h-4',
+                49: 'M1.5 20L8 8l4 7 3-5.5 7.5 10.5zM8 8l1.8 3.2M15 9.5l1.5 2.2',
+                51: 'M1.5 9h21M4 9v12M20 9v12M1.5 21h21M4 21c0-5.5 3.5-8.5 8-8.5s8 3 8 8.5',
+                52: 'M1.5 5.5h21M3 5.5V21M9 5.5V21M15 5.5V21M21 5.5V21M1.5 21h21M3 15.5a3 3 0 0 1 6 0M9 15.5a3 3 0 0 1 6 0M15 15.5a3 3 0 0 1 6 0',
+                53: 'M8 21V9h8v12M5.5 9h13V4.5h-2.7V7h-2V4.5h-3.6V7h-2V4.5H5.5zM10.5 21v-4.5h3V21M11.5 12.5h1M4 21h16',
+                55: 'M2 21h20M8.5 21V8.5a3.5 3.5 0 0 1 7 0V21M10.5 11.5h3M10.5 14.5h3M10.5 17.5h3',
+                57: 'M5 21.5L16.5 8M6.5 5C12.5 2.5 19.5 6 21 13M6.5 5l2.2 3.2M21 13l-3.4-1.4M3 21.5h5',
+                61: 'M2 9.5L12 3.5l10 6zM4 9.5h16M6 12v7M10 12v7M14 12v7M18 12v7M3.5 19h17M2 21.5h20',
+                63: 'M6.5 21V10a5.5 5.5 0 0 1 11 0v11zM12 8.5v7M9.2 11.2h5.6M3 21h18',
+                64: 'M9.5 20L10.7 6 12 2.5 13.3 6 14.5 20zM7 20h10M5.5 22h13M11 10h2',
+                66: 'M2 16c2-2 4 2 6 0s4 2 6 0 4 2 6 0M2 20.5c2-2 4 2 6 0s4 2 6 0 4 2 6 0M7 11.5c-1.5-2 1.5-3 0-5.5M12 11.5c-1.5-2 1.5-3 0-5.5M17 11.5c-1.5-2 1.5-3 0-5.5'
+            };
+            var _DARE_COLOR = '#CC2222';
 
-            // ── DARE markers — suggestive icon per type ─────────────────────
-            // Vechele sigle erau glife abstracte de 12×12px (în mare parte
-            // cercuri/puncte mici) — greu de văzut pe hartă, iar mai multe tipuri
-            // (Borne, Apeducte, Monumente) erau literalmente același punct.
-            // Acum fiecare tip are un simbol recunoscut (templu, castrum, pod,
-            // picior de mină, …), desenat pe un badge rotund de 26px, în aceeași
-            // culoare ca drumurile romane (#CC2222), pe fundal întunecat pentru a
-            // ieși în evidență pe orice bază de hartă.
-            var _DARE_COLOR = '#CC2222'; // = culoarea stratului Roads (drum roman)
-            function _dareGlyph(type) {
-                switch (String(type)) {
-                    case '11': return '<path d="M3 20v-5l3.5-2.5L10 15v5"/><path d="M14 20v-5l3.5-2.5L21 15v5"/><path d="M8.5 20v-6.5L12 10.5l3.5 3V20"/><line x1="2" y1="20" x2="22" y2="20"/>';
-                    case '17': return '<rect x="7" y="7" width="10" height="10"/><circle cx="7" cy="7" r="2.3" fill="#CC2222" stroke="none"/><circle cx="17" cy="7" r="2.3" fill="#CC2222" stroke="none"/><circle cx="7" cy="17" r="2.3" fill="#CC2222" stroke="none"/><circle cx="17" cy="17" r="2.3" fill="#CC2222" stroke="none"/>';
-                    case '13': return '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="1.5" fill="#CC2222" stroke="none"/>';
-                    case '12': return '<path d="M3 20v-6l3-2.5 3 2.5V20"/><path d="M11 20v-6l3-2.5 3 2.5V20"/><line x1="2" y1="20" x2="22" y2="20"/>';
-                    case '18': return '<rect x="8.5" y="8.5" width="7" height="7"/><circle cx="8.5" cy="8.5" r="1.9" fill="#CC2222" stroke="none"/><circle cx="15.5" cy="8.5" r="1.9" fill="#CC2222" stroke="none"/><circle cx="8.5" cy="15.5" r="1.9" fill="#CC2222" stroke="none"/><circle cx="15.5" cy="15.5" r="1.9" fill="#CC2222" stroke="none"/>';
-                    case '53': return '<path d="M8.5 20V8h1.4V6.5h1.4V8h1.4V6.5h1.4V8h1.4V20"/><rect x="11.2" y="14.5" width="1.6" height="5.5" fill="#CC2222" stroke="none"/><line x1="6" y1="20" x2="18" y2="20"/>';
-                    case '16': return '<line x1="3" y1="16.5" x2="21" y2="7.5" stroke-dasharray="2.6 2.2"/><rect x="9.6" y="9.6" width="4.8" height="4.8" transform="rotate(45 12 12)"/>';
-                    case '61': return '<path d="M12 3.5L20.5 9H3.5Z"/><line x1="4" y1="11.5" x2="20" y2="11.5"/><path d="M6.8 11.5v6M9.9 11.5v6M14.1 11.5v6M17.2 11.5v6"/><line x1="4" y1="19.5" x2="20" y2="19.5"/>';
-                    case '66': return '<path d="M4.5 12.5h15v2a4.5 4.5 0 0 1-4.5 4.5H9a4.5 4.5 0 0 1-4.5-4.5Z"/><path d="M7 15c1.3 1 2.7 1 4 0s2.7-1 4 0"/><path d="M10 9.5c.9-.7.9-1.4 0-2.2M14 9.5c.9-.7.9-1.4 0-2.2"/><path d="M7.5 19.5l-1 2M16.5 19.5l1 2"/>';
-                    case '32': return '<path d="M2.5 19.5a3.5 3.5 0 0 1 7 0"/><path d="M8.5 19.5a4.5 4.5 0 0 1 9 0"/><path d="M15.5 19.5a3.5 3.5 0 0 1 7 0"/><line x1="2" y1="19.5" x2="22" y2="19.5"/>';
-                    case '63': return '<path d="M6.5 19.5v-9a2.5 2.5 0 0 1 5 0v9"/><path d="M13 19.5v-7a2.5 2.5 0 0 1 5 0v7"/><line x1="3" y1="19.5" x2="21" y2="19.5"/>';
-                    case '21': return '<rect x="6.5" y="12" width="11" height="8"/><line x1="12" y1="3.5" x2="12" y2="12"/><line x1="9.6" y1="5.5" x2="14.4" y2="5.5"/>';
-                    case '24': return '<line x1="12" y1="4" x2="12" y2="20" stroke-width="2.4"/><line x1="7.5" y1="9.5" x2="16.5" y2="9.5" stroke-width="2.4"/>';
-                    case '14': return '<path d="M4.5 20v-8.5L12 5l7.5 6.5V20"/><line x1="4.5" y1="11.5" x2="19.5" y2="11.5"/><circle cx="12" cy="15.5" r="2"/>';
-                    case '57': return '<path d="M9.5 5c4-1.7 8.5-.6 11 2.4"/><line x1="15" y1="4.8" x2="5.5" y2="19.5"/>';
-                    case '49': return '<path d="M2 19.5L8.5 9l3.5 6.5L15.5 9l6.5 10.5Z"/>';
-                    case '51': return '<line x1="2.5" y1="9.5" x2="21.5" y2="9.5"/><path d="M4.5 17.5v-8a7.5 7.5 0 0 1 15 0v8"/><line x1="2.5" y1="17.5" x2="21.5" y2="17.5"/>';
-                    case '55': return '<path d="M12 4.5L15.5 17h-7Z"/><line x1="7.5" y1="19.5" x2="16.5" y2="19.5"/>';
-                    case '52': return '<line x1="3" y1="8" x2="21" y2="8"/><path d="M3.5 18.5V12.5a2.83 2.83 0 0 1 5.67 0v6M9.17 18.5V12.5a2.83 2.83 0 0 1 5.67 0v6M14.83 18.5V12.5a2.83 2.83 0 0 1 5.67 0v6"/><line x1="2.5" y1="18.5" x2="21.5" y2="18.5"/>';
-                    case '64': return '<line x1="7.5" y1="5" x2="16.5" y2="5"/><line x1="8.5" y1="7" x2="15.5" y2="7"/><path d="M9.5 7v10M12 7v10M14.5 7v10"/><line x1="8.5" y1="17" x2="15.5" y2="17"/><line x1="7" y1="19.5" x2="17" y2="19.5"/>';
-                    default: return '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="#CC2222" stroke="none"/>';
+            // API-ul DARE trimite text dublu codat (UTF-8 citit ca Windows-1252): "Å arkamen" → "Šarkamen"
+            var _CP1252_REV = {0x20AC:0x80,0x201A:0x82,0x0192:0x83,0x201E:0x84,0x2026:0x85,0x2020:0x86,0x2021:0x87,0x02C6:0x88,0x2030:0x89,0x0160:0x8A,
+                0x2039:0x8B,0x0152:0x8C,0x017D:0x8E,0x2018:0x91,0x2019:0x92,0x201C:0x93,0x201D:0x94,0x2022:0x95,0x2013:0x96,0x2014:0x97,0x02DC:0x98,
+                0x2122:0x99,0x0161:0x9A,0x203A:0x9B,0x0153:0x9C,0x017E:0x9E,0x0178:0x9F};
+            function _fixMojibake(s) {
+                if (typeof s !== 'string' || !/[\u00c2-\u00f4]/.test(s)) return s;
+                var b = [];
+                for (var i = 0; i < s.length; i++) {
+                    var c = s.codePointAt(i);
+                    if (c > 0xFFFF) i++;
+                    if (c <= 0xFF) b.push(c);
+                    else if (_CP1252_REV[c] !== undefined) b.push(_CP1252_REV[c]);
+                    else return s;
                 }
+                try { return new TextDecoder('utf-8', {fatal: true}).decode(Uint8Array.from(b)); } catch (e) { return s; }
             }
+
+            function _dareTypeNum(f) {
+                var p = (f && f.properties) || {};
+                var n = parseInt(p.numType, 10);
+                if (isNaN(n)) n = parseInt(p.type, 10);
+                return isNaN(n) ? String(p.numType || p.type || p.sympl || '') : n;
+            }
+            function _dareGlyph(type) {
+                var g = DARE_CAT_GLYPHS[String(type)];
+                return g ? '<path d="' + g + '"/>' : '<circle cx="12" cy="12" r="8"/>';
+            }
+            // Badge 26×26 identic cu cel din harta de referință (cerc #0c111e 68%, contur #CC2222, glif #ffd9d9).
             function getDareIcon(type) {
-                var C = _DARE_COLOR;
                 return L.divIcon({
-                    html: '<div style="width:26px;height:26px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid ' + C + ';box-shadow:0 1px 5px rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;">' +
-                        '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="' + C + '" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + _dareGlyph(type) + '</svg>' +
-                        '</div>',
+                    html: '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26" style="display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.55));">' +
+                        '<circle cx="13" cy="13" r="11.5" fill="#0c111e" fill-opacity=".68" stroke="' + _DARE_COLOR + '" stroke-width="1.5"/>' +
+                        '<g transform="translate(4.5 4.5) scale(0.7083)" fill="none" stroke="#ffd9d9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+                        _dareGlyph(type) + '</g></svg>',
                     className: 'dare-icon-marker',
                     iconSize: [26, 26],
                     iconAnchor: [13, 13]
@@ -5609,131 +5637,268 @@
             function _createDareLayer() {
                 return L.geoJSON(null, {
                     pane: 'pane_roman',
-                    pointToLayer: function(feature, latlng) {
-                        var type = feature.properties.numType || feature.properties.type || feature.properties.sympl || '';
+                    pointToLayer: function (feature, latlng) {
                         return L.marker(latlng, {
                             pane: 'pane_roman',
-                            icon: getDareIcon(type),
+                            icon: getDareIcon(_dareTypeNum(feature)),
                             opacity: _romanOpacity
                         });
                     },
-                    onEachFeature: function(feature, layer) {
+                    onEachFeature: function (feature, layer) {
                         var p = feature.properties || {};
-                        var modernName = p.name || p.NAME || '';
-                        var ancientName = p.ancient || p.ancient_name || p.ANCIENT || '';
-                        var type = p.type || p.type_name || p.TYPE || p.feature_type || p.sympl || '';
-
-                        var displayName = '';
-                        if (ancientName && modernName) {
-                            displayName = ancientName + ' (' + modernName + ')';
-                        } else {
-                            displayName = ancientName || modernName || 'Unnamed Roman Site';
-                        }
-
-                        if (displayName) {
-                            var tooltipHtml = '<span style="font-family:\'Cinzel\',serif;font-size:0.78rem;color:#E8772A;">' + displayName + '</span>';
-                            if (type) {
-                                tooltipHtml += '<br><span style="font-size:0.68rem;opacity:0.8;color:#E8772A;">Type: ' + type + '</span>';
-                            }
-                            tooltipHtml += '<br><span style="font-size:0.68rem;opacity:0.6;">DARE Roman Site · Roman Empire</span>';
-                            
-                            var dareId = feature.id || p.id;
-                            if (dareId) {
-                                var dareUrl = 'https://imperium.ahlfeldt.se/places/' + dareId + '.html';
-                                tooltipHtml += '<br><a href="' + dareUrl + '" target="_blank" style="color:#E8772A;text-decoration:underline;font-size:0.68rem;pointer-events:auto;">View on DARE</a>';
-                            }
-
-                            layer.bindTooltip(tooltipHtml, { className: 'map-search-tooltip', sticky: true });
-                        }
+                        var displayName = (p.ancient && p.name) ? (p.ancient + ' (' + p.name + ')') : (p.ancient || p.name || 'Unnamed Roman Site');
+                        var typeLabel = DARE_CAT_LABELS[_dareTypeNum(feature)] || p.type || '';
+                        var html = '<span style="font-family:\'Cinzel\',serif;font-size:0.78rem;color:#E8772A;">' + displayName + '</span>';
+                        if (typeLabel) html += '<br><span style="font-size:0.68rem;opacity:0.8;color:#E8772A;">Type: ' + typeLabel + '</span>';
+                        html += '<br><span style="font-size:0.68rem;opacity:0.6;">DARE Roman Site · Roman Empire</span>';
+                        var dareId = feature.id || p.id;
+                        if (dareId) html += '<br><a href="https://imperium.ahlfeldt.se/places/' + dareId + '.html" target="_blank" style="color:#E8772A;text-decoration:underline;font-size:0.68rem;pointer-events:auto;">View on DARE</a>';
+                        layer.bindTooltip(html, { className: 'map-search-tooltip', sticky: true });
                     }
                 });
             }
 
+            // Mesaje de stare sub panoul Roman (DARE / drumuri), ca la referință.
+            var _romanStatusEls = {};
+            function _romanStatus(key, text) {
+                var el = _romanStatusEls[key];
+                if (!el) {
+                    var host = document.getElementById('romanSubLayers');
+                    if (!host) return;
+                    el = document.createElement('div');
+                    el.style.cssText = 'font-size:11px;color:#9fb3c9;padding:0 2px;';
+                    host.insertBefore(el, host.firstChild);
+                    _romanStatusEls[key] = el;
+                }
+                el.textContent = text || '';
+            }
+
+            // ── DARE: cereri pe viewport, deduplicate, o singură cerere în zbor ──
+            var _dareSeen = {};          // id → true (toate categoriile)
+            var _dareInflight = false, _dareAgain = false, _dareTimer = null;
+            var DARE_MIN_ZOOM = 7;
+
+            function _dareAnyEnabled() {
+                for (var k in _romanEnabled) if (k.indexOf('dare_') === 0 && _romanEnabled[k]) return true;
+                return false;
+            }
+            function _dareLayerFor(n) {
+                var key = 'dare_' + n;
+                if (!_romanLayers[key]) _romanLayers[key] = _createDareLayer();
+                return _romanLayers[key];
+            }
+            function _dareStatusFor(zoom) {
+                if (!_dareAnyEnabled()) return _romanStatus('dare', '');
+                if (zoom < DARE_MIN_ZOOM) return _romanStatus('dare', 'DARE: zoom in to level ' + DARE_MIN_ZOOM + '+ to load sites (now ' + zoom.toFixed(1) + ').');
+            }
+
             function _loadDynamicDareSites() {
-                var anyDare = false;
-                for (var k in _romanEnabled) {
-                    if (k.startsWith('dare_') && _romanEnabled[k]) anyDare = true;
-                }
-                if (!anyDare || !_romanVisible) return;
+                clearTimeout(_dareTimer);
+                _dareTimer = setTimeout(_fetchDareNow, 150);
+            }
+            function _fetchDareNow() {
+                if (!_romanVisible || !_dareAnyEnabled()) { _romanStatus('dare', ''); return; }
                 var zoom = map.getZoom();
-                if (zoom < 7) {
-                    console.log('[Roman] DARE dynamic fetch skipped — zoom too low (< 7)');
-                    return;
-                }
+                if (zoom < DARE_MIN_ZOOM) { _dareStatusFor(zoom); return; }
+                if (_dareInflight) { _dareAgain = true; return; }
+                _dareInflight = true;
 
-                var bounds = map.getBounds();
-                var south = bounds.getSouth().toFixed(4);
-                var west = bounds.getWest().toFixed(4);
-                var north = bounds.getNorth().toFixed(4);
-                var east = bounds.getEast().toFixed(4);
-
-                var isEu = _isEuropeMarket();
-                var ccParam = isEu ? '' : '&cc=RO';
-                var url = 'https://imperium.ahlfeldt.se/api/geojson.php?bbox=' + west + ',' + south + ',' + east + ',' + north + '&zoom=' + Math.min(zoom, 10) + ccParam;
-
-                console.log('[Roman] Fetching dynamic DARE sites from:', url);
-                _dareLoading = true;
+                var b = map.getBounds();
+                var bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(function (x) { return x.toFixed(4); }).join(',');
+                var ccParam = _isEuropeMarket() ? '' : '&cc=RO';
+                var url = 'https://imperium.ahlfeldt.se/api/geojson.php?bbox=' + bbox + '&zoom=' + Math.min(Math.round(zoom), 10) + ccParam;
 
                 fetch(url)
-                    .then(function(r) {
-                        _dareLoading = false;
-                        if (!r.ok) return null;
-                        return r.json();
-                    })
-                    .then(function(data) {
-                        if (!data || !_romanVisible) return;
-
-                        data.features.forEach(function(f) {
+                    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                    .then(function (data) {
+                        if (!_romanVisible) return;
+                        var batches = {}, added = 0;
+                        ((data && data.features) || []).forEach(function (f) {
+                            if (!f || !f.geometry || f.geometry.type !== 'Point') return;
                             if (!_romanFeatureInBounds(f)) return;
-
-                            var id = f.id || (f.properties && f.properties.id);
-                            if (!id) return;
-
-                            // If not processed yet
-                            if (!_dareFeaturesRaw[id]) {
-                                _dareFeaturesRaw[id] = f;
-                            }
-
-                            var type = String(f.properties.numType || f.properties.type || f.properties.sympl || '');
-                            var dareKey = 'dare_' + type;
-
-                            // Add to layer if enabled and layer exists, but avoid duplicates
-                            if (_romanEnabled[dareKey]) {
-                                if (!_romanLayers[dareKey]) {
-                                    _romanLayers[dareKey] = _createDareLayer();
-                                    _romanLayers[dareKey].addTo(_romanGroup);
-                                }
-                                // Check if layer already has this feature
-                                var layerExists = false;
-                                _romanLayers[dareKey].eachLayer(function(l) {
-                                    if (l.feature && (l.feature.id === id || (l.feature.properties && l.feature.properties.id === id))) {
-                                        layerExists = true;
-                                    }
-                                });
-                                if (!layerExists) {
-                                    _romanLayers[dareKey].addData(f);
-                                }
-                            }
+                            var p = f.properties || {};
+                            var id = String(f.id != null ? f.id : (p.id != null ? p.id : ''));
+                            if (!id || _dareSeen[id]) return;
+                            var n = _dareTypeNum(f);
+                            if (typeof n !== 'number' || !DARE_CAT_LABELS[n]) return;
+                            _dareSeen[id] = true; added++;
+                            var fixed = {type: 'Feature', id: f.id, geometry: f.geometry, properties: Object.assign({}, p, {
+                                name: _fixMojibake(p.name), ancient: _fixMojibake(p.ancient)
+                            })};
+                            (batches[n] = batches[n] || []).push(fixed);
                         });
-                        console.log('[Roman] DARE dynamic OK — processed features');
+                        Object.keys(batches).forEach(function (n) {
+                            var layer = _dareLayerFor(n);
+                            layer.addData({type: 'FeatureCollection', features: batches[n]});
+                            if (_romanEnabled['dare_' + n] && !_romanGroup.hasLayer(layer)) _romanGroup.addLayer(layer);
+                        });
+                        var total = Object.keys(_dareSeen).length;
+                        _romanStatus('dare', 'DARE: ' + total.toLocaleString() + ' sites loaded (+' + added + ').');
                     })
-                    .catch(function(e) {
-                        _dareLoading = false;
-                        console.error('[Roman] DARE dynamic fetch error:', e.message);
+                    .catch(function (e) {
+                        console.warn('[Roman] DARE fetch failed (retry on next move):', e && e.message);
+                        _romanStatus('dare', 'DARE: could not load sites — retrying on the next move.');
+                    })
+                    .finally(function () {
+                        _dareInflight = false;
+                        if (_dareAgain) { _dareAgain = false; _loadDynamicDareSites(); }
                     });
             }
+
+            // ── Drumuri romane: NDJSON în flux, segmente desenate pe măsură ce sosesc ──
+            var ROMAN_ROADS_URL = 'https://dacboefvooxgsngxkavx.supabase.co/storage/v1/object/public/Harti/route-segments-all-1791445468011.ndjson';
+            var _roadsLoading = false, _roadsDone = false;
+
+            function _roadStyle() {
+                return { color: '#FF5A36', weight: 1.8, opacity: _romanOpacity, interactive: false, pane: 'pane_roman' };
+            }
+            function _wktPaths(w) {
+                var out = [], re = /\(([^()]+)\)/g, m;
+                while ((m = re.exec(w))) {
+                    var pts = m[1].split(',').map(function (s) { return s.trim().split(/\s+/).map(Number); })
+                        .filter(function (a) { return a.length >= 2 && !a.some(isNaN); });
+                    if (pts.length > 1) out.push(pts);
+                }
+                return out;
+            }
+            function _toPaths(g) {
+                if (!g) return [];
+                if (typeof g === 'string') {
+                    var t = g.trim();
+                    return t[0] === '{' ? _toPaths(JSON.parse(t)) : /LINESTRING/i.test(t) ? _wktPaths(t) : [];
+                }
+                if (Array.isArray(g)) {
+                    if (g.length && typeof g[0][0] === 'number') return [g];
+                    if (g.length && Array.isArray(g[0][0]) && typeof g[0][0][0] === 'number') return g;
+                    return [];
+                }
+                switch (g.type) {
+                    case 'Feature': return _toPaths(g.geometry);
+                    case 'FeatureCollection': return g.features.reduce(function (a, f) { return a.concat(_toPaths(f)); }, []);
+                    case 'GeometryCollection': return g.geometries.reduce(function (a, x) { return a.concat(_toPaths(x)); }, []);
+                    case 'LineString': return [g.coordinates];
+                    case 'MultiLineString': return g.coordinates;
+                }
+                if (g.paths) return g.paths;
+                return [];
+            }
+            function _recordPaths(o) {
+                if (!o || typeof o !== 'object') return [];
+                var p = _toPaths(o);
+                if (p.length) return p;
+                var srcs = [o, o.properties || {}], keys = ['geometry', 'geom', 'geojson', 'the_geom', 'wkt', 'shape', 'line', 'path', 'coordinates', 'coords'];
+                for (var s = 0; s < srcs.length; s++) for (var k = 0; k < keys.length; k++) {
+                    if (srcs[s][keys[k]] == null) continue;
+                    try { p = _toPaths(srcs[s][keys[k]]); } catch (e) { p = []; }
+                    if (p.length) return p;
+                }
+                return [];
+            }
+            function _thinPath(path, tol) {
+                var out = [path[0]], l = path[0];
+                for (var i = 1; i < path.length - 1; i++) {
+                    var q = path[i];
+                    if (Math.hypot(q[0] - l[0], q[1] - l[1]) > tol) { out.push(q); l = q; }
+                }
+                out.push(path[path.length - 1]);
+                return out;
+            }
+            // Citește NDJSON din Response: linie cu linie, cu progres pe bytes.
+            function _readNdjsonStream(resp, onLine, onProgress) {
+                var total = +resp.headers.get('content-length') || 0;
+                if (!resp.body || !resp.body.getReader) {
+                    return resp.text().then(function (t) { t.split('\n').forEach(function (l) { if (l.trim()) onLine(l.trim()); }); });
+                }
+                var reader = resp.body.getReader(), dec = new TextDecoder(), buf = '', got = 0;
+                function pump() {
+                    return reader.read().then(function (res) {
+                        if (res.done) { buf += dec.decode(); if (buf.trim()) onLine(buf.trim()); return; }
+                        got += res.value.length;
+                        buf += dec.decode(res.value, {stream: true});
+                        var i, start = 0;
+                        while ((i = buf.indexOf('\n', start)) >= 0) {
+                            var line = buf.slice(start, i).trim(); start = i + 1;
+                            if (line) onLine(line);
+                        }
+                        buf = buf.slice(start);
+                        if (onProgress) onProgress(got, total);
+                        return pump();
+                    });
+                }
+                return pump();
+            }
+
+            function _loadRomanRoads() {
+                var group = _romanLayers.roads;
+                if (!group) { group = L.featureGroup([], { pane: 'pane_roman' }); _romanLayers.roads = group; }
+                if (_romanEnabled.roads && _romanVisible && !_romanGroup.hasLayer(group)) _romanGroup.addLayer(group);
+                if (_roadsDone || _roadsLoading) return;
+                _roadsLoading = true;
+                _romanStatus('roads', 'Roads: downloading…');
+
+                var lines = 0, segs = 0, pending = [], frame = null, merc = null;
+                function flush() {
+                    frame = null;
+                    var batch = pending; pending = [];
+                    batch.forEach(function (ll) { group.addLayer(L.polyline(ll, _roadStyle())); });
+                }
+                function queue(ll) {
+                    pending.push(ll);
+                    if (frame === null) frame = requestAnimationFrame(flush);
+                }
+
+                fetch(ROMAN_ROADS_URL)
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        return _readNdjsonStream(r, function (line) {
+                            lines++;
+                            var o; try { o = JSON.parse(line); } catch (e) { return; }
+                            var paths = _recordPaths(o).filter(function (p) { return p && p.length > 1; });
+                            if (!paths.length) return;
+                            if (merc === null) merc = Math.abs(paths[0][0][0]) > 360;   // coordonate Web Mercator?
+                            var tol = merc ? 1000 : 0.01;
+                            paths.forEach(function (p) {
+                                var ll = _thinPath(p, tol).map(function (c) {
+                                    if (!merc) return [c[1], c[0]];
+                                    var ll2 = L.CRS.EPSG3857.unproject(L.point(c[0], c[1]));
+                                    return [ll2.lat, ll2.lng];
+                                });
+                                queue(ll); segs++;
+                            });
+                        }, function (got, total) {
+                            _romanStatus('roads', 'Roads: ' + lines.toLocaleString() + ' lines read… ' + (total ? Math.round(got / total * 100) + '%' : ''));
+                        });
+                    })
+                    .then(function () {
+                        if (frame !== null) { cancelAnimationFrame(frame); }
+                        flush();
+                        _roadsDone = true; _roadsLoading = false;
+                        _romanStatus('roads', segs
+                            ? 'Roads: ' + segs.toLocaleString() + ' segments loaded.'
+                            : 'Roads: no geometry recognised in ' + lines + ' lines.');
+                    })
+                    .catch(function (e) {
+                        _roadsLoading = false;
+                        console.warn('[Roman] roads failed:', e && e.message);
+                        _romanStatus('roads', 'Roads: could not load (' + (e && e.message) + ').');
+                    });
+            }
+
             // ── ROMAN: load helpers & public toggles ──
             function _loadSingleRomanLayer(key) {
                 var cfg = ROMAN_SUB_LAYERS[key];
                 if (!cfg) return;
+                if (cfg.dare) {
+                    var dl = _romanLayers[key];
+                    if (dl && _romanEnabled[key] && _romanVisible && !_romanGroup.hasLayer(dl)) _romanGroup.addLayer(dl);
+                    _loadDynamicDareSites();
+                    return;
+                }
+                if (cfg.type === 'ndjson') { _loadRomanRoads(); return; }
                 if (_romanLayers[key]) {
                     if (_romanEnabled[key] && _romanVisible && !_romanGroup.hasLayer(_romanLayers[key])) {
                         _romanGroup.addLayer(_romanLayers[key]);
                     }
-                    return;
-                }
-                if (cfg.dare) {
-                    _loadDynamicDareSites();
                     return;
                 }
                 if (!cfg.url) return;
@@ -5787,6 +5952,8 @@
                     _loadRomanData();
                 } else {
                     map.removeLayer(_romanGroup);
+                    _romanStatus('dare', '');
+                    _romanStatus('roads', '');
                 }
             };
 
