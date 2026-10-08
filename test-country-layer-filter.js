@@ -35,22 +35,25 @@ const FILTER_ACTIVE = 'country-filter-active';
 // Hand-off bboxes exactly as the gate stores them ([west, south, east, north]).
 const IT_BBOX = [6.62, 35.49, 18.52, 47.09];   // Italy
 const DK_BBOX = [8.08, 54.56, 15.19, 57.75];   // Denmark proper
+const CA_BBOX = [-141.0, 41.0, -52.0, 83.0];    // Canada (group availability fallback)
 
 /* ══════════════════════════════════════════════════════════════
    1. Static wiring: the hiding CSS, versioned assets, precache
    ══════════════════════════════════════════════════════════════ */
 assert(/#transpPanel\.country-filter-active \.country-layer-unavailable\s*\{\s*display:\s*none\s*!important/.test(css),
     'styles.css hides rows marked country-layer-unavailable while the filter is active');
-assert(html.includes('css/styles.css?v=20261008-country-layer-filter'), 'index.html loads the re-versioned styles.css');
-assert(html.includes('js/map-app.js?v=20261008-roman-reference'), 'index.html loads the re-versioned map-app.js');
+assert(html.includes('css/styles.css?v=20261008-roman-dare-icons'), 'index.html loads the re-versioned styles.css');
+assert(html.includes('js/map-app.js?v=20261008-premium-historical-roman'), 'index.html loads the re-versioned map-app.js');
+assert(html.includes('js/historical-eu-maps.js?v=20261008-country-overlap'), 'index.html loads the country-filtered catalog');
 assert(html.includes('js/globe-country-picker.js?v=20261008-country-bounds'), 'index.html loads the re-versioned picker');
-['css/styles.css?v=20261008-country-layer-filter',
- 'js/map-app.js?v=20261008-roman-reference',
+['css/styles.css?v=20261008-roman-dare-icons',
+ 'js/map-app.js?v=20261008-premium-historical-roman',
+ 'js/historical-eu-maps.js?v=20261008-country-overlap',
  'js/globe-country-picker.js?v=20261008-country-bounds'].forEach(function (p) {
     assert(sw.includes("'" + p + "'"), 'sw.js precaches ' + p);
 });
 const shellVersion = Number((sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);
-assert(shellVersion >= 169, 'sw.js cache is v169 or newer (got v' + shellVersion + ')');
+assert(shellVersion >= 171, 'sw.js cache is v169 or newer (got v' + shellVersion + ')');
 console.log('  ✓ hiding CSS, re-versioned assets and sw.js v' + shellVersion + ' precache verified');
 
 /* ══════════════════════════════════════════════════════════════
@@ -161,6 +164,38 @@ function setupPanel() {
     // The country gate ships on the .eu site: model the European market so
     // market-dependent bounds (the Roman Empire box) resolve like production.
     window.DetectLabSite = { isEurope: true };
+    const catalogSpecs = [
+        { id: 'wig300k', bounds: [14.33, 49.00, 27.50, 55.80] },
+        { id: 'gaul', bounds: [15.12, 51.49, 17.36, 52.99] },
+        // Fixture to exercise the parent's hasAvailableMaps() fallback when a
+        // dynamic catalog row is the only available Historical Maps sublayer.
+        { id: 'fixture', bounds: [-130.0, 40.0, -50.0, 80.0] }
+    ];
+    const catalogContainer = document.getElementById('histEuMapsSection');
+    const catalogRows = catalogSpecs.map(spec => {
+        const row = new ElementMock('div', { id: 'cenagisMapRow_' + spec.id, class: 'cenagis-map-row' }, catalogContainer);
+        row.getAttribute = key => key === 'data-map-id' ? spec.id : null;
+        document.elements.push(row);
+        document.ids.set(row.id, row);
+        return { spec, row };
+    });
+    let availableCatalogCount = 0;
+    window.DetectLabEuMaps = {
+        filterForCountry(code, bounds) {
+            const bbox = Array.isArray(bounds) ? bounds : null;
+            availableCatalogCount = 0;
+            catalogRows.forEach(({ spec, row }) => {
+                const b = spec.bounds;
+                const available = !code || !bbox ||
+                    (b[2] >= bbox[0] && b[0] <= bbox[2] && b[3] >= bbox[1] && b[1] <= bbox[3]);
+                row.classList.toggle(UNAVAILABLE, !available);
+                row.setAttribute('aria-hidden', available ? 'false' : 'true');
+                if (available) availableCatalogCount++;
+            });
+        },
+        hasAvailableMaps() { return availableCatalogCount > 0; },
+        toggleHistEuLayer() {}
+    };
     const frames = [];
     const context = vm.createContext({
         window, document,
@@ -174,7 +209,7 @@ function setupPanel() {
     vm.runInContext(source.match(/var APM_BOUNDS = [^;]+;/)[0], context);
     vm.runInContext(coverageConfig + visibilityCode, context);
     vm.runInContext(section('function measureSubLayersHeight', '(function initMap()'), context);
-    return { window, document, context };
+    return { window, document, context, catalogRows };
 }
 
 function unavailable(document, id) {
@@ -256,8 +291,10 @@ function groupRowOf(document, iconId) {
     assert.equal(groupRowOf(document, 'romanExpandIcon').classList.contains(UNAVAILABLE), false, 'Roman group kept for Italy');
     // EU-wide layers keep working anywhere in Europe.
     assert.equal(unavailable(document, 'satellite60sRow'), false, 'Europe-wide satellite layer kept for Italy');
-    // EU-wide historical maps reach the Alps → kept; Romania-only tops hidden.
-    assert.equal(unavailable(document, 'histEuRow'), false, 'EU historical maps kept for Italy');
+    // European catalog rows are nested in the single premium group and are
+    // independently hidden when their map extents do not overlap Italy.
+    assert.equal(document.getElementById('histEuRow'), null, 'separate European Historical Maps group removed');
+    assert.equal(unavailable(document, 'cenagisMapRow_wig300k'), true, 'WIG 300k catalog row hidden for Italy');
     assert.equal(unavailable(document, 'babelScroll'), true, 'Romania-only premium layer hidden for Italy');
     assert.equal(rowOfToggle(document, 'apmToggle').classList.contains(UNAVAILABLE), true, 'APM row hidden for Italy');
     // Panel carries the filter class and hidden rows are aria-hidden.
@@ -303,13 +340,33 @@ function groupRowOf(document, iconId) {
         'premium historical group kept for Denmark (WIG/KDR boxes reach the bbox)');
     assert.equal(unavailable(document, 'josephineRow'), true, 'Josephine sheet hidden for Denmark');
     assert.equal(unavailable(document, 'wig100kRow'), false, 'WIG 100k kept for Denmark');
-    assert.equal(unavailable(document, 'histEuRow'), false, 'EU historical maps kept for Denmark');
+    assert.equal(document.getElementById('histEuRow'), null, 'separate European Historical Maps group removed');
+    assert.equal(unavailable(document, 'cenagisMapRow_wig300k'), false, 'partially overlapping WIG 300k catalog row kept for Denmark');
+    assert.equal(unavailable(document, 'cenagisMapRow_gaul'), true, 'non-overlapping Gaul catalog row hidden for Denmark');
     assert(document.getElementById('transpPanel').classList.contains(FILTER_ACTIVE), 'panel marked country-filter-active');
     console.log('  ✓ Denmark (bbox fallback): own + partially covering LiDAR kept, the rest hidden');
 }
 
 /* ══════════════════════════════════════════════════════════════
-   5. The gate draws the country bounds on the Leaflet map
+   5. A matching dynamic European map keeps the single group available
+      even when no legacy premium sheet covers the selected country
+   ══════════════════════════════════════════════════════════════ */
+{
+    const { window, document } = setupPanel();
+    window._detectlabCountryLayer = null;
+    window._detectlabCountryBounds = CA_BBOX;
+    window.filterLayersForCountry('CA');
+
+    assert.equal(unavailable(document, 'cenagisMapRow_fixture'), false, 'matching dynamic catalog sheet available for Canada fixture');
+    assert.equal(groupRowOf(document, 'histPremiumExpandIcon').classList.contains(UNAVAILABLE), false,
+        'single premium historical group stays visible for a matching dynamic catalog sheet');
+    window.unfilterLayersForCountry();
+    assert.equal(unavailable(document, 'cenagisMapRow_fixture'), false, 'dynamic catalog row restored on exit');
+    console.log('  ✓ dynamic CENAGIS catalog participates in country filtering and keeps the single parent group available');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   6. The gate draws the country bounds on the Leaflet map
    ══════════════════════════════════════════════════════════════ */
 function makeStubElement() {
     return {

@@ -24,7 +24,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=20261008-country-layer-filter">
+    <link rel="stylesheet" href="css/styles.css?v=20261008-roman-dare-icons">
     <link rel="stylesheet" href="css/globe-country-picker.css?v=20261008">
     <link rel="stylesheet" href="css/country-dock.css?v=20261008">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
@@ -2492,145 +2492,170 @@
 
                             <!-- DARE Roman Sites (Categorized) -->
                             <div style="font-size:0.68rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(232,119,42,0.7);margin-top:8px;margin-bottom:2px;">DARE Sites</div>
+                            <div style="display:flex;align-items:center;gap:5px;margin:2px 0 5px;">
+                                <button type="button" id="romanDareAll" onclick="toggleRomanDareCategories(true)" style="padding:3px 7px;border:1px solid rgba(204,34,34,0.45);border-radius:4px;background:rgba(204,34,34,0.12);color:#ffd9d9;font-size:0.65rem;cursor:pointer;">All</button>
+                                <button type="button" id="romanDareNone" onclick="toggleRomanDareCategories(false)" style="padding:3px 7px;border:1px solid rgba(204,34,34,0.35);border-radius:4px;background:rgba(255,255,255,0.05);color:rgba(245,240,235,0.8);font-size:0.65rem;cursor:pointer;">None</button>
+                                <input type="search" id="romanDareCountryCode" maxlength="2" placeholder="Country ISO2" aria-label="DARE country ISO2 filter" style="width:110px;margin-left:auto;padding:4px 6px;border-radius:4px;border:1px solid rgba(200,169,110,0.25);background:rgba(13,26,43,0.9);color:#f5f0eb;font-size:0.65rem;">
+                            </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20v-5l3.5-2.5L10 15v5"/><path d="M14 20v-5l3.5-2.5L21 15v5"/><path d="M8.5 20v-6.5L12 10.5l3.5 3V20"/><line x1="2" y1="20" x2="22" y2="20"/></svg></span>
                                     <span class="t" data-key="layer_dare_11">Major Settlements</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Major Settlements"><input type="checkbox" id="roman_dare_11" onchange="toggleRomanSub('dare_11',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Major Settlements"><input type="checkbox" id="roman_dare_11" checked onchange="toggleRomanSub('dare_11',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10"/><circle cx="7" cy="7" r="2.3" fill="#CC2222" stroke="none"/><circle cx="17" cy="7" r="2.3" fill="#CC2222" stroke="none"/><circle cx="7" cy="17" r="2.3" fill="#CC2222" stroke="none"/><circle cx="17" cy="17" r="2.3" fill="#CC2222" stroke="none"/></svg></span>
                                     <span class="t" data-key="layer_dare_17">Major Forts</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Major Forts"><input type="checkbox" id="roman_dare_17" onchange="toggleRomanSub('dare_17',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Major Forts"><input type="checkbox" id="roman_dare_17" checked onchange="toggleRomanSub('dare_17',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="1.5" fill="#CC2222" stroke="none"/></svg></span>
                                     <span class="t" data-key="layer_dare_13">Civitas Capitals</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Civitas Capitals"><input type="checkbox" id="roman_dare_13" onchange="toggleRomanSub('dare_13',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Civitas Capitals"><input type="checkbox" id="roman_dare_13" checked onchange="toggleRomanSub('dare_13',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20v-6l3-2.5 3 2.5V20"/><path d="M11 20v-6l3-2.5 3 2.5V20"/><line x1="2" y1="20" x2="22" y2="20"/></svg></span>
                                     <span class="t" data-key="layer_dare_12">Regular Settlements</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Regular Settlements"><input type="checkbox" id="roman_dare_12" onchange="toggleRomanSub('dare_12',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Regular Settlements"><input type="checkbox" id="roman_dare_12" checked onchange="toggleRomanSub('dare_12',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="7" height="7"/><circle cx="8.5" cy="8.5" r="1.9" fill="#CC2222" stroke="none"/><circle cx="15.5" cy="8.5" r="1.9" fill="#CC2222" stroke="none"/><circle cx="8.5" cy="15.5" r="1.9" fill="#CC2222" stroke="none"/><circle cx="15.5" cy="15.5" r="1.9" fill="#CC2222" stroke="none"/></svg></span>
                                     <span class="t" data-key="layer_dare_18">Forts/Castrum</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Forts/Castrum"><input type="checkbox" id="roman_dare_18" onchange="toggleRomanSub('dare_18',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Forts/Castrum"><input type="checkbox" id="roman_dare_18" checked onchange="toggleRomanSub('dare_18',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 20V8h1.4V6.5h1.4V8h1.4V6.5h1.4V8h1.4V20"/><rect x="11.2" y="14.5" width="1.6" height="5.5" fill="#CC2222" stroke="none"/><line x1="6" y1="20" x2="18" y2="20"/></svg></span>
                                     <span class="t" data-key="layer_dare_53">Fortlets/Towers</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Fortlets/Towers"><input type="checkbox" id="roman_dare_53" onchange="toggleRomanSub('dare_53',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Fortlets/Towers"><input type="checkbox" id="roman_dare_53" checked onchange="toggleRomanSub('dare_53',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="16.5" x2="21" y2="7.5" stroke-dasharray="2.6 2.2"/><rect x="9.6" y="9.6" width="4.8" height="4.8" transform="rotate(45 12 12)"/></svg></span>
                                     <span class="t" data-key="layer_dare_16">Roads/Coastal Stations</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Roads/Coastal Stations"><input type="checkbox" id="roman_dare_16" onchange="toggleRomanSub('dare_16',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Roads/Coastal Stations"><input type="checkbox" id="roman_dare_16" checked onchange="toggleRomanSub('dare_16',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5L20.5 9H3.5Z"/><line x1="4" y1="11.5" x2="20" y2="11.5"/><path d="M6.8 11.5v6M9.9 11.5v6M14.1 11.5v6M17.2 11.5v6"/><line x1="4" y1="19.5" x2="20" y2="19.5"/></svg></span>
                                     <span class="t" data-key="layer_dare_61">Sanctuaries/Temples</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Sanctuaries/Temples"><input type="checkbox" id="roman_dare_61" onchange="toggleRomanSub('dare_61',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Sanctuaries/Temples"><input type="checkbox" id="roman_dare_61" checked onchange="toggleRomanSub('dare_61',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5h15v2a4.5 4.5 0 0 1-4.5 4.5H9a4.5 4.5 0 0 1-4.5-4.5Z"/><path d="M7 15c1.3 1 2.7 1 4 0s2.7-1 4 0"/><path d="M10 9.5c.9-.7.9-1.4 0-2.2M14 9.5c.9-.7.9-1.4 0-2.2"/><path d="M7.5 19.5l-1 2M16.5 19.5l1 2"/></svg></span>
                                     <span class="t" data-key="layer_dare_66">Baths</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Baths"><input type="checkbox" id="roman_dare_66" onchange="toggleRomanSub('dare_66',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Baths"><input type="checkbox" id="roman_dare_66" checked onchange="toggleRomanSub('dare_66',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19.5a3.5 3.5 0 0 1 7 0"/><path d="M8.5 19.5a4.5 4.5 0 0 1 9 0"/><path d="M15.5 19.5a3.5 3.5 0 0 1 7 0"/><line x1="2" y1="19.5" x2="22" y2="19.5"/></svg></span>
                                     <span class="t" data-key="layer_dare_32">Tumuli</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Tumuli"><input type="checkbox" id="roman_dare_32" onchange="toggleRomanSub('dare_32',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Tumuli"><input type="checkbox" id="roman_dare_32" checked onchange="toggleRomanSub('dare_32',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 19.5v-9a2.5 2.5 0 0 1 5 0v9"/><path d="M13 19.5v-7a2.5 2.5 0 0 1 5 0v7"/><line x1="3" y1="19.5" x2="21" y2="19.5"/></svg></span>
                                     <span class="t" data-key="layer_dare_63">Cemeteries</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Cemeteries"><input type="checkbox" id="roman_dare_63" onchange="toggleRomanSub('dare_63',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Cemeteries"><input type="checkbox" id="roman_dare_63" checked onchange="toggleRomanSub('dare_63',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="12" width="11" height="8"/><line x1="12" y1="3.5" x2="12" y2="12"/><line x1="9.6" y1="5.5" x2="14.4" y2="5.5"/></svg></span>
                                     <span class="t" data-key="layer_dare_21">Monasteries</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Monasteries"><input type="checkbox" id="roman_dare_21" onchange="toggleRomanSub('dare_21',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Monasteries"><input type="checkbox" id="roman_dare_21" checked onchange="toggleRomanSub('dare_21',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="4" x2="12" y2="20" stroke-width="2.4"/><line x1="7.5" y1="9.5" x2="16.5" y2="9.5" stroke-width="2.4"/></svg></span>
                                     <span class="t" data-key="layer_dare_24">Churches</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Churches"><input type="checkbox" id="roman_dare_24" onchange="toggleRomanSub('dare_24',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Churches"><input type="checkbox" id="roman_dare_24" checked onchange="toggleRomanSub('dare_24',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 20v-8.5L12 5l7.5 6.5V20"/><line x1="4.5" y1="11.5" x2="19.5" y2="11.5"/><circle cx="12" cy="15.5" r="2"/></svg></span>
                                     <span class="t" data-key="layer_dare_14">Villas</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Villas"><input type="checkbox" id="roman_dare_14" onchange="toggleRomanSub('dare_14',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Villas"><input type="checkbox" id="roman_dare_14" checked onchange="toggleRomanSub('dare_14',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5c4-1.7 8.5-.6 11 2.4"/><line x1="15" y1="4.8" x2="5.5" y2="19.5"/></svg></span>
                                     <span class="t" data-key="layer_dare_57">Mines/Quarries</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Mines/Quarries"><input type="checkbox" id="roman_dare_57" onchange="toggleRomanSub('dare_57',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Mines/Quarries"><input type="checkbox" id="roman_dare_57" checked onchange="toggleRomanSub('dare_57',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 19.5L8.5 9l3.5 6.5L15.5 9l6.5 10.5Z"/></svg></span>
                                     <span class="t" data-key="layer_dare_49">Passes</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Passes"><input type="checkbox" id="roman_dare_49" onchange="toggleRomanSub('dare_49',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Passes"><input type="checkbox" id="roman_dare_49" checked onchange="toggleRomanSub('dare_49',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="2.5" y1="9.5" x2="21.5" y2="9.5"/><path d="M4.5 17.5v-8a7.5 7.5 0 0 1 15 0v8"/><line x1="2.5" y1="17.5" x2="21.5" y2="17.5"/></svg></span>
                                     <span class="t" data-key="layer_dare_51">Bridges</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Bridges"><input type="checkbox" id="roman_dare_51" onchange="toggleRomanSub('dare_51',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Bridges"><input type="checkbox" id="roman_dare_51" checked onchange="toggleRomanSub('dare_51',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5L15.5 17h-7Z"/><line x1="7.5" y1="19.5" x2="16.5" y2="19.5"/></svg></span>
                                     <span class="t" data-key="layer_dare_55">Roads/Milestones</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Roads/Milestones"><input type="checkbox" id="roman_dare_55" onchange="toggleRomanSub('dare_55',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Roads/Milestones"><input type="checkbox" id="roman_dare_55" checked onchange="toggleRomanSub('dare_55',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="8" x2="21" y2="8"/><path d="M3.5 18.5V12.5a2.83 2.83 0 0 1 5.67 0v6M9.17 18.5V12.5a2.83 2.83 0 0 1 5.67 0v6M14.83 18.5V12.5a2.83 2.83 0 0 1 5.67 0v6"/><line x1="2.5" y1="18.5" x2="21.5" y2="18.5"/></svg></span>
                                     <span class="t" data-key="layer_dare_52">Aqueducts</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Aqueducts"><input type="checkbox" id="roman_dare_52" onchange="toggleRomanSub('dare_52',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Aqueducts"><input type="checkbox" id="roman_dare_52" checked onchange="toggleRomanSub('dare_52',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
                             <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);margin-top:4px;">
                                 <span style="display:flex;align-items:center;gap:5px;">
                                     <span style="width:16px;height:16px;border-radius:50%;background:rgba(12,17,30,0.68);border:1.5px solid #CC2222;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#CC2222" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7.5" y1="5" x2="16.5" y2="5"/><line x1="8.5" y1="7" x2="15.5" y2="7"/><path d="M9.5 7v10M12 7v10M14.5 7v10"/><line x1="8.5" y1="17" x2="15.5" y2="17"/><line x1="7" y1="19.5" x2="17" y2="19.5"/></svg></span>
                                     <span class="t" data-key="layer_dare_64">Monuments</span>
                                 </span>
-                                <label class="apm-toggle-switch" title="Toggle Monuments"><input type="checkbox" id="roman_dare_64" onchange="toggleRomanSub('dare_64',this.checked)"><span class="apm-toggle-track"></span></label>
+                                <label class="apm-toggle-switch" title="Toggle Monuments"><input type="checkbox" id="roman_dare_64" checked onchange="toggleRomanSub('dare_64',this.checked)"><span class="apm-toggle-track"></span></label>
+                            </div>
+
+                            <!-- Pleiades Roman-period sites -->
+                            <div id="romanPlacesRow" style="margin-top:7px;padding-top:7px;border-top:1px solid rgba(232,119,42,0.18);">
+                                <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);">
+                                    <span style="display:flex;align-items:center;gap:5px;">
+                                        <span style="width:9px;height:9px;border-radius:50%;background:#FFD60A;border:1px solid rgba(0,0,0,0.7);display:inline-block;"></span>
+                                        <span>Roman Sites (Pleiades)</span>
+                                    </span>
+                                    <label class="apm-toggle-switch" title="Toggle Pleiades Roman sites"><input type="checkbox" id="roman_places" onchange="toggleRomanSub('places',this.checked)"><span class="apm-toggle-track"></span></label>
+                                </div>
+                                <select id="roman_period" onchange="setRomanPlacesPeriod(this.value)" aria-label="Pleiades site period" style="width:100%;margin-top:5px;padding:4px 6px;border:1px solid rgba(200,169,110,0.25);border-radius:4px;background:rgba(13,26,43,0.9);color:#f5f0eb;font-size:0.68rem;">
+                                    <option value="R">Sites: Roman (AD 30–300)</option>
+                                    <option value="RH">Sites: + Republican (from 330 BC)</option>
+                                    <option value="RL">Sites: + Late Antique (to AD 640)</option>
+                                </select>
+                                <div id="romanPlacesFallback" style="display:none;margin-top:5px;font-size:0.66rem;color:rgba(245,240,235,0.6);">
+                                    Pleiades server unavailable. Choose the downloaded CSV/CSV.GZ file:
+                                    <input type="file" id="romanPlacesFile" accept=".csv,.gz" style="display:block;max-width:100%;margin-top:3px;font-size:0.65rem;">
+                                </div>
                             </div>
 
                             <!-- Walls -->
@@ -2640,6 +2665,14 @@
                                     <span class="t" data-key="layer_walls">Walls</span>
                                 </span>
                                 <label class="apm-toggle-switch" title="Toggle Walls"><input type="checkbox" id="roman_walls" onchange="toggleRomanSub('walls',this.checked)"><span class="apm-toggle-track"></span></label>
+                            </div>
+
+                            <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);">
+                                <span style="display:flex;align-items:center;gap:5px;">
+                                    <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 8C3 7 3 3 5 3S7 7 9 2" fill="none" stroke="#ffffff" stroke-width="0.8"/></svg>
+                                    <span>Regional names (AWMC)</span>
+                                </span>
+                                <label class="apm-toggle-switch" title="Toggle AWMC regional names"><input type="checkbox" id="roman_regional_names" onchange="toggleRomanSub('regional_names',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
 
                             <!-- Political Shading header -->
@@ -2697,6 +2730,15 @@
                                     <span class="t" data-key="layer_diocletian">Prov. after Diocletian</span>
                                 </span>
                                 <label class="apm-toggle-switch" title="Roman Provinces after Diocletian"><input type="checkbox" id="roman_shade_diocletian" onchange="toggleRomanSub('shade_diocletian',this.checked)"><span class="apm-toggle-track"></span></label>
+                            </div>
+
+                            <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);">
+                                <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:rgba(235,195,40,0.45);border:1px solid #EBC328;display:inline-block;"></span><span>Herod's kingdom</span></span>
+                                <label class="apm-toggle-switch" title="Herod's kingdom"><input type="checkbox" id="roman_shade_herod" onchange="toggleRomanSub('shade_herod',this.checked)"><span class="apm-toggle-track"></span></label>
+                            </div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;color:rgba(245,240,235,0.75);">
+                                <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:rgba(40,175,175,0.45);border:1px solid #28AFAF;display:inline-block;"></span><span>Hasmonean kingdom</span></span>
+                                <label class="apm-toggle-switch" title="Hasmonean kingdom"><input type="checkbox" id="roman_shade_hasmonean" onchange="toggleRomanSub('shade_hasmonean',this.checked)"><span class="apm-toggle-track"></span></label>
                             </div>
 
                         </div><!-- /romanSubLayers -->
@@ -2763,7 +2805,7 @@
                                     <path d="M3 6.5 Q6.5 5 10 6.5" stroke="#c8a96e" stroke-width="0.7" fill="none" />
                                     <path d="M3 9 Q6.5 7.5 10 9" stroke="#c8a96e" stroke-width="0.7" fill="none" />
                                 </svg>
-                                <span class="t" data-key="layer_historical_premium">Harti istorice / Historical maps</span>
+                                <span class="t" data-key="layer_historical_premium">Hărți istorice / Historical Maps</span>
 
                             </span>
                             <span style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
@@ -3268,39 +3310,15 @@
                                        oninput="setGalicia1855MapOpacity(this.value)">
                             </div>
 
+                            <!-- Catalogul CENAGIS / IH PAN este parte din același grup premium.
+                                 Rândurile sunt filtrate după suprapunerea extinderii hărții cu țara selectată. -->
+                            <div id="histEuMapsSection" class="cenagis-historical-section" aria-live="polite"></div>
+
                         </div><!-- /histPremiumSubLayers -->
 
                     </div><!-- /histPremium transp-layer-row -->
 
-                    <!-- Hărți Istorice Europene (CENAGIS / IH PAN) — Parent Group -->
-                    <div class="transp-layer-row" data-category="premium" id="histEuRow">
-                        <!-- Group header: master toggle -->
-                        <div class="transp-layer-label" style="margin-bottom:6px">
-                            <span style="display:flex;align-items:center;gap:7px;min-width:0">
-                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
-                                    <circle cx="6.5" cy="6.5" r="5.5" stroke="#c8a96e" stroke-width="0.9" />
-                                    <ellipse cx="6.5" cy="6.5" rx="2.5" ry="5.5" stroke="#c8a96e" stroke-width="0.7" fill="none" />
-                                    <line x1="1" y1="6.5" x2="12" y2="6.5" stroke="#c8a96e" stroke-width="0.7" />
-                                </svg>
-                                <span class="t" data-key="layer_historical_eu" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Hărți Istorice Europene / European Historical Maps</span>
-                            </span>
-                            <span style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
-                                <button onclick="toggleHistEuSubLayers()" id="histEuExpandBtn" title="Expand/Collapse sublayers" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:rgba(200,169,110,0.8);display:flex;align-items:center;transition:color 0.2s;" onmouseover="this.style.color='#c8a96e'" onmouseout="this.style.color='rgba(200,169,110,0.8)'">
-                                    <svg id="histEuExpandIcon" width="12" height="12" viewBox="0 0 12 12" fill="none" style="transition:transform 0.25s ease;transform:rotate(-90deg)">
-                                        <polyline points="2,4 6,8 10,4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-                                    </svg>
-                                </button>
-                                <label class="apm-toggle-switch" title="Toggle European Historical Maps group">
-                                    <input type="checkbox" id="histEuToggle" onchange="toggleHistEuLayer(this.checked)">
-                                    <span class="apm-toggle-track"></span>
-                                </label>
-                            </span>
-                        </div>
 
-                        <!-- Sub-layer switches categorized by Country (populated by historical-eu-maps.js) -->
-                        <div id="histEuSubLayers" style="margin-top:0;padding-left:6px;border-left:2px solid rgba(200,169,110,0.3);display:flex;flex-direction:column;gap:8px;overflow:hidden;transition:max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;max-height:0;opacity:0;"></div>
-
-                    </div><!-- /histEuRow -->
 
                     <!-- Amprenta Vegetației / Vegetation Fingerprint (premium) —
                          CLMS HR-VPP vegetation layers group. Substratul PPI
@@ -4716,8 +4734,8 @@
          through window.DetectLabGlobeGate) and before map-app.js, which
          attaches it to the Leaflet map. -->
     <script src="js/country-dock.js?v=20261008"></script>
-    <script src="js/map-app.js?v=20261008-roman-reference"></script>
-    <script src="js/historical-eu-maps.js?v=20260929-eu-cenagis-maps"></script>
+    <script src="js/map-app.js?v=20261008-premium-historical-roman"></script>
+    <script src="js/historical-eu-maps.js?v=20261008-country-overlap"></script>
     <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20261002-persistent-layer-actions-v2"></script>
@@ -5811,7 +5829,7 @@
     </div>
 
 <script src="js/account-legacy.js?v=20260814-promo"></script>
-<script src="js/subscriptions.js?v=20260926-vegfp-smx"></script>
+<script src="js/subscriptions.js?v=20261008-premium-roman-guard"></script>
 
 
 

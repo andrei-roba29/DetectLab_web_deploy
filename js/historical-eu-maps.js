@@ -770,10 +770,19 @@
         }
     ];
 
-    // ── Instanțe de Straturi Leaflet (cache) ──
-    var _leafletLayers = {};
+    // ── Instanțe de straturi Leaflet ──
+    // Hărțile CENAGIS care au deja un rând premium dedicat în index.html
+    // folosesc acel rând, nu sunt duplicate în catalogul de mai jos.
+    var SHARED_PREMIUM_MAP_KEYS = {
+        ukvme: true, chrzanowski: true, reymann: true,
+        kdr: true, kdr_gb: true, wig100k: true, kummersberg: true
+    };
+    var _leafletLayers = Object.create(null);
+    var _leafletOpacity = Object.create(null);
     var _activeMap = null;
-    var _selectedCountryCode = 'ALL';
+    var _selectedCountryCode = null;
+    var _selectedCountryBounds = null;
+    var _availableMapCount = 0;
 
     function getLang() {
         try {
@@ -788,6 +797,65 @@
 
     function getMapInstance() {
         return _activeMap || root._dlMap || root.map || null;
+    }
+
+    function normalizeBounds(bounds) {
+        if (!bounds) return null;
+        if (Array.isArray(bounds)) {
+            if (bounds.length === 4 && bounds.every(function (v) { return isFinite(Number(v)); })) {
+                return [Number(bounds[0]), Number(bounds[1]), Number(bounds[2]), Number(bounds[3])];
+            }
+            if (bounds.length >= 2 && Array.isArray(bounds[0]) && Array.isArray(bounds[1])) {
+                // Leaflet lat/lng corner pairs: [[south, west], [north, east]].
+                return [
+                    Math.min(Number(bounds[0][1]), Number(bounds[1][1])),
+                    Math.min(Number(bounds[0][0]), Number(bounds[1][0])),
+                    Math.max(Number(bounds[0][1]), Number(bounds[1][1])),
+                    Math.max(Number(bounds[0][0]), Number(bounds[1][0]))
+                ];
+            }
+        }
+        if (typeof bounds === 'object') {
+            var west = typeof bounds.getWest === 'function' ? bounds.getWest() : bounds.west;
+            var south = typeof bounds.getSouth === 'function' ? bounds.getSouth() : bounds.south;
+            var east = typeof bounds.getEast === 'function' ? bounds.getEast() : bounds.east;
+            var north = typeof bounds.getNorth === 'function' ? bounds.getNorth() : bounds.north;
+            if ([west, south, east, north].every(function (v) { return isFinite(Number(v)); })) {
+                return [Number(west), Number(south), Number(east), Number(north)];
+            }
+        }
+        return null;
+    }
+
+    function mapBoundsArray(mapMeta) {
+        var b = mapMeta && mapMeta.bounds;
+        if (!Array.isArray(b) || b.length < 2 || !Array.isArray(b[0]) || !Array.isArray(b[1])) return null;
+        // Catalog coordinates use [[south, west], [north, east]].
+        return [Number(b[0][1]), Number(b[0][0]), Number(b[1][1]), Number(b[1][0])];
+    }
+
+    function boundsOverlap(a, b) {
+        return !!(a && b && b[2] >= a[0] && b[0] <= a[2] && b[3] >= a[1] && b[1] <= a[3]);
+    }
+
+    function isSharedPremiumMap(mapKey) {
+        return !!SHARED_PREMIUM_MAP_KEYS[mapKey];
+    }
+
+    function getMapsOverlappingBounds(bounds, includeShared) {
+        var countryBounds = normalizeBounds(bounds);
+        return Object.keys(MAPS_CATALOG).filter(function (mapKey) {
+            if (!includeShared && isSharedPremiumMap(mapKey)) return false;
+            var extent = mapBoundsArray(MAPS_CATALOG[mapKey]);
+            return !countryBounds || boundsOverlap(countryBounds, extent);
+        }).map(function (mapKey) { return mapKey; });
+    }
+
+    function findCountry(countryCode) {
+        var code = String(countryCode || '').toUpperCase();
+        return COUNTRIES_DATA.find(function (country) {
+            return country.code === code || (country.code === 'BE-LU' && (code === 'BE' || code === 'LU'));
+        }) || null;
     }
 
     function createLeafletLayer(mapKey) {
@@ -806,17 +874,22 @@
             }
         }
 
-        var layer = L.tileLayer.wms(WMS_BASE_URL, {
+        var options = {
             layers: 'topp:' + mapMeta.wms_layer,
             format: 'image/png',
             transparent: true,
             version: '1.3.0',
             crs: L.CRS.EPSG3857,
-            opacity: 0.80,
+            opacity: _leafletOpacity[mapKey] == null ? 0.80 : _leafletOpacity[mapKey],
             pane: paneName,
             attribution: '© ' + mapMeta.provider + ' · <a href="https://pastmaps.cenagis.edu.pl" target="_blank" rel="noopener">CENAGIS</a> / <a href="https://atlasfontium.pl" target="_blank" rel="noopener">IH PAN</a>'
-        });
+        };
+        // Ask the WMS for pixels only where the map sheet has a footprint.
+        if (mapMeta.bounds && typeof L.latLngBounds === 'function') {
+            options.bounds = L.latLngBounds(mapMeta.bounds);
+        }
 
+        var layer = L.tileLayer.wms(WMS_BASE_URL, options);
         _leafletLayers[mapKey] = layer;
         return layer;
     }
@@ -828,20 +901,15 @@
         if (!layer) return;
 
         if (on) {
-            var masterToggle = document.getElementById('histEuToggle');
-            if (masterToggle && !masterToggle.checked) {
-                masterToggle.checked = true;
-            }
-            if (!mapInst.hasLayer(layer)) {
-                layer.addTo(mapInst);
-            }
-        } else {
-            if (mapInst.hasLayer(layer)) {
-                mapInst.removeLayer(layer);
-            }
+            var masterToggle = document.getElementById('histPremiumToggle');
+            if (masterToggle && !masterToggle.checked) masterToggle.checked = true;
+            if (!mapInst.hasLayer(layer)) layer.addTo(mapInst);
+        } else if (mapInst.hasLayer(layer)) {
+            mapInst.removeLayer(layer);
         }
 
-        // Sincronizează toate checkbox-urile cu aceeași cheie de hartă (dacă o hartă apare în mai multe țări)
+        // There is one checkbox per catalog map; this also remains safe if a
+        // future country view renders the same map in more than one section.
         var checkboxes = document.querySelectorAll('.cenagis-toggle[data-map-key="' + mapKey + '"]');
         checkboxes.forEach(function (cb) {
             if (cb.checked !== on) cb.checked = on;
@@ -855,78 +923,106 @@
     function setCenagisLayerOpacity(mapKey, val) {
         var layer = createLeafletLayer(mapKey);
         var opacity = val / 100;
-        if (layer && typeof layer.setOpacity === 'function') {
-            layer.setOpacity(opacity);
-        }
+        _leafletOpacity[mapKey] = opacity;
+        if (layer && typeof layer.setOpacity === 'function') layer.setOpacity(opacity);
 
-        // Sincronizează toate slider-ele și etichetele % pentru această hartă
         var sliders = document.querySelectorAll('.cenagis-opacity-slider[data-map-key="' + mapKey + '"]');
-        sliders.forEach(function (s) {
-            if (s.value !== String(val)) s.value = String(val);
+        sliders.forEach(function (slider) {
+            if (slider.value !== String(val)) slider.value = String(val);
         });
         var pctLabels = document.querySelectorAll('.cenagis-pct[data-map-key="' + mapKey + '"]');
-        pctLabels.forEach(function (p) {
-            p.textContent = val + '%';
-        });
+        pctLabels.forEach(function (label) { label.textContent = val + '%'; });
     }
 
-    function toggleHistEuSubLayers() {
-        var subContainer = document.getElementById('histEuSubLayers');
-        var icon = document.getElementById('histEuExpandIcon');
-        if (!subContainer) return;
-
-        var isCollapsed = subContainer.style.maxHeight === '0px' || subContainer.style.opacity === '0' || !subContainer.style.maxHeight;
-        if (isCollapsed) {
-            subContainer.style.maxHeight = 'none';
-            subContainer.style.opacity = '1';
-            subContainer.style.marginTop = '8px';
-            if (icon) icon.style.transform = 'rotate(0deg)';
-        } else {
-            subContainer.style.maxHeight = '0px';
-            subContainer.style.opacity = '0';
-            subContainer.style.marginTop = '0px';
-            if (icon) icon.style.transform = 'rotate(-90deg)';
-        }
-    }
-
+    // The old European-only master switch is now an alias for the combined
+    // Historical Maps group. Turning that parent OFF clears these WMS layers.
     function toggleHistEuLayer(on) {
-        if (!on) {
-            Object.keys(_leafletLayers).forEach(function (k) {
-                var layer = _leafletLayers[k];
-                var mapInst = getMapInstance();
-                if (mapInst && layer && mapInst.hasLayer(layer)) {
-                    mapInst.removeLayer(layer);
-                }
-            });
-            var checkboxes = document.querySelectorAll('.cenagis-toggle');
-            checkboxes.forEach(function (cb) {
-                cb.checked = false;
-            });
+        var masterToggle = document.getElementById('histPremiumToggle');
+        if (on) {
+            if (masterToggle) masterToggle.checked = true;
+            return;
         }
+        var mapInst = getMapInstance();
+        Object.keys(_leafletLayers).forEach(function (key) {
+            var layer = _leafletLayers[key];
+            if (mapInst && layer && mapInst.hasLayer(layer)) mapInst.removeLayer(layer);
+        });
+        document.querySelectorAll('.cenagis-toggle').forEach(function (cb) { cb.checked = false; });
+    }
+
+    function filterForCountry(countryCode, bounds) {
+        var code = countryCode && String(countryCode).toUpperCase() !== 'ALL'
+            ? String(countryCode).toUpperCase() : null;
+        var normalizedBounds = normalizeBounds(bounds);
+        if (!normalizedBounds && code && root._detectlabSelectedCountry === code) {
+            normalizedBounds = normalizeBounds(root._detectlabCountryBounds);
+        }
+
+        _selectedCountryCode = code;
+        _selectedCountryBounds = normalizedBounds;
+
+        var availableIds;
+        if (normalizedBounds) {
+            availableIds = getMapsOverlappingBounds(normalizedBounds, false);
+        } else if (code) {
+            // Fallback for a country selection without a geometry/bbox: use
+            // the catalog's curated country overlap list.
+            var country = findCountry(code);
+            // Without geometry, only the curated ISO list is trustworthy. An
+            // unknown country must not accidentally see the whole catalog.
+            availableIds = country ? country.maps.map(function (entry) { return entry.id; }) : [];
+            availableIds = availableIds.filter(function (id) { return !isSharedPremiumMap(id); });
+        } else {
+            availableIds = getMapsOverlappingBounds(null, false);
+        }
+
+        var available = Object.create(null);
+        availableIds.forEach(function (id) { available[id] = true; });
+        var rows = document.querySelectorAll('.cenagis-map-row');
+        var rowCount = 0;
+        rows.forEach(function (row) {
+            var id = row.getAttribute('data-map-id');
+            var isAvailable = !code || !!available[id];
+            row.classList.toggle('country-layer-unavailable', !isAvailable);
+            row.setAttribute('aria-hidden', isAvailable ? 'false' : 'true');
+            row.style.display = isAvailable ? '' : 'none';
+            if (isAvailable) rowCount++;
+        });
+        _availableMapCount = rowCount;
+
+        var section = document.getElementById('histEuMapsSection');
+        if (section) {
+            // Keep the catalog heading/status visible even when this country
+            // has no CENAGIS rows; the matching legacy premium sheets (if any)
+            // still live alongside it in the same accordion.
+            section.classList.remove('country-layer-unavailable');
+            section.setAttribute('aria-hidden', 'false');
+        }
+        var empty = document.getElementById('cenagisNoMaps');
+        if (empty) empty.style.display = code && rowCount === 0 ? 'block' : 'none';
+        var status = document.getElementById('histEuFilterStatus');
+        if (status) {
+            var country = code ? findCountry(code) : null;
+            var name = country && (country.name[getLang()] || country.name.en || country.name.ro);
+            if (!name && code && root._detectlabSelectedCountryName) name = root._detectlabSelectedCountryName;
+            if (!name) name = code || (getLang() === 'ro' ? 'toate țările' : 'all countries');
+            status.textContent = code
+                ? (getLang() === 'ro'
+                    ? rowCount + ' hărți cu acoperire parțială sau totală pentru ' + name + '.'
+                    : rowCount + ' maps overlap ' + name + ' partially or completely.')
+                : (getLang() === 'ro'
+                    ? 'Selectează o țară pe glob pentru a vedea hărțile care o intersectează.'
+                    : 'Choose a country on the globe to see maps that overlap it.');
+        }
+        return rowCount;
     }
 
     function filterCountry(countryCode) {
-        _selectedCountryCode = countryCode || 'ALL';
-        var lang = getLang();
-        var cards = document.querySelectorAll('.hist-eu-country-card');
-        cards.forEach(function (card) {
-            var cCode = card.getAttribute('data-country-code');
-            if (_selectedCountryCode === 'ALL' || _selectedCountryCode === cCode) {
-                card.style.display = '';
-            } else {
-                card.style.display = 'none';
-            }
-        });
+        return filterForCountry(countryCode, null);
+    }
 
-        var pills = document.querySelectorAll('.hist-eu-country-pill');
-        pills.forEach(function (p) {
-            var pCode = p.getAttribute('data-country-code');
-            if (pCode === _selectedCountryCode) {
-                p.classList.add('active');
-            } else {
-                p.classList.remove('active');
-            }
-        });
+    function hasAvailableMaps() {
+        return _availableMapCount > 0;
     }
 
     function showMapInfo(mapKey) {
@@ -945,127 +1041,106 @@
         }
     }
 
-    // ── Generare DOM UI în #histEuSubLayers ──
+    // ── Generare a catalogului plat în interiorul grupului premium unic ──
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
     function renderUi() {
-        var container = document.getElementById('histEuSubLayers');
+        var container = document.getElementById('histEuMapsSection');
         if (!container) return;
 
         var lang = getLang();
-        var allText = (lang === 'ro') ? 'Toate țările' : 'All countries';
-        var searchPlaceholder = (lang === 'ro') ? 'Caută țară sau hartă...' : 'Search country or map...';
+        var mapKeys = Object.keys(MAPS_CATALOG).filter(function (key) {
+            return !isSharedPremiumMap(key);
+        });
+        mapKeys.sort(function (a, b) {
+            var aTitle = MAPS_CATALOG[a].title[lang] || MAPS_CATALOG[a].title.en || MAPS_CATALOG[a].title.ro;
+            var bTitle = MAPS_CATALOG[b].title[lang] || MAPS_CATALOG[b].title.en || MAPS_CATALOG[b].title.ro;
+            return aTitle.localeCompare(bTitle, lang);
+        });
 
+        var heading = (lang === 'ro') ? 'Hărți europene · CENAGIS / IH PAN' : 'European maps · CENAGIS / IH PAN';
+        var emptyText = (lang === 'ro') ? 'Nu există hărți CENAGIS care să intersecteze țara selectată.' : 'No CENAGIS maps overlap the selected country.';
         var html = [];
+        html.push('<div class="cenagis-catalog-title" style="padding-top:8px;border-top:1px solid rgba(200,169,110,0.2);font-size:0.72rem;font-weight:600;letter-spacing:0.04em;color:rgba(200,169,110,0.95);">' + heading + '</div>');
+        html.push('<div id="histEuFilterStatus" aria-live="polite" style="font-size:0.66rem;color:rgba(245,240,235,0.55);line-height:1.35;">' + (lang === 'ro' ? 'Selectează o țară pe glob pentru a vedea hărțile care o intersectează.' : 'Choose a country on the globe to see maps that overlap it.') + '</div>');
+        html.push('<div id="cenagisNoMaps" style="display:none;font-size:0.68rem;color:rgba(245,240,235,0.55);">' + emptyText + '</div>');
+        html.push('<div class="cenagis-map-list" style="display:flex;flex-direction:column;gap:7px;">');
 
-        // 1. Selector / Pills pentru țări
-        html.push('<div class="hist-eu-filter-wrap" style="margin-bottom:8px;">');
-        html.push('  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">');
-        html.push('    <span style="font-size:0.7rem;color:rgba(200,169,110,0.9);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Țară / Country</span>');
-        html.push('    <select id="histEuCountrySelect" onchange="DetectLabEuMaps.filterCountry(this.value)" style="background:rgba(20,24,28,0.95);border:1px solid rgba(200,169,110,0.35);color:#f5f0eb;font-size:0.74rem;border-radius:4px;padding:2px 6px;cursor:pointer;outline:none;">');
-        html.push('      <option value="ALL">🌍 ' + allText + ' (' + COUNTRIES_DATA.length + ')</option>');
-        COUNTRIES_DATA.forEach(function (c) {
-            var cName = c.name[lang] || c.name.en || c.name.ro;
-            html.push('      <option value="' + c.code + '">' + c.flag + ' ' + cName + ' (' + c.maps.length + ')</option>');
-        });
-        html.push('    </select>');
-        html.push('  </div>');
-
-        // Quick scrollable pills
-        html.push('  <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin;">');
-        html.push('    <button type="button" class="hist-eu-country-pill active" data-country-code="ALL" onclick="DetectLabEuMaps.filterCountry(\'ALL\')" style="background:rgba(200,169,110,0.15);border:1px solid rgba(200,169,110,0.4);color:#c8a96e;font-size:0.68rem;padding:2px 6px;border-radius:10px;cursor:pointer;white-space:nowrap;">🌍 ' + allText + '</button>');
-        COUNTRIES_DATA.forEach(function (c) {
-            var cName = c.name[lang] || c.name.en || c.name.ro;
-            html.push('    <button type="button" class="hist-eu-country-pill" data-country-code="' + c.code + '" onclick="DetectLabEuMaps.filterCountry(\'' + c.code + '\')" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:rgba(245,240,235,0.85);font-size:0.68rem;padding:2px 6px;border-radius:10px;cursor:pointer;white-space:nowrap;">' + c.flag + ' ' + c.code + '</button>');
-        });
-        html.push('  </div>');
-        html.push('</div>');
-
-        // 2. Lista țărilor cu hărțile lor
-        html.push('<div class="hist-eu-countries-list" style="display:flex;flex-direction:column;gap:10px;">');
-
-        COUNTRIES_DATA.forEach(function (c) {
-            var cName = c.name[lang] || c.name.en || c.name.ro;
-            html.push('<div class="hist-eu-country-card" data-country-code="' + c.code + '" style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,169,110,0.22);border-radius:6px;padding:8px 8px 6px 8px;">');
-            
-            // Header țară
-            html.push('  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;border-bottom:1px solid rgba(200,169,110,0.15);padding-bottom:4px;">');
-            html.push('    <span style="font-size:0.78rem;font-weight:600;color:#c8a96e;display:flex;align-items:center;gap:5px;">' + c.flag + ' <span>' + cName + '</span> <span style="font-size:0.65rem;color:rgba(245,240,235,0.5);font-weight:normal;">(' + c.maps.length + ' hărți)</span></span>');
-            html.push('    <span style="font-size:0.62rem;color:rgba(200,169,110,0.7);background:rgba(200,169,110,0.1);padding:1px 5px;border-radius:3px;">CENAGIS / IH PAN</span>');
+        mapKeys.forEach(function (mapKey) {
+            var mapMeta = MAPS_CATALOG[mapKey];
+            var title = mapMeta.title[lang] || mapMeta.title.en || mapMeta.title.ro;
+            var safeKey = mapKey.replace(/[^a-z0-9_-]/gi, '_');
+            var activeMap = getMapInstance();
+            var leafletLayer = _leafletLayers[mapKey];
+            var isOnMap = !!(activeMap && leafletLayer && activeMap.hasLayer && activeMap.hasLayer(leafletLayer));
+            var opacityPercent = Math.round((_leafletOpacity[mapKey] == null ? 0.80 : _leafletOpacity[mapKey]) * 100);
+            html.push('<div id="cenagisMapRow_' + safeKey + '" class="cenagis-map-row hist-eu-map-row" data-map-id="' + escapeHtml(mapKey) + '" style="background:rgba(0,0,0,0.22);border:1px solid rgba(255,255,255,0.06);border-radius:5px;padding:6px;">');
+            html.push('  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px;">');
+            html.push('    <div style="min-width:0;flex:1;">');
+            html.push('      <div style="font-size:0.74rem;color:#f5f0eb;font-weight:500;line-height:1.25;word-break:break-word;">' + escapeHtml(title) + '</div>');
+            html.push('      <div style="font-size:0.62rem;color:rgba(245,240,235,0.6);margin-top:2px;">' + escapeHtml(mapMeta.scale) + ' · ' + escapeHtml(mapMeta.years) + '</div>');
+            html.push('    </div>');
+            html.push('    <label class="apm-toggle-switch" style="transform:scale(0.8);transform-origin:right top;flex-shrink:0;" title="Toggle ' + escapeHtml(title) + '">');
+            html.push('      <input type="checkbox" class="cenagis-toggle" data-map-key="' + escapeHtml(mapKey) + '"' + (isOnMap ? ' checked' : '') + ' onchange="DetectLabEuMaps.toggleCenagisLayer(\'' + escapeHtml(mapKey) + '\', this.checked)">');
+            html.push('      <span class="apm-toggle-track"></span>');
+            html.push('    </label>');
             html.push('  </div>');
-
-            // Hărțile țării
-            html.push('  <div style="display:flex;flex-direction:column;gap:7px;">');
-            c.maps.forEach(function (mRef) {
-                var m = MAPS_CATALOG[mRef.id];
-                if (!m) return;
-                var mTitle = m.title[lang] || m.title.en || m.title.ro;
-                var coverageBadge = mRef.isCity ? '📍 Plan Urban' : (mRef.pct + '% acoperire');
-                var coverageColor = (mRef.pct >= 90) ? '#4ade80' : ((mRef.pct >= 40) ? '#facc15' : '#fb923c');
-                if (mRef.isCity) coverageColor = '#60a5fa';
-
-                html.push('    <div class="hist-eu-map-row" data-map-id="' + m.id + '" style="background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.06);border-radius:5px;padding:6px 6px 5px 6px;">');
-                
-                // Nume hartă + Switch
-                html.push('      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px;">');
-                html.push('        <div style="min-width:0;flex:1;">');
-                html.push('          <div style="font-size:0.74rem;color:#f5f0eb;font-weight:500;line-height:1.25;word-break:break-word;">' + mTitle + '</div>');
-                html.push('          <div style="display:flex;align-items:center;gap:5px;margin-top:2px;flex-wrap:wrap;">');
-                html.push('            <span style="font-size:0.62rem;color:rgba(245,240,235,0.6);">' + m.scale + ' · ' + m.years + '</span>');
-                html.push('            <span style="font-size:0.58rem;font-weight:600;color:' + coverageColor + ';background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">' + coverageBadge + '</span>');
-                html.push('          </div>');
-                html.push('        </div>');
-                html.push('        <label class="apm-toggle-switch" style="transform:scale(0.8);transform-origin:right top;flex-shrink:0;">');
-                html.push('          <input type="checkbox" class="cenagis-toggle" data-map-key="' + m.id + '" onchange="DetectLabEuMaps.toggleCenagisLayer(\'' + m.id + '\', this.checked)">');
-                html.push('          <span class="apm-toggle-track"></span>');
-                html.push('        </label>');
-                html.push('      </div>');
-
-                // Slider Opacitate + Info
-                html.push('      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:2px;">');
-                html.push('        <span style="font-size:0.66rem;color:rgba(245,240,235,0.45);">Opacity</span>');
-                html.push('        <input type="range" class="transp-slider cenagis-opacity-slider" data-map-key="' + m.id + '" min="0" max="100" value="80" style="flex:1;height:4px;margin:0 4px;" oninput="DetectLabEuMaps.setCenagisLayerOpacity(\'' + m.id + '\', this.value)">');
-                html.push('        <span style="display:flex;align-items:center;gap:4px;">');
-                html.push('          <span class="pct cenagis-pct" data-map-key="' + m.id + '" style="font-size:0.66rem;color:rgba(245,240,235,0.7);min-width:24px;text-align:right;">80%</span>');
-                html.push('          <button type="button" class="layer-info-btn" onclick="event.stopPropagation();DetectLabEuMaps.showMapInfo(\'' + m.id + '\')" title="Layer info" style="background:none;border:none;cursor:pointer;color:rgba(200,169,110,0.8);padding:1px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="7.5" r="1.3" fill="currentColor"/><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor"/></svg></button>');
-                html.push('        </span>');
-                html.push('      </div>');
-
-                html.push('    </div>');
-            });
+            html.push('  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">');
+            html.push('    <span style="font-size:0.66rem;color:rgba(245,240,235,0.45);">Opacity</span>');
+            html.push('    <input type="range" class="transp-slider cenagis-opacity-slider" data-map-key="' + escapeHtml(mapKey) + '" min="0" max="100" value="' + opacityPercent + '" style="flex:1;height:4px;margin:0 4px;" oninput="DetectLabEuMaps.setCenagisLayerOpacity(\'' + escapeHtml(mapKey) + '\', this.value)">');
+            html.push('    <span style="display:flex;align-items:center;gap:4px;">');
+            html.push('      <span class="pct cenagis-pct" data-map-key="' + escapeHtml(mapKey) + '" style="font-size:0.66rem;color:rgba(245,240,235,0.7);min-width:24px;text-align:right;">' + opacityPercent + '%</span>');
+            html.push('      <button type="button" class="layer-info-btn" onclick="event.stopPropagation();DetectLabEuMaps.showMapInfo(\'' + escapeHtml(mapKey) + '\')" title="Layer info" style="background:none;border:none;cursor:pointer;color:rgba(200,169,110,0.8);padding:1px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="7.5" r="1.3" fill="currentColor"/><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor"/></svg></button>');
+            html.push('    </span>');
             html.push('  </div>');
-
             html.push('</div>');
         });
-
         html.push('</div>');
 
         container.innerHTML = html.join('\n');
+        filterForCountry(_selectedCountryCode, _selectedCountryBounds);
     }
 
     // ── Export public ──
     var DetectLabEuMaps = {
         catalog: MAPS_CATALOG,
         countries: COUNTRIES_DATA,
+        sharedPremiumMapKeys: SHARED_PREMIUM_MAP_KEYS,
         toggleCenagisLayer: toggleCenagisLayer,
         setCenagisLayerOpacity: setCenagisLayerOpacity,
         toggleHistEuLayer: toggleHistEuLayer,
-        toggleHistEuSubLayers: toggleHistEuSubLayers,
         filterCountry: filterCountry,
+        filterForCountry: filterForCountry,
+        getMapsOverlappingBounds: getMapsOverlappingBounds,
+        hasAvailableMaps: hasAvailableMaps,
         showMapInfo: showMapInfo,
         renderUi: renderUi,
         init: function (leafletMap) {
             if (leafletMap) _activeMap = leafletMap;
+            if (root._detectlabSelectedCountry) {
+                filterForCountry(root._detectlabSelectedCountry, root._detectlabCountryBounds);
+            }
             renderUi();
-            // Re-render when language changes
+            // map-app.js may have run the first country filter before this
+            // catalog script finished rendering its dynamic map rows. Re-run
+            // once so the combined parent group is evaluated with real matches.
+            if (root._detectlabSelectedCountry && typeof root.filterLayersForCountry === 'function') {
+                root.filterLayersForCountry(root._detectlabSelectedCountry);
+            }
             document.addEventListener('detectlab:langchange', function () {
                 renderUi();
-                if (_selectedCountryCode) filterCountry(_selectedCountryCode);
             });
         }
     };
 
     root.DetectLabEuMaps = DetectLabEuMaps;
+    // Compatibility alias for existing integrations; there is no longer a
+    // second European Historical Maps parent group in the layer panel.
     root.toggleHistEuLayer = toggleHistEuLayer;
-    root.toggleHistEuSubLayers = toggleHistEuSubLayers;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {

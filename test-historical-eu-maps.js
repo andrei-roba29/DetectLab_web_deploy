@@ -1,4 +1,5 @@
-// Test suite for European Historical Maps (CENAGIS / IH PAN)
+// Test suite for the European historical-map catalog inside the single
+// Premium Historical Maps group and its country-overlap filtering.
 // Usage: node test-historical-eu-maps.js
 'use strict';
 
@@ -7,96 +8,149 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-console.log('[Test] European Historical Maps (CENAGIS / IH PAN)...');
+console.log('[Test] European historical-map catalog + country overlap...');
 
-// 1. Check index.html markup
-const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-assert(indexHtml.includes('id="histEuRow"'), 'index.html contains histEuRow');
-assert(indexHtml.includes('id="histEuSubLayers"'), 'index.html contains histEuSubLayers');
-assert(indexHtml.includes('id="histEuToggle"'), 'index.html contains histEuToggle');
-assert(indexHtml.includes('id="histEuExpandBtn"'), 'index.html contains histEuExpandBtn');
-assert(indexHtml.includes('js/historical-eu-maps.js'), 'index.html loads js/historical-eu-maps.js');
-console.log('  ✓ index.html structure verified');
+const read = file => fs.readFileSync(path.join(__dirname, file), 'utf8');
+const indexHtml = read('index.html');
+const swJs = read('sw.js');
+const source = read('js/historical-eu-maps.js');
+const subscriptions = read('js/subscriptions.js');
 
-// 2. Check sw.js precache
-const swJs = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-assert(swJs.includes('js/historical-eu-maps.js'), 'sw.js precaches js/historical-eu-maps.js');
+// The catalog is nested in the original premium Historical Maps accordion;
+// the obsolete second top-level European group must stay gone.
+const parentStart = indexHtml.indexOf('id="histPremiumSubLayers"');
+const parentEnd = indexHtml.indexOf('<!-- /histPremiumSubLayers -->', parentStart);
+assert(parentStart >= 0 && parentEnd > parentStart, 'single premium Historical Maps accordion exists');
+const parentMarkup = indexHtml.slice(parentStart, parentEnd);
+assert(parentMarkup.includes('id="histEuMapsSection"'), 'CENAGIS catalog is inside histPremiumSubLayers');
+['histEuRow', 'histEuSubLayers', 'histEuToggle', 'histEuExpandBtn'].forEach(id => {
+    assert(!indexHtml.includes('id="' + id + '"'), 'obsolete separate group #' + id + ' is removed');
+});
+assert(indexHtml.includes('js/historical-eu-maps.js?v=20261008-country-overlap'), 'versioned catalog is loaded');
+assert(indexHtml.includes('js/map-app.js?v=20261008-premium-historical-roman'), 'versioned country/Roman map app is loaded');
+assert(indexHtml.includes('js/subscriptions.js?v=20261008-premium-roman-guard'), 'premium guard is versioned');
+assert(subscriptions.includes('toggleCenagisLayer'), 'dynamic CENAGIS toggle is Premium-guarded');
+assert(subscriptions.includes("'toggleRomanDareCategories'"), 'DARE All/None is Premium-guarded');
+assert(subscriptions.includes("'toggleRomanSub'"), 'Roman sublayers are Premium-guarded');
+console.log('  ✓ one premium parent group, versioned scripts and entitlement guards verified');
+
+assert(swJs.includes('js/historical-eu-maps.js?v=20261008-country-overlap'), 'service worker precaches the versioned catalog');
+assert(swJs.includes('js/map-app.js?v=20261008-premium-historical-roman'), 'service worker precaches the versioned map app');
+assert(swJs.includes('js/subscriptions.js?v=20261008-premium-roman-guard'), 'service worker precaches the versioned subscription guard');
 const shellVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);
-assert(shellVersion >= 147, 'sw.js cache must be v147 or newer so European maps ship in installed PWAs');
-console.log('  ✓ sw.js precache and cache name verified');
+assert(shellVersion >= 171, 'service-worker cache bumped for the merged catalog (got v' + shellVersion + ')');
+console.log('  ✓ service-worker precache and cache version v' + shellVersion + ' verified');
 
-// 3. Check translations.js
-const transJs = fs.readFileSync(path.join(__dirname, 'js/translations.js'), 'utf8');
-assert(transJs.includes('layer_historical_eu'), 'translations.js contains layer_historical_eu key');
-console.log('  ✓ translations.js verified');
-
-// 4. Load and verify historical-eu-maps.js
-const euMapsCode = fs.readFileSync(path.join(__dirname, 'js/historical-eu-maps.js'), 'utf8');
-
-const mockWindow = {
-    localStorage: { getItem: () => 'ro' },
-    document: {
-        documentElement: { lang: 'ro' },
-        readyState: 'complete',
-        addEventListener: () => {},
-        getElementById: () => null,
-        querySelectorAll: () => []
-    },
-    L: {
-        CRS: { EPSG3857: {} },
-        tileLayer: {
-            wms: (url, opts) => ({
-                url,
-                opts,
-                setOpacity: () => {},
-                addTo: () => {},
-                hasLayer: () => false
-            })
+function makeClassList() {
+    const values = new Set();
+    return {
+        add(name) { values.add(name); },
+        remove(name) { values.delete(name); },
+        contains(name) { return values.has(name); },
+        toggle(name, force) {
+            const on = force === undefined ? !values.has(name) : !!force;
+            if (on) values.add(name); else values.delete(name);
+            return on;
         }
+    };
+}
+function makeRow(mapId) {
+    const attrs = { 'data-map-id': mapId };
+    return {
+        classList: makeClassList(),
+        style: {},
+        attrs,
+        getAttribute(name) { return attrs[name] || null; },
+        setAttribute(name, value) { attrs[name] = String(value); }
+    };
+}
+
+const rows = ['wig300k', 'wig500k_1947', 'gaul', 'kdr', 'reymann'].map(makeRow);
+const section = {
+    classList: makeClassList(),
+    attrs: {},
+    innerHTML: '',
+    setAttribute(name, value) { this.attrs[name] = String(value); },
+    getAttribute(name) { return this.attrs[name] || null; }
+};
+const status = { textContent: '' };
+const noMaps = { style: { display: 'none' } };
+const listeners = {};
+const document = {
+    readyState: 'loading',
+    documentElement: { lang: 'en' },
+    addEventListener(type, callback) { listeners[type] = callback; },
+    getElementById(id) {
+        if (id === 'histEuMapsSection') return section;
+        if (id === 'histEuFilterStatus') return status;
+        if (id === 'cenagisNoMaps') return noMaps;
+        return null;
+    },
+    querySelectorAll(selector) {
+        return selector === '.cenagis-map-row' ? rows : [];
     }
 };
-
-const sandbox = {
-    window: mockWindow,
-    document: mockWindow.document,
-    L: mockWindow.L,
-    console: console,
-    alert: () => {}
+const mockWindow = {
+    localStorage: { getItem: () => 'en' },
+    document,
+    L: {
+        CRS: { EPSG3857: {} },
+        tileLayer: { wms: () => ({ setOpacity() {}, addTo() {} }) }
+    }
 };
-
+const sandbox = { window: mockWindow, document, L: mockWindow.L, console, alert() {} };
 vm.createContext(sandbox);
-vm.runInContext(euMapsCode, sandbox);
+vm.runInContext(source, sandbox);
+const api = mockWindow.DetectLabEuMaps;
+assert(api, 'DetectLabEuMaps API is exported');
 
-const DetectLabEuMaps = sandbox.window.DetectLabEuMaps;
-assert(DetectLabEuMaps, 'DetectLabEuMaps exported to window');
+// Catalog and duplicate behavior: maps already offered by legacy premium rows
+// stay in that part of the same parent and are not repeated in the CENAGIS list.
+const catalog = api.catalog;
+assert(Object.keys(catalog).length >= 40, 'catalog contains regional/national maps and city plans');
+['wig300k', 'wig500k_1947', 'gaul', 'm25k', 'ahp_ziemie_polskie'].forEach(id => {
+    assert(catalog[id], 'catalog contains ' + id);
+});
+['ukvme', 'chrzanowski', 'reymann', 'kdr', 'kdr_gb', 'wig100k', 'kummersberg'].forEach(id => {
+    assert(api.sharedPremiumMapKeys[id], id + ' is marked as already present in the legacy premium list');
+});
+const italyOverlap = api.getMapsOverlappingBounds([6.62, 35.49, 18.52, 47.09], true);
+assert(italyOverlap.includes('reymann'), 'partial bounds overlap is recognized at the north of Italy');
+assert(!api.getMapsOverlappingBounds([6.62, 35.49, 18.52, 47.09], false).includes('reymann'),
+    'a shared legacy map is not duplicated in the dynamic catalog');
+console.log('  ✓ catalog metadata, partial-overlap logic and legacy de-duplication verified');
 
-// Verify catalog
-const catalog = DetectLabEuMaps.catalog;
-assert.ok(Object.keys(catalog).length >= 22, 'Catalog contains all core regional/national maps + city plans');
-assert.ok(catalog.wig300k, 'Catalog contains wig300k');
-assert.strictEqual(catalog.wig300k.wms_layer, 'wig300k_3857');
-assert.strictEqual(catalog.chrzanowski.wms_layer, 'chrzanowski_3857');
-assert.strictEqual(catalog.tkkp_126k.wms_layer, 'TKKP_126k_3857');
-assert.strictEqual(catalog.kummersberg.wms_layer, 'kummersberg_3857');
-assert.strictEqual(catalog.m25k.wms_layer, 'm25k_3857');
-console.log('  ✓ Catalog metadata verified (' + Object.keys(catalog).length + ' maps)');
+// The dynamic section includes only sheets whose extent overlaps the selected
+// country (including a small/partial intersection). Non-overlap rows and rows
+// duplicated by the legacy controls remain hidden.
+const denmark = [8.08, 54.56, 15.19, 57.75];
+const availableCount = api.filterForCountry('DK', denmark);
+assert.strictEqual(availableCount, 2, 'two non-duplicate catalog sheets overlap Denmark in this row fixture');
+const byId = Object.fromEntries(rows.map(row => [row.getAttribute('data-map-id'), row]));
+assert.strictEqual(byId.wig300k.classList.contains('country-layer-unavailable'), false,
+    'WIG 300k remains available on a partial Denmark overlap');
+assert.strictEqual(byId.wig500k_1947.classList.contains('country-layer-unavailable'), false,
+    'WIG 500k remains available on a partial Denmark overlap');
+assert.strictEqual(byId.gaul.classList.contains('country-layer-unavailable'), true, 'non-overlapping Gaul sheet is hidden');
+assert.strictEqual(byId.kdr.classList.contains('country-layer-unavailable'), true, 'shared KDR sheet is not duplicated in the catalog');
+assert.strictEqual(byId.reymann.classList.contains('country-layer-unavailable'), true, 'shared Reymann sheet is not duplicated in the catalog');
+assert.strictEqual(api.hasAvailableMaps(), true, 'combined parent can query available dynamic maps');
+assert.strictEqual(noMaps.style.display, 'none', 'empty catalog message stays hidden when sheets overlap');
+assert(status.textContent.includes('Denmark'), 'status announces the matching country and overlap count');
 
-// Verify countries
-const countries = DetectLabEuMaps.countries;
-assert.strictEqual(countries.length, 19, '19 European countries registered');
+api.filterForCountry(null, null);
+assert(rows.every(row => !row.classList.contains('country-layer-unavailable')), 'clearing country filter restores all catalog rows');
+assert.strictEqual(api.hasAvailableMaps(), true, 'unfiltered catalog remains available');
+console.log('  ✓ country selection keeps partial overlaps, hides non-overlaps and restores the full catalog');
 
-const countryCodes = countries.map(c => c.code);
+// Curated coverage remains available as a fallback when no country polygon is
+// supplied (e.g. a country selection with only an ISO code).
+assert.strictEqual(api.countries.length, 19, 'curated ISO fallback list is retained');
+assert.strictEqual(api.filterForCountry('ZZ', null), 0, 'unknown ISO without bounds does not expose every European map');
+assert.strictEqual(noMaps.style.display, 'block', 'empty catalog message appears when no CENAGIS map overlaps');
 ['PL', 'DE', 'UA', 'BY', 'LT', 'LV', 'CZ', 'SK', 'AT', 'HU', 'RU', 'MD', 'RO', 'FR', 'BE-LU', 'NL', 'DK', 'EE', 'CH'].forEach(code => {
-    assert.ok(countryCodes.includes(code), 'Country ' + code + ' is included');
+    assert(api.countries.some(country => country.code === code), 'fallback coverage includes ' + code);
 });
-
-// Verify percentage bounds (0-100%)
-countries.forEach(c => {
-    assert.ok(c.maps.length > 0, c.code + ' has historical maps');
-    c.maps.forEach(m => {
-        assert.ok(m.pct > 0 && m.pct <= 100, c.code + ' map ' + m.id + ' pct valid: ' + m.pct);
-    });
-});
-console.log('  ✓ 19 European countries and coverage percentages verified');
+console.log('  ✓ country-ISO fallback catalog retained');
 
 console.log('✅ test-historical-eu-maps.js passed all checks successfully.');

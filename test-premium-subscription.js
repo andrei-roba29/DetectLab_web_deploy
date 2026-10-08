@@ -123,6 +123,11 @@ async function testSubscriptions() {
         <div class="transp-layer-row" data-category="premium" id="secondPremiumRow">
             <label><input type="checkbox" id="secondPremiumToggle"></label>
         </div>
+        <div class="transp-layer-row" data-category="premium" id="romanPremiumRow">
+            <label><input type="checkbox" id="romanToggle"></label>
+            <label><input type="checkbox" id="roman_dare_11"></label>
+            <button id="romanDareAll">All</button>
+        </div>
         <div class="transp-layer-row" data-category="free">
             <label><input type="checkbox" id="apmToggle"></label>
         </div>
@@ -144,6 +149,14 @@ async function testSubscriptions() {
             el.classList.toggle('active', el.dataset.category === tab);
         });
     };
+
+    // Premium Roman controls are included to exercise the same direct-call
+    // guards used by the DARE All/None buttons and the dynamic CENAGIS catalog.
+    const romanCalls = [];
+    w.toggleRomanLayer = on => romanCalls.push(['master', on]);
+    w.toggleRomanSub = (key, on) => romanCalls.push(['sub', key, on]);
+    w.toggleRomanDareCategories = on => romanCalls.push(['dare', on]);
+    w.DetectLabEuMaps = { toggleCenagisLayer: (key, on) => romanCalls.push(['cenagis', key, on]) };
 
     // Supabase stub
     let db = {};
@@ -191,8 +204,8 @@ async function testSubscriptions() {
     // invoke the real tab-switch equivalent after proving the gate allowed it.
     w.switchLayerTab('premium');
     ok(!modal.classList.contains('show'), 'free user: Premium tab remains browseable');
-    ok(w.document.querySelectorAll('.transp-layer-row[data-category="premium"].active').length === 2, 'free user: all Premium rows are shown');
-    ok(w.document.querySelectorAll('.transp-layer-row.is-premium-locked .premium-layer-lock-badge').length === 2, 'free user: every Premium row has a visible lock badge');
+    ok(w.document.querySelectorAll('.transp-layer-row[data-category="premium"].active').length === 3, 'free user: all Premium rows are shown');
+    ok(w.document.querySelectorAll('.transp-layer-row.is-premium-locked .premium-layer-lock-badge').length === 3, 'free user: every Premium row has a visible lock badge');
     ok(!w.document.getElementById('premiumPanelUpsell').classList.contains('premium-member'), 'free user: membership CTA is shown');
 
     let panelCheckoutStarted = false;
@@ -207,9 +220,32 @@ async function testSubscriptions() {
     w.document.getElementById('apmToggle').click();
     ok(!modal.classList.contains('show'), 'free user: free toggle is not blocked');
 
+    // Programmatic activation must be gated too (not just clicks inside the
+    // premium row capture handler). Turning a layer OFF remains permitted.
+    modal.classList.remove('show');
+    w.toggleRomanSub('dare_11', true);
+    ok(romanCalls.length === 0 && modal.classList.contains('show'), 'free user: direct Roman sublayer ON call is blocked');
+    ok(w.document.getElementById('roman_dare_11').checked === false, 'free user: locked DARE checkbox remains unchecked');
+    modal.classList.remove('show');
+    w.toggleRomanDareCategories(true);
+    ok(romanCalls.length === 0 && modal.classList.contains('show'), 'free user: DARE All is Premium-gated');
+    modal.classList.remove('show');
+    w.DetectLabEuMaps.toggleCenagisLayer('wig300k', true);
+    ok(romanCalls.length === 0 && modal.classList.contains('show'), 'free user: direct CENAGIS layer ON call is blocked');
+    modal.classList.remove('show');
+    w.toggleRomanSub('dare_11', false);
+    w.toggleRomanDareCategories(false);
+    w.DetectLabEuMaps.toggleCenagisLayer('wig300k', false);
+    ok(!modal.classList.contains('show') && romanCalls.length === 3, 'free user: Roman and CENAGIS OFF calls remain allowed');
+    romanCalls.length = 0;
+
     // — purchase
     authModalOpened = false;
     const res = await w.completePremiumPurchase({ from: authUser });
+    w.toggleRomanSub('dare_11', true);
+    w.toggleRomanDareCategories(true);
+    w.DetectLabEuMaps.toggleCenagisLayer('wig300k', true);
+    ok(romanCalls.length === 3 && !modal.classList.contains('show'), 'Premium user: Roman, DARE All and CENAGIS ON calls are allowed');
     ok(authUser.plan === 'premium' && !!authUser.premiumExpiresAt, 'purchase sets plan + expiry on user');
     ok(w.localStorage.getItem('dl_premium_u1') && JSON.parse(w.localStorage.getItem('dl_premium_u1')).plan === 'premium', 'purchase persisted to localStorage');
     const expDate = new Date(authUser.premiumExpiresAt);
