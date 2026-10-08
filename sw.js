@@ -370,7 +370,17 @@
 //   recognised by the offline-tile lookup ("request=getmap") and fall straight
 //   through to the network on a cache miss, never into the app shell; idee.es
 //   is listed in PASSTHROUGH_HOSTS like the other WMS tile hosts.
-const CACHE_NAME = 'detectlab-v168-spain-mapa-lidar';
+// v169: country-scoped layer window + visible country bounds. Once a country
+//   is selected, the layer panel keeps only the layers whose coverage
+//   partially or entirely overlaps the bounds of that country (rows outside
+//   the country get .country-layer-unavailable, hidden by css/styles.css while
+//   #transpPanel carries .country-filter-active; group rows hide too when no
+//   sublayer survives). The selection also draws the country bounds on the
+//   Leaflet map — the outline once the gate geometry is loaded, the bbox until
+//   then — in its own pane above the data layers; both belong to the locked
+//   view and go away on “Exit view”. See js/map-app.js (filterLayersForCountry
+//   / unfilterLayersForCountry) and js/globe-country-picker.js.
+const CACHE_NAME = 'detectlab-v169-country-layer-filter';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -474,6 +484,7 @@ const PRECACHE_URLS = [
   'js/map-app.js?v=20261008-eu-places-search',
   'js/map-app.js?v=20261008-corona-coverage',
   'js/map-app.js?v=20261007-spain-mapa-lidar',
+  'js/map-app.js?v=20261008-country-layer-filter',
   'js/archeo-potential.js',
   'js/archeo-potential.js?v=20260803',
   'js/lidar-geo.js?v=20260811-latlon',
@@ -950,8 +961,10 @@ const PRECACHE_URLS = [
   // the ⓘ button that credits the Copernicus Land Monitoring Service.
   'css/styles.css?v=20260927-sat-copernicus-vhr',
   'css/styles.css?v=20261002-european-lidar',
+  'css/styles.css?v=20261008-country-layer-filter',
   'css/globe-country-picker.css?v=20261008',
   'js/globe-country-picker.js?v=20261008',
+  'js/globe-country-picker.js?v=20261008-country-bounds',
   // v167: country dock glued under the search bar (country switcher +
   // World-hillshade checkbox) and the “Exit view” button of the locked
   // country view. The hillshade tiles themselves stay network-only.

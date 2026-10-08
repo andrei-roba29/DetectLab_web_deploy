@@ -283,6 +283,9 @@
             map.fitBounds(bounds, { padding: [24, 24], maxZoom: fitZoom, animate: true });
             state.locked = true;
             state.fitZoom = fitZoom;
+            // The bounds of the selected country stay visible on the map for
+            // the whole locked view (outline once geometry is loaded).
+            showCountryBoundsLayer(map, window._detectlabSelectedCountry, bbox);
             if (document.documentElement) document.documentElement.classList.add('country-view-locked');
             fireLockChange(true);
         } catch (e) {
@@ -312,7 +315,83 @@
         if (typeof window.unfilterLayersForCountry === 'function') {
             try { window.unfilterLayersForCountry(); } catch (e) {}
         }
+        removeCountryBoundsLayer();
         fireLockChange(false);
+    }
+
+    /* ── Selected-country bounds on the working map ────────────────────────
+       A selection keeps the country bounds visible on the Leaflet map: the
+       country outline when the gate's geometry is loaded, otherwise the
+       selection bbox. Drawn non-interactive in its own pane above every data
+       pane (LIDAR 610, historical maps ≤ 652), removed when the lock is
+       released (“Exit view”, reset) and replaced on every new selection. */
+    var BOUNDS_PANE = 'pane_country_bounds';
+    var BOUNDS_PANE_Z = 688;   // above the data panes, under tracks (690)/measure (700)
+
+    function ensureBoundsPane(map) {
+        try {
+            if (!map || typeof map.getPane !== 'function' || typeof map.createPane !== 'function') return null;
+            var pane = map.getPane(BOUNDS_PANE);
+            if (!pane) {
+                pane = map.createPane(BOUNDS_PANE);
+                if (pane && pane.style) pane.style.zIndex = BOUNDS_PANE_Z;
+            }
+            return BOUNDS_PANE;
+        } catch (e) { return null; }
+    }
+
+    function removeCountryBoundsLayer() {
+        var layer = state.boundsLayer;
+        state.boundsLayer = null;
+        if (!layer) return;
+        var map = activeMap();
+        if (map && typeof map.removeLayer === 'function') {
+            try { map.removeLayer(layer); } catch (e) {}
+        }
+    }
+
+    function showCountryBoundsLayer(map, iso, bbox) {
+        if (!map || !window.L || !Array.isArray(bbox) || bbox.length !== 4) return;
+        removeCountryBoundsLayer();
+        // Leaflet passes these options straight to every vector it builds
+        // (bundled 1.9.4: geometryToLayer forwards the GeoJSON options), so
+        // pane/interactive apply to the outline itself.
+        var styleOpts = {
+            color: '#39ff14',
+            weight: 2.5,
+            opacity: 0.9,
+            fillColor: '#39ff14',
+            fillOpacity: 0.05,
+            interactive: false,
+            bubblingMouseEvents: false
+        };
+        var paneName = ensureBoundsPane(map);
+        if (paneName) styleOpts.pane = paneName;
+        var layer = null;
+        var entry = (iso && G.byIso) ? G.byIso[iso] : null;
+        if (entry && entry.feature && typeof window.L.geoJSON === 'function') {
+            try { layer = window.L.geoJSON(entry.feature, styleOpts); } catch (e) { layer = null; }
+        }
+        if (!layer && typeof window.L.rectangle === 'function') {
+            try {
+                layer = window.L.rectangle([[bbox[1], bbox[0]], [bbox[3], bbox[2]]], styleOpts);
+            } catch (e) { layer = null; }
+        }
+        if (!layer || typeof map.addLayer !== 'function') return;
+        try {
+            map.addLayer(layer);
+            state.boundsLayer = layer;
+        } catch (e) {}
+    }
+
+    // Redraw once the atlas (or the 10m shapefile refinement) is ready: a
+    // selection restored from localStorage starts with the plain bbox rectangle
+    // and upgrades to the real country outline as soon as geometry exists.
+    function refreshCountryBoundsLayer() {
+        if (!state.locked || !state.boundsLayer) return;
+        var map = activeMap();
+        if (!map) return;
+        showCountryBoundsLayer(map, window._detectlabSelectedCountry, window._detectlabCountryBounds);
     }
 
     function fireLockChange(locked) {
@@ -1057,6 +1136,7 @@
                 var n = G.eu.filter(function (d) { return d.fromShp; }).length;
                 console.info('[DetectLab] Globe gate: refined ' + n + '/' + G.eu.length + ' countries from the 10m shapefile.');
                 render(1);
+                refreshCountryBoundsLayer();   // redraw the outline with the finer shape
             })
             .catch(function (err) {
                 console.info('[DetectLab] Globe gate: 10m shapefile not available (' + (err && err.message) + '); keeping the 50m outlines.');
@@ -1071,7 +1151,8 @@
         locked: false,          // is the working map pinned to a country right now?
         fitZoom: null,          // the zoom the current country view opens at
         baseMinZoom: null,      // the map's own zoom range, remembered once
-        baseMaxZoom: null
+        baseMaxZoom: null,
+        boundsLayer: null       // the country outline/bbox drawn on the Leaflet map
     };
 
     var els = {};
@@ -1154,6 +1235,9 @@
                 render(1);
                 loadTextures();
                 refineFromShapefile();
+                // A selection restored from storage drew the bbox rectangle —
+                // now that geometry exists, upgrade it to the country outline.
+                refreshCountryBoundsLayer();
             })
             .catch(function (err) {
                 // The gate must never hard-lock the app: fall back to a plain
@@ -1324,6 +1408,11 @@
             listCountries: listCountries,
             restrictLeafletToCountry: restrictLeafletToCountry,
             unlockCountryView: unlockCountryView,
+            showCountryBoundsLayer: showCountryBoundsLayer,
+            removeCountryBoundsLayer: removeCountryBoundsLayer,
+            refreshCountryBoundsLayer: refreshCountryBoundsLayer,
+            BOUNDS_PANE: BOUNDS_PANE,
+            BOUNDS_PANE_Z: BOUNDS_PANE_Z,
             LOCK_PAD: LOCK_PAD,
             LOCK_ZOOM_SLACK: LOCK_ZOOM_SLACK,
             FIT_MAX_ZOOM: FIT_MAX_ZOOM

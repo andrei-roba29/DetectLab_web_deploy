@@ -12859,10 +12859,39 @@
                     });
                 };
 
+                // Is a layer row nested inside a group row (LiDAR, historical,
+                // Roman, premium, vegetation, EU maps)? DOM containment first,
+                // with a parent-chain walk as fallback for minimal DOM stubs.
+                // Like Node.contains(), an element counts as inside itself —
+                // the EU-maps row hosts its own expand icon, so the row IS the
+                // group row there.
+                function rowInsideGroupRow(row, groupRow) {
+                    if (!row || !groupRow) return false;
+                    if (row === groupRow) return true;
+                    if (typeof groupRow.contains === 'function') {
+                        try { return groupRow.contains(row); } catch (e) { return false; }
+                    }
+                    var p = row.parentElement || row.parentNode || null;
+                    while (p) {
+                        if (p === groupRow) return true;
+                        p = p.parentElement || p.parentNode || null;
+                    }
+                    return false;
+                }
+
+                function getGroupRow(gKey) {
+                    var icon = document.getElementById(groups[gKey].expandIconId);
+                    if (!icon) return null;
+                    return icon.closest ? icon.closest('.transp-layer-row') : null;
+                }
+
                 // After country selection, use the existing coverage catalogue to
-                // reduce the layer panel to layers whose footprint intersects the
-                // selected country. Unknown rows are left alone (some live/API
-                // layers do not publish a bounds record yet).
+                // reduce the layer panel to the layers whose footprint partially
+                // or entirely covers the bounds of the selected country: rows
+                // outside the country get .country-layer-unavailable, which the
+                // panel CSS hides while #transpPanel keeps .country-filter-active
+                // (e.g. Italy → no Denmark LiDAR row). Unknown rows are left
+                // alone (some live/API layers do not publish a bounds record yet).
                 window.filterLayersForCountry = function (iso) {
                     var countryBounds = null;
                     var countryLayer = window._detectlabCountryLayer;
@@ -12871,8 +12900,18 @@
                         var c = String(p.ISO_A2 || p.iso_a2 || p.ISO2 || p.iso2 || p.ISO_A3 || '').toUpperCase();
                         if (c === iso && featureLayer.getBounds) countryBounds = featureLayer.getBounds();
                     });
+                    // Fallback: the selection bbox stored by the globe gate.
+                    if (!countryBounds && Array.isArray(window._detectlabCountryBounds) &&
+                        window._detectlabCountryBounds.length === 4) {
+                        try {
+                            var b = window._detectlabCountryBounds;
+                            countryBounds = L.latLngBounds([b[1], b[0]], [b[3], b[2]]);
+                        } catch (e) {}
+                    }
                     if (!countryBounds) return;
-                    layerDefs.concat(internationalLayerDefs).forEach(function (def) {
+
+                    var allDefs = layerDefs.concat(internationalLayerDefs);
+                    allDefs.forEach(function (def) {
                         var row = null;
                         try { row = def.getRow(); } catch (e) {}
                         if (!row || !def.bounds) return;
@@ -12881,13 +12920,33 @@
                         row.classList.toggle('country-layer-unavailable', !available);
                         row.setAttribute('aria-hidden', available ? 'false' : 'true');
                     });
+
+                    // A group row disappears too when none of its sublayers
+                    // covers the selected country. The European (international)
+                    // LiDAR rows carry no group key but live inside the LiDAR
+                    // group row, so membership is decided by DOM containment.
+                    Object.keys(groups).forEach(function (gKey) {
+                        var groupRow = getGroupRow(gKey);
+                        if (!groupRow) return;
+                        var anyAvailable = false;
+                        allDefs.forEach(function (def) {
+                            if (anyAvailable) return;
+                            var row = null;
+                            try { row = def.getRow(); } catch (e) {}
+                            if (!row || row.classList.contains('country-layer-unavailable')) return;
+                            if (rowInsideGroupRow(row, groupRow)) anyAvailable = true;
+                        });
+                        groupRow.classList.toggle('country-layer-unavailable', !anyAvailable);
+                        groupRow.setAttribute('aria-hidden', anyAvailable ? 'false' : 'true');
+                    });
+
                     var panel = document.getElementById('transpPanel');
                     if (panel) panel.classList.add('country-filter-active');
                 };
 
                 // Leaving the locked country view (the “Exit view” button of
                 // js/country-dock.js) restores the full layer catalogue: the
-                // coverage dimming above only makes sense while the map is
+                // coverage filtering above only makes sense while the map is
                 // pinned to one country.
                 window.unfilterLayersForCountry = function () {
                     layerDefs.concat(internationalLayerDefs).forEach(function (def) {
@@ -12896,6 +12955,12 @@
                         if (!row) return;
                         row.classList.remove('country-layer-unavailable');
                         row.setAttribute('aria-hidden', 'false');
+                    });
+                    Object.keys(groups).forEach(function (gKey) {
+                        var groupRow = getGroupRow(gKey);
+                        if (!groupRow) return;
+                        groupRow.classList.remove('country-layer-unavailable');
+                        groupRow.setAttribute('aria-hidden', 'false');
                     });
                     var panel = document.getElementById('transpPanel');
                     if (panel) panel.classList.remove('country-filter-active');

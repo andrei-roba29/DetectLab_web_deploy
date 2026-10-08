@@ -8191,6 +8191,18 @@
     filter: drop-shadow(0 0 3px rgba(57,255,20,0.6)) !important;
 }
 
+/* ── Country coverage filter ──
+   Once a country is selected the map is locked to it, and the layer panel
+   keeps only the layers whose coverage partially or entirely overlaps the
+   bounds of that country. js/map-app.js (filterLayersForCountry) marks the
+   rows outside the country — including a whole group row when none of its
+   sublayers covers the country — and js/map-app.js (unfilterLayersForCountry)
+   removes the marks when the lock is released. The rows are hidden outright:
+   a layer with no data over the selected country is not an available layer. */
+#transpPanel.country-filter-active .country-layer-unavailable {
+    display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
     #transpPanel .transp-layer-row,
     #histSubLayers > div,

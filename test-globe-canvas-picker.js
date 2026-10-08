@@ -17,7 +17,7 @@ assert(indexHtml.includes('id="globeGateCanvas"'), 'index.html contains globeGat
 assert(indexHtml.includes('id="globeGateZoomIn"'), 'index.html contains globeGateZoomIn');
 assert(indexHtml.includes('id="globeGateZoomOut"'), 'index.html contains globeGateZoomOut');
 assert(indexHtml.includes('id="globeGateFallbackSelect"'), 'index.html keeps the no-canvas fallback select');
-assert(indexHtml.includes('js/globe-country-picker.js?v=20261008'), 'index.html loads the re-versioned picker');
+assert(indexHtml.includes('js/globe-country-picker.js?v=20261008-country-bounds'), 'index.html loads the re-versioned picker');
 assert(indexHtml.includes('css/globe-country-picker.css?v=20261008'), 'index.html loads the re-versioned css');
 assert(!/maplibre/i.test(indexHtml), 'index.html no longer references MapLibre');
 console.log('  ✓ index.html structure verified');
@@ -34,7 +34,7 @@ console.log('  ✓ local globe assets shipped, MapLibre retired');
 
 // ── 3. sw.js precache ──
 const swJs = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
-['js/globe-country-picker.js?v=20261008', 'css/globe-country-picker.css?v=20261008',
+['js/globe-country-picker.js?v=20261008-country-bounds', 'css/globe-country-picker.css?v=20261008',
  'js/d3.min.js?v=7.9.0', 'js/topojson-client.min.js?v=3.1.0',
  'data/countries-50m.json?v=20261008'].forEach(function (p) {
     assert(swJs.includes("'" + p + "'"), 'sw.js precaches ' + p);
