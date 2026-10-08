@@ -49,6 +49,24 @@
     border-radius: 10px; padding: 10px 14px; font-size: 13px; line-height: 1.5; max-width: 46ch;
   }
   #result b { color: #ddffb0; }
+  /* Mini layer panel — same contract as the real #transpPanel: rows outside
+     the selected country get .country-layer-unavailable and are hidden while
+     the panel carries .country-filter-active (see css/styles.css). */
+  #transpPanel {
+    position: fixed; right: 12px; top: 12px; z-index: 12000;
+    width: 240px; max-height: calc(100vh - 24px); overflow-y: auto;
+    background: rgba(6,14,30,.92); border: 1px solid rgba(184,216,240,.22);
+    border-radius: 10px; padding: 10px 12px; font-size: 12.5px;
+  }
+  #transpPanel .mini-title { color: #b8d8f0; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  #transpPanel .transp-layer-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; border-radius: 6px; color: rgba(245,240,235,.85);
+  }
+  #transpPanel .transp-layer-row.mini-group { color: #4fc3f7; font-weight: 600; margin-top: 4px; }
+  #transpPanel .mini-sub { padding-left: 14px; display: flex; flex-direction: column; }
+  #transpPanel .mini-note { color: rgba(245,240,235,.45); font-size: 11px; margin-top: 8px; line-height: 1.4; }
+  #transpPanel.country-filter-active .country-layer-unavailable { display: none !important; }
 </style>
 </head>
 <body>
@@ -131,6 +149,45 @@
 
 <div id="result">Pick a country on the globe. Then: zoom out to the fitted view → <b>Exit view</b> appears.</div>
 
+<!-- Mini layer window: the same filtering contract as the real app — after a
+     selection only layers covering the country stay visible, and the country
+     bounds are drawn on the map. Row ids mirror index.html. -->
+<div class="transp-panel" id="transpPanel">
+  <div class="mini-title">Layers — filtered by country</div>
+
+  <div class="transp-layer-row mini-group" id="miniLidarGroupRow">
+    <svg id="lidarExpandIcon" width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,4 6,8 10,4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>LiDAR (national services)</span>
+  </div>
+  <div class="mini-sub" id="lidarEuropeanSubLayers">
+    <div class="transp-layer-row" id="lidarNlAhnRow">Netherlands · AHN relief</div>
+    <div class="transp-layer-row" id="lidarNoLidarRow">Norway · Hoydedata</div>
+    <div class="transp-layer-row" id="lidarPlLidarRow">Poland · Geoportal NMT</div>
+    <div class="transp-layer-row" id="lidarEsLidarRow">Spain · Mapa LiDAR</div>
+    <div class="transp-layer-row" id="lidarChLidarRow">Switzerland · swisstopo</div>
+    <div class="transp-layer-row" id="lidarUkLidarRow">UK · Environment Agency</div>
+    <div class="transp-layer-row" id="lidarFrLidarRow">France · IGN MNT</div>
+    <div class="transp-layer-row" id="lidarDkLidarRow">Denmark · DHM</div>
+    <div class="transp-layer-row" id="lidarSeLidarRow">Sweden · Hojdmodell</div>
+  </div>
+
+  <div class="transp-layer-row mini-group" id="miniHistGroupRow">
+    <svg id="histExpandIcon" width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,4 6,8 10,4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Historical maps (Romania)</span>
+  </div>
+  <div class="mini-sub" id="histSubLayers">
+    <div class="transp-layer-row" id="austrianMapRow">Austrian 1:25 000</div>
+    <div class="transp-layer-row" id="lidarHdRow">HD county LiDAR</div>
+  </div>
+
+  <div class="transp-layer-row" id="histEuRow">
+    <svg id="histEuExpandIcon" width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,4 6,8 10,4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>European historical maps</span>
+  </div>
+
+  <div class="mini-note">Rows hide when their coverage does not overlap the selected country; a group hides when nothing inside it survives. Italy → no Denmark LiDAR.</div>
+</div>
+
 <script src="js/leaflet.js"></script>
 <script src="js/globe-country-picker.js"></script>
 <script src="js/country-dock.js"></script>
@@ -151,15 +208,84 @@
   }).addTo(map);
   window._satLayer = base;
 
+  /* ── Mini layer filter: the same contract js/map-app.js implements ──
+     The gate calls window.filterLayersForCountry(iso) after every selection
+     and window.unfilterLayersForCountry() on unlock. Rows keep the same ids
+     and the same .country-layer-unavailable class as the real panel. */
+  var MINI_ROWS = {
+    lidarNlAhnRow: [[50.70, 3.20], [53.60, 7.30]],
+    lidarNoLidarRow: [[57.90, 4.00], [71.30, 31.50]],
+    lidarPlLidarRow: [[49.00, 14.00], [54.90, 24.20]],
+    lidarEsLidarRow: [[27, -19], [44, 5]],
+    lidarChLidarRow: [[45.398181, 5.140242], [48.230651, 11.47757]],
+    lidarUkLidarRow: [[49.850605, -7.104776], [55.877087, 2.084282]],
+    lidarFrLidarRow: [[41.30, -5.50], [51.20, 9.70]],
+    lidarDkLidarRow: [[54.4265, 7.99125], [57.7781, 15.5995]],
+    lidarSeLidarRow: [[55.20, 10.80], [69.20, 24.30]],
+    austrianMapRow: [[43.5, 19.5], [48.5, 30.5]],
+    lidarHdRow: [[45.20, 22.00], [46.20, 23.30]],
+    histEuRow: [[45.0, 5.0], [59.0, 39.0]]
+  };
+  var MINI_GROUPS = { lidarExpandIcon: 'miniLidarGroupRow', histExpandIcon: 'miniHistGroupRow', histEuExpandIcon: 'histEuRow' };
+  function miniGroupRow(iconId) {
+    var icon = document.getElementById(iconId);
+    return icon && icon.closest ? icon.closest('.transp-layer-row') : document.getElementById(MINI_GROUPS[iconId]);
+  }
+  function rowInside(row, groupRow) {
+    if (!row || !groupRow) return false;
+    if (row === groupRow) return true;
+    if (typeof groupRow.contains === 'function') return groupRow.contains(row);
+    var p = row.parentElement;
+    while (p) { if (p === groupRow) return true; p = p.parentElement; }
+    return false;
+  }
+  window.filterLayersForCountry = function (iso) {
+    var b = window._detectlabCountryBounds;
+    if (!Array.isArray(b) || b.length !== 4) return;
+    var countryBounds = L.latLngBounds([[b[1], b[0]], [b[3], b[2]]]);
+    Object.keys(MINI_ROWS).forEach(function (id) {
+      var row = document.getElementById(id);
+      if (!row) return;
+      var available = countryBounds.intersects(L.latLngBounds(MINI_ROWS[id]));
+      row.classList.toggle('country-layer-unavailable', !available);
+      row.setAttribute('aria-hidden', available ? 'false' : 'true');
+    });
+    Object.keys(MINI_GROUPS).forEach(function (iconId) {
+      var groupRow = miniGroupRow(iconId);
+      if (!groupRow) return;
+      var anyAvailable = Object.keys(MINI_ROWS).some(function (id) {
+        var row = document.getElementById(id);
+        return row && !row.classList.contains('country-layer-unavailable') && rowInside(row, groupRow);
+      });
+      groupRow.classList.toggle('country-layer-unavailable', !anyAvailable);
+    });
+    document.getElementById('transpPanel').classList.add('country-filter-active');
+  };
+  window.unfilterLayersForCountry = function () {
+    Object.keys(MINI_ROWS).forEach(function (id) {
+      var row = document.getElementById(id);
+      if (!row) return;
+      row.classList.remove('country-layer-unavailable');
+      row.setAttribute('aria-hidden', 'false');
+    });
+    Object.keys(MINI_GROUPS).forEach(function (iconId) {
+      var groupRow = miniGroupRow(iconId);
+      if (groupRow) groupRow.classList.remove('country-layer-unavailable');
+    });
+    document.getElementById('transpPanel').classList.remove('country-filter-active');
+  };
+
   var out = document.getElementById('result');
   function report(prefix) {
     var g = window.DetectLabGlobeGate;
     var sel = g && g.getSelection ? g.getSelection() : null;
     var hs = window.DetectLabCountryDock && window.DetectLabCountryDock.isHillshadeOn();
+    var bl = g && g._test && g._test.state ? g._test.state.boundsLayer : null;
+    var boundsKind = bl ? (typeof bl.eachLayer === 'function' ? 'country outline' : 'bbox rectangle') : '—';
     out.innerHTML = prefix + (sel
       ? '<br>Country: <b>' + sel.name + ' (' + sel.iso + ')</b> · locked: <b>' + (g.isLocked() ? 'yes' : 'no') +
         '</b> · zoom ' + map.getZoom().toFixed(2) + ' (min ' + map.getMinZoom().toFixed(2) + ')' +
-        '<br>World hillshade: <b>' + (hs ? 'on' : 'off') + '</b>'
+        '<br>Bounds on map: <b>' + boundsKind + '</b> · World hillshade: <b>' + (hs ? 'on' : 'off') + '</b>'
       : '<br>No country selected yet.');
   }
 
