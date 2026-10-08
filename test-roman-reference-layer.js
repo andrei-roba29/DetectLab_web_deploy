@@ -87,7 +87,7 @@ console.log('  ✓ progressive NDJSON loading and visible progress preserved');
 assert(subscriptions.includes("'toggleRomanSub'"), 'Roman sublayer API is premium-gated');
 assert(subscriptions.includes("'toggleRomanDareCategories'"), 'DARE All/None API is premium-gated');
 assert(subscriptions.includes('euMaps.toggleCenagisLayer = function (mapKey, on)'), 'CENAGIS catalog toggle is premium-gated');
-assert(sw.includes('js/map-app.js?v=20261008-premium-historical-roman'), 'new Roman map script is in the service-worker cache');
+assert(sw.includes('js/map-app.js?v=20261008-country-layers-strict'), 'current map-app script is in the service-worker cache');
 assert(sw.includes('js/subscriptions.js?v=20261008-premium-roman-guard'), 'premium guard script is in the service-worker cache');
 assert(sw.includes('css/styles.css?v=20261008-roman-dare-icons'), 'DARE marker CSS is in the service-worker cache');
 console.log('  ✓ Premium guards and PWA asset versions verified');

@@ -1,10 +1,13 @@
 // Test suite for the country-scoped layer window and the visible country
 // bounds. Once a country is selected:
-//   1. the layer panel keeps only the layers whose coverage partially or
-//      entirely overlaps the bounds of that country (rows outside the country
-//      get .country-layer-unavailable and are hidden while #transpPanel keeps
-//      .country-filter-active — e.g. Italy must not offer Denmark's LiDAR),
-//      and a group row hides too when none of its sublayers survives;
+//   1. the layer panel keeps ONLY the layers attributed to that country
+//      (rows get .country-layer-unavailable and are hidden while
+//      #transpPanel keeps .country-filter-active — e.g. Italy must not offer
+//      Denmark's LiDAR, nor France's / Switzerland's, whose boxes merely
+//      graze Italy's bbox; Denmark must not see Sweden's / Poland's rows).
+//      Neighbouring countries' rows that are merely visible in the locked
+//      viewport never leak in. A group row hides too when none of its
+//      sublayers survives;
 //   2. the bounds of the selected country stay visible on the Leaflet map —
 //      the country outline once the gate geometry is loaded, the bbox
 //      rectangle until then — drawn non-interactive in its own pane above the
@@ -43,18 +46,18 @@ const CA_BBOX = [-141.0, 41.0, -52.0, 83.0];    // Canada (group availability fa
 assert(/#transpPanel\.country-filter-active \.country-layer-unavailable\s*\{\s*display:\s*none\s*!important/.test(css),
     'styles.css hides rows marked country-layer-unavailable while the filter is active');
 assert(html.includes('css/styles.css?v=20261008-roman-dare-icons'), 'index.html loads the re-versioned styles.css');
-assert(html.includes('js/map-app.js?v=20261008-premium-historical-roman'), 'index.html loads the re-versioned map-app.js');
-assert(html.includes('js/historical-eu-maps.js?v=20261008-country-overlap'), 'index.html loads the country-filtered catalog');
+assert(html.includes('js/map-app.js?v=20261008-country-layers-strict'), 'index.html loads the country-attribution map-app.js');
+assert(html.includes('js/historical-eu-maps.js?v=20261008-country-layers-strict'), 'index.html loads the country-attribution catalog');
 assert(html.includes('js/globe-country-picker.js?v=20261008-country-bounds'), 'index.html loads the re-versioned picker');
 ['css/styles.css?v=20261008-roman-dare-icons',
- 'js/map-app.js?v=20261008-premium-historical-roman',
- 'js/historical-eu-maps.js?v=20261008-country-overlap',
+ 'js/map-app.js?v=20261008-country-layers-strict',
+ 'js/historical-eu-maps.js?v=20261008-country-layers-strict',
  'js/globe-country-picker.js?v=20261008-country-bounds'].forEach(function (p) {
     assert(sw.includes("'" + p + "'"), 'sw.js precaches ' + p);
 });
 const shellVersion = Number((sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);
-assert(shellVersion >= 171, 'sw.js cache is v169 or newer (got v' + shellVersion + ')');
-console.log('  ✓ hiding CSS, re-versioned assets and sw.js v' + shellVersion + ' precache verified');
+assert(shellVersion >= 172, 'sw.js cache is v172 or newer (got v' + shellVersion + ')');
+console.log('  ✓ hiding CSS, country-attribution assets and sw.js v' + shellVersion + ' precache verified');
 
 /* ══════════════════════════════════════════════════════════════
    2. Sandbox for the map-app.js layer-filter section
@@ -165,12 +168,19 @@ function setupPanel() {
     // market-dependent bounds (the Roman Empire box) resolve like production.
     window.DetectLabSite = { isEurope: true };
     const catalogSpecs = [
-        { id: 'wig300k', bounds: [14.33, 49.00, 27.50, 55.80] },
-        { id: 'gaul', bounds: [15.12, 51.49, 17.36, 52.99] },
+        // Curated coverage subset of js/historical-eu-maps.js COUNTRIES_DATA:
+        // WIG 300k is a Polish sheet (it grazes Denmark's bbox but has ZERO
+        // data for Denmark), Gaul is a Poznań-area sheet.
+        { id: 'wig300k', bounds: [14.33, 49.00, 27.50, 55.80], curated: ['PL', 'DE', 'UA', 'BY', 'LT', 'CZ', 'SK', 'RU'] },
+        { id: 'gaul', bounds: [15.12, 51.49, 17.36, 52.99], curated: ['PL', 'DE', 'RU'] },
         // Fixture to exercise the parent's hasAvailableMaps() fallback when a
         // dynamic catalog row is the only available Historical Maps sublayer.
-        { id: 'fixture', bounds: [-130.0, 40.0, -50.0, 80.0] }
+        // It has no curated coverage (country outside the analysis) and relies
+        // on the extent fallback.
+        { id: 'fixture', bounds: [-130.0, 40.0, -50.0, 80.0], curated: null }
     ];
+    // The analyzed set (COUNTRIES_DATA entries; BE-LU = BE + LU).
+    const analyzedIso = new Set(['PL', 'DE', 'UA', 'BY', 'LT', 'LV', 'CZ', 'SK', 'AT', 'HU', 'RU', 'MD', 'RO', 'FR', 'BE', 'LU', 'NL', 'DK', 'EE', 'CH']);
     const catalogContainer = document.getElementById('histEuMapsSection');
     const catalogRows = catalogSpecs.map(spec => {
         const row = new ElementMock('div', { id: 'cenagisMapRow_' + spec.id, class: 'cenagis-map-row' }, catalogContainer);
@@ -180,14 +190,25 @@ function setupPanel() {
         return { spec, row };
     });
     let availableCatalogCount = 0;
+    // Mirrors production js/historical-eu-maps.js filterForCountry: curated
+    // coverage lists decide membership for analyzed countries; a country
+    // outside the analysis falls back to the sheet extents.
     window.DetectLabEuMaps = {
         filterForCountry(code, bounds) {
             const bbox = Array.isArray(bounds) ? bounds : null;
+            const iso = code && String(code).toUpperCase() !== 'ALL' ? String(code).toUpperCase() : null;
             availableCatalogCount = 0;
             catalogRows.forEach(({ spec, row }) => {
-                const b = spec.bounds;
-                const available = !code || !bbox ||
-                    (b[2] >= bbox[0] && b[0] <= bbox[2] && b[3] >= bbox[1] && b[1] <= bbox[3]);
+                let available = true;
+                if (iso) {
+                    if (analyzedIso.has(iso)) {
+                        available = !!spec.curated && spec.curated.includes(iso);
+                    } else {
+                        const b = spec.bounds;
+                        available = !!bbox &&
+                            (b[2] >= bbox[0] && b[0] <= bbox[2] && b[3] >= bbox[1] && b[1] <= bbox[3]);
+                    }
+                }
                 row.classList.toggle(UNAVAILABLE, !available);
                 row.setAttribute('aria-hidden', available ? 'false' : 'true');
                 if (available) availableCatalogCount++;
@@ -245,7 +266,7 @@ function groupRowOf(document, iconId) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   3. Italy selected: only layers covering Italy remain
+   3. Italy selected: only layers attributed to Italy remain
    ══════════════════════════════════════════════════════════════ */
 {
     const { window, document } = setupPanel();
@@ -263,28 +284,35 @@ function groupRowOf(document, iconId) {
     };
     window.filterLayersForCountry('IT');
 
-    // Denmark's LiDAR does not touch Italy → not offered in the panel.
+    // National services of other countries must NEVER leak in — not even the
+    // neighbours visible at the edges of the locked viewport whose published
+    // boxes graze Italy's bbox (France's MNT, Switzerland's relief).
     assert.equal(unavailable(document, 'lidarDkLidarRow'), true, 'Denmark LiDAR hidden for Italy');
     assert.equal(unavailable(document, 'lidarSeLidarRow'), true, 'Sweden LiDAR hidden for Italy');
     assert.equal(unavailable(document, 'lidarNoLidarRow'), true, 'Norway LiDAR hidden for Italy');
     assert.equal(unavailable(document, 'lidarUkLidarRow'), true, 'UK LiDAR hidden for Italy');
     assert.equal(unavailable(document, 'lidarPlLidarRow'), true, 'Poland LiDAR hidden for Italy');
-    // France and Switzerland cover the north of Italy's bounds → kept.
-    assert.equal(unavailable(document, 'lidarFrLidarRow'), false, 'France LiDAR kept for Italy');
-    assert.equal(unavailable(document, 'lidarChLidarRow'), false, 'Switzerland LiDAR kept for Italy');
-    // The Romanian county catalogue does not cover Italy.
+    assert.equal(unavailable(document, 'lidarNlAhnRow'), true, 'Netherlands LiDAR hidden for Italy');
+    assert.equal(unavailable(document, 'lidarEsLidarRow'), true, 'Spain LiDAR hidden for Italy');
+    assert.equal(unavailable(document, 'lidarFrLidarRow'), true, 'France LiDAR hidden for Italy — the box grazes Italy but carries no Italian data');
+    assert.equal(unavailable(document, 'lidarChLidarRow'), true, 'Switzerland LiDAR hidden for Italy — the box grazes Italy but carries no Italian data');
+    // The Romanian county catalogue is not Italian either.
     assert.equal(rowOfSlider(document, 'lidarHdOpacitySlider', 'lidarSubLayers').classList.contains(UNAVAILABLE),
         true, 'HD county row hidden for Italy');
-    // The LiDAR group survives (France/Switzerland remain inside it)...
-    assert.equal(groupRowOf(document, 'lidarExpandIcon').classList.contains(UNAVAILABLE), false,
-        'LiDAR group row kept while French/Swiss LiDAR cover Italy');
-    // ...but the Romania-only free historical group disappears entirely.
+    // No national LiDAR service is attributed to Italy → the group goes too.
+    assert.equal(groupRowOf(document, 'lidarExpandIcon').classList.contains(UNAVAILABLE), true,
+        'LiDAR group hidden for Italy (no Italian national service in the catalogue)');
+    // ...and the Romania-only free historical group disappears entirely.
     assert.equal(groupRowOf(document, 'histExpandIcon').classList.contains(UNAVAILABLE), true, 'historical group hidden for Italy');
     // Premium historical maps: the Central-European series (Mitteleuropa,
-    // Reymann, WIG 100k…) reach the Alps → group stays, Romania-only sheets go.
+    // Reymann, KDR…) substantially cover the Alps even though the curated
+    // analysis never computed Italy → group stays, Romania-only sheets go.
     assert.equal(groupRowOf(document, 'histPremiumExpandIcon').classList.contains(UNAVAILABLE), false,
         'premium historical group kept for Italy (Central-European sheets cover the Alps)');
     assert.equal(unavailable(document, 'mitteleuropaRow'), false, 'Mitteleuropa kept for Italy');
+    assert.equal(unavailable(document, 'reymannRow'), false, 'Reymann kept for Italy');
+    assert.equal(unavailable(document, 'kdr100kRow'), false, 'KDR 100k kept for Italy');
+    assert.equal(unavailable(document, 'chrzanowskiRow'), true, 'Chrzanowski (Old Poland) hidden for Italy — bbox graze is not coverage');
     assert.equal(unavailable(document, 'bucovinaRow'), true, 'Bucovina sheet hidden for Italy');
     assert.equal(groupRowOf(document, 'vegfpExpandIcon').classList.contains(UNAVAILABLE), true, 'vegetation group hidden for Italy');
     // The Roman Empire coverage box spans Italy → the Roman group stays.
@@ -292,7 +320,7 @@ function groupRowOf(document, iconId) {
     // EU-wide layers keep working anywhere in Europe.
     assert.equal(unavailable(document, 'satellite60sRow'), false, 'Europe-wide satellite layer kept for Italy');
     // European catalog rows are nested in the single premium group and are
-    // independently hidden when their map extents do not overlap Italy.
+    // independently hidden when they are not maps of Italy.
     assert.equal(document.getElementById('histEuRow'), null, 'separate European Historical Maps group removed');
     assert.equal(unavailable(document, 'cenagisMapRow_wig300k'), true, 'WIG 300k catalog row hidden for Italy');
     assert.equal(unavailable(document, 'babelScroll'), true, 'Romania-only premium layer hidden for Italy');
@@ -304,12 +332,13 @@ function groupRowOf(document, iconId) {
     // Italy's real bounds come back with the exit: everything selectable again.
     window.unfilterLayersForCountry();
     assert.equal(unavailable(document, 'lidarDkLidarRow'), false, 'Denmark LiDAR restored');
+    assert.equal(unavailable(document, 'lidarFrLidarRow'), false, 'France LiDAR restored');
     assert.equal(unavailable(document, 'babelScroll'), false, 'Romania-only rows restored');
     ['lidarExpandIcon', 'histExpandIcon', 'histPremiumExpandIcon', 'vegfpExpandIcon', 'romanExpandIcon'].forEach(function (icon) {
         assert.equal(groupRowOf(document, icon).classList.contains(UNAVAILABLE), false, icon + ' group restored');
     });
     assert.equal(document.getElementById('transpPanel').classList.contains(FILTER_ACTIVE), false, 'filter class removed');
-    console.log('  ✓ Italy: Denmark/Sweden/Norway/UK/Poland LiDAR hidden, France/Switzerland kept, empty groups hidden, exit restores all');
+    console.log('  ✓ Italy: every foreign national LiDAR row hidden (incl. France/Switzerland), empty groups hidden, exit restores all');
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -323,10 +352,11 @@ function groupRowOf(document, iconId) {
     window.filterLayersForCountry('DK');
 
     assert.equal(unavailable(document, 'lidarDkLidarRow'), false, 'Denmark LiDAR available for Denmark');
-    // Sweden's catalogue box and Poland's north edge overlap Denmark's bbox:
-    // "partially covers" layers stay available.
-    assert.equal(unavailable(document, 'lidarSeLidarRow'), false, 'partially covering Sweden LiDAR kept for Denmark');
-    assert.equal(unavailable(document, 'lidarPlLidarRow'), false, 'partially covering Poland LiDAR kept for Denmark');
+    // The neighbours visible around Denmark's bbox must not leak in: Sweden's
+    // and Poland's boxes clip the Danish bbox but their services have ZERO
+    // data for Denmark.
+    assert.equal(unavailable(document, 'lidarSeLidarRow'), true, 'Sweden LiDAR hidden for Denmark');
+    assert.equal(unavailable(document, 'lidarPlLidarRow'), true, 'Poland LiDAR hidden for Denmark');
     assert.equal(unavailable(document, 'lidarNlAhnRow'), true, 'Netherlands LiDAR hidden for Denmark');
     assert.equal(unavailable(document, 'lidarEsLidarRow'), true, 'Spain LiDAR hidden for Denmark');
     assert.equal(unavailable(document, 'lidarFrLidarRow'), true, 'France LiDAR hidden for Denmark');
@@ -336,15 +366,24 @@ function groupRowOf(document, iconId) {
     assert.equal(groupRowOf(document, 'histExpandIcon').classList.contains(UNAVAILABLE), true, 'Romania historical group hidden for Denmark');
     assert.equal(groupRowOf(document, 'romanExpandIcon').classList.contains(UNAVAILABLE), false, 'Roman group kept for Denmark');
     assert.equal(groupRowOf(document, 'vegfpExpandIcon').classList.contains(UNAVAILABLE), true, 'vegetation group hidden for Denmark');
+    // Premium historical sheets follow the curated CENAGIS coverage: sheets
+    // that really reach Denmark's territory stay, Polish-only sheets go.
     assert.equal(groupRowOf(document, 'histPremiumExpandIcon').classList.contains(UNAVAILABLE), false,
-        'premium historical group kept for Denmark (WIG/KDR boxes reach the bbox)');
+        'premium historical group kept for Denmark (curated sheets cover its territory)');
     assert.equal(unavailable(document, 'josephineRow'), true, 'Josephine sheet hidden for Denmark');
-    assert.equal(unavailable(document, 'wig100kRow'), false, 'WIG 100k kept for Denmark');
+    assert.equal(unavailable(document, 'wig100kRow'), true, 'WIG 100k (Polish sheet) hidden for Denmark');
+    assert.equal(unavailable(document, 'mitteleuropaRow'), false, 'Mitteleuropa kept for Denmark (curated coverage)');
+    assert.equal(unavailable(document, 'chrzanowskiRow'), false, 'Chrzanowski kept for Denmark (curated coverage)');
+    assert.equal(unavailable(document, 'reymannRow'), false, 'Reymann kept for Denmark (curated coverage)');
+    assert.equal(unavailable(document, 'kdr100kRow'), false, 'KDR 100k kept for Denmark (curated coverage)');
+    assert.equal(unavailable(document, 'kdrGbRow'), true, 'KDR Großblatt hidden for Denmark (not in the curated list)');
+    assert.equal(unavailable(document, 'galicia1855Row'), true, 'Galicia 1855 hidden for Denmark');
     assert.equal(document.getElementById('histEuRow'), null, 'separate European Historical Maps group removed');
-    assert.equal(unavailable(document, 'cenagisMapRow_wig300k'), false, 'partially overlapping WIG 300k catalog row kept for Denmark');
-    assert.equal(unavailable(document, 'cenagisMapRow_gaul'), true, 'non-overlapping Gaul catalog row hidden for Denmark');
+    assert.equal(unavailable(document, 'cenagisMapRow_wig300k'), true,
+        'WIG 300k catalog row hidden for Denmark — the bbox graze is not coverage');
+    assert.equal(unavailable(document, 'cenagisMapRow_gaul'), true, 'Gaul catalog row hidden for Denmark');
     assert(document.getElementById('transpPanel').classList.contains(FILTER_ACTIVE), 'panel marked country-filter-active');
-    console.log('  ✓ Denmark (bbox fallback): own + partially covering LiDAR kept, the rest hidden');
+    console.log('  ✓ Denmark (bbox fallback): own + curated sheets kept, grazing neighbours hidden');
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -358,6 +397,7 @@ function groupRowOf(document, iconId) {
     window.filterLayersForCountry('CA');
 
     assert.equal(unavailable(document, 'cenagisMapRow_fixture'), false, 'matching dynamic catalog sheet available for Canada fixture');
+    assert.equal(unavailable(document, 'mitteleuropaRow'), true, 'Central-European premium sheets stay hidden for Canada');
     assert.equal(groupRowOf(document, 'histPremiumExpandIcon').classList.contains(UNAVAILABLE), false,
         'single premium historical group stays visible for a matching dynamic catalog sheet');
     window.unfilterLayersForCountry();

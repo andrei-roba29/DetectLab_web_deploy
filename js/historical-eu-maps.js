@@ -838,6 +838,28 @@
         return !!(a && b && b[2] >= a[0] && b[0] <= a[2] && b[3] >= a[1] && b[1] <= a[3]);
     }
 
+    function boxArea(b) {
+        return Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]);
+    }
+
+    function overlapAreaBoxes(a, b) {
+        var w = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+        var h = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+        return (w > 0 && h > 0) ? w * h : 0;
+    }
+
+    // Rectangle intersection alone lets neighbouring countries' sheets leak
+    // into the window where catalog extents merely graze the country's bbox
+    // (a Polish WIG box clipping Denmark's bbox has ZERO data for Denmark).
+    // For countries outside the curated analysis demand a substantial
+    // overlap: at least 5% of the country's box OR at least 5% of the sheet.
+    function substantialCountryCoverage(countryB, extentB) {
+        if (!countryB || !extentB) return false;
+        var o = overlapAreaBoxes(countryB, extentB);
+        if (!(o > 0)) return false;
+        return o >= 0.05 * boxArea(countryB) || o >= 0.05 * boxArea(extentB);
+    }
+
     function isSharedPremiumMap(mapKey) {
         return !!SHARED_PREMIUM_MAP_KEYS[mapKey];
     }
@@ -962,18 +984,30 @@
         _selectedCountryBounds = normalizedBounds;
 
         var availableIds;
-        if (normalizedBounds) {
-            availableIds = getMapsOverlappingBounds(normalizedBounds, false);
-        } else if (code) {
-            // Fallback for a country selection without a geometry/bbox: use
-            // the catalog's curated country overlap list.
-            var country = findCountry(code);
-            // Without geometry, only the curated ISO list is trustworthy. An
-            // unknown country must not accidentally see the whole catalog.
-            availableIds = country ? country.maps.map(function (entry) { return entry.id; }) : [];
-            availableIds = availableIds.filter(function (id) { return !isSharedPremiumMap(id); });
-        } else {
+        var country = code ? findCountry(code) : null;
+        if (!code) {
             availableIds = getMapsOverlappingBounds(null, false);
+        } else if (country) {
+            // The curated coverage list (COUNTRIES_DATA, pct > 0) is the
+            // source of truth for the analyzed countries: rectangle overlap
+            // alone leaks neighbouring countries' sheets into the window —
+            // a Polish WIG sheet whose box clips Denmark's bbox is not a map
+            // of Denmark. Shared premium sheets are hosted on their premium
+            // rows in index.html and are not duplicated in this catalog.
+            availableIds = country.maps.map(function (entry) { return entry.id; })
+                .filter(function (id) { return !isSharedPremiumMap(id); });
+        } else if (normalizedBounds) {
+            // Country outside the curated analysis (Italy, Norway…): fall
+            // back to the sheets' own extents, but only where the sheet
+            // substantially covers the country — a box that merely grazes
+            // the country's bbox is not a map of this country.
+            availableIds = getMapsOverlappingBounds(normalizedBounds, false).filter(function (id) {
+                return substantialCountryCoverage(normalizedBounds, mapBoundsArray(MAPS_CATALOG[id]));
+            });
+        } else {
+            // An unknown ISO without geometry must not accidentally see the
+            // whole catalog.
+            availableIds = [];
         }
 
         var available = Object.create(null);
@@ -1063,7 +1097,7 @@
         });
 
         var heading = (lang === 'ro') ? 'Hărți europene · CENAGIS / IH PAN' : 'European maps · CENAGIS / IH PAN';
-        var emptyText = (lang === 'ro') ? 'Nu există hărți CENAGIS care să intersecteze țara selectată.' : 'No CENAGIS maps overlap the selected country.';
+        var emptyText = (lang === 'ro') ? 'Nu există alte hărți CENAGIS pentru țara selectată.' : 'No other CENAGIS maps cover the selected country.';
         var html = [];
         html.push('<div class="cenagis-catalog-title" style="padding-top:8px;border-top:1px solid rgba(200,169,110,0.2);font-size:0.72rem;font-weight:600;letter-spacing:0.04em;color:rgba(200,169,110,0.95);">' + heading + '</div>');
         html.push('<div id="histEuFilterStatus" aria-live="polite" style="font-size:0.66rem;color:rgba(245,240,235,0.55);line-height:1.35;">' + (lang === 'ro' ? 'Selectează o țară pe glob pentru a vedea hărțile care o intersectează.' : 'Choose a country on the globe to see maps that overlap it.') + '</div>');

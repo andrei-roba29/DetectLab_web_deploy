@@ -12885,6 +12885,90 @@
                     seLidar: [[55.20, 10.80], [69.20, 24.30]]
                 };
 
+                // ── Country attribution for the country-scoped layer window ──
+                // A row belongs to the selected country ONLY when the layer is
+                // attributed to it here (or the row is a pan-European catalogue
+                // declared by its extent). Neighbouring countries' rows must
+                // not leak into the window just because their published
+                // rectangle grazes the country's bbox or the locked viewport:
+                // with Denmark selected, Sweden's / Poland's national LiDAR
+                // boxes touch the Danish bbox but carry ZERO data for Denmark.
+                // Keys are layerDef keys (below).
+                var LAYER_COUNTRIES = {
+                    // National LiDAR / elevation services — strictly their own country.
+                    lidar_nlAhn: ['NL'],
+                    lidar_noLidar: ['NO'],
+                    lidar_plLidar: ['PL'],
+                    lidar_esLidar: ['ES'],
+                    lidar_chLidar: ['CH'],
+                    lidar_ukLidar: ['GB', 'UK'],
+                    lidar_frLidar: ['FR'],
+                    lidar_dkLidar: ['DK'],
+                    lidar_seLidar: ['SE'],
+                    // Romanian national catalogue (county LiDAR keys are added
+                    // below — all of them are Romanian counties/national grids).
+                    apm: ['RO'], apm20: ['RO'], sat: ['RO'], osmPlaces: ['RO'],
+                    uat: ['RO'], patrimoniu: ['RO'], babel: ['RO'], battles: ['RO'],
+                    iosfree: ['RO'], austrianMap: ['RO'], firingPlans: ['RO'],
+                    sovietMap: ['RO'], lidarScanner: ['RO'], archeoPotential: ['RO'],
+                    archReport: ['RO'],
+                    // Amprenta Vegetației publishes Romanian coverage only
+                    // (see VEGETATION_FINGERPRINT.md / the .eu market note).
+                    vegfp_ppi: ['RO'], vegfp_smx: ['RO'], vegfp_sgu: ['RO'],
+                    vegfp_sgd: ['RO'],
+                    // Premium sheets — the modern countries whose territory the
+                    // sheet genuinely shows (home region first).
+                    premium_josephine: ['RO'],
+                    premium_bucovina: ['RO', 'UA'],
+                    premium_austrohu: ['RO', 'MD', 'UA'],
+                    premium_moldova1868: ['RO', 'MD'],
+                    premium_moldova1771: ['RO', 'MD'],
+                    premium_moldovawwii: ['RO', 'MD'],
+                    premium_polishtactical1933: ['RO', 'MD', 'UA'],
+                    premium_ww1: ['RO', 'MD', 'UA', 'BG', 'HU', 'RS'],
+                    premium_ww2: ['RO', 'MD', 'UA', 'BG', 'HU', 'RS'],
+                    premium_banat: ['RO', 'HU', 'RS'],
+                    premium_transylvania1859: ['RO']
+                };
+                Object.keys(LIDAR_COUNTY_BOUNDS).forEach(function (k) {
+                    LAYER_COUNTRIES['lidar_' + k] = ['RO'];
+                });
+
+                // The premium rows below host the CENAGIS sheets that are
+                // de-duplicated out of the dynamic catalog
+                // (js/historical-eu-maps.js SHARED_PREMIUM_MAP_KEYS). Their
+                // country coverage is the catalog's curated data — COUNTRIES
+                // _DATA in that module (pct > 0 = the sheet really covers part
+                // of that country's territory). MIRROR kept in sync there; a
+                // drift check lives in test-historical-eu-maps.js.
+                var SHARED_PREMIUM_CATALOG_KEYS = {
+                    premium_mitteleuropa: 'ukvme',
+                    premium_chrzanowski: 'chrzanowski',
+                    premium_reymann: 'reymann',
+                    premium_kdr100k: 'kdr',
+                    premium_kdr_gb: 'kdr_gb',
+                    premium_wig100k: 'wig100k',
+                    premium_galicia1855: 'kummersberg'
+                };
+                var SHARED_PREMIUM_COUNTRIES = {
+                    ukvme: ['PL', 'DE', 'UA', 'BY', 'LT', 'LV', 'CZ', 'SK', 'AT', 'HU', 'RU', 'MD', 'RO', 'DK', 'EE'],
+                    chrzanowski: ['PL', 'DE', 'UA', 'BY', 'LT', 'LV', 'CZ', 'SK', 'AT', 'HU', 'RU', 'MD', 'RO', 'DK', 'EE'],
+                    reymann: ['PL', 'DE', 'UA', 'BY', 'LT', 'CZ', 'SK', 'AT', 'HU', 'RU', 'MD', 'RO', 'FR', 'BE', 'LU', 'NL', 'DK', 'CH'],
+                    kdr: ['PL', 'DE', 'UA', 'BY', 'LT', 'CZ', 'SK', 'AT', 'HU', 'RU', 'RO', 'FR', 'BE', 'LU', 'NL', 'DK', 'CH'],
+                    kdr_gb: ['PL', 'DE', 'UA', 'BY', 'LT', 'CZ', 'SK', 'AT', 'HU', 'RU', 'MD', 'RO'],
+                    wig100k: ['PL', 'DE', 'UA', 'BY', 'LT', 'LV', 'CZ', 'SK', 'HU', 'RU', 'MD', 'RO'],
+                    kummersberg: ['PL', 'UA']
+                };
+                // Countries covered by that curated analysis (COUNTRIES_DATA
+                // entries; BE-LU is listed as BE + LU). For any other country
+                // the curated lists are known-incomplete, so the shared sheets
+                // fall back to their own extent.
+                var CURATED_COVERAGE_COUNTRIES = {
+                    PL: 1, DE: 1, UA: 1, BY: 1, LT: 1, LV: 1, CZ: 1, SK: 1,
+                    AT: 1, HU: 1, RU: 1, MD: 1, RO: 1, FR: 1, BE: 1, LU: 1,
+                    NL: 1, DK: 1, EE: 1, CH: 1
+                };
+
                 // Central config: each leaf layer with its bounds and row getter
                 var layerDefs = [];
                 var internationalLayerDefs = [];
@@ -13282,14 +13366,69 @@
                     return icon.closest ? icon.closest('.transp-layer-row') : null;
                 }
 
-                // After country selection, use the existing coverage catalogue to
-                // reduce the layer panel to the layers whose footprint partially
-                // or entirely covers the bounds of the selected country: rows
-                // outside the country get .country-layer-unavailable, which the
-                // panel CSS hides while #transpPanel keeps .country-filter-active
-                // (e.g. Italy → no Denmark LiDAR row). Unknown rows are left
-                // alone (some live/API layers do not publish a bounds record yet).
+                // Bounds edge helpers that accept both Leaflet LatLngBounds
+                // (getWest() …) and the plain {west, south, east, north}
+                // objects used by the test doubles.
+                function boundsEdge(b, name) {
+                    if (!b) return NaN;
+                    var fn = 'get' + name.charAt(0).toUpperCase() + name.slice(1);
+                    if (typeof b[fn] === 'function') return Number(b[fn]());
+                    return Number(b[name]);
+                }
+                function boundsAreaOf(b) {
+                    var w = boundsEdge(b, 'east') - boundsEdge(b, 'west');
+                    var h = boundsEdge(b, 'north') - boundsEdge(b, 'south');
+                    return (w > 0 && h > 0) ? w * h : 0;
+                }
+                function boundsOverlapArea(a, b) {
+                    var w = Math.min(boundsEdge(a, 'east'), boundsEdge(b, 'east')) -
+                        Math.max(boundsEdge(a, 'west'), boundsEdge(b, 'west'));
+                    var h = Math.min(boundsEdge(a, 'north'), boundsEdge(b, 'north')) -
+                        Math.max(boundsEdge(a, 'south'), boundsEdge(b, 'south'));
+                    return (w > 0 && h > 0) ? w * h : 0;
+                }
+                // Rectangle intersection alone lets neighbouring countries'
+                // catalogues leak in where published boxes merely graze each
+                // other (France's MNT box touches Italy's bbox in the Alps,
+                // Sweden's LiDAR box clips Denmark's bbox at Bornholm). When a
+                // row has no curated country list, demand a *substantial*
+                // overlap: at least 5% of the country's box OR at least 5% of
+                // the layer's box.
+                function coversSubstantially(countryB, layerB) {
+                    var o = boundsOverlapArea(countryB, layerB);
+                    if (!(o > 0)) return false;
+                    return o >= 0.05 * boundsAreaOf(countryB) || o >= 0.05 * boundsAreaOf(layerB);
+                }
+                function isoInList(list, code) {
+                    for (var i = 0; i < list.length; i++) {
+                        var c = list[i];
+                        if (c === code) return true;
+                        if (c === 'BE-LU' && (code === 'BE' || code === 'LU')) return true;
+                        if ((c === 'GB' || c === 'UK') && (code === 'GB' || code === 'UK')) return true;
+                    }
+                    return false;
+                }
+                function curatedCountriesFor(def) {
+                    if (LAYER_COUNTRIES[def.key]) return LAYER_COUNTRIES[def.key];
+                    var catalogKey = SHARED_PREMIUM_CATALOG_KEYS[def.key];
+                    return catalogKey ? (SHARED_PREMIUM_COUNTRIES[catalogKey] || null) : null;
+                }
+
+                // After country selection the layer window offers ONLY the
+                // layers that are aferente the selected country: rows of
+                // neighbouring countries that merely graze the country's bbox
+                // or sit in the locked viewport get .country-layer-unavailable
+                // and are hidden while #transpPanel keeps
+                // .country-filter-active (e.g. Italy → no Denmark LiDAR and no
+                // France/Switzerland LiDAR rows; Denmark → no Sweden/Poland
+                // rows). Rows attributed to the country (LAYER_COUNTRIES /
+                // SHARED_PREMIUM_COUNTRIES) stay; rows without any country
+                // attribution (pan-European catalogues like CORONA and the
+                // Roman Empire, live/API layers without a bounds record) keep
+                // the coverage rule.
                 window.filterLayersForCountry = function (iso) {
+                    iso = String(iso || '').toUpperCase();
+                    if (!iso) return;
                     var countryBounds = null;
                     var countryLayer = window._detectlabCountryLayer;
                     if (countryLayer && countryLayer.eachLayer) countryLayer.eachLayer(function (featureLayer) {
@@ -13305,15 +13444,28 @@
                             countryBounds = L.latLngBounds([b[1], b[0]], [b[3], b[2]]);
                         } catch (e) {}
                     }
-                    if (!countryBounds) return;
 
                     var allDefs = layerDefs.concat(internationalLayerDefs);
                     allDefs.forEach(function (def) {
                         var row = null;
                         try { row = def.getRow(); } catch (e) {}
-                        if (!row || !def.bounds) return;
-                        var available = false;
-                        try { available = countryBounds.intersects(def.bounds); } catch (e) {}
+                        if (!row) return;
+                        var available = true;
+                        var list = curatedCountriesFor(def);
+                        if (list) {
+                            available = isoInList(list, iso);
+                            if (!available && SHARED_PREMIUM_CATALOG_KEYS[def.key] &&
+                                !CURATED_COVERAGE_COUNTRIES[iso] && def.bounds && countryBounds) {
+                                // Country outside the curated analysis (e.g.
+                                // Italy): fall back to the sheet's own extent.
+                                available = coversSubstantially(countryBounds, def.bounds);
+                            }
+                        } else if (countryBounds && def.bounds) {
+                            available = coversSubstantially(countryBounds, def.bounds);
+                        }
+                        // Rows without a bounds record AND without country
+                        // attribution are left untouched (live/API layers that
+                        // do not publish coverage yet).
                         row.classList.toggle('country-layer-unavailable', !available);
                         row.setAttribute('aria-hidden', available ? 'false' : 'true');
                     });
