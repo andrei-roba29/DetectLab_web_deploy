@@ -23,12 +23,12 @@ const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
     assert(indexHtml.includes('id="' + id + '"'), 'index.html contains #' + id);
 });
 assert(indexHtml.includes('css/country-dock.css?v=20261008'), 'index.html loads the dock css');
-assert(indexHtml.includes('js/country-dock.js?v=20261008'), 'index.html loads the dock script');
+assert(indexHtml.includes('js/country-dock.js?v=20261009-3d-globe'), 'index.html loads the dock script');
 // The dock talks to the gate, so the gate must be parsed first.
 assert(indexHtml.indexOf('js/globe-country-picker.js?v=20261008-country-bounds') <
-    indexHtml.indexOf('js/country-dock.js?v=20261008'), 'globe gate loads before the dock');
-assert(indexHtml.indexOf('js/country-dock.js?v=20261008') <
-    indexHtml.indexOf('js/map-app.js?v=20261008-country-layers-strict'), 'dock loads before map-app.js');
+    indexHtml.indexOf('js/country-dock.js?v=20261009-3d-globe'), 'globe gate loads before the dock');
+assert(indexHtml.indexOf('js/country-dock.js?v=20261009-3d-globe') <
+    indexHtml.indexOf('js/map-app.js?v=20261009-3d-globe'), 'dock loads before map-app.js');
 // The dock lives *inside* the search wrap so it stays glued to the search bar.
 const wrapIdx = indexHtml.indexOf('id="mapSearchWrap"');
 const dockIdx = indexHtml.indexOf('id="countryDock"');
@@ -44,9 +44,9 @@ console.log('  ✓ index.html markup, assets and load order verified');
    ══════════════════════════════════════════════════════════════ */
 const swJs = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
 assert(swJs.includes("'css/country-dock.css?v=20261008'"), 'sw.js precaches the dock css');
-assert(swJs.includes("'js/country-dock.js?v=20261008'"), 'sw.js precaches the dock script');
+assert(swJs.includes("'js/country-dock.js?v=20261009-3d-globe'"), 'sw.js precaches the re-versioned dock script');
 const shellVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);
-assert(shellVersion >= 167, 'sw.js cache is v167 or newer (got v' + shellVersion + ')');
+assert(shellVersion >= 173, 'sw.js cache is v173 or newer (got v' + shellVersion + ')');
 console.log('  ✓ sw.js shell v' + shellVersion + ' precaches the dock');
 
 /* ══════════════════════════════════════════════════════════════

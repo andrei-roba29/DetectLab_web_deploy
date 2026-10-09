@@ -380,7 +380,14 @@
 //   then — in its own pane above the data layers; both belong to the locked
 //   view and go away on “Exit view”. See js/map-app.js (filterLayersForCountry
 //   / unfilterLayersForCountry) and js/globe-country-picker.js.
-const CACHE_NAME = 'detectlab-v172-country-layers-strict';
+// v173: the main Leaflet-controlled map now uses a single MapLibre GL 3D globe
+//   as its permanent basemap (local inline style + Esri imagery raster source).
+//   The existing canvas country gate remains WebGL-independent, country bounds
+//   still drive Leaflet's maxBounds/zoom floor, and offline cached satellite
+//   tiles are overlaid within their saved polygon instead of removing the globe.
+//   MapLibre runtime/binding/style assets and the re-versioned map, offline,
+//   dock and translation scripts are precached for installed PWAs.
+const CACHE_NAME = 'detectlab-v173-3d-globe-base';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -422,6 +429,8 @@ const PRECACHE_URLS = [
   'css/styles.css',
   'css/styles.css?v=2026080502',
   'css/leaflet.css',
+  'css/maplibre-gl.css?v=5.24.0',
+  'css/globe-base-layer.css?v=20261009-3d-globe',
   'css/L.Control.Layers.Tree.css',
   'css/L.Control.Locate.min.css',
   'css/leaflet.photon.css',
@@ -433,6 +442,9 @@ const PRECACHE_URLS = [
   'js/translations.js?v=2026080702',
   'js/translations.js?v=20260811',
   'js/leaflet.js',
+  'js/maplibre-gl.js?v=5.24.0',
+  'js/leaflet-maplibre-gl.js?v=0.1.4',
+  'js/globe-base-layer.js?v=20261009-3d-globe',
   'js/L.Control.Layers.Tree.min.js',
   'js/L.Control.Locate.min.js',
   'js/leaflet-hash.js',
@@ -981,6 +993,10 @@ const PRECACHE_URLS = [
   // country view. The hillshade tiles themselves stay network-only.
   'css/country-dock.css?v=20261008',
   'js/country-dock.js?v=20261008',
+  'js/country-dock.js?v=20261009-3d-globe',
+  'js/map-app.js?v=20261009-3d-globe',
+  'js/offline-maps.js?v=20261009-3d-globe',
+  'js/translations.js?v=20261009-3d-globe',
   'js/d3.min.js?v=7.9.0',
   'js/topojson-client.min.js?v=3.1.0',
   'data/countries-50m.json?v=20261008',

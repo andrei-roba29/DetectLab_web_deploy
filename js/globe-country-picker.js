@@ -3,18 +3,20 @@
    ──────────────────────────────────────────────────────────────
    The very first thing an authenticated visitor sees in the map
    card: an orthographic globe rendered on a plain 2D <canvas> with
-   d3-geo — no WebGL, no MapLibre. The Earth texture (Blue Marble +
-   hillshade) is sampled per-pixel straight onto the canvas; every
-   European country is tinted translucent grey-violet with a black
-   border, hovering flips it to translucent neon-green, and clicking
-   flies the camera to the country before handing off to the normal
-   2D Leaflet map (js/map-app.js), locked to that country.
+   d3-geo. The Earth texture (Blue Marble + hillshade) is sampled
+   per-pixel straight onto the canvas; every European country is tinted
+   translucent grey-violet with a black border, hovering flips it to
+   translucent neon-green, and clicking flies to the country before
+   handing off to the Leaflet-controlled working map (js/map-app.js),
+   whose permanent basemap is a MapLibre-rendered 3D globe.
 
-   Why canvas instead of MapLibre GL: the WebGL globe proved fragile
-   (context loss, driver blacklists, style/tile dependencies) and
-   country hit-testing through feature-state was unreliable. Here the
-   picture is drawn by us, and picking is pure geometry
-   (projection.invert + d3.geoContains) so hover/click can't miss.
+   The gate deliberately stays canvas-based instead of using MapLibre
+   for hit-testing: WebGL context loss/driver blacklists and unreliable
+   feature-state picking previously made country selection fragile. The
+   gate picture is drawn by us, and picking is pure geometry
+   (projection.invert + d3.geoContains) so hover/click can't miss. The
+   working map's separate MapLibre globe has an inline local style and a
+   raster fallback if WebGL cannot start.
 
    Everything needed to draw the globe ships with the site:
      js/d3.min.js, js/topojson-client.min.js  (lazy-loaded, local)
@@ -52,7 +54,7 @@
        floor is the signal for the “Exit view” button built by
        js/country-dock.js; the only other way out is picking another country
        from the dock glued to the search bar (or from this globe). The
-       basemap itself is never touched by a selection — see
+       permanent 3D globe basemap is never replaced by a selection — see
        COUNTRY_SELECTION_DOCK.md. */
     var LOCK_PAD = 0.15;         // degrees of slack around the country bbox
     // Leaflet snaps the zoom to whole levels by default, so the floor has to be
@@ -264,8 +266,9 @@
     }
 
     /* Lock the working map to one country: pan pinned to the (slightly
-       padded) country box, zoom floor at the fit zoom. The basemap layers are
-       never switched here — a selection only moves the camera and locks it. */
+       padded) country box, zoom floor at the fit zoom. The permanent 3D globe
+       base is never replaced here — a selection only moves the camera and
+       locks it. */
     function restrictLeafletToCountry(map, bbox) {
         if (!map || !window.L) return;
         try {

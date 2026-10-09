@@ -17,14 +17,16 @@
     <link rel="apple-touch-icon" href="images/pwa-icon-192.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <!-- Leaflet (replaces OpenLayers) -->
+    <!-- Leaflet is the interaction + overlay API; MapLibre paints the shared 3D globe basemap. -->
     <link rel="stylesheet" href="css/leaflet.css">
+    <link rel="stylesheet" href="css/maplibre-gl.css?v=5.24.0">
     <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
     <link rel="stylesheet" href="css/L.Control.Locate.min.css">
     <link rel="stylesheet" href="css/leaflet.photon.css">
     <link rel="stylesheet" href="css/leaflet-measure.css">
     <link rel="stylesheet" href="css/fontawesome-all.min.css">
     <link rel="stylesheet" href="css/styles.css?v=20261008-roman-dare-icons">
+    <link rel="stylesheet" href="css/globe-base-layer.css?v=20261009-3d-globe">
     <link rel="stylesheet" href="css/globe-country-picker.css?v=20261008">
     <link rel="stylesheet" href="css/country-dock.css?v=20261008">
     <link rel="stylesheet" href="css/library-of-babel.css?v=20260917-babel-epochs">
@@ -1232,8 +1234,8 @@
                              slide-down button shows the current 2-letter code
                              and drops open the full initials list (hover = full
                              name), next to the small World-hillshade overlay
-                             checkbox. The basemap itself is never switched by
-                             a country selection. js/country-dock.js. -->
+                             checkbox. The permanent 3D globe base is never
+                             switched by a country selection. js/country-dock.js. -->
                         <div class="country-dock" id="countryDock">
                             <div class="country-dock-row">
                                 <button type="button" class="country-dock-btn" id="countryDockBtn"
@@ -1244,7 +1246,7 @@
                                     <span class="country-dock-caret" aria-hidden="true">▾</span>
                                 </button>
                                 <label class="country-dock-hs" id="countryDockHillshadeWrap"
-                                       title="World Hillshade (Esri · USGS · NOAA, 30 m) — terrain shading laid over the current basemap">
+                                       title="World Hillshade (Esri · USGS · NOAA, 30 m) — terrain shading over the permanent 3D globe">
                                     <input type="checkbox" id="countryDockHillshade">
                                     <span class="t" data-key="country_dock_hillshade">World hillshade</span>
                                 </label>
@@ -1260,7 +1262,7 @@
                                 <div class="country-dock-grid" id="countryDockGrid" role="listbox"
                                      aria-label="Countries"></div>
                                 <div class="country-dock-name" id="countryDockName" aria-live="polite"></div>
-                                <p class="country-dock-hint t" data-key="country_dock_hint">Hover a code for the country name. Picking one moves and locks the map view to it — the basemap stays as it is.</p>
+                                <p class="country-dock-hint t" data-key="country_dock_hint">Hover a code for the country name. Picking one moves and locks the map view to it — the 3D globe stays in place.</p>
                             </div>
                         </div>
                     </div>
@@ -1355,8 +1357,8 @@
                             <p id="globeGateErrorText">The world map could not load. Please check your connection and try again.</p>
                             <button type="button" id="globeGateRetryBtn" class="t" data-key="globe_gate_retry">Retry</button>
                         </div>
-                        <!-- Plain country <select> used only when the device/browser
-                             cannot run the WebGL globe at all — keeps the picker
+                        <!-- Plain country <select> used only when the canvas globe
+                             or its local geometry cannot load — keeps the picker
                              reachable instead of hard-blocking the app. -->
                         <div class="globe-gate-fallback hidden" id="globeGateFallback">
                             <select id="globeGateFallbackSelect"></select>
@@ -4656,10 +4658,15 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20260928-eu-domain"></script>
+    <script src="js/translations.js?v=20261009-3d-globe"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
+    <!-- Native globe projection for the permanent basemap; the Leaflet binding
+         keeps the existing layer API and country-bounds lock in sync. -->
+    <script src="js/maplibre-gl.js?v=5.24.0"></script>
+    <script src="js/leaflet-maplibre-gl.js?v=0.1.4"></script>
+    <script src="js/globe-base-layer.js?v=20261009-3d-globe"></script>
     <!-- Global tile performance governor: gesture-safe defaults for every tile
          layer of the app (LIDAR, CORONA 60's, historical maps, APM…), one tile
          update per layer per gesture and a page-wide budget on live tiles.
@@ -4733,10 +4740,10 @@
          “Exit view” button. Loaded after the globe gate (it only talks to it
          through window.DetectLabGlobeGate) and before map-app.js, which
          attaches it to the Leaflet map. -->
-    <script src="js/country-dock.js?v=20261008"></script>
-    <script src="js/map-app.js?v=20261008-country-layers-strict"></script>
+    <script src="js/country-dock.js?v=20261009-3d-globe"></script>
+    <script src="js/map-app.js?v=20261009-3d-globe"></script>
     <script src="js/historical-eu-maps.js?v=20261008-country-layers-strict"></script>
-    <script src="js/offline-maps.js?v=20260918-offline-100km-free-layers"></script>
+    <script src="js/offline-maps.js?v=20261009-3d-globe"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>
     <script src="js/vertical-opacity-control.js?v=20261002-persistent-layer-actions-v2"></script>
     <!-- leaflet-heat rămâne în shell (pre-cache), dar nu mai e folosit de

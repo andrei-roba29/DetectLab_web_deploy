@@ -2198,14 +2198,13 @@
                     var trackWatchId = null;
                     var trackStartTime = null;
 
-                    // The recorded trail MUST live in its own high pane. Leaflet's default
-                    // overlayPane sits at z-index 400 — exactly the same level as
-                    // 'pane_satellite', and every historical raster pane (610-651) is higher
-                    // still. Because those panes are created after overlayPane they win the
-                    // paint order, so a polyline added with the default pane was drawn but
-                    // completely hidden behind the imagery: the user saw "no path" while
-                    // moving. 690 keeps the trail above all imagery yet below measurePane
-                    // (700) and popups.
+                    // The recorded trail MUST live in its own high pane. The default
+                    // overlayPane sits above the globe base (z-index 398) but beneath the
+                    // historical raster panes (610-651). Because those panes are created
+                    // after overlayPane they win the paint order, so a polyline added with
+                    // the default pane was drawn but completely hidden behind the imagery:
+                    // the user saw "no path" while moving. 690 keeps the trail above all
+                    // imagery yet below measurePane (700) and popups.
                     if (!map.getPane('trackPane')) {
                         map.createPane('trackPane');
                         map.getPane('trackPane').style.zIndex = 690;
@@ -3124,36 +3123,53 @@
                 };
             })();
 
-            // ── NIVELUL NATIV MAXIM AL IMAGERIEI DE BAZĂ (ESRI WORLD IMAGERY) ──
-            // Esri NU are tile-uri de satelit până la același zoom peste tot: în zonele
-            // fără imagini de detaliu (mare parte din rural), cererea unui nivel peste
-            // ultimul disponibil răspunde HTTP 200 cu un tile-placeholder gri pe care
-            // scrie "Map data not yet available". Pentru Leaflet tile-ul e "valid" (nu
-            // e eroare de rețea), deci placeholderul rămâne afișat peste harta de bază
-            // și e scalat mai departe la fiecare zoom — exact bug-ul raportat la z19/z20.
-            // Ultimul nivel cu acoperire reală completă în România (inclusiv rural) e
-            // 18; îl forțăm ca maxNativeZoom, iar Leaflet face overzoom cu tile-urile
-            // reale de la 18 la z19/z20, fără să mai ceară vreodată niveluri inexistente.
-            // Reglabil live din consolă, fără redeploy: window.SATELLITE_MAX_NATIVE_Z.
+            // ── SINGURA BAZĂ: GLOB 3D CU IMAGINI ESRI ──
+            // Esri World Imagery este randată pe sfera nativă MapLibre (projection:
+            // globe). Toate controalele și layerele Leaflet rămân pe aceeași instanță,
+            // iar adapterul sincronizează centrul/zoom-ul cu globul; la zoom local
+            // proiecția MapLibre se aplatizează gradual ca layerele existente să rămână
+            // aliniate. COUNTRY picker-ul și lock-ul pe bounds folosesc în continuare
+            // aceeași hartă Leaflet și același contract.
+            //
+            // Esri răspunde cu placeholder-e după nivelul nativ 18. Valoarea se aplică
+            // drept maxzoom al sursei raster, atât pe glob cât și în fallback-ul 2D.
+            // Reglabil live din consolă: window.SATELLITE_MAX_NATIVE_Z.
             var SATELLITE_LAST_NATIVE_Z =
                 (window.SATELLITE_MAX_NATIVE_Z !== undefined) ? window.SATELLITE_MAX_NATIVE_Z : 18;
+            var SATELLITE_IMAGERY_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+            var SATELLITE_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community';
 
             map.createPane('pane_satellite');
-            map.getPane('pane_satellite').style.zIndex = 400;
-            var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                pane: 'pane_satellite',
-                opacity: 1.0,
-                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-                minZoom: 1,
-                // maxZoom trebuie să ajungă la maximul hărții (20): cu maxZoom 19 Leaflet
-                // scotea toate tile-urile satelit la z20, lăsând harta complet albă.
-                // maxNativeZoom e ținut la SATELLITE_LAST_NATIVE_Z (18), ca Leaflet să nu
-                // ceară NICIODATĂ nivele peste 18: la z19/z20 refolosește (overzoom)
-                // tile-urile reale de la 18 în loc de placeholder-ele "Map data not yet
-                // available" pe care le răspunde Esri la nivelurile fără acoperire.
-                maxZoom: 20,
-                maxNativeZoom: SATELLITE_LAST_NATIVE_Z
-            }).addTo(map);
+            map.getPane('pane_satellite').style.zIndex = 398;
+            map.getPane('pane_satellite').style.pointerEvents = 'none';
+            var satelliteLayer = null;
+            if (window.DetectLabGlobeBase && typeof window.DetectLabGlobeBase.create === 'function') {
+                try {
+                    satelliteLayer = window.DetectLabGlobeBase.create(map, {
+                        pane: 'pane_satellite',
+                        opacity: 1.0,
+                        tileUrl: SATELLITE_IMAGERY_URL,
+                        maxNativeZoom: SATELLITE_LAST_NATIVE_Z
+                    });
+                } catch (globeError) {
+                    console.warn('[DetectLab] 3D globe basemap could not start; using the compatible raster fallback.', globeError);
+                }
+            }
+            if (!satelliteLayer) {
+                // WebGL is unavailable/blocked: keep the map and country lock usable.
+                satelliteLayer = L.tileLayer(SATELLITE_IMAGERY_URL, {
+                    pane: 'pane_satellite',
+                    opacity: 1.0,
+                    attribution: SATELLITE_ATTRIBUTION,
+                    minZoom: 1,
+                    maxZoom: 20,
+                    maxNativeZoom: SATELLITE_LAST_NATIVE_Z
+                }).addTo(map);
+                window._detectlabGlobeBaseUnavailable = true;
+            } else {
+                window._detectlabGlobeBaseUnavailable = false;
+            }
+            window._detectlabGlobeBaseLayer = satelliteLayer;
             window._satLayer = satelliteLayer;
 
             // ── SATELIT / ISTORIC — mozaicurile Copernicus VHR (EEA discomap) ──
@@ -3233,10 +3249,9 @@
                 var period = SAT_PERIOD_ORDER[idx];
                 window._satPeriod = period;
 
-                // Vizibilitate: exact un singur strat de bază pe hartă.
-                var esriOn = period === 'prezent';
-                if (esriOn && !map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
-                if (!esriOn && map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
+                // Globul 3D rămâne singura bază pentru toate perioadele. Mozaicul
+                // istoric ales este doar un overlay geografic peste glob; schimbarea
+                // anului nu mai înlocuiește și nu mai dezactivează baza.
                 SAT_PERIOD_ORDER.slice(0, SAT_PERIOD_LAST_INDEX).forEach(function (p) {
                     var layer = SAT_HIST_PERIODS[p];
                     if (!layer) return;
@@ -3296,11 +3311,12 @@
                 if (typeof window.showLayerInfo !== 'function') return;
                 var lang = (typeof window._currentLang === 'function') ? window._currentLang() : 'ro';
                 var description = (lang === 'en')
-                    ? 'The „Historic” slider switches the base imagery between the Copernicus ' +
-                      'VHR mosaics — 2012 (2.5 m), 2018 and 2021 (2 m) — and the present-day ' +
-                      'satellite imagery.'
-                    : 'Sliderul „Istoric” comută imaginea de bază între mozaicurile Copernicus ' +
-                      'VHR — 2012 (2,5 m), 2018 și 2021 (2 m) — și imaginea satelitară actuală.';
+                    ? 'The 3D globe is the permanent basemap. The „Historic” slider overlays the ' +
+                      'Copernicus VHR mosaics — 2012 (2.5 m), 2018 and 2021 (2 m) — over the globe; ' +
+                      '2025 shows the current Esri imagery on that same globe.'
+                    : 'Globul 3D este harta de bază permanentă. Sliderul „Istoric” suprapune mozaicurile ' +
+                      'Copernicus VHR — 2012 (2,5 m), 2018 și 2021 (2 m) — peste glob; 2025 afișează ' +
+                      'imaginile Esri actuale pe același glob.';
                 window.showLayerInfo(
                     (lang === 'en') ? 'Satellite' : 'Satelit',
                     '\u00a9 Esri, Maxar, Earthstar Geographics \u00b7 ' +
@@ -3312,7 +3328,7 @@
             // FeatureServer/tile nu este activat pe acest serviciu (HTTP 400).
             // Folosim query REST direct: fetch features pe bbox vizibil, randăm ca L.circleMarker.
             map.createPane('pane_osm_places');
-            map.getPane('pane_osm_places').style.zIndex = 401; // imediat deasupra satellite (400)
+            map.getPane('pane_osm_places').style.zIndex = 401; // above the globe base (398) and imagery overlays
 
             var _osmPlacesGroup = L.layerGroup([], { pane: 'pane_osm_places' });
             var _osmPlacesVisible = false;

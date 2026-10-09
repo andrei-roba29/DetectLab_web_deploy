@@ -6,17 +6,20 @@ Selecting a country on the globe used to be a pure hand-off: the Leaflet map
 was fitted to the country with a loose `maxBounds` and the only way back to
 another country was the “Change Country” pill. Now the choice *owns* the map:
 
-- **The view is locked to the country.** A selection never switches the
-  basemap; it only moves the camera to the country and pins it there — panning
-  is clamped to the country box (`maxBoundsViscosity: 1`) and the zoom floor
-  sits just under the fitted zoom, so the user cannot wander off.
+- **The view is locked to the country.** The working map uses a permanent
+  MapLibre-rendered 3D globe basemap, synchronized with Leaflet's existing
+  controls and geographic overlays. A selection never switches that globe; it
+  moves the camera to the country and pins it there — panning is clamped to the
+  country box (`maxBoundsViscosity: 1`) and the zoom floor sits just under the
+  fitted zoom, so the user cannot wander off.
 - **A country dock is glued under the search bar** (inside `#mapSearchWrap`,
   so it shares the bar's anchor point and hidden/visible state). It shows the
   current 2-letter code and drops open the full list of country initials;
   hovering (or focusing) an initial prints the full country name, clicking it
   moves and re-locks the map to that country — no globe needed.
 - **A small “World hillshade” checkbox** lays the Esri World Hillshade tiles
-  (30 m terrain shading) *over* whichever basemap is already on screen.
+  (30 m terrain shading) *over* the permanent 3D globe and any selected
+  historical imagery overlay.
 - **“Exit view”** appears centred in the lower part of the screen once the
   locked country view is zoomed all the way out. It releases the lock, pulls
   back to the European overview and reopens the globe, so leaving a country
@@ -34,13 +37,16 @@ another country was the “Change Country” pill. Now the choice *owns* the map
   `isLocked()`, `unlock()`, `exitView()`, plus the tightened
   `restrictLeafletToCountry()` and the `detectlab:country-lockchange` event.
 - `js/map-app.js` — `window.DetectLabCountryDock.attach(map)` right after the
-  globe gate, and `window.unfilterLayersForCountry()` (the layer-coverage
-  dimming belongs to the locked view only).
+  globe gate, `window.unfilterLayersForCountry()` (the layer-coverage dimming
+  belongs to the locked view only), and the permanent 3D globe basemap setup.
+- `js/globe-base-layer.js` plus local MapLibre GL assets — renders the Esri
+  imagery on MapLibre's globe projection while keeping Leaflet as the map
+  interaction / overlay API. The country picker itself stays canvas-based.
 - `index.html` — the dock markup (inside `#mapSearchWrap`), the exit-view
   button (inside `.map-frame`), the CSS/JS tags.
 - `js/translations.js` — `country_dock_title`, `country_dock_hint`,
   `country_dock_hillshade`, `country_exit_view` (EN + RO).
-- `sw.js` — shell `v167`, precaches the two new files.
+- `sw.js` — shell `v173`, precaches the dock and the local 3D globe runtime/assets.
 - `tools/country-dock-preview.html` — dev harness: the dock on a real Leaflet
   map with Esri imagery, no auth, no rest of the app.
 - `test-country-dock.js` — the regression suite.
@@ -143,7 +149,7 @@ lock was released).
   it with the same minimal DOM stub the other suites use.
 - Versioning: bump the `?v=20261008` query of `js/country-dock.js` /
   `css/country-dock.css` in `index.html` **and** in `sw.js` precache together,
-  and raise `CACHE_NAME` (`detectlab-v167-…` or newer).
+  and raise `CACHE_NAME` (currently `detectlab-v173-…` or newer).
 - Manual QA: `python3 -m http.server` at the repo root, open
   `/tools/country-dock-preview.html`; the overlay status line reports the lock,
   the zoom floor and the hillshade state while you click through.
