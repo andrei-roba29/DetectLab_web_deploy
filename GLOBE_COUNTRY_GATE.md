@@ -107,9 +107,71 @@ Files:
    additions). See `osmPlaceLookup` / `europePlaceLookup` in `js/map-app.js`
    and `test-europe-places-search.js`.
 
+## The country outline on the 3D basemap
+
+The selected-country outline (and its highlight fill) is the one country-shaped
+overlay on the working map that has to stay on the imagery. Leaflet places
+vectors with Web Mercator, while the basemap is a true sphere, so a Mercator
+outline drifted by tens of pixels when zoomed out (27 px on average for Denmark
+viewed 8° off-centre at zoom 5) and moved as the globe was panned.
+
+The fix keeps the basemap exactly as it was and changes where the outline's
+vertices are placed:
+
+- **Projected with the globe camera.** `DetectLabGlobeBase.createProjectedFeature`
+  returns a Leaflet polygon whose vertices are `gl.project([lng, lat])` of the
+  basemap's own MapLibre camera, plus the container's layer position. Longer
+  edges are sampled every 1° along the sphere, longitudes are unwrapped across
+  the antimeridian, holes are kept, and vertices on the far side of the globe
+  are left out (perspective projection would fold them over the visible disc).
+- **Simplified for speed.** Sampled rings are reduced with Douglas–Peucker to
+  within 0.25 px on screen at the zoom they are shown at (cached per integer
+  zoom). A large country such as Russia (7,245 raw vertices) drops to about
+  4,000 rendered points. One update costs about 0.2 ms for Denmark and about
+  5–6 ms for Russia on the software-rendered test machine.
+- **Synced on every move.** The adapter's `move` handler was throttled to
+  32 ms, so during a drag the globe camera could trail Leaflet's centre (up to
+  about 20 px in a one-step-per-frame pan probe). `DetectLabGlobeBase.create`
+  overrides `getEvents().move` so the camera is synced on each move. The
+  outline re-projects on `move` and `resize`, and Leaflet's own renderer hooks
+  re-project it on `viewreset`, `zoomend` and `moveend`. During a zoom animation
+  the outline waits for the zoom end, as Leaflet's own paths do.
+- **Fallback.** Without a live globe on the map (WebGL unavailable, or the
+  globe removed), the outline and the bbox rectangle use Leaflet's own
+  placement (`L.geoJSON` / `L.rectangle`), exactly as before.
+
+Verified in headless Chromium with software WebGL. The harness imagery draws
+the same atlas borders into its tiles, so the borders are a ground truth:
+
+- **Against the imagery's own borders** (Denmark at zooms 3, 5 and 7, the
+  border mask taken as the difference between the same view with and without
+  border lines): the projected outline lies a median 0.4 px from the nearest
+  border pixel (worst 1.4 px, no systematic offset beyond 0.2 px). The previous
+  Mercator outline lay a median 0.7 px away at zooms 3 and 5 and 1.6 px at zoom
+  7 (worst 8.8 px).
+- **Against the globe camera's projection of every vertex** (this checks the
+  Leaflet rendering and the simplification bound; the border check above is the
+  independent one): the rendered outline is within 0.22 px at zooms 3–7 for
+  Denmark and within 0.14 px for Denmark viewed off-centre at zoom 5. The
+  Mercator placement was 27 px off on average (44 px worst) in that off-centre
+  view.
+- **Pan:** with the synced move the globe camera stays on Leaflet's centre
+  (0 px) at every step. The throttled adapter trailed by up to 6 px in this
+  environment.
+- **Zoom:** during animated zooms the outline's bounding box stays within
+  0.4 px of the rendered globe, against up to 4 px for the Mercator outline.
+  Software WebGL captures only a few frames per animation, so this is a thin
+  sample.
+
+Node regression: `node test-globe-outline-projection.js`.
+
+Raster country layers (LIDAR, WMS/WMTS, UAT tiles, hillshade, Copernicus VHR)
+are **not** projected. They keep Leaflet's Web Mercator placement, so they are
+still offset from the globe by a few pixels away from the view centre.
+
 ## Notes for future changes
 
-- `sw.js` (cache `v173`) precaches the country picker, local MapLibre runtime /
+- `sw.js` (cache `v174`) precaches the country picker, local MapLibre runtime /
   Leaflet binding, globe-base module, d3, topojson-client, the atlas and the
   country dock. The two canvas-gate texture images are intentionally **not**
   precached (≈1.8 MB; the texture-less gate fallback still works offline).

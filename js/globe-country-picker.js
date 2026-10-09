@@ -327,7 +327,11 @@
        country outline when the gate's geometry is loaded, otherwise the
        selection bbox. Drawn non-interactive in its own pane above every data
        pane (LIDAR 610, historical maps ≤ 652), removed when the lock is
-       released (“Exit view”, reset) and replaced on every new selection. */
+       released (“Exit view”, reset) and replaced on every new selection.
+       With the 3D globe basemap live, the outline and its highlight are
+       projected with the globe camera, so they stay on the imagery when zoomed
+       out and while the globe moves (see DetectLabGlobeBase.createProjectedFeature).
+       Without a live globe they are placed by Leaflet as before. */
     var BOUNDS_PANE = 'pane_country_bounds';
     var BOUNDS_PANE_Z = 688;   // above the data panes, under tracks (690)/measure (700)
 
@@ -371,9 +375,35 @@
         var paneName = ensureBoundsPane(map);
         if (paneName) styleOpts.pane = paneName;
         var layer = null;
+        var kind = 'bbox rectangle';   // what the layer draws (read by the status line)
         var entry = (iso && G.byIso) ? G.byIso[iso] : null;
-        if (entry && entry.feature && typeof window.L.geoJSON === 'function') {
-            try { layer = window.L.geoJSON(entry.feature, styleOpts); } catch (e) { layer = null; }
+        // With the live 3D globe the outline is projected with the globe camera
+        // (DetectLabGlobeBase.createProjectedFeature), so it stays on the
+        // imagery at every zoom and view. Without a globe on this map, Leaflet's
+        // own Web Mercator placement is used, as before.
+        // map-app publishes the Leaflet raster fallback under the same name when
+        // WebGL is unavailable, so only a real globe adapter counts here.
+        var globe = window._detectlabGlobeBaseLayer;
+        var projector = window.DetectLabGlobeBase;
+        if (globe && globe._map === map && typeof globe.getMaplibreMap === 'function' && projector) {
+            var globeOpts = { globeLayer: globe };
+            for (var key in styleOpts) {
+                if (Object.prototype.hasOwnProperty.call(styleOpts, key)) globeOpts[key] = styleOpts[key];
+            }
+            if (entry && entry.feature) {
+                try { layer = projector.createProjectedFeature(entry.feature, globeOpts); } catch (e) { layer = null; }
+                if (layer) kind = 'country outline';
+            }
+            if (!layer) {
+                try {
+                    layer = projector.createProjectedPolygon([
+                        [bbox[1], bbox[0]], [bbox[1], bbox[2]], [bbox[3], bbox[2]], [bbox[3], bbox[0]]
+                    ], globeOpts);
+                } catch (e) { layer = null; }
+            }
+        }
+        if (!layer && entry && entry.feature && typeof window.L.geoJSON === 'function') {
+            try { layer = window.L.geoJSON(entry.feature, styleOpts); kind = 'country outline'; } catch (e) { layer = null; }
         }
         if (!layer && typeof window.L.rectangle === 'function') {
             try {
@@ -381,6 +411,9 @@
             } catch (e) { layer = null; }
         }
         if (!layer || typeof map.addLayer !== 'function') return;
+        // Paths have no eachLayer, so the status line cannot tell the outline
+        // from the rectangle by shape; the kind is recorded here instead.
+        layer._detectlabBoundsKind = kind;
         try {
             map.addLayer(layer);
             state.boundsLayer = layer;

@@ -67,14 +67,14 @@ console.log('[4] Page + service-worker wiring');
     'css/globe-base-layer.css?v=20261009-3d-globe',
     'js/maplibre-gl.js?v=5.24.0',
     'js/leaflet-maplibre-gl.js?v=0.1.4',
-    'js/globe-base-layer.js?v=20261009-3d-globe',
+    'js/globe-base-layer.js?v=20261009-globe-outline',
     'js/map-app.js?v=20261009-3d-globe'
 ].forEach(function (asset) {
     check('index.html loads ' + asset, indexHtml.includes(asset));
     check('sw.js precaches ' + asset, swJs.includes("'" + asset + "'"));
 });
 const cacheVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1] || 0);
-check('the PWA shell was bumped for the new globe assets', cacheVersion >= 173, 'v' + cacheVersion);
+check('the PWA shell was bumped for the new globe assets', cacheVersion >= 174, 'v' + cacheVersion);
 
 console.log('\n' + (checks - failures) + '/' + checks + ' checks passed');
 if (failures > 0) {

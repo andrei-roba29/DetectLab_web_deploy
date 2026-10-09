@@ -387,7 +387,15 @@
 //   tiles are overlaid within their saved polygon instead of removing the globe.
 //   MapLibre runtime/binding/style assets and the re-versioned map, offline,
 //   dock and translation scripts are precached for installed PWAs.
-const CACHE_NAME = 'detectlab-v173-3d-globe-base';
+// v174: the selected-country outline and its highlight are projected with the
+//   same globe camera that draws the 3D basemap (DetectLabGlobeBase
+//   .createProjectedFeature in js/globe-base-layer.js) instead of Leaflet's
+//   Web Mercator, so they stay on the imagery when zoomed out and while the
+//   globe moves. The basemap style and imagery are unchanged; the outline falls
+//   back to Leaflet placement when no globe is live. The globe adapter now syncs
+//   its camera on every map move instead of every 32 ms. globe-base-layer.js and
+//   globe-country-picker.js are re-versioned and precached.
+const CACHE_NAME = 'detectlab-v174-globe-outline';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -445,6 +453,7 @@ const PRECACHE_URLS = [
   'js/maplibre-gl.js?v=5.24.0',
   'js/leaflet-maplibre-gl.js?v=0.1.4',
   'js/globe-base-layer.js?v=20261009-3d-globe',
+  'js/globe-base-layer.js?v=20261009-globe-outline',
   'js/L.Control.Layers.Tree.min.js',
   'js/L.Control.Locate.min.js',
   'js/leaflet-hash.js',
@@ -988,6 +997,7 @@ const PRECACHE_URLS = [
   'css/globe-country-picker.css?v=20261008',
   'js/globe-country-picker.js?v=20261008',
   'js/globe-country-picker.js?v=20261008-country-bounds',
+  'js/globe-country-picker.js?v=20261009-globe-outline',
   // v167: country dock glued under the search bar (country switcher +
   // World-hillshade checkbox) and the “Exit view” button of the locked
   // country view. The hillshade tiles themselves stay network-only.
