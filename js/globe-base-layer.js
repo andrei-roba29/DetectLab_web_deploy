@@ -101,7 +101,7 @@
         var layer;
         try {
             layer = L.maplibreGL({
-                style: buildStyle(options),
+                style: options.style || buildStyle(options),
                 pane: options.pane || 'pane_satellite',
                 interactive: false,
                 padding: (typeof options.padding === 'number') ? options.padding : 0.06,
@@ -169,9 +169,14 @@
             applyOpacity(glMap);
             return layer;
         };
-        layer._detectlabGlobeBase = true;
-        layer._detectlabGlobeSourceId = SOURCE_ID;
-        layer._detectlabGlobeStyle = buildStyle(options);
+        // Overlay twins (options.overlay) are not the basemap and carry no basemap flags.
+        if (options.overlay) {
+            layer._detectlabGlobeOverlay = true;
+        } else {
+            layer._detectlabGlobeBase = true;
+            layer._detectlabGlobeSourceId = SOURCE_ID;
+            layer._detectlabGlobeStyle = buildStyle(options);
+        }
 
         try {
             layer.addTo(leafletMap);
@@ -458,12 +463,234 @@
         return createProjectedPolygon(latlngs, options);
     }
 
+    /* ── Raster overlays on the globe (“globe twins”) ───────────────────────
+       A Leaflet tile or WMS layer is painted on the flat Web Mercator plane, so
+       it drifts off the globe basemap the same way the outline did. A twin is a
+       MapLibre raster overlay built from the same tile URLs, in the same pane,
+       on the same globe camera. The Leaflet layer keeps owning add/remove,
+       opacity and parameters. While a twin is attached the Leaflet layer's own
+       tiles are hidden and no longer requested. A layer gets a twin only when
+       its URL template reproduces Leaflet's own requests at sample tiles;
+       anything else stays a plain Leaflet layer. */
+    var BLANK_TILE_URL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    var WEB_MERCATOR_HALF = 20037508.342789244;
+    var OVERLAY_SOURCE_ID = 'detectlab-overlay';
+    var TWIN_PROBES = [{ x: 0, y: 0, z: 0 }, { x: 5, y: 11, z: 5 }, { x: 140, y: 90, z: 8 }];
+
+    // EPSG:3857 extent of a 256-px tile in WMS BBOX order (minx, miny, maxx, maxy).
+    function tileBbox3857(z, x, y) {
+        var w = 2 * WEB_MERCATOR_HALF / Math.pow(2, z);
+        var minX = -WEB_MERCATOR_HALF + x * w;
+        var maxY = WEB_MERCATOR_HALF - y * w;
+        return [minX, maxY - w, minX + w, maxY];
+    }
+
+    // Two WMS request URLs are the same when everything before BBOX matches
+    // exactly and the four bbox numbers agree to a millimetre.
+    function sameWmsRequest(a, b, key) {
+        var ia = a.lastIndexOf(key), ib = b.lastIndexOf(key);
+        if (ia < 0 || ib < 0 || a.slice(0, ia) !== b.slice(0, ib)) return false;
+        var pa = a.slice(ia + key.length).split(','), pb = b.slice(ib + key.length).split(',');
+        if (pa.length !== 4 || pb.length !== 4) return false;
+        for (var i = 0; i < 4; i++) {
+            if (!(Math.abs(+pa[i] - +pb[i]) <= 1e-3)) return false;
+        }
+        return true;
+    }
+
+    // Leaflet's own URL for one tile. Leaflet reads coords.scaleBy and coords.z
+    // (WMS) and takes {z} from layer._tileZoom, so the probe is an L.point with
+    // z, and _tileZoom is set only for the duration of the call.
+    function leafletTileUrl(layer, getUrl, probe) {
+        var L = window.L;
+        if (!L || typeof L.point !== 'function') return null;
+        var coords = L.point(probe.x, probe.y);
+        coords.z = probe.z;
+        var saved = layer._tileZoom;
+        layer._tileZoom = probe.z;
+        try {
+            return getUrl.call(layer, coords);
+        } finally {
+            layer._tileZoom = saved;
+        }
+    }
+
+    // Replaces every {x}, {y} and {z} in a template with one tile's values.
+    function fillTemplate(template, p) {
+        return template.split('{z}').join(String(p.z))
+            .split('{x}').join(String(p.x))
+            .split('{y}').join(String(p.y));
+    }
+
+    // MapLibre raster source settings that reproduce a Leaflet layer's requests,
+    // or null when the layer uses anything this converter does not reproduce
+    // exactly. getUrl is Leaflet's own getTileUrl, so every template is checked
+    // against it at the sample tiles that Leaflet can request for this layer.
+    function overlaySourceFor(layer, getUrl) {
+        var opts = layer.options || {};
+        var url = typeof layer._url === 'string' ? layer._url : '';
+        if (!url || typeof getUrl !== 'function') return null;
+        if (opts.tms || opts.zoomOffset || opts.zoomReverse || opts.minNativeZoom !== undefined) return null;
+        if ((opts.tileSize || 256) !== 256) return null;
+        if (/\{(q|-y|r)\}/.test(url)) return null;
+        var native = typeof opts.maxNativeZoom === 'number' ? opts.maxNativeZoom : null;
+        var cap = typeof opts.maxZoom === 'number' ? opts.maxZoom : null;
+        var sourceMax = native !== null ? native : (cap !== null ? cap : 22);
+        var probes = TWIN_PROBES.filter(function (p) { return p.z <= sourceMax; });
+        if (!probes.length) return null;
+        var tiles;
+        if (layer.wmsParams) {
+            if (/\{(s|z|x|y)\}/.test(url) || !layer._crs || layer._crs.code !== 'EPSG:3857' || !layer._map) return null;
+            var key = opts.uppercase ? 'BBOX=' : 'bbox=';
+            var first = leafletTileUrl(layer, getUrl, probes[0]);
+            if (typeof first !== 'string' || first.lastIndexOf(key) < 0) return null;
+            var template = first.slice(0, first.lastIndexOf(key) + key.length) + '{bbox-epsg-3857}';
+            for (var w = 0; w < probes.length; w++) {
+                var wp = probes[w];
+                var expectedWms = leafletTileUrl(layer, getUrl, wp);
+                var bbox = tileBbox3857(wp.z, wp.x, wp.y).join(',');
+                if (typeof expectedWms !== 'string' ||
+                    !sameWmsRequest(expectedWms, template.replace('{bbox-epsg-3857}', bbox), key)) return null;
+            }
+            tiles = [template];
+        } else {
+            var subs = opts.subdomains;
+            subs = typeof subs === 'string' ? subs.split('') : (Array.isArray(subs) ? subs : []);
+            if (/\{s\}/.test(url) && !subs.length) return null;
+            tiles = /\{s\}/.test(url) ? subs.map(function (s) { return url.replace('{s}', s); }) : [url];
+            for (var k = 0; k < probes.length; k++) {
+                var q = probes[k];
+                var expected = leafletTileUrl(layer, getUrl, q);
+                if (typeof expected !== 'string') return null;
+                var found = tiles.some(function (t) { return fillTemplate(t, q) === expected; });
+                if (!found) return null;
+            }
+        }
+        return {
+            tiles: tiles, tileSize: 256, wms: !!layer.wmsParams,
+            sourceMinzoom: 0, sourceMaxzoom: sourceMax,
+            // Leaflet shows the layer while Math.round(zoom) is inside
+            // [minZoom, maxZoom] (GridLayer._setView). null means no limit.
+            minZoom: typeof opts.minZoom === 'number' ? opts.minZoom : null,
+            maxZoom: cap
+        };
+    }
+
+    function overlayStyle(source, opacity) {
+        var sources = {};
+        sources[OVERLAY_SOURCE_ID] = {
+            type: 'raster', tiles: source.tiles, tileSize: source.tileSize,
+            minzoom: source.sourceMinzoom, maxzoom: source.sourceMaxzoom
+        };
+        var rasterLayer = {
+            id: RASTER_LAYER_ID, type: 'raster', source: OVERLAY_SOURCE_ID,
+            paint: { 'raster-opacity': clampOpacity(opacity) }
+        };
+        // The adapter drives the globe camera at Leaflet's zoom minus 1 (its
+        // 512-px world against Leaflet's 256-px tiles), and style-layer limits are
+        // in camera zoom. Leaflet shows the layer while Math.round(zoom) is inside
+        // [minZoom, maxZoom], which is camera zoom in [minZoom - 1.5, maxZoom - 0.5).
+        if (source.minZoom !== null) rasterLayer.minzoom = Math.max(0, source.minZoom - 1.5);
+        if (source.maxZoom !== null) rasterLayer.maxzoom = Math.max(0, source.maxZoom - 0.5);
+        return { version: 8, projection: { type: 'globe' }, sources: sources, layers: [rasterLayer] };
+    }
+
+    // Gives a Leaflet tile/WMS layer a globe twin in its own pane. Returns true
+    // when the hooks are installed; the twin itself is only attached while the
+    // layer is on a map and its URLs convert exactly, otherwise the layer keeps
+    // Leaflet's own tiles.
+    function attachTileTwin(tileLayer) {
+        if (!tileLayer || tileLayer._detectlabTwin || !tileLayer.options) return false;
+        if (typeof tileLayer.getTileUrl !== 'function' || typeof tileLayer.onAdd !== 'function') return false;
+        var twin = {
+            glLayer: null, map: null,
+            opacity: typeof tileLayer.options.opacity === 'number' ? tileLayer.options.opacity : 1
+        };
+        tileLayer._detectlabTwin = twin;
+        var getUrl = tileLayer.getTileUrl;
+        var onAddOriginal = tileLayer.onAdd;
+        var onRemoveOriginal = tileLayer.onRemove;
+        var setOpacityOriginal = tileLayer.setOpacity;
+        var redrawOriginal = tileLayer.redraw;
+
+        function containerOf() {
+            return typeof tileLayer.getContainer === 'function' ? tileLayer.getContainer() : null;
+        }
+        function release() {
+            if (twin.glLayer && twin.map) {
+                try { twin.map.removeLayer(twin.glLayer); } catch (e) {}
+            }
+            twin.glLayer = null;
+            twin.map = null;
+            delete tileLayer.getTileUrl;             // back to Leaflet's own URL building
+            var container = containerOf();
+            if (container) container.style.display = '';
+        }
+        function engage(map) {
+            release();
+            var glLayer = null;
+            try {
+                var source = overlaySourceFor(tileLayer, getUrl);
+                if (source) {
+                    glLayer = create(map, {
+                        pane: tileLayer.options.pane || 'tilePane',
+                        style: overlayStyle(source, twin.opacity),
+                        opacity: twin.opacity,
+                        overlay: true
+                    });
+                }
+            } catch (e) {
+                glLayer = null;   // any surprise keeps Leaflet's own tiles
+            }
+            if (!glLayer) return false;
+            twin.glLayer = glLayer;
+            twin.map = map;
+            tileLayer.getTileUrl = function () { return BLANK_TILE_URL; };
+            var container = containerOf();
+            if (container) container.style.display = 'none';
+            return true;
+        }
+        function engageOrFallBack(map) {
+            if (engage(map)) return;
+            delete tileLayer.getTileUrl;             // no twin: Leaflet draws its own tiles
+            redrawOriginal.call(tileLayer);
+        }
+
+        tileLayer.onAdd = function (map) {
+            tileLayer.getTileUrl = function () { return BLANK_TILE_URL; };   // no early requests
+            var result = onAddOriginal.call(this, map);
+            engageOrFallBack(map);
+            return result;
+        };
+        tileLayer.onRemove = function (map) {
+            release();
+            return onRemoveOriginal.call(this, map);
+        };
+        tileLayer.setOpacity = function (value) {
+            var result = setOpacityOriginal.call(this, value);
+            twin.opacity = typeof this.options.opacity === 'number' ? this.options.opacity : twin.opacity;
+            if (twin.glLayer) twin.glLayer.setOpacity(twin.opacity);
+            return result;
+        };
+        tileLayer.redraw = function () {
+            var result = redrawOriginal.call(this);
+            if (this._map && this._map.hasLayer(this)) engageOrFallBack(this._map);   // URL or params changed
+            return result;
+        };
+        if (tileLayer._map) {
+            tileLayer.getTileUrl = function () { return BLANK_TILE_URL; };
+            engageOrFallBack(tileLayer._map);
+        }
+        return true;
+    }
+
     window.DetectLabGlobeBase = {
         create: create,
         buildStyle: buildStyle,
         isSupported: mapLibreReady,
         createProjectedPolygon: createProjectedPolygon,
         createProjectedFeature: createProjectedFeature,
+        attachTileTwin: attachTileTwin,
         constants: {
             sourceId: SOURCE_ID,
             rasterLayerId: RASTER_LAYER_ID,
@@ -477,6 +704,9 @@
             unitVector: unitVector,
             densifyLatLngs: densifyLatLngs,
             simplifyRing: simplifyRing,
+            tileBbox3857: tileBbox3857,
+            sameWmsRequest: sameWmsRequest,
+            overlaySourceFor: overlaySourceFor,
             simplifyTolerance: simplifyTolerance,
             geoJsonToLatLngs: geoJsonToLatLngs
         }

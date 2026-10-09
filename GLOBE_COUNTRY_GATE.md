@@ -166,12 +166,81 @@ the same atlas borders into its tiles, so the borders are a ground truth:
 Node regression: `node test-globe-outline-projection.js`.
 
 Raster country layers (LIDAR, WMS/WMTS, UAT tiles, hillshade, Copernicus VHR)
-are **not** projected. They keep Leaflet's Web Mercator placement, so they are
-still offset from the globe by a few pixels away from the view centre.
+are **not projected yet**. The globe-twin mechanism that places them on the globe
+is in place (next section), but no layer uses it yet, so they keep Leaflet's
+Web Mercator placement until they are wired in.
+
+## Raster overlays on the globe: globe twins (phase 1)
+
+Country rasters are Leaflet layers, so they drift off the globe the same way
+the outline did. Phase 1 adds the mechanism that fixes this. No layer uses it
+yet.
+
+`DetectLabGlobeBase.attachTileTwin(tileLayer)` gives a Leaflet tile or WMS layer
+a *twin*: a MapLibre raster overlay built from the same URLs, in the layer's own
+pane, on the basemap's camera.
+
+- **Ownership.** The Leaflet layer keeps add/remove, opacity, `setUrl` and
+  `setParams`. Adding the layer attaches its twin, removing it removes the twin,
+  and `setOpacity` is forwarded. While a twin is attached the Leaflet layer's own
+  tiles are hidden and their requests return a 1x1 blank image, so nothing is
+  downloaded twice.
+- **Exact conversion only.** A URL template becomes a MapLibre source only when
+  it reproduces Leaflet's own `getTileUrl` at sample tiles (0/0/0, 5/11/5 and
+  140/90/8, restricted to zooms the layer can request). WMS must be EPSG:3857,
+  and the twin requests `{bbox-epsg-3857}`. Quadkeys, `{-y}`, `{r}`, TMS, zoom
+  offsets, non-256 tiles, `minNativeZoom` and WMS requests Leaflet would not make
+  stay Leaflet layers. An error during conversion or GL creation also keeps
+  Leaflet's own tiles.
+- **Zoom limits.** The adapter drives the camera at Leaflet zoom minus one (a
+  512 px world against Leaflet's 256 px tiles). Leaflet shows a layer while
+  `Math.round(zoom)` is inside `[minZoom, maxZoom]`, which is camera zoom in
+  `[minZoom - 1.5, maxZoom - 0.5)`. The node suite checks this against Leaflet's
+  rule at every eighth of a zoom level.
+- **Basemap flags.** Twins are created with `create(map, { overlay: true })` and
+  carry `_detectlabGlobeOverlay`, not the basemap's `_detectlabGlobeBase`.
+
+Verified in headless Chromium with software WebGL. The truth is each vertex of
+Denmark projected by the basemap camera (`gl.project`). The distance is from that
+vertex to the nearest drawn pixel. An exact 1-px line measures about 0.5 px with
+this method, so that is the floor.
+
+| View | Twin, median / p90 / max (px) | Plain Leaflet (Mercator), median / max (px) |
+|---|---|---|
+| zoom 5, centred | 0.51 / 0.84 / 1.36 (97 % within 1 px) | 3.39 / 17.6 |
+| zoom 3 | 0.46 / 0.76 / 1.19 | 0.81 / 3.8 |
+| zoom 5, 8° off-centre (46, 20) | 0.51 / 0.93 / 4.3 | 13.3 / 39.5 |
+| panned to (46, 20), no animation | 0.51 / 0.96 / 4.7 | 13.5 / 39.8 |
+| animated zoom 3 to 5, after zoomend | 0.51 / 0.84 / 1.36 | 3.39 / 17.6 |
+| animated zoom 5 to 3, after zoomend | 0.46 / 0.76 / 1.19 | 0.81 / 3.8 |
+
+The twin's worst cases (4 to 5 px) are all north Jutland coast vertices in the
+off-centre and pan views. They were not investigated further. For a zoom limit
+check, a layer with `maxZoom: 6` and Denmark in view shows no pixels at zoom 7
+and 859 at zoom 5. The same layer with the default `maxZoom: 9` shows 4,403 at
+zoom 7.
+
+What this does not cover yet:
+
+- Only synthetic tile services were reachable from the sandbox, which allows
+  GitHub, npm and PyPI only. Real national services need a device check.
+- Mid-animation frames were not measured, only the state after `zoomend`.
+- **WebGL contexts.** Each attached twin is one MapLibre instance with its own
+  WebGL context. Browsers cap the number of live contexts (Chromium: 16), so a
+  large family cannot simply get one twin per layer. Measure, and consider one
+  shared canvas per pane, before wiring a large family.
+- A layer-level `setZIndex` does not reorder its twin. The twin sits in the
+  layer's pane.
+- `setUrl(url, true)` and `setParams(params, true)` (no redraw) do not rebuild
+  the twin until the next redraw.
+
+Node regression: `node test-globe-raster-twin.js`. Browser harness: a plain
+Leaflet page with the production basemap module, three overlays in separate
+panes, and the truth taken from the basemap camera (kept outside the repo).
 
 ## Notes for future changes
 
-- `sw.js` (cache `v174`) precaches the country picker, local MapLibre runtime /
+- `sw.js` (cache `v175`) precaches the country picker, local MapLibre runtime /
   Leaflet binding, globe-base module, d3, topojson-client, the atlas and the
   country dock. The two canvas-gate texture images are intentionally **not**
   precached (≈1.8 MB; the texture-less gate fallback still works offline).

@@ -21,7 +21,7 @@ const picker = fs.readFileSync(path.join(root, 'js/globe-country-picker.js'), 'u
 console.log('[Test] Globe-projected country outline...');
 
 // ── Page wiring and release bookkeeping ───────────────────────────────────
-const BASE_URL = 'js/globe-base-layer.js?v=20261009-globe-outline';
+const BASE_URL = 'js/globe-base-layer.js?v=20261009-globe-raster-twin';
 const PICKER_URL = 'js/globe-country-picker.js?v=20261009-globe-outline';
 assert(html.includes(BASE_URL) && html.includes(PICKER_URL), 'index.html loads the re-versioned globe scripts');
 assert(sw.includes("'" + BASE_URL + "'") && sw.includes("'" + PICKER_URL + "'"), 'sw.js precaches the re-versioned globe scripts');

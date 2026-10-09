@@ -395,7 +395,12 @@
 //   back to Leaflet placement when no globe is live. The globe adapter now syncs
 //   its camera on every map move instead of every 32 ms. globe-base-layer.js and
 //   globe-country-picker.js are re-versioned and precached.
-const CACHE_NAME = 'detectlab-v174-globe-outline';
+// v175: Leaflet raster overlays (LIDAR, WMS, XYZ tiles) can get a MapLibre "globe twin"
+//   from DetectLabGlobeBase.attachTileTwin (js/globe-base-layer.js): the same tile URLs
+//   drawn on the globe camera in the layer's own pane, so they stay on the basemap when
+//   the globe moves or zooms. Not wired into any layer yet; globe-base-layer.js is
+//   re-versioned and precached.
+const CACHE_NAME = 'detectlab-v175-globe-raster-twin';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -454,6 +459,7 @@ const PRECACHE_URLS = [
   'js/leaflet-maplibre-gl.js?v=0.1.4',
   'js/globe-base-layer.js?v=20261009-3d-globe',
   'js/globe-base-layer.js?v=20261009-globe-outline',
+  'js/globe-base-layer.js?v=20261009-globe-raster-twin',
   'js/L.Control.Layers.Tree.min.js',
   'js/L.Control.Locate.min.js',
   'js/leaflet-hash.js',
