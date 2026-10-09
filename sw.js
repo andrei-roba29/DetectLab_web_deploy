@@ -400,7 +400,11 @@
 //   drawn on the globe camera in the layer's own pane, so they stay on the basemap when
 //   the globe moves or zooms. Not wired into any layer yet; globe-base-layer.js is
 //   re-versioned and precached.
-const CACHE_NAME = 'detectlab-v175-globe-raster-twin';
+// v176: LIDAR layers get a globe twin when their URLs convert exactly
+//   (_lidarGlobeTwin in js/map-app.js, DetectLabGlobeBase.attachTileTwin in
+//   js/globe-base-layer.js). Layers that draw their own tiles, or whose requests
+//   cannot be expressed as a MapLibre template, stay Leaflet layers.
+const CACHE_NAME = 'detectlab-v176-lidar-globe-twin';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -460,6 +464,7 @@ const PRECACHE_URLS = [
   'js/globe-base-layer.js?v=20261009-3d-globe',
   'js/globe-base-layer.js?v=20261009-globe-outline',
   'js/globe-base-layer.js?v=20261009-globe-raster-twin',
+  'js/globe-base-layer.js?v=20261009-lidar-globe-twin',
   'js/L.Control.Layers.Tree.min.js',
   'js/L.Control.Locate.min.js',
   'js/leaflet-hash.js',
@@ -1011,6 +1016,7 @@ const PRECACHE_URLS = [
   'js/country-dock.js?v=20261008',
   'js/country-dock.js?v=20261009-3d-globe',
   'js/map-app.js?v=20261009-3d-globe',
+  'js/map-app.js?v=20261009-lidar-globe-twin',
   'js/offline-maps.js?v=20261009-3d-globe',
   'js/translations.js?v=20261009-3d-globe',
   'js/d3.min.js?v=7.9.0',

@@ -485,19 +485,6 @@
         return [minX, maxY - w, minX + w, maxY];
     }
 
-    // Two WMS request URLs are the same when everything before BBOX matches
-    // exactly and the four bbox numbers agree to a millimetre.
-    function sameWmsRequest(a, b, key) {
-        var ia = a.lastIndexOf(key), ib = b.lastIndexOf(key);
-        if (ia < 0 || ib < 0 || a.slice(0, ia) !== b.slice(0, ib)) return false;
-        var pa = a.slice(ia + key.length).split(','), pb = b.slice(ib + key.length).split(',');
-        if (pa.length !== 4 || pb.length !== 4) return false;
-        for (var i = 0; i < 4; i++) {
-            if (!(Math.abs(+pa[i] - +pb[i]) <= 1e-3)) return false;
-        }
-        return true;
-    }
-
     // Leaflet's own URL for one tile. Leaflet reads coords.scaleBy and coords.z
     // (WMS) and takes {z} from layer._tileZoom, so the probe is an L.point with
     // z, and _tileZoom is set only for the duration of the call.
@@ -522,6 +509,47 @@
             .split('{y}').join(String(p.y));
     }
 
+    // "minx,miny,maxx,maxy" in EPSG:3857, each number within a millimetre of box.
+    function bboxMatches(text, box) {
+        var parts = String(text).split(',');
+        if (parts.length !== 4) return false;
+        for (var i = 0; i < 4; i++) {
+            if (parts[i] === '' || !(Math.abs(+parts[i] - box[i]) <= 1e-3)) return false;
+        }
+        return true;
+    }
+
+    // A URL built per tile whose only varying part is that tile's EPSG:3857 bbox
+    // (a WMS BBOX parameter, or any service that takes the same four numbers).
+    // The varying span is found from two sample tiles; every sample must then
+    // rebuild exactly as the template with its own bbox. Returns the template
+    // with {bbox-epsg-3857} in place of the numbers, or null.
+    function bboxTemplateFor(layer, getUrl, probes) {
+        if (probes.length < 2) return null;
+        var u0 = leafletTileUrl(layer, getUrl, probes[0]);
+        var u1 = leafletTileUrl(layer, getUrl, probes[1]);
+        if (typeof u0 !== 'string' || typeof u1 !== 'string') return null;
+        var a = 0;
+        while (a < u0.length && a < u1.length && u0.charAt(a) === u1.charAt(a)) a++;
+        var b = 0;
+        while (b < u0.length - a && b < u1.length - a &&
+               u0.charAt(u0.length - 1 - b) === u1.charAt(u1.length - 1 - b)) b++;
+        // Widen to the whole parameter value: it starts after the last '=' and ends at the next '&'.
+        var start = a > 0 ? u0.lastIndexOf('=', a - 1) + 1 : 0;
+        var end = u0.indexOf('&', u0.length - b);
+        if (end < 0) end = u0.length;
+        var prefix = u0.slice(0, start), suffix = u0.slice(end);
+        for (var i = 0; i < probes.length; i++) {
+            var p = probes[i];
+            var u = leafletTileUrl(layer, getUrl, p);
+            if (typeof u !== 'string' || u.length < prefix.length + suffix.length) return null;
+            if (u.indexOf(prefix) !== 0 || u.slice(u.length - suffix.length) !== suffix) return null;
+            var middle = u.slice(prefix.length, u.length - suffix.length);
+            if (!bboxMatches(middle, tileBbox3857(p.z, p.x, p.y))) return null;
+        }
+        return prefix + '{bbox-epsg-3857}' + suffix;
+    }
+
     // MapLibre raster source settings that reproduce a Leaflet layer's requests,
     // or null when the layer uses anything this converter does not reproduce
     // exactly. getUrl is Leaflet's own getTileUrl, so every template is checked
@@ -529,31 +557,21 @@
     function overlaySourceFor(layer, getUrl) {
         var opts = layer.options || {};
         var url = typeof layer._url === 'string' ? layer._url : '';
-        if (!url || typeof getUrl !== 'function') return null;
+        if (typeof getUrl !== 'function' || !layer._map) return null;
         if (opts.tms || opts.zoomOffset || opts.zoomReverse || opts.minNativeZoom !== undefined) return null;
         if ((opts.tileSize || 256) !== 256) return null;
         if (/\{(q|-y|r)\}/.test(url)) return null;
+        // Only plain <img> tiles whose source is getUrl. A layer that draws its own
+        // tiles (createTile) may request something else entirely.
+        var baseCreateTile = window.L && window.L.TileLayer && window.L.TileLayer.prototype.createTile;
+        if (!baseCreateTile || layer.createTile !== baseCreateTile) return null;
         var native = typeof opts.maxNativeZoom === 'number' ? opts.maxNativeZoom : null;
         var cap = typeof opts.maxZoom === 'number' ? opts.maxZoom : null;
         var sourceMax = native !== null ? native : (cap !== null ? cap : 22);
         var probes = TWIN_PROBES.filter(function (p) { return p.z <= sourceMax; });
         if (!probes.length) return null;
         var tiles;
-        if (layer.wmsParams) {
-            if (/\{(s|z|x|y)\}/.test(url) || !layer._crs || layer._crs.code !== 'EPSG:3857' || !layer._map) return null;
-            var key = opts.uppercase ? 'BBOX=' : 'bbox=';
-            var first = leafletTileUrl(layer, getUrl, probes[0]);
-            if (typeof first !== 'string' || first.lastIndexOf(key) < 0) return null;
-            var template = first.slice(0, first.lastIndexOf(key) + key.length) + '{bbox-epsg-3857}';
-            for (var w = 0; w < probes.length; w++) {
-                var wp = probes[w];
-                var expectedWms = leafletTileUrl(layer, getUrl, wp);
-                var bbox = tileBbox3857(wp.z, wp.x, wp.y).join(',');
-                if (typeof expectedWms !== 'string' ||
-                    !sameWmsRequest(expectedWms, template.replace('{bbox-epsg-3857}', bbox), key)) return null;
-            }
-            tiles = [template];
-        } else {
+        if (/\{(z|x|y|s)\}/.test(url)) {
             var subs = opts.subdomains;
             subs = typeof subs === 'string' ? subs.split('') : (Array.isArray(subs) ? subs : []);
             if (/\{s\}/.test(url) && !subs.length) return null;
@@ -565,6 +583,13 @@
                 var found = tiles.some(function (t) { return fillTemplate(t, q) === expected; });
                 if (!found) return null;
             }
+        } else {
+            // No {z}/{x}/{y} in the URL: a WMS, or a URL built per tile. Either way the
+            // only varying part must be the EPSG:3857 bbox.
+            if (layer.wmsParams && (!layer._crs || layer._crs.code !== 'EPSG:3857')) return null;
+            var template = bboxTemplateFor(layer, getUrl, probes);
+            if (!template) return null;
+            tiles = [template];
         }
         return {
             tiles: tiles, tileSize: 256, wms: !!layer.wmsParams,
@@ -705,7 +730,6 @@
             densifyLatLngs: densifyLatLngs,
             simplifyRing: simplifyRing,
             tileBbox3857: tileBbox3857,
-            sameWmsRequest: sameWmsRequest,
             overlaySourceFor: overlaySourceFor,
             simplifyTolerance: simplifyTolerance,
             geoJsonToLatLngs: geoJsonToLatLngs

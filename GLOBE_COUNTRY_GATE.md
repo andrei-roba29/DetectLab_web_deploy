@@ -165,10 +165,10 @@ the same atlas borders into its tiles, so the borders are a ground truth:
 
 Node regression: `node test-globe-outline-projection.js`.
 
-Raster country layers (LIDAR, WMS/WMTS, UAT tiles, hillshade, Copernicus VHR)
-are **not projected yet**. The globe-twin mechanism that places them on the globe
-is in place (next section), but no layer uses it yet, so they keep Leaflet's
-Web Mercator placement until they are wired in.
+Raster country layers are moved onto the globe in phases. LIDAR layers get a
+globe twin wherever their URLs convert exactly (see "LIDAR layers on the globe"
+below). UAT tiles, hillshade, Copernicus VHR, historical maps and the other
+country families are not wired yet and keep Leaflet's Web Mercator placement.
 
 ## Raster overlays on the globe: globe twins (phase 1)
 
@@ -199,6 +199,16 @@ pane, on the basemap's camera.
   rule at every eighth of a zoom level.
 - **Basemap flags.** Twins are created with `create(map, { overlay: true })` and
   carry `_detectlabGlobeOverlay`, not the basemap's `_detectlabGlobeBase`.
+- **Two kinds of URL convert.** A template with `{z}`/`{x}`/`{y}` (or `{s}`) is
+  used as it is. A URL with no such template converts when its only varying
+  part is the tile's EPSG:3857 bbox: a WMS `BBOX`, or a service that puts the
+  same four numbers in another parameter. The twin then requests
+  `{bbox-epsg-3857}`. The bbox span is found from two sample tiles, and every
+  sample must rebuild exactly. A URL with a second varying parameter, or a bbox
+  in another axis order, stays a Leaflet layer.
+- **Custom tile drawing is never converted.** A layer whose `createTile` is not
+  Leaflet's own (canvas-drawn tiles, ArcGIS ImageServer grids) may request
+  something other than its URL template, so it always stays a Leaflet layer.
 
 Verified in headless Chromium with software WebGL. The truth is each vertex of
 Denmark projected by the basemap camera (`gl.project`). The distance is from that
@@ -238,9 +248,66 @@ Node regression: `node test-globe-raster-twin.js`. Browser harness: a plain
 Leaflet page with the production basemap module, three overlays in separate
 panes, and the truth taken from the basemap camera (kept outside the repo).
 
+## LIDAR layers on the globe (phase 2)
+
+`js/map-app.js` builds every LIDAR sub-layer through `_buildLidarLeafletLayer`.
+Its three call sites now pass the result through `_lidarGlobeTwin`, which calls
+`DetectLabGlobeBase.attachTileTwin`. A layer that converts gets a twin. Any
+other layer comes back unchanged and keeps Leaflet's own tiles. The helper sits
+in the same block as the builder, and an acorn parse confirmed that all three
+call sites are in its scope.
+
+Verified:
+
+- `node test-globe-raster-twin.js`: conversion of XYZ, WMS and per-tile bbox
+  URLs, refusal of the other cases, and the zoom limits.
+- Browser, real Leaflet: a layer whose `getTileUrl` builds a per-tile EPSG:3857
+  bbox (no URL template) converts. Its pixels match the WMS twin exactly, with a
+  median of 0.51 px from the truth. Leaflet's own tiles in the same view would be
+  about 3.4 px off.
+- The full root suite is unchanged (the two failures that predate this work
+  remain: `test-premium-subscription.js` needs `jsdom`, and
+  `test-eu-domain-setup.mjs` asserts a DARE query that is not part of this work).
+
+Coverage. These are expectations from the code, not runs against the live
+services, which the sandbox cannot reach. Confirm each on a device.
+
+| LIDAR source | How it is built | Expected |
+|---|---|---|
+| France, IGN free LIDAR | WMS 1.3.0, EPSG:3857 | converts |
+| Generic LIDAR WMS / tile sub-layers | `L.tileLayer.wms` / `L.tileLayer` | converts when the URL is a template or EPSG:3857 WMS |
+| UK, EA LIDAR | WMTS through an XYZ-style `L.TileLayer` | converts when the template is `{z}/{y}/{x}` |
+| Switzerland, swisstopo relief | XYZ-style `L.TileLayer` | converts when the template is `{z}/{y}/{x}` |
+| Poland, Geoportal NMT | `L.TileLayer`, bbox per tile | converts (map is EPSG:3857) |
+| France, IGN MDT | `L.TileLayer`, bbox per tile | converts (map is EPSG:3857) |
+| Sweden, Lantmäteriet height model | `L.TileLayer`, bbox per tile | converts (map is EPSG:3857) |
+| Netherlands AHN | `L.GridLayer`, canvas `createTile` | stays Leaflet |
+| Denmark DHM | `L.GridLayer`, canvas `createTile` | stays Leaflet |
+| Norway Hoydedata | `L.GridLayer`, canvas `createTile` | stays Leaflet |
+| ArcGIS ImageServer grids (AHN6, Spain) | custom grid layer with `createTile` | stays Leaflet |
+
+Open points:
+
+- **WebGL contexts.** Each converted layer is one MapLibre instance. Several
+  LIDAR layers on at once means several contexts, and phones are the concern.
+  Measure before enabling many layers, and consider one canvas per pane.
+- Canvas-drawn services (the last four rows) can only move onto the globe by
+  drawing their pixels into a MapLibre image source. That is a separate piece
+  of work and is not started.
+- A layer-level `setZIndex` does not reorder its twin, and `setUrl(url, true)`
+  or `setParams(params, true)` do not rebuild it until the next redraw. The
+  LIDAR code does not use either call.
+- The LIDAR panes (`pane_lidar`) have `pointer-events: none`, so a twin in them
+  cannot take clicks.
+
+Remaining phases: (3) UAT tiles, hillshade (`pane_world_hillshade`), Copernicus
+VHR, the historical and other country families (about 30 panes, listed in the
+memory notes); (4) offline tiles, which need a cache-backed raster path because
+MapLibre cannot read the blob-served tiles directly.
+
 ## Notes for future changes
 
-- `sw.js` (cache `v175`) precaches the country picker, local MapLibre runtime /
+- `sw.js` (cache `v176`) precaches the country picker, local MapLibre runtime /
   Leaflet binding, globe-base module, d3, topojson-client, the atlas and the
   country dock. The two canvas-gate texture images are intentionally **not**
   precached (≈1.8 MB; the texture-less gate fallback still works offline).

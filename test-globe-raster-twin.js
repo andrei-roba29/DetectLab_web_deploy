@@ -17,6 +17,7 @@ const vm = require('node:vm');
 const root = __dirname;
 const source = fs.readFileSync(path.join(root, 'js/globe-base-layer.js'), 'utf8');
 const HALF = 20037508.342789244;
+const sharedCreateTile = function createTile() { return null; };
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 console.log('[Test] Globe twins for Leaflet raster overlays...');
@@ -87,6 +88,7 @@ FakeTileLayer.prototype.getTileUrl = function (c) {
     const data = { r: '', s: this._getSubdomain(c), x: c.x, y: c.y, z: this._getZoomForUrl() };
     return template(this._url, Object.assign({}, data, this.options));
 };
+FakeTileLayer.prototype.createTile = sharedCreateTile;
 FakeTileLayer.prototype.getContainer = function () { return this._container; };
 FakeTileLayer.prototype.onAdd = function (map) { this._map = map; return this; };
 FakeTileLayer.prototype.onRemove = function (map) { this._map = null; return this; };
@@ -124,6 +126,8 @@ function tileBbox(z, x, y) {
     return [minX, maxY - w, minX + w, maxY];
 }
 
+function onMap(layer) { new FakeMap().addLayer(layer); return layer; }
+
 // Leaflet sets _tileZoom before it asks for a tile's URL, so do the same here.
 function urlAt(layer, x, y, z) {
     layer._tileZoom = z;
@@ -143,6 +147,7 @@ function loadBase(fakeL) {
 
 const created = [];
 const fakeL = {
+    TileLayer: { prototype: { createTile: sharedCreateTile } },
     maplibreGL(options) { const a = new FakeAdapter(options); created.push(a); return a; },
     point(x, y) { return new FakePoint(x, y); },
     DomUtil: { getPosition: () => ({ x: 0, y: 0 }) }
@@ -154,12 +159,9 @@ const T = B._test;
 // ── Mercator tile bounds and WMS request comparison ───────────────────────
 assert.deepEqual(Array.from(T.tileBbox3857(0, 0, 0)), [-HALF, -HALF, HALF, HALF], 'zoom 0 covers the whole EPSG:3857 square');
 assert.deepEqual(Array.from(T.tileBbox3857(1, 1, 0)), [0, 0, HALF, HALF], 'the north-east quadrant at zoom 1');
-assert.equal(T.sameWmsRequest('h?A=1&BBOX=1,2,3,4', 'h?A=1&BBOX=1.0000001,2,3,4', 'BBOX='), true, 'bbox agrees to a millimetre');
-assert.equal(T.sameWmsRequest('h?A=1&BBOX=1,2,3,4', 'h?A=2&BBOX=1,2,3,4', 'BBOX='), false, 'a different parameter is a different request');
-assert.equal(T.sameWmsRequest('h?A=1&BBOX=1,2,3,4', 'h?A=1&BBOX=1,2,3,5', 'BBOX='), false, 'a different bbox is a different request');
 
 // ── URL conversion: accepted when it reproduces Leaflet, refused otherwise ──
-const xyz = new FakeTileLayer('https://tiles.example/{s}/{z}/{x}/{y}.png');
+const xyz = onMap(new FakeTileLayer('https://tiles.example/{s}/{z}/{x}/{y}.png'));
 xyz._tileZoom = 7;
 const xyzSource = T.overlaySourceFor(xyz, FakeTileLayer.prototype.getTileUrl);
 assert(xyzSource, 'a subdomain XYZ layer converts');
@@ -168,7 +170,7 @@ assert.deepEqual(Array.from(xyzSource.tiles), ['https://tiles.example/a/{z}/{x}/
 assert.equal(xyzSource.tileSize, 256);
 assert.equal(xyz._tileZoom, 7, 'the probes restore the layer\'s own tile zoom');
 
-const native4 = new FakeTileLayer('https://tiles.example/{s}/{z}/{x}/{y}.png', { maxNativeZoom: 4, maxZoom: 6, minZoom: 2 });
+const native4 = onMap(new FakeTileLayer('https://tiles.example/{s}/{z}/{x}/{y}.png', { maxNativeZoom: 4, maxZoom: 6, minZoom: 2 }));
 const native4Source = T.overlaySourceFor(native4, FakeTileLayer.prototype.getTileUrl);
 assert(native4Source, 'a layer with native zoom limits converts');
 assert.equal(native4Source.sourceMaxzoom, 4, 'the source stops at the native zoom');
@@ -310,6 +312,37 @@ assert.doesNotThrow(() => new FakeMap().addLayer(broken), 'a converter error doe
 assert.equal(created.length, beforeBroken, 'a converter error builds no twin');
 assert.equal(broken.redrawCount, 1, 'a converter error reloads Leaflet\'s own tiles');
 assert.equal(urlAt(broken, 1, 2, 3), 'https://tiles.example/b/3/1/2.png', 'Leaflet builds its own URLs after a converter error');
+
+// ── Custom tile drawing and per-tile bbox URLs ────────────────────────────
+const drawn = onMap(new FakeTileLayer('https://tiles.example/{z}/{x}/{y}.png'));
+drawn.createTile = function () { return {}; };   // this layer draws its own tiles
+assert.equal(T.overlaySourceFor(drawn, FakeTileLayer.prototype.getTileUrl), null, 'a layer that draws its own tiles is not converted');
+
+const bboxUrl = (c) => 'https://ows.example/export?bboxSR=3857&size=256,256&bbox=' + tileBbox(c.z, c.x, c.y).join(',') + '&f=image';
+const fnLayer = onMap(new FakeTileLayer('', {}));
+fnLayer.getTileUrl = function (c) { return bboxUrl(c); };
+const fnSource = T.overlaySourceFor(fnLayer, fnLayer.getTileUrl);
+assert(fnSource, 'a per-tile URL whose only varying part is the EPSG:3857 bbox converts');
+assert.equal(fnSource.tiles[0], 'https://ows.example/export?bboxSR=3857&size=256,256&bbox={bbox-epsg-3857}&f=image',
+    'the bbox becomes the MapLibre placeholder');
+
+const latLngBox = onMap(new FakeTileLayer('', {}));
+latLngBox.getTileUrl = function (c) { const b = tileBbox(c.z, c.x, c.y); return 'https://ows.example/x?bbox=' + [b[1], b[0], b[3], b[2]].join(','); };
+assert.equal(T.overlaySourceFor(latLngBox, latLngBox.getTileUrl), null, 'a bbox in another axis order is refused');
+
+const tileParam = onMap(new FakeTileLayer('', {}));
+tileParam.getTileUrl = function (c) { return bboxUrl(c) + '&tile=' + c.x; };
+assert.equal(T.overlaySourceFor(tileParam, tileParam.getTileUrl), null, 'a second varying parameter is refused');
+
+const fnTwinMap = new FakeMap();
+const fnTwinLayer = new FakeTileLayer('', {});
+fnTwinLayer.getTileUrl = function (c) { return bboxUrl(c); };
+B.attachTileTwin(fnTwinLayer);
+const beforeFn = created.length;
+fnTwinMap.addLayer(fnTwinLayer);
+assert.equal(created.length, beforeFn + 1, 'a converting per-tile bbox layer gets a twin');
+assert.equal(created[created.length - 1].options.style.sources['detectlab-overlay'].tiles[0],
+    'https://ows.example/export?bboxSR=3857&size=256,256&bbox={bbox-epsg-3857}&f=image', 'the twin asks for the bbox');
 
 // ── Basemap: create() without options.overlay keeps the basemap flags ─────
 const baseMap = new FakeMap();

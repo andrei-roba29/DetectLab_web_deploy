@@ -67,8 +67,8 @@ console.log('[4] Page + service-worker wiring');
     'css/globe-base-layer.css?v=20261009-3d-globe',
     'js/maplibre-gl.js?v=5.24.0',
     'js/leaflet-maplibre-gl.js?v=0.1.4',
-    'js/globe-base-layer.js?v=20261009-globe-raster-twin',
-    'js/map-app.js?v=20261009-3d-globe'
+    'js/globe-base-layer.js?v=20261009-lidar-globe-twin',
+    'js/map-app.js?v=20261009-lidar-globe-twin'
 ].forEach(function (asset) {
     check('index.html loads ' + asset, indexHtml.includes(asset));
     check('sw.js precaches ' + asset, swJs.includes("'" + asset + "'"));

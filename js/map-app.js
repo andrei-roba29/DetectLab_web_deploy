@@ -6915,6 +6915,18 @@
                 return null;
             }
 
+            // Gives a LIDAR layer a globe twin when its URLs convert exactly (see
+            // DetectLabGlobeBase.attachTileTwin in js/globe-base-layer.js). Layers that
+            // do not convert, or draw their own tiles, come back unchanged and keep
+            // Leaflet's own tiles.
+            function _lidarGlobeTwin(layer) {
+                var globe = window.DetectLabGlobeBase;
+                if (layer && globe && typeof globe.attachTileTwin === 'function') {
+                    try { globe.attachTileTwin(layer); } catch (e) { /* Leaflet tiles stay */ }
+                }
+                return layer;
+            }
+
             function _buildLidarLeafletLayer(key, cfg) {
                 // ── Gesture-safe tile options for the LIDAR stack ──
                 // LIDAR sub-layers are dense (HD/AR/AB/BH/CS + "Romania 1m" +
@@ -7109,7 +7121,7 @@
                     Object.keys(LIDAR_SUB_LAYERS).forEach(function(key) {
                         var cfg = LIDAR_SUB_LAYERS[key];
                         if (cfg.enabled && !cfg.leafletLayer) {
-                            cfg.leafletLayer = _buildLidarLeafletLayer(key, cfg);
+                            cfg.leafletLayer = _lidarGlobeTwin(_buildLidarLeafletLayer(key, cfg));
                             _lidarGroup.addLayer(cfg.leafletLayer);
                         } else if (cfg.enabled && cfg.leafletLayer && !_lidarGroup.hasLayer(cfg.leafletLayer)) {
                             _lidarGroup.addLayer(cfg.leafletLayer);
@@ -7146,7 +7158,7 @@
                 if (!_lidarVisible) return;
                 if (on) {
                     if (!cfg.leafletLayer) {
-                        cfg.leafletLayer = _buildLidarLeafletLayer(key, cfg);
+                        cfg.leafletLayer = _lidarGlobeTwin(_buildLidarLeafletLayer(key, cfg));
                     }
                     if (!_lidarGroup.hasLayer(cfg.leafletLayer)) {
                         _lidarGroup.addLayer(cfg.leafletLayer);
@@ -7212,7 +7224,7 @@
                 cfg.mode = mode;
                 if (cfg.leafletLayer) {
                     if (_lidarGroup.hasLayer(cfg.leafletLayer)) _lidarGroup.removeLayer(cfg.leafletLayer);
-                    cfg.leafletLayer = _buildLidarLeafletLayer(key, cfg);
+                    cfg.leafletLayer = _lidarGlobeTwin(_buildLidarLeafletLayer(key, cfg));
                     if (cfg.leafletLayer) {
                         cfg.leafletLayer.setOpacity(cfg.opacity);
                         if (_lidarVisible && cfg.enabled) _lidarGroup.addLayer(cfg.leafletLayer);
