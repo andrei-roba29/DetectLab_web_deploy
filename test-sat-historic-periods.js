@@ -7,16 +7,16 @@
  *             MapServer WMS, layer "Image")
  *   2018    → GioLand/VHR_2018_WM   (image.discomap.eea.europa.eu, ImageServer WMS)
  *   2021    → GioLand/VHR_2021_LAEA (image.discomap.eea.europa.eu, ImageServer WMS)
- *   2025    → the existing Esri World Imagery base (window._satLayer)
+ *   2025    → current Esri imagery on the permanent MapLibre 3D globe
  *
- *   The 2016 orthophoto (geospatial:of_2017_2020, GeoServer "geospatial") was
- *   removed from the base layer and replaced by the three Copernicus VHR
- *   mosaics, so the slider has four stops instead of two.
+ *   The 3D globe remains the only basemap for every stop. The three historical
+ *   Copernicus VHR mosaics are Leaflet overlays above it; changing the period
+ *   never removes/replaces the globe. The 2016 orthophoto is retired.
  *
  * Requirements covered:
- *   1. The Copernicus VHR mosaics are real WMS layers owned by the Satellite
- *      layer — NOT sublayers in the panel; exactly one base period is on the
- *      map and nothing reaches for the retired 2016 orthophoto any more.
+ *   1. The Copernicus VHR mosaics are real WMS overlays owned by the Satellite
+ *      layer — NOT sublayers in the panel; at most one historical overlay is
+ *      active above the permanent 3D globe and the retired 2016 source stays gone.
  *   2. The panel Satellite card carries a second slider titled "Istoric" with
  *      four stops (2012 / 2018 / 2021 / 2025); switching shows the matching
  *      map. The card also credits the Copernicus Land Monitoring Service in
@@ -96,8 +96,12 @@ console.log('[2] Period switching (setSatPeriod)');
         /SAT_PERIOD_ORDER\s*=\s*\[\s*'2012',\s*'2018',\s*'2021',\s*'prezent'\s*\]/.test(mapApp));
     check('the last stop index is derived from the order, not hard-coded',
         /SAT_PERIOD_LAST_INDEX\s*=\s*SAT_PERIOD_ORDER\.length - 1/.test(mapApp));
-    check('the Esri base is removed when a historical period is active',
-        /map\.removeLayer\(satelliteLayer\)/.test(mapApp));
+    check('the 3D globe stays as the permanent base across all historical periods',
+        /Globul 3D rămâne singura bază/.test(mapApp) &&
+        /DetectLabGlobeBase\.create\(map/.test(mapApp) &&
+        !/map\.removeLayer\(satelliteLayer\)/.test(mapApp));
+    check('historical WMS imagery is still added/removed as an overlay',
+        /if \(p === period\)[\s\S]*?layer\.addTo\(map\)[\s\S]*?map\.removeLayer\(layer\)/.test(mapApp));
     check('opacity applies to every historical mosaic, not one hard-coded year',
         /Object\.keys\(SAT_HIST_PERIODS\)\.forEach\(function \(p\) \{\s*\n\s*SAT_HIST_PERIODS\[p\]\.setOpacity\(histOpacity\);/.test(mapApp));
     check('setSatOpacity keeps driving all historical layers',

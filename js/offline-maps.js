@@ -1189,7 +1189,13 @@
             // subscription gate after the subscription expires.
             if (source.requiresPremium && !isPremium()) return;
             var online = onlineLayerFor(source);
-            if (online && state.map.hasLayer(online)) { state.map.removeLayer(online); state.hiddenOnlineLayers.push(online); }
+            // The 3D globe is the permanent basemap. Cached satellite tiles are
+            // drawn above it only inside the downloaded polygon instead of
+            // removing the globe (which would also discard its global context).
+            if (source.id !== 'satellite' && online && state.map.hasLayer(online)) {
+                state.map.removeLayer(online);
+                state.hiddenOnlineLayers.push(online);
+            }
             var layer = makeOfflineSourceLayer(source, record);
             layer.addTo(state.map); state.activeLayers.push(layer); state.activeSources.push(source);
         });

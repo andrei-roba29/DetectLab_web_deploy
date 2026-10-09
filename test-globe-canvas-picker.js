@@ -19,30 +19,38 @@ assert(indexHtml.includes('id="globeGateZoomOut"'), 'index.html contains globeGa
 assert(indexHtml.includes('id="globeGateFallbackSelect"'), 'index.html keeps the no-canvas fallback select');
 assert(indexHtml.includes('js/globe-country-picker.js?v=20261008-country-bounds'), 'index.html loads the re-versioned picker');
 assert(indexHtml.includes('css/globe-country-picker.css?v=20261008'), 'index.html loads the re-versioned css');
-assert(!/maplibre/i.test(indexHtml), 'index.html no longer references MapLibre');
-console.log('  ✓ index.html structure verified');
+assert(indexHtml.includes('css/maplibre-gl.css?v=5.24.0'), 'index.html loads local MapLibre CSS for the working-map globe');
+assert(indexHtml.includes('js/maplibre-gl.js?v=5.24.0'), 'index.html loads local MapLibre GL JS');
+assert(indexHtml.includes('js/leaflet-maplibre-gl.js?v=0.1.4'), 'index.html loads the Leaflet adapter');
+assert(indexHtml.indexOf('js/maplibre-gl.js?v=5.24.0') < indexHtml.indexOf('js/leaflet-maplibre-gl.js?v=0.1.4') &&
+       indexHtml.indexOf('js/leaflet-maplibre-gl.js?v=0.1.4') < indexHtml.indexOf('js/globe-base-layer.js?v=20261009-3d-globe') &&
+       indexHtml.indexOf('js/globe-base-layer.js?v=20261009-3d-globe') < indexHtml.indexOf('js/map-app.js?v=20261009-3d-globe'),
+    'MapLibre runtime, adapter and globe base load before map-app.js');
+console.log('  ✓ index.html keeps the canvas gate and loads the separate MapLibre working-map base');
 
 // ── 2. Local assets exist ──
 ['js/d3.min.js', 'js/topojson-client.min.js', 'js/shapefile.js',
  'data/countries-50m.json', 'images/globe/earth-blue-marble.jpg',
- 'images/globe/earth-topology.png'].forEach(function (p) {
+ 'images/globe/earth-topology.png', 'js/maplibre-gl.js', 'css/maplibre-gl.css',
+ 'js/leaflet-maplibre-gl.js', 'js/globe-base-layer.js', 'css/globe-base-layer.css',
+ 'MAPLIBRE_LICENSE.txt', 'MAPLIBRE_LEAFLET_LICENSE.txt'].forEach(function (p) {
     assert(fs.existsSync(path.join(__dirname, p)), p + ' exists');
 });
-assert(!fs.existsSync(path.join(__dirname, 'js/maplibre-gl.js')), 'js/maplibre-gl.js is retired');
-assert(!fs.existsSync(path.join(__dirname, 'css/maplibre-gl.css')), 'css/maplibre-gl.css is retired');
-console.log('  ✓ local globe assets shipped, MapLibre retired');
+console.log('  ✓ local canvas-gate and MapLibre globe-base assets shipped');
 
 // ── 3. sw.js precache ──
 const swJs = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
 ['js/globe-country-picker.js?v=20261008-country-bounds', 'css/globe-country-picker.css?v=20261008',
  'js/d3.min.js?v=7.9.0', 'js/topojson-client.min.js?v=3.1.0',
- 'data/countries-50m.json?v=20261008'].forEach(function (p) {
+ 'data/countries-50m.json?v=20261008', 'js/maplibre-gl.js?v=5.24.0',
+ 'css/maplibre-gl.css?v=5.24.0', 'js/leaflet-maplibre-gl.js?v=0.1.4',
+ 'js/globe-base-layer.js?v=20261009-3d-globe', 'css/globe-base-layer.css?v=20261009-3d-globe',
+ 'js/map-app.js?v=20261009-3d-globe'].forEach(function (p) {
     assert(swJs.includes("'" + p + "'"), 'sw.js precaches ' + p);
 });
-assert(!swJs.includes("'js/maplibre-gl.js"), 'sw.js no longer precaches maplibre-gl.js');
 const shellVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);
-assert(shellVersion >= 164, 'sw.js cache must be v164 or newer so the canvas globe ships in installed PWAs');
-console.log('  ✓ sw.js precache and cache name verified');
+assert(shellVersion >= 173, 'sw.js cache must be v173 or newer so the 3D globe ships in installed PWAs');
+console.log('  ✓ sw.js precache includes the local 3D globe and canvas gate');
 
 // ── 4. Run the module (with d3 + topojson) in a sandbox ──
 function makeStubElement() {

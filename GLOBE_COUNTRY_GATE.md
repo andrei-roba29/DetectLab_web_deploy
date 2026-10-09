@@ -2,26 +2,39 @@
 
 ## What changed
 
-The country gate — the first thing an authenticated visitor sees in the map
-card — is now an **orthographic globe drawn on a plain 2D `<canvas>` with
-d3-geo**. The previous MapLibre GL implementation is retired: the WebGL globe
-proved fragile in practice (context loss, driver blacklists, dependence on a
-remote style/tile host) and country hover/selection through `feature-state`
-hit-testing was unreliable. In the canvas engine every pixel is drawn by us
-and picking is pure geometry (`projection.invert` + `d3.geoContains`), so the
-initial render and the country selection can no longer miss.
+The country-selection gate — the first thing an authenticated visitor sees
+in the map card — remains an **orthographic globe drawn on a plain 2D
+`<canvas>` with d3-geo**. This keeps hover/click picking independent of WebGL:
+every pixel is drawn by the app and picking is pure geometry
+(`projection.invert` + `d3.geoContains`).
+
+The working map underneath now has its own **permanent MapLibre GL 3D globe
+basemap** (`projection: globe`) using Esri World Imagery. A Leaflet binding
+keeps the existing map controls, geographic data layers and country-lock
+contract in place; MapLibre is used only to render the basemap. It uses a local,
+inline style (no remote style-host dependency), with the pre-existing Esri tile
+service as the imagery source. If WebGL is unavailable, the app falls back to
+the same imagery as a Leaflet raster layer so country selection and the map
+remain usable.
 
 The gate is now the *start* of a locked country view rather than a one-off
-hand-off: picking a country pins the working map to it (tight `maxBounds` +
-zoom floor, basemap untouched) and the search-bar country dock takes over
-switching from there — see **COUNTRY_SELECTION_DOCK.md**.
+hand-off: picking a country pins the Leaflet-controlled working map to its
+bounds (tight `maxBounds` + zoom floor) while keeping the same 3D globe base.
+The search-bar country dock takes over switching from there — see
+**COUNTRY_SELECTION_DOCK.md**.
 
 Files:
 
-- `js/globe-country-picker.js` — the whole feature (canvas globe engine,
-  hover/click picking, fly-to animation, Leaflet handoff, persistence) plus
-  the country-switching / locked-view API the dock uses
-  (`listCountries`, `selectCountry`, `isLocked`, `unlock`, `exitView`).
+- `js/globe-country-picker.js` — the canvas gate (hover/click picking,
+  fly-to animation, Leaflet handoff, persistence) plus the country-switching /
+  locked-view API the dock uses (`listCountries`, `selectCountry`, `isLocked`,
+  `unlock`, `exitView`).
+- `js/globe-base-layer.js` — local MapLibre style + Leaflet adapter for the
+  permanent 3D working-map basemap, with opacity handling and WebGL fallback.
+- `css/globe-base-layer.css`, `js/maplibre-gl.js`,
+  `js/leaflet-maplibre-gl.js`, `css/maplibre-gl.css` — local runtime assets;
+  licenses are retained in `MAPLIBRE_LICENSE.txt` and
+  `MAPLIBRE_LEAFLET_LICENSE.txt`.
 - `css/globe-country-picker.css` — gate overlay, legend, zoom buttons,
   loading/error states, "Change Country" pill.
 - `js/country-dock.js` + `css/country-dock.css` — the search-bar country dock,
@@ -75,8 +88,8 @@ Files:
    `detectlab:country-selected` CustomEvent. The lock is deliberately tight —
    `maxBounds` = country bbox padded by 0.15° with viscosity 1, and the zoom
    floor one reachable step below the fitted zoom (Leaflet snaps zooms to whole
-   levels; opening zoom capped at 11 for micro-states) — and **never touches the
-   basemap**: a selection only moves the camera. The `<html>` element gets `country-view-locked` and a
+   levels; opening zoom capped at 11 for micro-states) — and **never replaces the
+   3D globe base**: a selection only moves the camera. The `<html>` element gets `country-view-locked` and a
    `detectlab:country-lockchange` event fires, which is what the dock's
    "Exit view" button reacts to (COUNTRY_SELECTION_DOCK.md).
 6. **Persistence & re-entry.** Unchanged: the `{iso, name, bbox}` selection
@@ -96,12 +109,14 @@ Files:
 
 ## Notes for future changes
 
-- `sw.js` (cache `v167`) precaches the picker, d3, topojson-client, the atlas
-  and the country dock; the two texture images are intentionally **not**
-  precached (≈1.8 MB, and the texture-less fallback looks fine offline).
-- Two suites guard this area: `node test-globe-canvas-picker.js` (globe,
-  picking, geometry) and `node test-country-dock.js` (country list API, lock
-  maths, dock UI, hillshade, exit view).
+- `sw.js` (cache `v173`) precaches the country picker, local MapLibre runtime /
+  Leaflet binding, globe-base module, d3, topojson-client, the atlas and the
+  country dock. The two canvas-gate texture images are intentionally **not**
+  precached (≈1.8 MB; the texture-less gate fallback still works offline).
+- Suites guard this area: `node test-globe-canvas-picker.js` (canvas gate,
+  picking, geometry), `node test-globe-base-layer.js` (MapLibre globe source,
+  Leaflet adapter, opacity and PWA wiring) and `node test-country-dock.js`
+  (country list API, lock maths, dock UI, hillshade, exit view).
 - Country name → ISO resolution uses the bundled EN/RO name dictionary
   (`NAMES`, incl. `alt` spellings such as "Bosnia and Herz.", "Macedonia",
   "Vatican" used by world-atlas). `test-globe-canvas-picker.js` asserts all
