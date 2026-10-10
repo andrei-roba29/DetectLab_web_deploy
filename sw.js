@@ -411,7 +411,10 @@
 // v178: raster twins share one MapLibre overlay per Leaflet pane (globe-base-layer.js
 //   attachTileTwin / paneOverlayFor). Each twin is one raster source and layer in its
 //   pane's overlay, so the page holds one WebGL context per pane, not per twin.
-const CACHE_NAME = 'detectlab-v178-shared-overlay';
+// v179: the world hillshade is a globe twin (country-dock.js ensureHillshadeLayer ->
+//   DetectLabGlobeBase.attachTileTwin), in pane_world_hillshade's shared overlay.
+//   country-dock.js is re-versioned and precached.
+const CACHE_NAME = 'detectlab-v179-hillshade-globe';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -1023,6 +1026,7 @@ const PRECACHE_URLS = [
   'css/country-dock.css?v=20261008',
   'js/country-dock.js?v=20261008',
   'js/country-dock.js?v=20261009-3d-globe',
+  'js/country-dock.js?v=20261010-hillshade-globe',
   'js/map-app.js?v=20261009-3d-globe',
   'js/map-app.js?v=20261009-lidar-globe-twin',
   'js/map-app.js?v=20261010-lidar-zoom-gate',

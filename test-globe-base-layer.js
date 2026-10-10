@@ -34,7 +34,7 @@ assert(html.indexOf('js/globe-base-layer.js?v=20261010-shared-overlay') < html.i
     'js/globe-base-layer.js?v=20261010-shared-overlay',
     'js/map-app.js?v=20261010-lidar-zoom-gate',
     'js/offline-maps.js?v=20261009-3d-globe',
-    'js/country-dock.js?v=20261009-3d-globe',
+    'js/country-dock.js?v=20261010-hillshade-globe',
     'js/translations.js?v=20261009-3d-globe'
 ].forEach((asset) => assert(sw.includes("'" + asset + "'"), 'service worker precaches ' + asset));
 assert(Number((sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]) >= 174, 'service worker shell is v174+');

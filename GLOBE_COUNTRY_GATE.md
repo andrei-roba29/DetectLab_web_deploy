@@ -299,9 +299,8 @@ Open points:
 - The LIDAR panes (`pane_lidar`) have `pointer-events: none`, so a twin in them
   cannot take clicks.
 
-Remaining phases: (3) UAT tiles, hillshade (`pane_world_hillshade`), Copernicus
-VHR, the historical and other country families (about 30 panes, listed in the
-memory notes); (4) offline tiles, which need a cache-backed raster path because
+Remaining phases: (3) UAT tiles, Copernicus VHR and the historical and other country
+families (the hillshade is done, see its section); (4) offline tiles, which need a cache-backed raster path because
 MapLibre cannot read the blob-served tiles directly.
 
 ## Zoom gate for canvas LIDAR (phase 2b)
@@ -422,7 +421,25 @@ Open points:
 - Canvas-drawn sources are not twins and do not use an overlay. They stay on Leaflet
   tiles behind the zoom gate.
 
-## Notes for future changes
+## Phase 3, first family: the world hillshade
+
+The world hillshade (`js/country-dock.js`, `ensureHillshadeLayer`, pane
+`pane_world_hillshade`, z 400) is a plain `L.tileLayer` on the Esri hillshade XYZ
+template. It is attached as a globe twin right after it is created, and only when
+`DetectLabGlobeBase` is present. Its twin lives in the pane's shared overlay.
+
+Checked in the browser with the real URL and options: the twin converts, its source
+keeps the `{z}/{y}/{x}` template with a native maximum of 16, its opacity is 0.5,
+Leaflet's own tiles are hidden, and the template holds after a pan and zoom to 12.
+`test-country-dock.js` pins the wiring.
+
+Remaining phase 3 families: UAT (`pane_uat`), Copernicus VHR (`map-app.js`, the
+EEA ArcGIS tiles), the historical and other country families (`map-app.js`, the
+`historical-eu-maps.js` catalogue, `corona-wms-layer.js`, `library-of-babel.js`).
+`map-app.js` has 32 `L.tileLayer` and WMS sites. Each family needs its URLs checked
+for conversion, and any canvas-drawn source gets the zoom gate, not a twin.
+
+
 
 - `sw.js` (cache `v178`) precaches the country picker, local MapLibre runtime /
   Leaflet binding, globe-base module, d3, topojson-client, the atlas and the

@@ -255,6 +255,13 @@
             console.warn('[DetectLab] Country dock: world hillshade layer unavailable', e);
             return null;
         }
+        // On the 3D globe the hillshade is a globe twin like the other raster
+        // overlays (js/globe-base-layer.js). A layer that does not convert exactly
+        // keeps Leaflet's own tiles, so this changes nothing when there is no globe.
+        var globeBase = window.DetectLabGlobeBase;
+        if (globeBase && typeof globeBase.attachTileTwin === 'function') {
+            try { globeBase.attachTileTwin(state.hillshadeLayer); } catch (e) { /* Leaflet tiles stay */ }
+        }
         return state.hillshadeLayer;
     }
 
