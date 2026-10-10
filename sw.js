@@ -414,7 +414,8 @@
 // v179: the world hillshade is a globe twin (country-dock.js ensureHillshadeLayer ->
 //   DetectLabGlobeBase.attachTileTwin), in pane_world_hillshade's shared overlay.
 //   country-dock.js is re-versioned and precached.
-const CACHE_NAME = 'detectlab-v179-hillshade-globe';
+// v180: index.html gives the LIDAR zoom message (#lidarZoomGateMsg) its PWA bottom offset.
+const CACHE_NAME = 'detectlab-v180-hillshade-globe';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
