@@ -288,9 +288,8 @@ services, which the sandbox cannot reach. Confirm each on a device.
 
 Open points:
 
-- **WebGL contexts.** Each converted layer is one MapLibre instance. Several
-  LIDAR layers on at once means several contexts, and phones are the concern.
-  Measure before enabling many layers, and consider one canvas per pane.
+- **WebGL contexts.** Addressed: converted layers share one MapLibre overlay per
+  pane (see "One overlay per pane"). Each pane with twins adds one context.
 - Canvas-drawn services (the last four rows) are gated to zoom 11 (see "Zoom gate
   for canvas LIDAR"). Moving them onto the globe needs their pixels drawn into a
   MapLibre image source. That is separate work and is not started.
@@ -376,9 +375,56 @@ Verified:
   hooks, and the shipped version. `node test-globe-raster-twin.js` and the full root
   suite are unchanged apart from the two failures that predate this work.
 
+## One overlay per pane (GPU budget)
+
+Each globe twin used to be a MapLibre instance of its own, with its own WebGL
+context. Browsers allow only a few contexts, and phones fewer, and each costs GPU
+memory. With several LIDAR sub-layers on, that meant several contexts.
+
+Now every twin in a Leaflet pane is one raster source and one raster layer in that
+pane's shared overlay, which is a single MapLibre globe with no basemap of its own
+(`paneOverlayFor` / `addPaneTwin` in `js/globe-base-layer.js`). Its camera is the
+adapter's, which follows the basemap camera, so each twin is placed as before.
+
+- The overlay is created with the pane's first twin and removed with its last.
+- Work added before the overlay's style has loaded is queued. A twin removed
+  before then is never added.
+- A redraw (a new URL) adds the new twin before it removes the old one, so the pane
+  overlay is reused rather than rebuilt.
+- Opacity belongs to each twin (`raster-opacity` on its own layer).
+- A style that refuses a twin leaves Leaflet's own tiles on screen, and the overlay
+  that was opened for it is closed again.
+
+Contexts: one per pane that has twins, plus the basemap. For the LIDAR set that is
+two in total (the basemap and `pane_lidar`), however many converted sub-layers are on.
+
+Verified:
+
+- `node test-globe-raster-twin.js`: two twins in a pane share one instance, and
+  both sources and layers sit in it. Later twins draw above earlier ones. A twin in
+  another pane gets an instance of its own. Removing one twin keeps the instance
+  and the other twin. Removing the last closes the instance. Queued work runs when
+  `style.load` fires, and cancelled work does not run. Opacity is per twin. A
+  refused twin falls back to Leaflet tiles. Redraw reuses the instance.
+- Browser, real MapLibre and Leaflet, headless Chromium with SwiftShader, and a
+  synthetic tile route (solid colours on one half of the world). Two twins in
+  `pane_lidar` at zoom 5: one overlay in the pane. The west side is red and the
+  east side blue, and at zoom 4 after a pan they are still red and blue at the
+  same geography. Half opacity blends the red. A redraw to green keeps the same
+  overlay. Removing one twin leaves the other. Removing the last closes the
+  overlay. A twin in `pane_other` gets its own. The red/blue edge is the meridian
+  lng 0, within half a pixel of the basemap's projection.
+
+Open points:
+
+- Each pane still has its own instance. If more panes take twins, each adds one
+  context. Keep the number of panes with twins small.
+- Canvas-drawn sources are not twins and do not use an overlay. They stay on Leaflet
+  tiles behind the zoom gate.
+
 ## Notes for future changes
 
-- `sw.js` (cache `v177`) precaches the country picker, local MapLibre runtime /
+- `sw.js` (cache `v178`) precaches the country picker, local MapLibre runtime /
   Leaflet binding, globe-base module, d3, topojson-client, the atlas and the
   country dock. The two canvas-gate texture images are intentionally **not**
   precached (≈1.8 MB; the texture-less gate fallback still works offline).

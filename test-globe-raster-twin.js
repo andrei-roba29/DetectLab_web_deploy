@@ -29,22 +29,56 @@ class FakePoint {
     add(p) { return new FakePoint(this.x + p.x, this.y + p.y); }
 }
 
-// The MapLibre adapter: the globe layer that create() wraps.
+// The MapLibre adapter: the globe layer that create() wraps. Its map keeps
+// sources, layers and paint as MapLibre does; the style loads later when
+// globalThis.__fakeStyleLoaded is false (the test fires 'style.load' itself).
 const glPaints = [];
+class FakeGlMap {
+    constructor(owner, loaded) {
+        this.owner = owner;
+        this.loaded = loaded;
+        this.sources = {};
+        this.layers = [];
+        this.paint = glPaints;
+        this.handlers = {};
+    }
+    isStyleLoaded() { return this.loaded; }
+    once(type, fn) { if (type === 'load' && this.loaded) fn(); else (this.handlers[type] = this.handlers[type] || []).push({ fn, once: true }); }
+    on(type, fn) { (this.handlers[type] = this.handlers[type] || []).push({ fn, once: false }); }
+    fire(type) {
+        if (type === 'style.load') this.loaded = true;
+        const list = this.handlers[type] || [];
+        this.handlers[type] = list.filter((h) => !h.once);
+        list.forEach((h) => h.fn());
+    }
+    addSource(id, spec) {
+        if (!this.loaded) throw new Error('Style is not done loading');
+        if (globalThis.__fakeRefuseSources) throw new Error('the style refuses this source');
+        if (this.sources[id]) throw new Error('There is already a source with this ID');
+        this.sources[id] = spec;
+    }
+    getSource(id) { return this.sources[id]; }
+    removeSource(id) { if (!this.sources[id]) throw new Error('no source ' + id); delete this.sources[id]; }
+    addLayer(spec) {
+        if (!this.loaded) throw new Error('Style is not done loading');
+        if (!this.sources[spec.source]) throw new Error('no source for layer ' + spec.id);
+        this.layers.push(Object.assign({}, spec));
+    }
+    getLayer(id) { return this.layers.find((l) => l.id === id) || null; }
+    removeLayer(id) { this.layers = this.layers.filter((l) => l.id !== id); }
+    setPaintProperty(layer, prop, value) {
+        const l = this.getLayer(layer);
+        if (!l) throw new Error('no layer ' + layer);
+        l.paint[prop] = value;
+        this.paint.push({ layer, prop, value, adapter: this.owner });
+    }
+}
 class FakeAdapter {
     constructor(options) {
         this.options = Object.assign({ opacity: 1 }, options);
         this._zooming = false;
         this._map = null;
-        this.glMap = {
-            paint: glPaints,
-            isStyleLoaded() { return true; },
-            once(type, fn) { if (type === 'load') fn(); },
-            on() {},
-            getLayer(id) { return { id }; },
-            setPaintProperty(layer, prop, value) { this.paint.push({ layer, prop, value, adapter: this.owner }); },
-            owner: this
-        };
+        this.glMap = new FakeGlMap(this, globalThis.__fakeStyleLoaded !== false);
     }
     getEvents() { return { move: this._throttledUpdate }; }
     _update() {}
@@ -54,6 +88,14 @@ class FakeAdapter {
     onRemove(map) { this._map = null; }
     getMaplibreMap() { return this.glMap; }
     setOpacity(value) { this.options.opacity = value; return this; }
+}
+
+// The twin's own source and layer inside its pane's shared overlay.
+function twinSpecs(layer) {
+    const t = layer._detectlabTwin;
+    if (!t || !t.handle || !t.shared) return null;
+    const gl = t.shared.glMap;
+    return { source: gl.sources[t.handle.sourceId], layer: gl.getLayer(t.handle.layerId), gl };
 }
 
 class FakeMap {
@@ -219,20 +261,22 @@ assert.equal(B.attachTileTwin(layer), false, 'a layer is only hooked once');
 assert.equal(created.length, 0, 'no twin before the layer is on a map');
 
 map.addLayer(layer);
-assert.equal(created.length, 1, 'adding the layer attaches one globe twin');
+assert.equal(created.length, 1, 'adding the layer opens the pane overlay (one instance for the pane)');
 const twin1 = created[0];
-assert.equal(twin1.options.pane, 'pane_twin_test', 'the twin lives in the layer pane');
-assert.equal(twin1._detectlabGlobeOverlay, true, 'the twin is marked as an overlay');
-assert.equal(twin1._detectlabGlobeBase, undefined, 'an overlay twin carries no basemap flags');
-assert.equal(twin1.options.style.projection.type, 'globe', 'the twin uses the globe projection');
-assert.equal(twin1.options.style.layers[0].type, 'raster', 'the twin is a raster overlay');
+assert.equal(twin1.options.pane, 'pane_twin_test', 'the overlay lives in the layer pane');
+assert.equal(twin1._detectlabGlobeOverlay, true, 'the overlay is marked as an overlay');
+assert.equal(twin1._detectlabGlobeBase, undefined, 'an overlay carries no basemap flags');
+assert.equal(twin1.options.style.projection.type, 'globe', 'the overlay uses the globe projection');
+assert.equal(twin1.glMap.layers.length, 1, 'the twin is one raster layer in the overlay');
+assert.equal(twin1.glMap.layers[0].type, 'raster', 'the twin is a raster overlay');
+assert.equal(twinSpecs(layer).gl, twin1.glMap, 'the twin is inside the overlay that is on the map');
 assert.equal(urlAt(layer, 1, 2, 3), BLANK, 'while attached, Leaflet requests no tiles');
 assert.equal(layer.getContainer().style.display, 'none', 'Leaflet tiles are hidden behind the twin');
 assert(map.hasLayer(twin1), 'the twin is on the same map');
 
 layer.setOpacity(0.4);
 assert.equal(layer.options.opacity, 0.4, 'Leaflet keeps its own opacity state');
-assert.equal(twin1.options.opacity, 0.4, 'the twin follows the layer opacity');
+assert.equal(twinSpecs(layer).layer.paint['raster-opacity'], 0.4, 'the twin follows the layer opacity');
 assert.equal(glPaints.filter((p) => p.adapter === twin1).slice(-1)[0].value, 0.4, 'opacity reaches the twin');
 
 map.removeLayer(layer);
@@ -241,22 +285,29 @@ assert.equal(urlAt(layer, 1, 2, 3), 'https://tiles.example/b/3/1/2.png', 'Leafle
 assert.equal(layer.getContainer().style.display, '', 'Leaflet tiles are shown again after removal');
 
 map.addLayer(layer);
-assert.equal(created.length, 2, 're-adding attaches a fresh twin');
+assert.equal(created.length, 2, 're-adding opens a fresh overlay, as the last twin had closed the old one');
+const oldSourceIds = Object.keys(twin1.glMap.sources);
+assert.equal(oldSourceIds.length, 0, 'closing the last twin leaves no source behind');
 layer._url = 'https://tiles.example/v2/{z}/{x}/{y}.png';
 layer.redraw();
-assert.equal(created.length, 3, 'a changed URL rebuilds the twin');
-assert.equal(map.layers.filter((l) => l === created[1] || l === created[2]).length, 1, 'only the current twin stays on the map');
-assert.equal(created[2].options.style.sources['detectlab-overlay'].tiles[0], 'https://tiles.example/v2/{z}/{x}/{y}.png',
-    'the rebuilt twin uses the new URL');
+assert.equal(created.length, 2, 'a changed URL swaps the twin inside the same overlay');
+assert.equal(map.layers.filter((l) => l === created[1]).length, 1, 'the pane overlay stays on the map');
+assert.equal(Object.keys(created[1].glMap.sources).length, 1, 'only the current twin source is left');
+assert.equal(twinSpecs(layer).source.tiles[0], 'https://tiles.example/v2/{z}/{x}/{y}.png', 'the new twin uses the new URL');
+assert.equal(created[1].glMap.layers.length, 1, 'the old twin layer is gone');
 
 // ── Zoom limits follow Leaflet's rounded test ─────────────────────────────
 const limited = new FakeTileLayer('https://tiles.example/{s}/{z}/{x}/{y}.png', { maxNativeZoom: 4, maxZoom: 6, minZoom: 2 });
 const limitedMap = new FakeMap();
 B.attachTileTwin(limited);
 limitedMap.addLayer(limited);
-const limitedTwin = created[created.length - 1];
-const limitedStyle = limitedTwin.options.style;
-assert.equal(limitedStyle.sources['detectlab-overlay'].maxzoom, 4, 'the source stops at the native zoom and overzooms above it');
+const limitedStyle = { sources: {}, layers: [] };
+{
+    const specs = twinSpecs(limited);
+    limitedStyle.sources.only = specs.source;
+    limitedStyle.layers[0] = specs.layer;
+}
+assert.equal(limitedStyle.sources.only.maxzoom, 4, 'the source stops at the native zoom and overzooms above it');
 // The adapter drives the camera at Leaflet zoom minus 1, so the limits are in camera zoom.
 assert.equal(limitedStyle.layers[0].maxzoom, 5.5, 'camera zoom 5.5 is Leaflet zoom 6.5, where round(zoom) passes maxZoom 6');
 assert.equal(limitedStyle.layers[0].minzoom, 0.5, 'camera zoom 0.5 is Leaflet zoom 1.5, where round(zoom) reaches minZoom 2');
@@ -277,7 +328,7 @@ const wmsLayer = new FakeWmsLayer('https://wms.example/ows', { layers: 'borders'
 B.attachTileTwin(wmsLayer);
 wmsMap.addLayer(wmsLayer);
 const wmsTwin = created[created.length - 1];
-assert.match(wmsTwin.options.style.sources['detectlab-overlay'].tiles[0], /&BBOX=\{bbox-epsg-3857\}$/, 'the WMS twin asks for bboxes');
+assert.match(twinSpecs(wmsLayer).source.tiles[0], /&BBOX=\{bbox-epsg-3857\}$/, 'the WMS twin asks for bboxes');
 assert.equal(wmsTwin.options.pane, 'pane_wms_test');
 
 // ── A layer that is already on a map gets its twin at attach time ─────────
@@ -341,8 +392,94 @@ B.attachTileTwin(fnTwinLayer);
 const beforeFn = created.length;
 fnTwinMap.addLayer(fnTwinLayer);
 assert.equal(created.length, beforeFn + 1, 'a converting per-tile bbox layer gets a twin');
-assert.equal(created[created.length - 1].options.style.sources['detectlab-overlay'].tiles[0],
+assert.equal(twinSpecs(fnTwinLayer).source.tiles[0],
     'https://ows.example/export?bboxSR=3857&size=256,256&bbox={bbox-epsg-3857}&f=image', 'the twin asks for the bbox');
+
+// ── One overlay instance per pane ─────────────────────────────────────────
+// Twins in one pane share one MapLibre instance, so the page holds one WebGL
+// context per pane instead of one per twin. Each twin is one source and one layer.
+{
+    const shareMap = new FakeMap();
+    const before = created.length;
+    const t1 = new FakeTileLayer('https://tiles.example/one/{z}/{x}/{y}.png', { pane: 'pane_share' });
+    const t2 = new FakeTileLayer('https://tiles.example/two/{z}/{x}/{y}.png', { pane: 'pane_share' });
+    const t3 = new FakeTileLayer('https://tiles.example/three/{z}/{x}/{y}.png', { pane: 'pane_other' });
+    B.attachTileTwin(t1); B.attachTileTwin(t2); B.attachTileTwin(t3);
+    shareMap.addLayer(t1);
+    shareMap.addLayer(t2);
+    assert.equal(created.length - before, 1, 'two twins in one pane share one overlay instance');
+    assert.equal(t1._detectlabTwin.shared, t2._detectlabTwin.shared, 'both twins hold the same overlay');
+    const shared = t1._detectlabTwin.shared;
+    assert.equal(Object.keys(shared.glMap.sources).length, 2, 'both twin sources are in that overlay');
+    assert.deepEqual(shared.glMap.layers.map((l) => l.source), [t1._detectlabTwin.handle.sourceId, t2._detectlabTwin.handle.sourceId],
+        'the later twin is drawn above the earlier one, as Leaflet stacks a pane');
+    shareMap.addLayer(t3);
+    assert.equal(created.length - before, 2, 'a twin in another pane gets an overlay of its own');
+    assert.notEqual(t3._detectlabTwin.shared, shared, 'the other pane does not share the instance');
+    shareMap.removeLayer(t1);
+    assert.equal(shareMap.hasLayer(shared.layer), true, 'the pane overlay stays while one of its twins remains');
+    assert.deepEqual(Object.keys(shared.glMap.sources), [t2._detectlabTwin.handle.sourceId], 'only the remaining twin source is left');
+    assert.equal(shared.glMap.layers.length, 1, 'and only its layer');
+    shareMap.removeLayer(t2);
+    assert.equal(shareMap.hasLayer(shared.layer), false, 'the pane overlay goes with its last twin');
+    assert.equal(shared.glMap.layers.length, 0, 'and its layers are gone');
+    shareMap.removeLayer(t3);
+}
+
+// ── Work queued until the style has loaded ────────────────────────────────
+{
+    globalThis.__fakeStyleLoaded = false;
+    const lateMap = new FakeMap();
+    const late = new FakeTileLayer('https://tiles.example/late/{z}/{x}/{y}.png', { pane: 'pane_late' });
+    B.attachTileTwin(late);
+    lateMap.addLayer(late);
+    globalThis.__fakeStyleLoaded = true;
+    const lateShared = late._detectlabTwin.shared;
+    assert.equal(Object.keys(lateShared.glMap.sources).length, 0, 'while the style loads, the twin is only queued');
+    lateShared.glMap.fire('style.load');
+    assert.equal(Object.keys(lateShared.glMap.sources).length, 1, 'when the style loads, the queued twin is added');
+    assert.equal(lateShared.glMap.layers.length, 1, 'with its layer');
+
+    globalThis.__fakeStyleLoaded = false;
+    const cancelMap = new FakeMap();
+    const cancelled = new FakeTileLayer('https://tiles.example/cancelled/{z}/{x}/{y}.png', { pane: 'pane_cancel' });
+    B.attachTileTwin(cancelled);
+    cancelMap.addLayer(cancelled);
+    const cancelShared = cancelled._detectlabTwin.shared;
+    cancelMap.removeLayer(cancelled);
+    globalThis.__fakeStyleLoaded = true;
+    cancelShared.glMap.fire('style.load');
+    assert.equal(Object.keys(cancelShared.glMap.sources).length, 0, 'a twin removed before the style loads is never added');
+    globalThis.__fakeStyleLoaded = undefined;
+}
+
+// ── Opacity belongs to each twin, not to the pane ─────────────────────────
+{
+    const opMap = new FakeMap();
+    const o1 = new FakeTileLayer('https://tiles.example/o1/{z}/{x}/{y}.png', { pane: 'pane_opacity' });
+    const o2 = new FakeTileLayer('https://tiles.example/o2/{z}/{x}/{y}.png', { pane: 'pane_opacity' });
+    B.attachTileTwin(o1); B.attachTileTwin(o2);
+    opMap.addLayer(o1); opMap.addLayer(o2);
+    o1.setOpacity(0.25);
+    const gl = o1._detectlabTwin.shared.glMap;
+    assert.equal(gl.getLayer(o1._detectlabTwin.handle.layerId).paint['raster-opacity'], 0.25, 'the changed twin takes its opacity');
+    assert.equal(gl.getLayer(o2._detectlabTwin.handle.layerId).paint['raster-opacity'], 1, 'the other twin in the pane keeps its own');
+    opMap.removeLayer(o1); opMap.removeLayer(o2);
+}
+
+// ── A style that refuses the twin leaves Leaflet's own tiles on screen ────
+{
+    const refusedMap = new FakeMap();
+    const refused = new FakeTileLayer('https://tiles.example/refused/{s}/{z}/{x}/{y}.png', { pane: 'pane_refused' });
+    B.attachTileTwin(refused);
+    globalThis.__fakeRefuseSources = true;
+    refusedMap.addLayer(refused);
+    globalThis.__fakeRefuseSources = false;
+    assert.equal(refused._detectlabTwin.handle, null, 'a refused twin is not kept');
+    assert.equal(refused.getContainer().style.display, '', 'Leaflet tiles stay visible');
+    assert.match(urlAt(refused, 1, 2, 3), /^https:\/\/tiles\.example\/refused\//, 'Leaflet builds its own URLs');
+    assert.equal(refusedMap.layers.filter((l) => l instanceof FakeAdapter).length, 0, 'the overlay opened for it is closed again');
+}
 
 // ── Basemap: create() without options.overlay keeps the basemap flags ─────
 const baseMap = new FakeMap();

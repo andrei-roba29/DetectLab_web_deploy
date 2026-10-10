@@ -474,7 +474,6 @@
        anything else stays a plain Leaflet layer. */
     var BLANK_TILE_URL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
     var WEB_MERCATOR_HALF = 20037508.342789244;
-    var OVERLAY_SOURCE_ID = 'detectlab-overlay';
     var TWIN_PROBES = [{ x: 0, y: 0, z: 0 }, { x: 5, y: 11, z: 5 }, { x: 140, y: 90, z: 8 }];
 
     // EPSG:3857 extent of a 256-px tile in WMS BBOX order (minx, miny, maxx, maxy).
@@ -601,34 +600,133 @@
         };
     }
 
-    function overlayStyle(source, opacity) {
-        var sources = {};
-        sources[OVERLAY_SOURCE_ID] = {
+    // The raster source and layer of one twin. Ids are per twin, so each twin can
+    // be added to and removed from its pane's shared overlay without touching the others.
+    function overlayLayers(source, opacity, sourceId, layerId) {
+        var sourceSpec = {
             type: 'raster', tiles: source.tiles, tileSize: source.tileSize,
             minzoom: source.sourceMinzoom, maxzoom: source.sourceMaxzoom
         };
-        var rasterLayer = {
-            id: RASTER_LAYER_ID, type: 'raster', source: OVERLAY_SOURCE_ID,
+        var layerSpec = {
+            id: layerId, type: 'raster', source: sourceId,
             paint: { 'raster-opacity': clampOpacity(opacity) }
         };
         // The adapter drives the globe camera at Leaflet's zoom minus 1 (its
         // 512-px world against Leaflet's 256-px tiles), and style-layer limits are
         // in camera zoom. Leaflet shows the layer while Math.round(zoom) is inside
         // [minZoom, maxZoom], which is camera zoom in [minZoom - 1.5, maxZoom - 0.5).
-        if (source.minZoom !== null) rasterLayer.minzoom = Math.max(0, source.minZoom - 1.5);
-        if (source.maxZoom !== null) rasterLayer.maxzoom = Math.max(0, source.maxZoom - 0.5);
-        return { version: 8, projection: { type: 'globe' }, sources: sources, layers: [rasterLayer] };
+        if (source.minZoom !== null) layerSpec.minzoom = Math.max(0, source.minZoom - 1.5);
+        if (source.maxZoom !== null) layerSpec.maxzoom = Math.max(0, source.maxZoom - 0.5);
+        return { source: sourceSpec, layer: layerSpec };
     }
 
-    // Gives a Leaflet tile/WMS layer a globe twin in its own pane. Returns true
-    // when the hooks are installed; the twin itself is only attached while the
+    /* ── One overlay instance per pane ───────────────────────────────────────
+       Each twin used to be a MapLibre instance of its own, with its own WebGL
+       context. Browsers, and phones especially, allow only a few contexts, and
+       each costs GPU memory. Now every twin in a Leaflet pane is one raster
+       source and one raster layer in that pane's shared overlay: a single
+       globe instance with no basemap of its own. Its camera is the adapter's,
+       which follows the basemap camera, so each twin is placed exactly as before.
+       The instance is created with the pane's first twin and removed with its
+       last. Work added before the style has loaded is queued. */
+    var overlaySeq = 0;
+
+    function emptyOverlayStyle() {
+        return { version: 8, name: 'DetectLab overlays', projection: { type: 'globe' }, sources: {}, layers: [] };
+    }
+
+    function paneOverlayFor(map, paneName) {
+        var panes = map._detectlabOverlayPanes || (map._detectlabOverlayPanes = {});
+        var shared = panes[paneName];
+        if (shared && shared.layer && shared.layer._map === map) return shared;
+        var layer = create(map, { pane: paneName, style: emptyOverlayStyle(), overlay: true, opacity: 1 });
+        var glMap = layer ? layer.getMaplibreMap() : null;
+        if (!glMap) {
+            if (layer) { try { map.removeLayer(layer); } catch (e) {} }
+            return null;
+        }
+        shared = { pane: paneName, map: map, layer: layer, glMap: glMap, ready: false, queue: [], count: 0 };
+        panes[paneName] = shared;
+        var markReady = function () {
+            if (shared.ready) return;
+            shared.ready = true;
+            var queue = shared.queue;
+            shared.queue = [];
+            queue.forEach(function (run) { try { run(); } catch (e) {} });
+        };
+        if (typeof glMap.isStyleLoaded === 'function' && glMap.isStyleLoaded()) markReady();
+        else if (typeof glMap.once === 'function') glMap.once('style.load', markReady);
+        return shared;
+    }
+
+    // One twin has let go of the pane. The overlay goes with its last twin.
+    function paneOverlayRelease(shared) {
+        shared.count -= 1;
+        if (shared.count > 0) return;
+        var map = shared.map;
+        if (map && map._detectlabOverlayPanes && map._detectlabOverlayPanes[shared.pane] === shared) {
+            delete map._detectlabOverlayPanes[shared.pane];
+        }
+        shared.queue = [];
+        if (map) { try { map.removeLayer(shared.layer); } catch (e) {} }
+    }
+
+    // Adds one twin's source and layer to a pane overlay. Returns a handle, or null
+    // when the style refuses the twin right away (the caller then keeps Leaflet's tiles).
+    function addPaneTwin(shared, source, opacity) {
+        var n = ++overlaySeq;
+        var handle = {
+            sourceId: 'detectlab-twin-' + n,
+            layerId: 'detectlab-twin-' + n + '-raster',
+            opacity: clampOpacity(opacity),
+            added: false,
+            removed: false
+        };
+        function add() {
+            if (handle.removed || handle.added) return;
+            var glMap = shared.glMap;
+            var specs = overlayLayers(source, handle.opacity, handle.sourceId, handle.layerId);
+            glMap.addSource(handle.sourceId, specs.source);
+            try {
+                glMap.addLayer(specs.layer);
+            } catch (e) {
+                try { glMap.removeSource(handle.sourceId); } catch (cleanup) {}
+                throw e;
+            }
+            handle.added = true;
+        }
+        if (shared.ready) {
+            try { add(); } catch (e) { return null; }
+        } else {
+            shared.queue.push(add);
+        }
+        handle.setOpacity = function (value) {
+            handle.opacity = clampOpacity(value);
+            if (!handle.added || handle.removed) return;
+            try { shared.glMap.setPaintProperty(handle.layerId, 'raster-opacity', handle.opacity); } catch (e) {}
+        };
+        handle.remove = function () {
+            if (handle.removed) return;
+            handle.removed = true;
+            if (!handle.added) return;          // still queued: its add() will do nothing
+            var glMap = shared.glMap;
+            try { if (glMap.getLayer(handle.layerId)) glMap.removeLayer(handle.layerId); } catch (e) {}
+            try { if (glMap.getSource(handle.sourceId)) glMap.removeSource(handle.sourceId); } catch (e) {}
+            handle.added = false;
+        };
+        return handle;
+    }
+
+    // Gives a Leaflet tile/WMS layer a globe twin in its layer's pane. The twin is a
+    // raster source and layer in that pane's shared overlay (paneOverlayFor). Returns
+    // true when the hooks are installed; the twin itself is only attached while the
     // layer is on a map and its URLs convert exactly, otherwise the layer keeps
     // Leaflet's own tiles.
     function attachTileTwin(tileLayer) {
         if (!tileLayer || tileLayer._detectlabTwin || !tileLayer.options) return false;
         if (typeof tileLayer.getTileUrl !== 'function' || typeof tileLayer.onAdd !== 'function') return false;
         var twin = {
-            glLayer: null, map: null,
+            handle: null, shared: null, map: null,
             opacity: typeof tileLayer.options.opacity === 'number' ? tileLayer.options.opacity : 1
         };
         tileLayer._detectlabTwin = twin;
@@ -641,35 +739,44 @@
         function containerOf() {
             return typeof tileLayer.getContainer === 'function' ? tileLayer.getContainer() : null;
         }
+        // Lets go of this layer's twin, and returns Leaflet's own URLs and tiles.
         function release() {
-            if (twin.glLayer && twin.map) {
-                try { twin.map.removeLayer(twin.glLayer); } catch (e) {}
-            }
-            twin.glLayer = null;
+            var handle = twin.handle, shared = twin.shared;
+            twin.handle = null;
+            twin.shared = null;
             twin.map = null;
+            if (handle) handle.remove();
+            if (shared) paneOverlayRelease(shared);
             delete tileLayer.getTileUrl;             // back to Leaflet's own URL building
             var container = containerOf();
             if (container) container.style.display = '';
         }
+        // Takes the new twin before letting go of the old one, so a redraw (a new
+        // URL) keeps the pane's overlay instance alive instead of rebuilding it.
         function engage(map) {
-            release();
-            var glLayer = null;
+            var handle = null, shared = null;
             try {
                 var source = overlaySourceFor(tileLayer, getUrl);
                 if (source) {
-                    glLayer = create(map, {
-                        pane: tileLayer.options.pane || 'tilePane',
-                        style: overlayStyle(source, twin.opacity),
-                        opacity: twin.opacity,
-                        overlay: true
-                    });
+                    shared = paneOverlayFor(map, tileLayer.options.pane || 'tilePane');
+                    if (shared) {
+                        shared.count += 1;
+                        handle = addPaneTwin(shared, source, twin.opacity);
+                    }
                 }
             } catch (e) {
-                glLayer = null;   // any surprise keeps Leaflet's own tiles
+                handle = null;                       // any surprise keeps Leaflet's own tiles
             }
-            if (!glLayer) return false;
-            twin.glLayer = glLayer;
+            if (!handle) {
+                if (shared) paneOverlayRelease(shared);
+                return false;
+            }
+            var previousHandle = twin.handle, previousShared = twin.shared;
+            twin.handle = handle;
+            twin.shared = shared;
             twin.map = map;
+            if (previousHandle) previousHandle.remove();
+            if (previousShared) paneOverlayRelease(previousShared);
             tileLayer.getTileUrl = function () { return BLANK_TILE_URL; };
             var container = containerOf();
             if (container) container.style.display = 'none';
@@ -677,7 +784,7 @@
         }
         function engageOrFallBack(map) {
             if (engage(map)) return;
-            delete tileLayer.getTileUrl;             // no twin: Leaflet draws its own tiles
+            release();                               // no twin: Leaflet draws its own tiles
             redrawOriginal.call(tileLayer);
         }
 
@@ -694,7 +801,7 @@
         tileLayer.setOpacity = function (value) {
             var result = setOpacityOriginal.call(this, value);
             twin.opacity = typeof this.options.opacity === 'number' ? this.options.opacity : twin.opacity;
-            if (twin.glLayer) twin.glLayer.setOpacity(twin.opacity);
+            if (twin.handle) twin.handle.setOpacity(twin.opacity);
             return result;
         };
         tileLayer.redraw = function () {

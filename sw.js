@@ -408,7 +408,10 @@
 //   ArcGIS ImageServer grids) are shown only from zoom 11 on the live globe, with a
 //   localised "zoom in more" message (_lidarApplyCanvasZoomGate in js/map-app.js).
 //   map-app.js and translations.js are re-versioned and precached.
-const CACHE_NAME = 'detectlab-v177-lidar-zoom-gate';
+// v178: raster twins share one MapLibre overlay per Leaflet pane (globe-base-layer.js
+//   attachTileTwin / paneOverlayFor). Each twin is one raster source and layer in its
+//   pane's overlay, so the page holds one WebGL context per pane, not per twin.
+const CACHE_NAME = 'detectlab-v178-shared-overlay';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -469,6 +472,7 @@ const PRECACHE_URLS = [
   'js/globe-base-layer.js?v=20261009-globe-outline',
   'js/globe-base-layer.js?v=20261009-globe-raster-twin',
   'js/globe-base-layer.js?v=20261009-lidar-globe-twin',
+  'js/globe-base-layer.js?v=20261010-shared-overlay',
   'js/L.Control.Layers.Tree.min.js',
   'js/L.Control.Locate.min.js',
   'js/leaflet-hash.js',

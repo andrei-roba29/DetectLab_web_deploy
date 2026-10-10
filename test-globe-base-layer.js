@@ -20,18 +20,18 @@ assert(html.includes('css/maplibre-gl.css?v=5.24.0'), 'MapLibre CSS is loaded lo
 assert(html.includes('css/globe-base-layer.css?v=20261009-3d-globe'), 'globe base CSS is loaded');
 assert(html.includes('js/maplibre-gl.js?v=5.24.0'), 'MapLibre GL JS is loaded locally');
 assert(html.includes('js/leaflet-maplibre-gl.js?v=0.1.4'), 'Leaflet/MapLibre adapter is loaded');
-assert(html.includes('js/globe-base-layer.js?v=20261009-lidar-globe-twin'), 'globe base module is loaded');
+assert(html.includes('js/globe-base-layer.js?v=20261010-shared-overlay'), 'globe base module is loaded');
 assert(html.indexOf('js/leaflet.js') < html.indexOf('js/maplibre-gl.js?v=5.24.0'), 'Leaflet loads before the GL runtime');
 assert(html.indexOf('js/maplibre-gl.js?v=5.24.0') < html.indexOf('js/leaflet-maplibre-gl.js?v=0.1.4'), 'GL runtime loads before its adapter');
-assert(html.indexOf('js/leaflet-maplibre-gl.js?v=0.1.4') < html.indexOf('js/globe-base-layer.js?v=20261009-lidar-globe-twin'), 'adapter loads before the base module');
-assert(html.indexOf('js/globe-base-layer.js?v=20261009-lidar-globe-twin') < html.indexOf('js/map-app.js?v=20261010-lidar-zoom-gate'), 'base module loads before map-app');
+assert(html.indexOf('js/leaflet-maplibre-gl.js?v=0.1.4') < html.indexOf('js/globe-base-layer.js?v=20261010-shared-overlay'), 'adapter loads before the base module');
+assert(html.indexOf('js/globe-base-layer.js?v=20261010-shared-overlay') < html.indexOf('js/map-app.js?v=20261010-lidar-zoom-gate'), 'base module loads before map-app');
 
 [
     'css/maplibre-gl.css?v=5.24.0',
     'css/globe-base-layer.css?v=20261009-3d-globe',
     'js/maplibre-gl.js?v=5.24.0',
     'js/leaflet-maplibre-gl.js?v=0.1.4',
-    'js/globe-base-layer.js?v=20261009-lidar-globe-twin',
+    'js/globe-base-layer.js?v=20261010-shared-overlay',
     'js/map-app.js?v=20261010-lidar-zoom-gate',
     'js/offline-maps.js?v=20261009-3d-globe',
     'js/country-dock.js?v=20261009-3d-globe',
