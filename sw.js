@@ -387,7 +387,35 @@
 //   tiles are overlaid within their saved polygon instead of removing the globe.
 //   MapLibre runtime/binding/style assets and the re-versioned map, offline,
 //   dock and translation scripts are precached for installed PWAs.
-const CACHE_NAME = 'detectlab-v173-3d-globe-base';
+// v174: the selected-country outline and its highlight are projected with the
+//   same globe camera that draws the 3D basemap (DetectLabGlobeBase
+//   .createProjectedFeature in js/globe-base-layer.js) instead of Leaflet's
+//   Web Mercator, so they stay on the imagery when zoomed out and while the
+//   globe moves. The basemap style and imagery are unchanged; the outline falls
+//   back to Leaflet placement when no globe is live. The globe adapter now syncs
+//   its camera on every map move instead of every 32 ms. globe-base-layer.js and
+//   globe-country-picker.js are re-versioned and precached.
+// v175: Leaflet raster overlays (LIDAR, WMS, XYZ tiles) can get a MapLibre "globe twin"
+//   from DetectLabGlobeBase.attachTileTwin (js/globe-base-layer.js): the same tile URLs
+//   drawn on the globe camera in the layer's own pane, so they stay on the basemap when
+//   the globe moves or zooms. Not wired into any layer yet; globe-base-layer.js is
+//   re-versioned and precached.
+// v176: LIDAR layers get a globe twin when their URLs convert exactly
+//   (_lidarGlobeTwin in js/map-app.js, DetectLabGlobeBase.attachTileTwin in
+//   js/globe-base-layer.js). Layers that draw their own tiles, or whose requests
+//   cannot be expressed as a MapLibre template, stay Leaflet layers.
+// v177: canvas-drawn LIDAR sources (custom createTile: NL AHN, DK DHM, NO Hoydedata,
+//   ArcGIS ImageServer grids) are shown only from zoom 11 on the live globe, with a
+//   localised "zoom in more" message (_lidarApplyCanvasZoomGate in js/map-app.js).
+//   map-app.js and translations.js are re-versioned and precached.
+// v178: raster twins share one MapLibre overlay per Leaflet pane (globe-base-layer.js
+//   attachTileTwin / paneOverlayFor). Each twin is one raster source and layer in its
+//   pane's overlay, so the page holds one WebGL context per pane, not per twin.
+// v179: the world hillshade is a globe twin (country-dock.js ensureHillshadeLayer ->
+//   DetectLabGlobeBase.attachTileTwin), in pane_world_hillshade's shared overlay.
+//   country-dock.js is re-versioned and precached.
+// v180: index.html gives the LIDAR zoom message (#lidarZoomGateMsg) its PWA bottom offset.
+const CACHE_NAME = 'detectlab-v180-hillshade-globe';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -445,6 +473,10 @@ const PRECACHE_URLS = [
   'js/maplibre-gl.js?v=5.24.0',
   'js/leaflet-maplibre-gl.js?v=0.1.4',
   'js/globe-base-layer.js?v=20261009-3d-globe',
+  'js/globe-base-layer.js?v=20261009-globe-outline',
+  'js/globe-base-layer.js?v=20261009-globe-raster-twin',
+  'js/globe-base-layer.js?v=20261009-lidar-globe-twin',
+  'js/globe-base-layer.js?v=20261010-shared-overlay',
   'js/L.Control.Layers.Tree.min.js',
   'js/L.Control.Locate.min.js',
   'js/leaflet-hash.js',
@@ -988,15 +1020,20 @@ const PRECACHE_URLS = [
   'css/globe-country-picker.css?v=20261008',
   'js/globe-country-picker.js?v=20261008',
   'js/globe-country-picker.js?v=20261008-country-bounds',
+  'js/globe-country-picker.js?v=20261009-globe-outline',
   // v167: country dock glued under the search bar (country switcher +
   // World-hillshade checkbox) and the “Exit view” button of the locked
   // country view. The hillshade tiles themselves stay network-only.
   'css/country-dock.css?v=20261008',
   'js/country-dock.js?v=20261008',
   'js/country-dock.js?v=20261009-3d-globe',
+  'js/country-dock.js?v=20261010-hillshade-globe',
   'js/map-app.js?v=20261009-3d-globe',
+  'js/map-app.js?v=20261009-lidar-globe-twin',
+  'js/map-app.js?v=20261010-lidar-zoom-gate',
   'js/offline-maps.js?v=20261009-3d-globe',
   'js/translations.js?v=20261009-3d-globe',
+  'js/translations.js?v=20261010-lidar-zoom-gate',
   'js/d3.min.js?v=7.9.0',
   'js/topojson-client.min.js?v=3.1.0',
   'data/countries-50m.json?v=20261008',

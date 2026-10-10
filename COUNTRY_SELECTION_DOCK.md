@@ -46,7 +46,7 @@ another country was the “Change Country” pill. Now the choice *owns* the map
   button (inside `.map-frame`), the CSS/JS tags.
 - `js/translations.js` — `country_dock_title`, `country_dock_hint`,
   `country_dock_hillshade`, `country_exit_view` (EN + RO).
-- `sw.js` — shell `v173`, precaches the dock and the local 3D globe runtime/assets.
+- `sw.js` — shell `v174`, precaches the dock and the local 3D globe runtime/assets.
 - `tools/country-dock-preview.html` — dev harness: the dock on a real Leaflet
   map with Esri imagery, no auth, no rest of the app.
 - `test-country-dock.js` — the regression suite.
@@ -149,7 +149,7 @@ lock was released).
   it with the same minimal DOM stub the other suites use.
 - Versioning: bump the `?v=20261008` query of `js/country-dock.js` /
   `css/country-dock.css` in `index.html` **and** in `sw.js` precache together,
-  and raise `CACHE_NAME` (currently `detectlab-v173-…` or newer).
+  and raise `CACHE_NAME` (currently `detectlab-v174-…` or newer).
 - Manual QA: `python3 -m http.server` at the repo root, open
   `/tools/country-dock-preview.html`; the overlay status line reports the lock,
   the zoom floor and the hillshade state while you click through.

@@ -23,12 +23,12 @@ const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
     assert(indexHtml.includes('id="' + id + '"'), 'index.html contains #' + id);
 });
 assert(indexHtml.includes('css/country-dock.css?v=20261008'), 'index.html loads the dock css');
-assert(indexHtml.includes('js/country-dock.js?v=20261009-3d-globe'), 'index.html loads the dock script');
+assert(indexHtml.includes('js/country-dock.js?v=20261010-hillshade-globe'), 'index.html loads the dock script');
 // The dock talks to the gate, so the gate must be parsed first.
-assert(indexHtml.indexOf('js/globe-country-picker.js?v=20261008-country-bounds') <
-    indexHtml.indexOf('js/country-dock.js?v=20261009-3d-globe'), 'globe gate loads before the dock');
-assert(indexHtml.indexOf('js/country-dock.js?v=20261009-3d-globe') <
-    indexHtml.indexOf('js/map-app.js?v=20261009-3d-globe'), 'dock loads before map-app.js');
+assert(indexHtml.indexOf('js/globe-country-picker.js?v=20261009-globe-outline') <
+    indexHtml.indexOf('js/country-dock.js?v=20261010-hillshade-globe'), 'globe gate loads before the dock');
+assert(indexHtml.indexOf('js/country-dock.js?v=20261010-hillshade-globe') <
+    indexHtml.indexOf('js/map-app.js?v=20261010-lidar-zoom-gate'), 'dock loads before map-app.js');
 // The dock lives *inside* the search wrap so it stays glued to the search bar.
 const wrapIdx = indexHtml.indexOf('id="mapSearchWrap"');
 const dockIdx = indexHtml.indexOf('id="countryDock"');
@@ -43,8 +43,14 @@ console.log('  ✓ index.html markup, assets and load order verified');
    2. sw.js: shell version + precache
    ══════════════════════════════════════════════════════════════ */
 const swJs = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
+// The world hillshade is a globe twin: it is attached right after it is created,
+// and only when the globe base module is present (the call is guarded).
+const dockJs = fs.readFileSync(path.join(__dirname, 'js/country-dock.js'), 'utf8');
+assert(/L\.tileLayer\(HS_URL, \{[\s\S]*?\}\);\s*\n\s*\}\s*catch \(e\) \{[\s\S]*?attachTileTwin\(state\.hillshadeLayer\)/.test(dockJs),
+    'the hillshade layer is attached as a globe twin after it is created');
+assert(dockJs.includes("typeof globeBase.attachTileTwin === 'function'"), 'the twin attach is guarded when the globe module is absent');
 assert(swJs.includes("'css/country-dock.css?v=20261008'"), 'sw.js precaches the dock css');
-assert(swJs.includes("'js/country-dock.js?v=20261009-3d-globe'"), 'sw.js precaches the re-versioned dock script');
+assert(swJs.includes("'js/country-dock.js?v=20261010-hillshade-globe'"), 'sw.js precaches the re-versioned dock script');
 const shellVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);
 assert(shellVersion >= 173, 'sw.js cache is v173 or newer (got v' + shellVersion + ')');
 console.log('  ✓ sw.js shell v' + shellVersion + ' precaches the dock');

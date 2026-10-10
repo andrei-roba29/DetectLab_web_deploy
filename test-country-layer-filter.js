@@ -46,13 +46,13 @@ const CA_BBOX = [-141.0, 41.0, -52.0, 83.0];    // Canada (group availability fa
 assert(/#transpPanel\.country-filter-active \.country-layer-unavailable\s*\{\s*display:\s*none\s*!important/.test(css),
     'styles.css hides rows marked country-layer-unavailable while the filter is active');
 assert(html.includes('css/styles.css?v=20261008-roman-dare-icons'), 'index.html loads the re-versioned styles.css');
-assert(html.includes('js/map-app.js?v=20261009-3d-globe'), 'index.html loads the 3D globe map-app.js');
+assert(html.includes('js/map-app.js?v=20261010-lidar-zoom-gate'), 'index.html loads the 3D globe map-app.js');
 assert(html.includes('js/historical-eu-maps.js?v=20261008-country-layers-strict'), 'index.html loads the country-attribution catalog');
-assert(html.includes('js/globe-country-picker.js?v=20261008-country-bounds'), 'index.html loads the re-versioned picker');
+assert(html.includes('js/globe-country-picker.js?v=20261009-globe-outline'), 'index.html loads the re-versioned picker');
 ['css/styles.css?v=20261008-roman-dare-icons',
- 'js/map-app.js?v=20261009-3d-globe',
+ 'js/map-app.js?v=20261010-lidar-zoom-gate',
  'js/historical-eu-maps.js?v=20261008-country-layers-strict',
- 'js/globe-country-picker.js?v=20261008-country-bounds'].forEach(function (p) {
+ 'js/globe-country-picker.js?v=20261009-globe-outline'].forEach(function (p) {
     assert(sw.includes("'" + p + "'"), 'sw.js precaches ' + p);
 });
 const shellVersion = Number((sw.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);

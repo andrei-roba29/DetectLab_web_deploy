@@ -616,6 +616,9 @@
         body.is-pwa #cs917ZoomHint {
             bottom: calc(52px + var(--pwa-bottom-controls-clearance, 44px)) !important;
         }
+        body.is-pwa #lidarZoomGateMsg {
+            bottom: calc(60px + var(--pwa-bottom-controls-clearance, 44px)) !important;
+        }
         body.is-pwa #dj917ZoomHint {
             bottom: calc(96px + var(--pwa-bottom-controls-clearance, 44px)) !important;
         }
@@ -4658,7 +4661,7 @@
         </div>
     </footer>
 
-    <script src="js/translations.js?v=20261009-3d-globe"></script>
+    <script src="js/translations.js?v=20261010-lidar-zoom-gate"></script>
 
     <!-- Leaflet JS (from qgis2web folder) -->
     <script src="js/leaflet.js"></script>
@@ -4666,7 +4669,7 @@
          keeps the existing layer API and country-bounds lock in sync. -->
     <script src="js/maplibre-gl.js?v=5.24.0"></script>
     <script src="js/leaflet-maplibre-gl.js?v=0.1.4"></script>
-    <script src="js/globe-base-layer.js?v=20261009-3d-globe"></script>
+    <script src="js/globe-base-layer.js?v=20261010-shared-overlay"></script>
     <!-- Global tile performance governor: gesture-safe defaults for every tile
          layer of the app (LIDAR, CORONA 60's, historical maps, APM…), one tile
          update per layer per gesture and a page-wide budget on live tiles.
@@ -4734,14 +4737,14 @@
     <script src="js/lantmateriet-hojdmodell-layer.js?v=20261007-se-hojdmodell"></script>
     <!-- Physical-distance clustering for Patrimoniu pins and protection radiuses. -->
     <script src="js/patrimoniu-clustering.js?v=20260914-patrimoniu-cluster"></script>
-    <script src="js/globe-country-picker.js?v=20261008-country-bounds"></script>
+    <script src="js/globe-country-picker.js?v=20261009-globe-outline"></script>
     <!-- Country dock: the slide-down country switcher glued under the search
          bar, the small World-hillshade overlay checkbox and the bottom-centre
          “Exit view” button. Loaded after the globe gate (it only talks to it
          through window.DetectLabGlobeGate) and before map-app.js, which
          attaches it to the Leaflet map. -->
-    <script src="js/country-dock.js?v=20261009-3d-globe"></script>
-    <script src="js/map-app.js?v=20261009-3d-globe"></script>
+    <script src="js/country-dock.js?v=20261010-hillshade-globe"></script>
+    <script src="js/map-app.js?v=20261010-lidar-zoom-gate"></script>
     <script src="js/historical-eu-maps.js?v=20261008-country-layers-strict"></script>
     <script src="js/offline-maps.js?v=20261009-3d-globe"></script>
     <script src="js/battles-layer.js?v=20260902-battles-label-anchor"></script>

@@ -6915,6 +6915,57 @@
                 return null;
             }
 
+            // Gives a LIDAR layer a globe twin when its URLs convert exactly (see
+            // DetectLabGlobeBase.attachTileTwin in js/globe-base-layer.js). Layers that
+            // do not convert, or draw their own tiles, come back unchanged and keep
+            // Leaflet's own tiles.
+            function _lidarGlobeTwin(layer) {
+                var globe = window.DetectLabGlobeBase;
+                if (layer && globe && typeof globe.attachTileTwin === 'function') {
+                    try { globe.attachTileTwin(layer); } catch (e) { /* Leaflet tiles stay */ }
+                }
+                return _lidarApplyCanvasZoomGate(layer);
+            }
+
+            // Canvas-drawn LIDAR sources (a custom createTile: NL AHN, DK DHM, NO
+            // Hoydedata and the ArcGIS ImageServer grids) cannot become raster twins,
+            // so on the live 3D globe they stay on Leaflet's Web Mercator placement,
+            // which drifts from the globe basemap. Measured over the whole viewport
+            // (median drift): 0.7 px at zoom 11 and 1.2 px at zoom 10, against 36 px
+            // at zoom 5 and 125 px at zoom 3 (0.5 px is the floor). These sources are
+            // therefore shown only from zoom 11, and a "zoom in more" message says so.
+            // The gate works per tile, not with options.minZoom: Leaflet raises the
+            // whole map to the smallest minZoom of any layer on it, and would not let
+            // the user zoom out past it while the layer is on.
+            var LIDAR_CANVAS_MIN_ZOOM = 11;
+            function _lidarIsCanvasSource(layer) {
+                var base = window.L && window.L.TileLayer && window.L.TileLayer.prototype.createTile;
+                return !!(layer && base && layer.createTile !== base);
+            }
+            function _globeIsLive() {
+                var globe = window._detectlabGlobeBaseLayer;
+                return !!(globe && globe._map === map && typeof globe.getMaplibreMap === 'function' && window.DetectLabGlobeBase);
+            }
+            function _lidarCanvasZoomOpen() {
+                return Math.round(map.getZoom()) >= LIDAR_CANVAS_MIN_ZOOM;
+            }
+            function _lidarApplyCanvasZoomGate(layer) {
+                if (!layer || !_lidarIsCanvasSource(layer) || !_globeIsLive() || layer._detectlabCanvasZoomGate) return layer;
+                var draw = layer.createTile;
+                layer.createTile = function (coords, done) {
+                    // Below the gate a tile is an empty placeholder: nothing is requested or
+                    // drawn, and it is reported ready at once so Leaflet's bookkeeping holds.
+                    if (coords && coords.z < LIDAR_CANVAS_MIN_ZOOM) {
+                        var empty = document.createElement('div');
+                        if (typeof done === 'function') setTimeout(function () { done(null, empty); }, 0);
+                        return empty;
+                    }
+                    return draw.call(this, coords, done);
+                };
+                layer._detectlabCanvasZoomGate = true;
+                return layer;
+            }
+
             function _buildLidarLeafletLayer(key, cfg) {
                 // ── Gesture-safe tile options for the LIDAR stack ──
                 // LIDAR sub-layers are dense (HD/AR/AB/BH/CS + "Romania 1m" +
@@ -7101,6 +7152,65 @@
             var _lidarGroup = L.layerGroup([], { pane: 'pane_lidar' });
             window._lidarGroup = _lidarGroup;
 
+            // ── "Zoom in more" message for canvas-drawn LIDAR sources ──
+            // Shown while an enabled canvas-drawn source is below its zoom gate. The
+            // text comes from translations.js (key lidar_zoom_in_more), in the
+            // current language, and is refreshed on zoom and on language change.
+            var _lidarZoomMsgEl = null;
+            function _lidarZoomGateTextFor() {
+                var tr = (typeof translations !== 'undefined') ? translations : null;
+                var fallback = 'Zoom in more to show this LIDAR layer';
+                if (!tr) return fallback;
+                var lang = (typeof window._currentLang === 'function') ? window._currentLang()
+                         : ((typeof currentLang !== 'undefined') ? currentLang : 'en');
+                var T = tr[lang] || tr.en;
+                return (T && T.lidar_zoom_in_more) || (tr.en && tr.en.lidar_zoom_in_more) || fallback;
+            }
+            function _lidarZoomGateNeeded() {
+                if (!_lidarVisible || _lidarCanvasZoomOpen()) return false;
+                return Object.keys(LIDAR_SUB_LAYERS).some(function (key) {
+                    var cfg = LIDAR_SUB_LAYERS[key];
+                    return !!(cfg && cfg.enabled && cfg.leafletLayer && cfg.leafletLayer._detectlabCanvasZoomGate &&
+                              _lidarGroup.hasLayer(cfg.leafletLayer));
+                });
+            }
+            // translations.js defines window.setLang, and may load after this file.
+            // The hook is therefore installed on first use rather than at startup.
+            function _hookLidarZoomGateLanguage() {
+                if (window._lidarZoomGateLangHooked || typeof window.setLang !== 'function') return;
+                window._lidarZoomGateLangHooked = true;
+                var _sl = window.setLang;
+                window.setLang = function (lang) { _sl.apply(this, arguments); _updateLidarZoomGateMessage(); };
+            }
+            function _updateLidarZoomGateMessage() {
+                _hookLidarZoomGateLanguage();
+                var show = _lidarZoomGateNeeded();
+                if (!_lidarZoomMsgEl) {
+                    if (!show) return;
+                    _lidarZoomMsgEl = document.createElement('div');
+                    _lidarZoomMsgEl.id = 'lidarZoomGateMsg';
+                    _lidarZoomMsgEl.setAttribute('role', 'status');
+                    _lidarZoomMsgEl.style.cssText = [
+                        'position:absolute', 'bottom:60px', 'left:50%',
+                        'transform:translateX(-50%)',
+                        'background:rgba(6,14,30,0.82)',
+                        'color:rgba(200,169,110,0.98)',
+                        'border:1px solid rgba(200,169,110,0.4)',
+                        'border-radius:6px', 'padding:7px 16px',
+                        'font-family:Outfit,sans-serif', 'font-size:0.82rem',
+                        'font-weight:500', 'letter-spacing:0.02em',
+                        'pointer-events:none', 'z-index:800',
+                        'backdrop-filter:blur(6px)', 'display:none',
+                        'white-space:nowrap'
+                    ].join(';');
+                    var mapEl = document.getElementById('detectlab-map');
+                    if (mapEl) mapEl.appendChild(_lidarZoomMsgEl);
+                }
+                _lidarZoomMsgEl.textContent = '🔍 ' + _lidarZoomGateTextFor();
+                _lidarZoomMsgEl.style.display = show ? '' : 'none';
+            }
+            map.on('zoomend', _updateLidarZoomGateMessage);
+
             // ── Public: master toggle ──
             window.toggleLidarLayer = function(on) {
                 _lidarVisible = on;
@@ -7109,7 +7219,7 @@
                     Object.keys(LIDAR_SUB_LAYERS).forEach(function(key) {
                         var cfg = LIDAR_SUB_LAYERS[key];
                         if (cfg.enabled && !cfg.leafletLayer) {
-                            cfg.leafletLayer = _buildLidarLeafletLayer(key, cfg);
+                            cfg.leafletLayer = _lidarGlobeTwin(_buildLidarLeafletLayer(key, cfg));
                             _lidarGroup.addLayer(cfg.leafletLayer);
                         } else if (cfg.enabled && cfg.leafletLayer && !_lidarGroup.hasLayer(cfg.leafletLayer)) {
                             _lidarGroup.addLayer(cfg.leafletLayer);
@@ -7136,6 +7246,7 @@
                 if (window._updateDj917ZoomHint) window._updateDj917ZoomHint();
                 if (window._updateGj917ZoomHint) window._updateGj917ZoomHint();
                 if (window._updateMh917ZoomHint) window._updateMh917ZoomHint();
+                _updateLidarZoomGateMessage();
             };
 
             // ── Public: toggle individual sub-layer ──
@@ -7146,7 +7257,7 @@
                 if (!_lidarVisible) return;
                 if (on) {
                     if (!cfg.leafletLayer) {
-                        cfg.leafletLayer = _buildLidarLeafletLayer(key, cfg);
+                        cfg.leafletLayer = _lidarGlobeTwin(_buildLidarLeafletLayer(key, cfg));
                     }
                     if (!_lidarGroup.hasLayer(cfg.leafletLayer)) {
                         _lidarGroup.addLayer(cfg.leafletLayer);
@@ -7164,6 +7275,7 @@
                 if (key === 'noLidar' && window._setNorwayIdentifyEnabled) {
                     window._setNorwayIdentifyEnabled(!!on && !!cfg.leafletLayer);
                 }
+                _updateLidarZoomGateMessage();
             };
 
             // ── European country controls ─────────────────────────────────
@@ -7212,7 +7324,7 @@
                 cfg.mode = mode;
                 if (cfg.leafletLayer) {
                     if (_lidarGroup.hasLayer(cfg.leafletLayer)) _lidarGroup.removeLayer(cfg.leafletLayer);
-                    cfg.leafletLayer = _buildLidarLeafletLayer(key, cfg);
+                    cfg.leafletLayer = _lidarGlobeTwin(_buildLidarLeafletLayer(key, cfg));
                     if (cfg.leafletLayer) {
                         cfg.leafletLayer.setOpacity(cfg.opacity);
                         if (_lidarVisible && cfg.enabled) _lidarGroup.addLayer(cfg.leafletLayer);
