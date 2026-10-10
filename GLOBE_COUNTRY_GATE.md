@@ -291,9 +291,9 @@ Open points:
 - **WebGL contexts.** Each converted layer is one MapLibre instance. Several
   LIDAR layers on at once means several contexts, and phones are the concern.
   Measure before enabling many layers, and consider one canvas per pane.
-- Canvas-drawn services (the last four rows) can only move onto the globe by
-  drawing their pixels into a MapLibre image source. That is a separate piece
-  of work and is not started.
+- Canvas-drawn services (the last four rows) are gated to zoom 11 (see "Zoom gate
+  for canvas LIDAR"). Moving them onto the globe needs their pixels drawn into a
+  MapLibre image source. That is separate work and is not started.
 - A layer-level `setZIndex` does not reorder its twin, and `setUrl(url, true)`
   or `setParams(params, true)` do not rebuild it until the next redraw. The
   LIDAR code does not use either call.
@@ -305,9 +305,80 @@ VHR, the historical and other country families (about 30 panes, listed in the
 memory notes); (4) offline tiles, which need a cache-backed raster path because
 MapLibre cannot read the blob-served tiles directly.
 
+## Zoom gate for canvas LIDAR (phase 2b)
+
+Four LIDAR sources draw their own tiles (a custom `createTile`): NL AHN, DK DHM,
+NO Hoydedata and the ArcGIS ImageServer grids. They cannot become twins, so on the
+live globe they stay on Leaflet's Web Mercator placement, which does not match the
+globe basemap. The error is a property of the globe's geometry, not of the tiles.
+
+Measured drift, Leaflet placement against the globe basemap, over the whole
+viewport (1000 x 700 px, 25 px grid, median px / p90 / max). The harness measures
+`gl.project` against `map.latLngToLayerPoint` for the same lat/lng. Its
+Mercator control (globe projection replaced by Mercator) gives 0.3-0.7 px at every
+zoom, which is the floor.
+
+| Leaflet zoom | View 56N 10E | View 70N 20E | View 46N 20E |
+|---|---|---|---|
+| 3 | 124.6 / 294.6 / 394.4 | | |
+| 5 | 35.8 / 81.9 / 133.3 | | |
+| 7 | 9.2 / 20.7 / 35.9 | | |
+| 8 | 4.7 / 10.8 / 18.6 | | |
+| 9 | 2.3 / 5.2 / 9.2 | | |
+| 10 | 1.16 / 2.56 / 4.76 | 1.38 / 2.89 / 5.08 | 1.07 / 2.34 / 4.77 |
+| 11 | 0.70 / 1.39 / 2.71 | 0.70 / 1.35 / 2.41 | 0.56 / 1.11 / 2.29 |
+| 12 | 0.47 / 0.73 / 1.28 | 0.61 / 1.07 / 1.52 | 0.45 / 0.81 / 1.34 |
+
+Whole-country measures (a grid over Denmark only) gave a different picture: the
+median rose to about 5 px at zoom 7. That grid included points far outside the
+screen, and at high zoom they dominate. The viewport measure is the one that
+matters, because it is what the user sees.
+
+**Decision: canvas-drawn LIDAR sources are shown from Leaflet zoom 11.** It is the
+first zoom at which the viewport median is 1 px or less at every latitude tested
+(56N, 70N and 46N). Zoom 10 is 1.1 to 1.4 px. The user chose this rule (zoom in
+more); it was checked against the measurements above.
+
+How it is built (`js/map-app.js`):
+
+- `LIDAR_CANVAS_MIN_ZOOM = 11`. `_lidarGlobeTwin` (all three LIDAR build paths)
+  passes every layer through `_lidarApplyCanvasZoomGate`. The gate applies only to
+  a layer with a custom `createTile`, and only while a live globe is on the map.
+- The gate wraps `createTile`. Below zoom 11 a tile is an empty placeholder that
+  is reported ready at once. Nothing is requested or drawn. Above it, the original
+  `createTile` runs.
+- **It does not use `options.minZoom`.** Leaflet registers every layer with a
+  `minZoom` in its zoom bounds and raises the map to the smallest of them. In the
+  browser harness, turning such a layer on at zoom 9 moved the map to zoom 11, and
+  the map then could not zoom out below 11 while the layer was on. Do not set
+  `minZoom` on these layers.
+- `_updateLidarZoomGateMessage` shows `#lidarZoomGateMsg` (bottom centre, in
+  `#detectlab-map`) while the master LIDAR switch is on, a canvas-drawn source is
+  enabled, and the map is below zoom 11. It is refreshed on `zoomend`, on the master
+  and sub-layer toggles, and after `setLang`.
+- Text: the key `lidar_zoom_in_more` is in all 25 language tables in
+  `js/translations.js`. It is English plus each country's language (for example
+  Dutch for NL, Danish for DK, Norwegian for NO). The lookup uses
+  `window._currentLang()`, with the global `currentLang` and English as fallbacks.
+
+Verified:
+
+- Browser, real Leaflet and the real `DetectLabGlobeBase` globe. The extracted
+  gate code (`js/map-app.js`, checked with the source itself) ran in a harness
+  (headless Chromium, SwiftShader). A canvas source on a live globe is gated and its
+  `minZoom` is unchanged (0). A base-`createTile` layer is not gated and gets a
+  twin. With no live globe nothing is gated. Enabling the source at zoom 9 keeps
+  the map at 9, draws nothing, and shows the message. Zoom 11 draws 20 tiles and
+  hides the message. Zooming out to 8 works and keeps the message. Disabling hides
+  it. Languages en, ro, da, sr and de show their own text.
+- `node test-lidar-canvas-zoom-gate.js`: the key in all 25 languages, the gate's
+  shape (wraps `createTile`, no `minZoom`), the three build paths, the message
+  hooks, and the shipped version. `node test-globe-raster-twin.js` and the full root
+  suite are unchanged apart from the two failures that predate this work.
+
 ## Notes for future changes
 
-- `sw.js` (cache `v176`) precaches the country picker, local MapLibre runtime /
+- `sw.js` (cache `v177`) precaches the country picker, local MapLibre runtime /
   Leaflet binding, globe-base module, d3, topojson-client, the atlas and the
   country dock. The two canvas-gate texture images are intentionally **not**
   precached (≈1.8 MB; the texture-less gate fallback still works offline).

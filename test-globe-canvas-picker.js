@@ -24,7 +24,7 @@ assert(indexHtml.includes('js/maplibre-gl.js?v=5.24.0'), 'index.html loads local
 assert(indexHtml.includes('js/leaflet-maplibre-gl.js?v=0.1.4'), 'index.html loads the Leaflet adapter');
 assert(indexHtml.indexOf('js/maplibre-gl.js?v=5.24.0') < indexHtml.indexOf('js/leaflet-maplibre-gl.js?v=0.1.4') &&
        indexHtml.indexOf('js/leaflet-maplibre-gl.js?v=0.1.4') < indexHtml.indexOf('js/globe-base-layer.js?v=20261009-lidar-globe-twin') &&
-       indexHtml.indexOf('js/globe-base-layer.js?v=20261009-lidar-globe-twin') < indexHtml.indexOf('js/map-app.js?v=20261009-lidar-globe-twin'),
+       indexHtml.indexOf('js/globe-base-layer.js?v=20261009-lidar-globe-twin') < indexHtml.indexOf('js/map-app.js?v=20261010-lidar-zoom-gate'),
     'MapLibre runtime, adapter and globe base load before map-app.js');
 console.log('  ✓ index.html keeps the canvas gate and loads the separate MapLibre working-map base');
 
@@ -45,7 +45,7 @@ const swJs = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
  'data/countries-50m.json?v=20261008', 'js/maplibre-gl.js?v=5.24.0',
  'css/maplibre-gl.css?v=5.24.0', 'js/leaflet-maplibre-gl.js?v=0.1.4',
  'js/globe-base-layer.js?v=20261009-lidar-globe-twin', 'css/globe-base-layer.css?v=20261009-3d-globe',
- 'js/map-app.js?v=20261009-lidar-globe-twin'].forEach(function (p) {
+ 'js/map-app.js?v=20261010-lidar-zoom-gate'].forEach(function (p) {
     assert(swJs.includes("'" + p + "'"), 'sw.js precaches ' + p);
 });
 const shellVersion = Number((swJs.match(/const CACHE_NAME = 'detectlab-v(\d+)-/) || [])[1]);

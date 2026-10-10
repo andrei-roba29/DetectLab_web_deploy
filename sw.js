@@ -404,7 +404,11 @@
 //   (_lidarGlobeTwin in js/map-app.js, DetectLabGlobeBase.attachTileTwin in
 //   js/globe-base-layer.js). Layers that draw their own tiles, or whose requests
 //   cannot be expressed as a MapLibre template, stay Leaflet layers.
-const CACHE_NAME = 'detectlab-v176-lidar-globe-twin';
+// v177: canvas-drawn LIDAR sources (custom createTile: NL AHN, DK DHM, NO Hoydedata,
+//   ArcGIS ImageServer grids) are shown only from zoom 11 on the live globe, with a
+//   localised "zoom in more" message (_lidarApplyCanvasZoomGate in js/map-app.js).
+//   map-app.js and translations.js are re-versioned and precached.
+const CACHE_NAME = 'detectlab-v177-lidar-zoom-gate';
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
 const OFFLINE_TILE_CACHE_NAME = 'detectlab-offline-tiles-v1';
@@ -1017,8 +1021,10 @@ const PRECACHE_URLS = [
   'js/country-dock.js?v=20261009-3d-globe',
   'js/map-app.js?v=20261009-3d-globe',
   'js/map-app.js?v=20261009-lidar-globe-twin',
+  'js/map-app.js?v=20261010-lidar-zoom-gate',
   'js/offline-maps.js?v=20261009-3d-globe',
   'js/translations.js?v=20261009-3d-globe',
+  'js/translations.js?v=20261010-lidar-zoom-gate',
   'js/d3.min.js?v=7.9.0',
   'js/topojson-client.min.js?v=3.1.0',
   'data/countries-50m.json?v=20261008',
