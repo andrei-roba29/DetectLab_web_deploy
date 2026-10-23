@@ -34,8 +34,8 @@ assert(/body:not\(\.is-pwa\) \.map-frame\.is-fullscreen #detectlab-map \.leaflet
 for (const file of ['css/styles.css', 'css/map3d-terrain.css']) {
     /* Each asset carries the tag of whatever last changed it: styles.css by
      * the viewport layer filter, and the terrain skin by the 2D/3D switch
-     * moving into the bottom-left control column. */
-    const tag = file === 'css/styles.css' ? '20261021-viewport-layer-filter' : '20261021-3d-switch-baselayer-column';
+     * moving into the installed app's bottom-left control column. */
+    const tag = file === 'css/styles.css' ? '20261021-viewport-layer-filter' : '20261021-pwa-3d-above-basemap';
     const url = file + '?v=' + tag;
     assert(html.includes(url) && sw.includes("'" + url + "'"), 'cache-busted and precached: ' + file);
 }
