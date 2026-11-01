@@ -1185,7 +1185,10 @@
         document.addEventListener('detectlab:langchange', onLanguageChange);
         renderSwitch();
         updateGate();
-        if (state.enabled && rowToggle) togglePanel(true);
+        // Restore the analysis switch, not window visibility. An enabled APM
+        // from a previous session must not cover the map on desktop/PWA startup.
+        // Explicit launcher clicks and switch changes still open the settings.
+        setPanelVisible(false);
     }
 
     root.DetectLabApmUi = {

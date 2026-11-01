@@ -1,18 +1,11 @@
 /* ──────────────────────────────────────────────────────────────
    DetectLab — Mini tutorial (slides)
    ------------------------------------------------------------
-   A "?" button in the top-right corner of the map opens a 6-slide
-   walkthrough drawn on top of the live UI:
-
-     1. arrows + explanations for every button on the LEFT side
-     2. arrows + explanations for detection / storage / account
-        (PWA floating controls; falls back to the desktop .map-controls row)
-     3. the Friends panel: unified people search, requests and chats
-        (opened automatically for signed-in users, like the layers panel)
-     4. the layers panel: on/off switch, opacity slider, the vertical
-        slider on the map, the neon-green "visible on screen" frame
-     5. the layer catalogue with GRATIS / PREMIUM tabs
-     6. tips for optimal performance
+   A "?" button opens a 10-slide walkthrough for desktop and PWA:
+   controls, account, the Friends panel: unified people search, layers,
+   catalogue, 3D navigation, LiDAR in 3D, APM Next-Gen, map tricks,
+   and performance. Feature cards explain workflows without starting
+   analyses, moving maps, or changing the user's 3D view.
 
    Everything is purple with a transparent, blurred background.
    Targets are resolved at runtime from the real DOM, so the guide
@@ -283,13 +276,65 @@
             type: 'catalog'
         },
         {
+            id: 'view3d',
+            title: {ro: "Vederea 3D", en: "3D view"},
+            type: 'guide',
+            items: [
+                { title: {ro: "Intrare și ieșire", en: "Enter and leave"},
+                  desc: {ro: "Activează straturile dorite în 2D, apoi apasă 3D. Pe desktop, butonul este jos, în centru; în PWA, în 2D este deasupra selectorului hărții de bază, în stânga-jos. În 3D, butonul 2D și reîncărcarea sunt jos, în centru. Apasă 2D pentru revenire.", en: "Enable the layers you want in 2D, then press 3D. On desktop the button is bottom-centre; in the PWA, while in 2D, it sits above the basemap picker at bottom-left. In 3D, the 2D and refresh buttons sit bottom-centre. Press 2D to return."} },
+                { title: {ro: "Navigare prin gesturi", en: "Gesture navigation"},
+                  desc: {ro: "Trage pentru deplasare și folosește rotița pentru zoom. Cu butonul drept al mouse-ului (sau Ctrl/⌘ + tragere) rotești și înclini camera. Pe ecran tactil: ciupește pentru zoom, răsucește două degete pentru rotație și trage vertical cu două degete pentru înclinare. Nu există slidere de înclinare, rotație sau exagerare a reliefului.", en: "Drag to pan and use the wheel to zoom. Right-drag (or Ctrl/⌘ + drag) rotates and tilts the camera. On touch: pinch to zoom, twist two fingers to rotate, and drag vertically with two fingers to tilt. There are no pitch, bearing or terrain-exaggeration sliders."} },
+                { title: {ro: "Hartă de bază, resetare și reîncărcare", en: "Basemap, reset and refresh"},
+                  desc: {ro: "Alege Imagery, Topographic sau Terrain din bara 3D. Resetează reia poziția și unghiul hărții 2D. După deplasare, ↻ pregătește tile-urile raster active non-LiDAR într-o rază de 1 km în jurul centrului 3D; urmărește progresul și eventualele eșecuri. Nu descarcă întreaga țară și nu este o hartă offline.", en: "Choose Imagery, Topographic or Terrain in the 3D bar. Reset restores the 2D map position and angle. After moving, ↻ prepares active non-LiDAR raster tiles within 1 km of the current 3D centre; watch the progress and any failures. It does not download a whole country and is not an offline map."} },
+            ]
+        },
+        {
+            id: 'lidar3d',
+            title: {ro: "LIDAR și straturi în 3D", en: "LiDAR and layers in 3D"},
+            type: 'guide',
+            items: [
+                { title: {ro: "Straturi întregi sau disc de 1 km", en: "Whole layers or a 1 km disc"},
+                  desc: {ro: "Cu LIDAR activ, la intrarea în 3D bifează straturile dorite. Implicit sunt afișate straturile întregi, cu încărcare la cerere. Opțiunea de disc de 1 km pregătește o zonă limitată în jurul punctului ales; așteaptă finalizarea încărcării. Poți selecta mai multe straturi, dar încearcă unul singur dacă dispozitivul încetinește.", en: "With LiDAR enabled, select the layers you want when entering 3D. Whole layers are the default, loading on demand. The 1 km disc option prepares a limited area around your chosen point; wait for loading to finish. You can select multiple layers, but try just one if the device slows down."} },
+                { title: {ro: "Ce vezi pe relief", en: "What appears on the terrain"},
+                  desc: {ro: "Straturile compatibile active din 2D sunt oglindite în 3D; verifică starea din bara 3D dacă lipsește ceva. Acoperirea, nivelul de zoom și disponibilitatea furnizorului contează. Imaginea LIDAR este suprapusă pe modelul de elevație: detaliul imaginii nu garantează aceeași rezoluție a reliefului 3D.", en: "Compatible active 2D layers are mirrored in 3D; check the 3D bar status if something is missing. Coverage, zoom level and provider availability matter. LiDAR imagery is draped over an elevation model: image detail does not guarantee the same resolution in the 3D terrain."} },
+                { title: {ro: "Analiză și dispozitive mobile", en: "Analysis and mobile devices"},
+                  desc: {ro: "Acțiunile Scanare, Detectare și Generare raport rămân în dock-ul de analiză deasupra comenzilor 3D când sunt disponibile. Dacă vederea 3D nu pornește sau pierde memoria grafică, revino în 2D, oprește straturile grele și închide alte file înainte să reîncerci.", en: "Scan, Detect and Generate report actions remain in the analysis dock above the 3D controls when available. If 3D fails to start or loses graphics memory, return to 2D, disable heavy layers and close other tabs before retrying."} },
+            ]
+        },
+        {
+            id: 'apmnext',
+            title: {ro: "APM Next-Gen", en: "APM Next-Gen"},
+            type: 'guide',
+            items: [
+                { title: {ro: "Pornire și alegerea centrului", en: "Start and choose a centre"},
+                  desc: {ro: "APM Next-Gen este un instrument Premium separat de APM și APM 2.0. Apasă APM în stânga-jos și activează comutatorul. Alege „Pick point on map”: setările dispar ca să poți deplasa și mări harta; selectează un punct liber pentru a readuce setările și cercul de analiză.", en: "APM Next-Gen is a Premium tool separate from APM and APM 2.0. Press APM at bottom-left and turn its switch on. Choose “Pick point on map”: settings disappear so you can pan and zoom; select a clear map point to bring back the settings and analysis circle."} },
+                { title: {ro: "MANUAL sau TRAIN", en: "MANUAL or TRAIN"},
+                  desc: {ro: "În MANUAL alegi raza de 1–10 km, ponderile și curbele pentru relief, distanța față de apă și proxy-ul opțional de sol. TRAIN folosește o zonă fixă de 50 km și învață din situri: în România încarcă siturile cu poziție exactă, implicit din toate perioadele; în afara României încarcă CSV. Verifică filtrele de perioadă și tip de sit. Sub 10 situri analiza este blocată; sub 30 apare un avertisment.", en: "In MANUAL choose a 1–10 km radius, weights and curves for terrain, water distance and the optional soil proxy. TRAIN uses a fixed 50 km area and learns from sites: in Romania it loads exact-position sites, defaulting to all periods; outside Romania upload CSV. Review period and site-type filters. Fewer than 10 sites blocks training; fewer than 30 triggers a warning."} },
+                { title: {ro: "Citirea și exportul rezultatelor", en: "Read and export results"},
+                  desc: {ro: "Rulează analiza și citește legenda, sursele, rezoluția, avertismentele și diagnosticele TRAIN. Harta termică merge de la bleumarin la roșu intens; contururile marchează doar clasa cu potențial foarte ridicat. Lipsa contururilor nu este o eroare. Export hotspot GeoJSON salvează aceste poligoane și metadatele, nu imaginea termică. Clear sau oprirea APM elimină rezultatele. Scorurile nu sunt probabilități garantate de descoperire.", en: "Run the analysis and read the legend, sources, resolution, warnings and TRAIN diagnostics. The heatmap runs from navy to deep red; outlines mark only the very-high-potential class. No outlines is not an error. Export hotspot GeoJSON saves these polygons and metadata, not the heatmap image. Clear or switching APM off removes results. Scores are not guaranteed discovery probabilities."} },
+            ]
+        },
+        {
+            id: 'maptricks',
+            title: {ro: "Trucuri pentru compararea hărților", en: "Map comparison tricks"},
+            type: 'guide',
+            items: [
+                { title: {ro: "Mută harta istorică în 2D", en: "Move a historical map in 2D"},
+                  desc: {ro: "Activează o hartă istorică, apoi ține apăsat aproximativ 550 ms pe o zonă liberă a hărții, nu pe butoane sau markere. În „Mută harta istorică” alege stratul activ și pornește comutatorul. Trage pentru aliniere: se mută suprapunerea, nu harta de bază, până la 3 km în orice direcție. Funcționează și cu sliderul pe ecran, pentru hărți gratuite, Premium și imaginile CORONA.", en: "Enable a historical map, then press and hold for about 550 ms on a clear map area, not on buttons or markers. In “Move historical map”, choose the active layer and turn the switch on. Drag to align: the overlay moves, not the basemap, up to 3 km in any direction. It also works with the on-map slider, for free maps, Premium maps and CORONA imagery."} },
+                { title: {ro: "Blochează sau resetează alinierea", en: "Lock or reset alignment"},
+                  desc: {ro: "Oprește comutatorul sau închide panoul cu × pentru a bloca poziția și a deplasa din nou harta normal. Deplasarea este salvată local pentru fiecare strat și păstrată la zoom. „Resetează poziția” anulează corecția. Alinierea vizuală este o ajustare personală, nu o corectare a sursei istorice.", en: "Turn the switch off or close the panel with × to lock the position and pan normally again. The offset is saved locally for each layer and retained when zooming. “Reset position” removes the adjustment. Visual alignment is a personal adjustment, not a correction of the historical source."} },
+                { title: {ro: "Compară fără să acoperi harta", en: "Compare without covering the map"},
+                  desc: {ro: "Atinge deliberat rândul unui strat pentru sliderul vertical; poți compara două straturi cu cele două slidere de pe hartă. Reglează opacitatea pentru a vedea reperele de dedesubt. Acțiunile specifice stratului apar lângă slider; × închide controlul. Alege țara pentru catalogul relevant; un strat fără acoperire sau la zoom nepotrivit poate părea gol.", en: "Deliberately tap a layer row for its vertical slider; compare two layers using the two on-map sliders. Adjust opacity to reveal landmarks underneath. Layer-specific actions appear beside the slider; × closes the control. Select the country for its relevant catalogue; a layer outside its coverage or zoom range may look empty."} },
+            ]
+        },
+        {
             id: 'performance',
             title: { ro: 'Sfaturi pentru performanță optimă', en: 'Tips for optimal performance' },
             type: 'performance'
         }
     ];
 
-    // ── Layer catalogue (slide 4) ────────────────────────────────
+    // ── Layer catalogue ────────────────────────────────
     var CATALOG = {
         free: [
             {
@@ -341,6 +386,13 @@
             }
         ],
         premium: [
+            {
+                name: { ro: 'APM Next-Gen', en: 'APM Next-Gen' },
+                desc: {
+                    ro: 'Analiză MANUAL / TRAIN în jurul unui punct ales: hartă termică, contururi de potențial foarte ridicat și export hotspot GeoJSON. Vezi pasul dedicat din ghid; este separat de APM 2.0.',
+                    en: 'MANUAL / TRAIN analysis around a chosen point: heatmap, very-high-potential outlines and hotspot GeoJSON export. See the dedicated guide step; this is separate from APM 2.0.'
+                }
+            },
             {
                 name: { ro: 'Biblioteca din Babel', en: 'Library of Babel' },
                 desc: {
@@ -1039,6 +1091,7 @@
         } else {
             resetScrim();
             if (step.type === 'catalog') paintCatalog(step);
+            else if (step.type === 'guide') paintGuide(step);
             else if (step.type === 'performance') paintPerformance(step);
         }
     }
@@ -1338,6 +1391,20 @@
         requestAnimationFrame(function () {
             var used = tabs.offsetHeight + 12 + 28;
             body.style.maxHeight = Math.max(120, (vh() - card.getBoundingClientRect().top - 16) - used) + 'px';
+        });
+    }
+
+    // Scrollable, informational cards: never activate expensive tools during help.
+    function paintGuide(step) {
+        var card = cardShell();
+        var body = el('div', 'dl-tut-card-body', card);
+        body.innerHTML = step.items.map(function (item) {
+            return '<div class="dl-tut-layer"><span class="dl-tut-layer-name">' +
+                tr(item.title) + '</span><span class="dl-tut-layer-desc">' +
+                tr(item.desc) + '</span></div>';
+        }).join('');
+        requestAnimationFrame(function () {
+            body.style.maxHeight = Math.max(120, vh() - card.getBoundingClientRect().top - 56) + 'px';
         });
     }
 
