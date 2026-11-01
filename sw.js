@@ -915,7 +915,11 @@
 // no longer appears at random on country views, and its red coverage rectangle
 // is the real sheet footprint (js/map-app.js). The notice names
 // the Supabase-hosted map data by its real scope, not as "Finnish" (js/wms-health.js).
-const CACHE_NAME = 'detectlab-v364-train-heat-fix';
+// v365: close and reset LiDAR Settings when returning from 3D to 2D.
+// v366: remove the 3D ArcGIS atlas tab from the map header.
+// v367: installed apps use Google Identity Services without navigating away.
+// v368: correct Android install icon sizes and capture the install prompt early.
+const CACHE_NAME = 'detectlab-v368-android-install-icons';
 // v346: PWA minimized-window drawer sits level with the "© Leafleet" tag.
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
@@ -1052,7 +1056,6 @@ const PRECACHE_URLS = [
   'js/vertical-opacity-control.js?v=20261025-pastel-orange-sliders',
   'js/layer-registry.js?v=20261017-albania-asig',
   'js/translations.js?v=20261017-albania-asig',
-  'js/translations.js?v=20261017-albania-asig',
   'js/wms-health.js?v=20261017-albania-asig',
   'js/wms-health.js?v=20261021-albania-country-group',
   'js/wms-health.js?v=20261101-cenagis-patience',
@@ -1111,6 +1114,7 @@ const PRECACHE_URLS = [
   'js/map-window-dock.js?v=20261101-robust-train',
   'js/rvt-panel.js?v=20261101-settings-opacity',
   'js/rvt-panel.js?v=20261101-desktop-3d-hint',
+  'js/rvt-panel.js?v=20261101-close-settings-2d',
   'css/rvt-panel.css?v=20261101-robust-train',
   'js/map-app.js?v=20261030-lidar-touch-fix',
   'css/rvt-panel.css?v=1',
@@ -1217,6 +1221,7 @@ const PRECACHE_URLS = [
   'js/translations.js?v=20260918-report-evidence',
   '.',
   'index.html',
+  'manifest.json?v=20261101-android-icons',
   // v183: the full-screen ArcGIS SceneView atlas (kept as an optional 3D
   // experience, opened in a new tab from the map header / top nav).
   'europe-roman-atlas.html?embed=1',
@@ -1369,6 +1374,8 @@ const PRECACHE_URLS = [
   'css/documentation.css',
   'css/documentation.css?v=20260917-doc-tabs',
   'images/pwa-icon-192.png',
+  'images/pwa-icon-192.png?v=20261101-android-icons',
+  'images/pwa-icon-512.png?v=20261101-android-icons',
   'images/pwa-icon-512.png',
   // Archeological Report premium layer: self-contained PDF writer + report +
   // canvas-rendered PDF pages (no external PDF library is fetched at runtime).
@@ -1696,6 +1703,8 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20260922-mirrored-light-shade',
   'js/vertical-opacity-control.js?v=20260922-mirrored-light-shade',
   'js/auth.js?v=20260922-resend-confirm',
+  'js/auth.js?v=20261101-pwa-google',
+  'js/pwa-google-auth.js?v=20261101-pwa-google',
   'js/map-rotate.js?v=20260916-no-bottom-bar',
   'js/newsletter.js?v=20260916-newsletter',
   // Mobile WEB fullscreen: bottom-left compass column clears the browser's

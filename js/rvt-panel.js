@@ -486,10 +486,16 @@
      * reset js/lidar-photo-filter.js applies to its photo effect (see reset()
      * there). The prepared area, the RVT float overlay, the cached tiles, the
      * section line and every adjustment go back to their defaults, and the
-     * window asks for the area again. Carrying them across a 2D ⇄ 3D hand-off
+     * settings window closes. Carrying them across a 2D ⇄ 3D hand-off
      * kept tens of MB of tiles alive next to a deck that had just released its
      * WebGL memory, which is what crashed the installed PWA. */
     function resetSettings() {
+        // Close both the visible window and its minimized dock entry.
+        body.hidden = true;
+        removeDockItem();
+        body.replaceChildren();
+        clearTimeout(timer);
+        clearTimeout(histogramTimer);
         selectionSerial++;
         if (cancelSelection) { cancelSelection(); cancelSelection = null; }
         /* The filter resets itself on the same event; this is the idempotent
@@ -502,8 +508,10 @@
         attributions.clear();
         Object.keys(photoSettings).forEach(key => delete photoSettings[key]);
         Object.keys(settings).forEach(key => delete settings[key]);
+        method = 'hillshade';
+        photoMode = true;
+        featureSelection.clear();
         try { stopProfile(); } catch (error) { /* the line tool may not exist yet */ }
-        if (!body.hidden || minimized) selectionMessage('The 3D view was closed. The LiDAR area and its settings were reset — choose the area again.', true);
     }
     function beginAreaSelection() {
         const serial = ++selectionSerial;

@@ -186,7 +186,7 @@ Two listeners answer it:
 | listener | what it puts back |
 | --- | --- |
 | `js/lidar-photo-filter.js` → `reset()` | `stop()` the photo effect (overlay removed, the original LiDAR tiles un-masked, marker gone), **clear the decoded tile cache**, and every photo adjustment back to its default |
-| `js/rvt-panel.js` → `resetSettings()` | `areaReady` false, the RVT float overlay removed, the float tile store and section line dropped, the stored photo/RVT settings for every layer deleted, and the window back on “Choose LiDAR area” with an explanation |
+| `js/rvt-panel.js` → `resetSettings()` | `areaReady` false, the RVT float overlay removed, the float tile store and section line dropped, the stored photo/RVT settings for every layer deleted, and the settings window and minimized dock entry closed |
 
 So after a 3D round trip the LiDAR sublayer looks exactly like a normal layer
 again, and the next opening of **LiDAR Settings** starts from a clean slate:
@@ -197,6 +197,6 @@ the pixels are still there for the deck while 3D is open.
 
 Checked by `node test-lidar-photo-deep-zoom.js` (the `detectlab:3d-closed`
 listener drops the session, removes the overlay and restores the defaults),
-`node test-lidar-area-first.js` (the panel returns to “choose the area again”,
+`node test-lidar-area-first.js` (the panel closes,
 the effect is stopped and a new area can be prepared) and
 `node test-map3d-terrain.js` (the viewer announces the hand-off from `close()`).

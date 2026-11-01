@@ -73,7 +73,7 @@ function makeEl(id) {
     return el;
 }
 
-function createSandbox(userAgent) {
+function createSandbox(userAgent, beforeInstallScript) {
     const elements = {
         'pwa-install-help': makeEl('pwa-install-help'),
         'pwa-install-banner': makeEl('pwa-install-banner'),
@@ -127,6 +127,10 @@ function createSandbox(userAgent) {
     sandbox.globalThis = sandbox;
 
     vm.createContext(sandbox);
+    const earlyScript = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).find(s => s.includes('window.__dlEarlyInstallPrompt = null;'));
+    assert(earlyScript, 'early install prompt capture is present');
+    vm.runInContext(earlyScript, sandbox, { filename: 'index.html#early-pwa-install' });
+    if (beforeInstallScript) beforeInstallScript(sandbox);
     vm.runInContext(installScript, sandbox, { filename: 'index.html#pwa-install' });
     return sandbox;
 
@@ -188,6 +192,26 @@ chrome.installAndroidPWA();
 assert.strictEqual(promptCalled, true, 'Chrome must call prompt() from the stashed beforeinstallprompt event');
 assert(!chrome.elements['pwa-install-help'].classList.contains('visible'), 'Chrome must not be sent to the redirect card');
 console.log('  ✔ Chrome uses the native install prompt (no redirect)');
+
+let earlyPromptCalls = 0;
+let earlyPrevented = false;
+const earlyChrome = createSandbox(UA.chrome, (context) => {
+    context.fireWindow('beforeinstallprompt', {
+        preventDefault() { earlyPrevented = true; },
+        prompt() { earlyPromptCalls++; },
+        userChoice: Promise.resolve({outcome:'accepted'}),
+    });
+});
+assert(earlyPrevented, 'a prompt fired before the install UI loads is captured');
+earlyChrome.installAndroidPWA();
+assert.equal(earlyPromptCalls, 1, 'the early event still opens the native prompt');
+assert.equal(earlyChrome.window.__dlEarlyInstallPrompt, null, 'the one-shot event is cleared after use');
+
+const failedPrompt = createSandbox(UA.chrome);
+failedPrompt.fireWindow('beforeinstallprompt', {preventDefault(){}, prompt(){throw Error('unavailable');}});
+failedPrompt.installAndroidPWA();
+assert(failedPrompt.elements['pwa-install-help'].classList.contains('visible'), 'an unavailable native prompt falls back to help');
+
 
 // -------------------------------------------------------------
 // Test 5: appinstalled + already-installed handling
@@ -269,6 +293,20 @@ assert.strictEqual(manifest.scope, '/', 'manifest must declare its scope');
 assert(!Object.prototype.hasOwnProperty.call(manifest, 'screenshots'), 'empty screenshots array must not be shipped');
 assert(manifest.icons.some((i) => i.sizes === '192x192'), 'manifest needs a 192px icon');
 assert(manifest.icons.some((i) => i.sizes === '512x512'), 'manifest needs a 512px icon');
+for (const icon of manifest.icons) {
+    const file = fs.readFileSync(path.join(__dirname, icon.src.split('?')[0]));
+    assert.equal(file.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'icon is a PNG');
+    const [width, height] = icon.sizes.split('x').map(Number);
+    assert.equal(file.readUInt32BE(16), width, icon.src + ' width matches its declared size');
+    assert.equal(file.readUInt32BE(20), height, icon.src + ' height matches its declared size');
+    assert(swSrc.includes("'" + icon.src + "'"), 'versioned icon is cached');
+}
+assert(html.includes('manifest.json?v=20261101-android-icons') && swSrc.includes('manifest.json?v=20261101-android-icons'), 'updated manifest is referenced and cached');
+const precacheText = swSrc.slice(swSrc.indexOf('const PRECACHE_URLS = ['), swSrc.indexOf('// ── Domains that normally'));
+const cacheContext = {};
+vm.runInNewContext(precacheText.replace('const PRECACHE_URLS =', 'var PRECACHE_URLS ='), cacheContext);
+assert.equal(new Set(cacheContext.PRECACHE_URLS).size, cacheContext.PRECACHE_URLS.length, 'duplicate URLs cannot cause cache.addAll to reject');
+
 
 // The cache name is re-bumped by every release (a pinned string went stale at
 // v78 while the app already shipped v88). Keep the guarantee — the install
