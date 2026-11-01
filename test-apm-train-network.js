@@ -13,7 +13,7 @@ const scripts=['apm-core','apm-raster','apm-heatmap','apm-sites','apm-providers'
 const wcs='<wcs:Capabilities><wcs:ServiceMetadata><wcs:formatSupported>image/tiff</wcs:formatSupported><wcs:Extension><wcs:crsSupported>http://www.opengis.net/def/crs/EPSG/0/4326</wcs:crsSupported></wcs:Extension><wcs:MaxPixels>4000000</wcs:MaxPixels></wcs:ServiceMetadata><wcs:Contents><wcs:CoverageSummary><wcs:CoverageId>DEM_v11</wcs:CoverageId></wcs:CoverageSummary></wcs:Contents></wcs:Capabilities>';
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(fn,label){for(let i=0;i<1000;i++){if(fn())return;await delay(10);}throw Error('Timeout: '+label);}
-function harness(mode='ok') {
+function harness(mode='ok', uatMode='free') {
     const dom=new JSDOM('<body><div class="map-frame"></div></body>',{url:'https://detectlab.example',runScripts:'outside-only'});
     const w=dom.window,requests=[],events={},ops=[],panes={};let completed,runError,params;
     w.localStorage.setItem('detectlab_lang','en');w._dlIsPremium=()=>true;
@@ -61,7 +61,16 @@ function harness(mode='ok') {
     };
     // The REAL protection mask is loaded. Legacy heritage loaders must never run.
     w._loadLocalLayerData=()=>{throw Error('Legacy heritage download forbidden during TRAIN');};
+    let uatCalls = 0;
+    w._uatGetTile=()=>{
+        uatCalls++;
+        if(uatMode==='missing') return null;
+        const data=new Uint8ClampedArray(256*256*4);
+        for(let i=3;i<data.length;i+=4)data[i]=255;
+        return {data,size:256};
+    };
     w.eval(read('js/archeo-potential.js'));
+    w._archeoPotentialDebug.config.UAT.RETRIES=0;
     for(const s of scripts)w.eval(read('js/apm-next/'+s+'.js'));
     w.DetectLabApmUi.init();w.DetectLabApmUi.setEnabled(true);
     w.DetectLabApmProviders.CONFIG.euDem.nominalResM=1000; // keep synthetic test raster small
@@ -78,7 +87,7 @@ function harness(mode='ok') {
         assert(events.click,'map picker active');events.click({latlng:{lat,lng:lon}});
         await until(()=>!w.document.querySelector('.apm-status').textContent.includes('Loading exact-position'),'site loading');
     };
-    return {w,dom,requests,ops,pick,clickText,get completed(){return completed;},get runError(){return runError;},get params(){return params;}};
+    return {w,dom,requests,ops,pick,clickText,get completed(){return completed;},get runError(){return runError;},get params(){return params;},get uatCalls(){return uatCalls;}};
 }
 (async()=>{
     const h=harness();
@@ -91,12 +100,15 @@ function harness(mode='ok') {
         await until(()=>h.completed||h.runError,'real TRAIN completion');
         if(h.runError)throw h.runError;
         assert.equal(h.completed.mode,'train');
+        assert(h.uatCalls>0,'TRAIN must load UAT tiles even with authoritative site records');
+        assert(h.completed.scoreStats.cells>0,'TRAIN must score usable cells');
+        assert(h.completed.heatmap.rgba.some((v,i)=>i%4===3 && v>0),'TRAIN must produce a visible heatmap');
         assert.equal(h.completed.diagnostics.sitesUsed,40,'distinct names at identical positions survive the entire training pipeline');
         assert(h.ops.includes('train')&&h.ops.includes('score'),'real worker fitted and scored');
         assert.equal(h.requests.filter(u=>u.includes('/rpc/apm_sites_within')).length,1);
         assert(h.requests.some(u=>u.includes('GetCoverage'))&&h.requests.some(u=>u.includes('EUHydro')));
         assert(h.requests.every(u=>['project.supabase.example','image.discomap.eea.europa.eu','overpass-api.de'].includes(new URL(u).host)), JSON.stringify(h.requests));
-        console.log('PASS Romania TRAIN: real UI/provider/pipeline/worker completed; site-data calls = [Supabase apm_sites_within]; other requests = existing DEM/hydro only; no legacy heritage download.');
+        console.log('PASS Romania TRAIN: real UI/provider/pipeline/worker completed; site-data calls = [Supabase apm_sites_within]; DEM/hydro and UAT tiles loaded; no legacy heritage download.');
     } finally {h.dom.window.close();}
     const out=harness();
     try {
@@ -117,8 +129,19 @@ function harness(mode='ok') {
         assert.equal(out.params.backgroundAllowed,null,'CSV background is not constrained to Romania');
         assert.equal(out.requests.filter(u=>u.includes('supabase')||u.includes('/rpc/')).length,0);
         assert(out.requests.every(u=>['image.discomap.eea.europa.eu','overpass-api.de'].includes(new URL(u).host)));
-        console.log('PASS outside Romania: zero site-data requests; explicit CSV upload; real CSV TRAIN completed with DEM/hydro only, no Romania background constraint.');
+        console.log('PASS outside Romania: zero site-data requests; explicit CSV upload; real CSV TRAIN completed with DEM/hydro and UAT tiles, no Romania background constraint.');
     } finally {out.dom.window.close();}
+    const missing=harness('ok','missing');
+    try {
+        await missing.pick(46.75,25);
+        missing.w.document.querySelector('.apm-primary').click();
+        await until(()=>missing.completed||missing.runError,'missing UAT error');
+        assert(missing.uatCalls>0);
+        assert(!missing.completed,'unavailable exclusions must not report a successful blank map');
+        assert.equal(missing.runError.key,'err.noScoredUnknown');
+        assert(!missing.ops.includes('score'),'unverified cells are never scored');
+        console.log('PASS missing UAT tiles: fail closed with a useful error instead of a blank success.');
+    } finally {missing.dom.window.close();}
     const fail=harness('error');
     try {
         await fail.pick(46.75,25);
