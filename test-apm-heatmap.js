@@ -25,7 +25,7 @@ test('invalid scores are transparent; a valid zero score remains visible', () =>
     const raster = heat.buildRaster(new Float32Array([NaN, -1, Infinity, 0]), grid(4, 1), thresholds);
     assert.deepEqual([raster.rgba[3], raster.rgba[7], raster.rgba[11], raster.rgba[15]], [0, 0, 0, 180]);
 });
-test('display raster is bounded and preserves geographic extent; masking affects opacity, not score', () => {
+test('display raster is bounded, preserves extent, and excludes masked cells without blanking aggregated pixels', () => {
     const g = grid(2048, 1024), scores = new Float32Array(g.w * g.h).fill(.9);
     const raster = heat.buildRaster(scores, g, thresholds);
     assert.equal(raster.w, 512); assert.equal(raster.h, 256);
@@ -35,6 +35,9 @@ test('display raster is bounded and preserves geographic extent; masking affects
     const partial = heat.buildRaster(new Float32Array([NaN, .9, NaN, .9]), grid(2, 2), thresholds, 1);
     assert.equal(partial.rgba[3], 90);
     assert.deepEqual([...partial.rgba.slice(0, 3)], heat.colourAt(new Float32Array([.9])[0], heat.stops(thresholds)));
+    const masked = heat.buildRaster(new Float32Array(4).fill(.9), grid(2, 2), thresholds, 1, new Uint8Array([1, 0, 0, 0]));
+    assert.equal(masked.rgba[3], 135, 'three allowed cells contribute to the aggregate');
+    assert.deepEqual([...masked.rgba.slice(0, 3)], heat.colourAt(.9, heat.stops(thresholds)));
 });
 test('geographic lookup uses north-first pixel centres; no-data interpolation does not darken the heat', () => {
     const raster = { ...grid(2, 2), rgba: new Uint8Array([255, 0, 0, 180, 0, 0, 0, 0, 0, 0, 255, 180, 0, 255, 0, 180]) };
