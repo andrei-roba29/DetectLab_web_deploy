@@ -919,7 +919,11 @@
 // v366: remove the 3D ArcGIS atlas tab from the map header.
 // v367: installed apps use Google Identity Services without navigating away.
 // v368: correct Android install icon sizes and capture the install prompt early.
-const CACHE_NAME = 'detectlab-v368-android-install-icons';
+// v369: iOS PWA keyboard — native text focus is never cancelled by the non-map
+//   pinch guard, auth avoids delayed autofocus on touch devices, editable fields
+//   keep text selection, and an opt-in recovery dialog explains the WebKit
+//   Home Screen keyboard bug without clearing site/offline data.
+const CACHE_NAME = 'detectlab-v369-ios-pwa-keyboard';
 // v346: PWA minimized-window drawer sits level with the "© Leafleet" tag.
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
@@ -961,6 +965,10 @@ const PROTECTED_SITES_CACHE_KEY = 'protected-sites';
 //   and js/map3d-terrain.js.
 // ── Static assets to pre-cache on install ──
 const PRECACHE_URLS = [
+  // v369: installed iOS keyboard safeguards + recovery help.
+  'css/pwa-keyboard.css?v=20261101-ios-keyboard',
+  'js/pwa-keyboard.js?v=20261101-ios-keyboard',
+  'js/auth.js?v=20261101-ios-keyboard',
   // v301: Next-Gen APM (MANUAL) — see the header note above.
   'css/next-gen-apm.css?v=20261101-dock-lower-1mm',
   'css/map-window-layers.css?v=20261101-window-stacking',

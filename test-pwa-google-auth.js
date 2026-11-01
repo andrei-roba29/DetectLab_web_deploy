@@ -50,7 +50,7 @@ const flush = () => new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(app.closed, 1, 'failed sign-in does not close the modal');
     assert.equal(app.messages.at(-1)[0], 'Sign-in rejected');
     assert(html.includes('js/pwa-google-auth.js?v=20261101-pwa-google') && sw.includes('js/pwa-google-auth.js?v=20261101-pwa-google'));
-    assert(html.includes('js/auth.js?v=20261101-pwa-google') && sw.includes('js/auth.js?v=20261101-pwa-google'));
+    assert(html.includes('js/auth.js?v=20261101-ios-keyboard') && sw.includes('js/auth.js?v=20261101-ios-keyboard'));
     assert(auth.includes("provider === 'google' && window.DLPwaGoogleAuth") && auth.includes('signInWithOAuth'), 'PWA Google avoids redirect; browser OAuth is retained');
     console.log('OK — PWA Google sign-in uses a nonce-bound ID token without navigating the app.');
 })().catch(err => { console.error(err); process.exitCode=1; });

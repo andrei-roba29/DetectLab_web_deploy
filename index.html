@@ -52,6 +52,7 @@
     <link rel="stylesheet" href="css/tutorial.css?v=20261025-layer-glass">
     <link rel="stylesheet" href="css/offline-maps.css?v=20261025-layer-glass">
     <link rel="stylesheet" href="css/next-gen-apm.css?v=20261101-dock-lower-1mm">
+    <link rel="stylesheet" href="css/pwa-keyboard.css?v=20261101-ios-keyboard">
     <style>
         /* PWA Specific Styles */
         body.is-pwa .nav-links {
@@ -1184,6 +1185,7 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z" /><path d="M8 3v6h8V3M8 21v-7h8v7" /><circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" /></svg>
                     <span class="t" data-key="menu_storage">Storage</span>
                 </button>
+                <button class="pwa-drop-item pwa-keyboard-help-button" type="button" data-pwa-keyboard-help>Keyboard not appearing? iOS help</button>
                 <div class="pwa-drop-divider"></div>
                 <button class="pwa-drop-item" onclick="authLogout()" style="color:#ff8a8a">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
@@ -5534,6 +5536,7 @@
                 </div>
                 <div class="auth-switch">Already have an account? <a onclick="switchAuthTab('login')">Log in</a></div>
             </div>
+            <button type="button" class="pwa-keyboard-help-button" data-pwa-keyboard-help>Keyboard not appearing? iOS help</button>
         </div>
     </div>
 
@@ -5765,7 +5768,7 @@
     </div>
 
     <script src="js/pwa-google-auth.js?v=20261101-pwa-google"></script>
-    <script src="js/auth.js?v=20261101-pwa-google"></script>
+    <script src="js/auth.js?v=20261101-ios-keyboard"></script>
     <script src="js/newsletter.js?v=20260916-newsletter"></script>
 
 
@@ -6002,6 +6005,7 @@
     </script>
 
 <script src="js/auth-forms.js"></script>
+<script src="js/pwa-keyboard.js?v=20261101-ios-keyboard"></script>
 
     <script>
         (function() {
@@ -6037,20 +6041,26 @@
                     return !!el.closest('.leaflet-pane, .leaflet-map-pane, .leaflet-container');
                 }
 
+                function isTextEditingTarget(target) {
+                    var el = target && (target.nodeType === 1 ? target : target.parentElement);
+                    return !!(el && el.closest && el.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]'));
+                }
+
                 function blockNonMapPinch(e) {
+                    // Never cancel touchstart/gesturestart: on iOS that can also
+                    // cancel the compatibility events that focus a text field.
+                    // Only an actual two-finger MOVE outside the map is blocked;
+                    // CSS touch-action already covers static UI, and map-rotate.js
+                    // owns Safari gesture events that begin on the map itself.
+                    if (e.type !== 'touchmove') return;
+                    if (isTextEditingTarget(e.target) || isTextEditingTarget(document.activeElement)) return;
                     var isMultiTouch = e.touches && e.touches.length > 1;
-                    var isSafariGesture = e.type && e.type.indexOf('gesture') === 0;
-                    if ((isMultiTouch || isSafariGesture) && !isLeafletMapGestureTarget(e.target) && e.cancelable !== false) {
+                    if (isMultiTouch && !isLeafletMapGestureTarget(e.target) && e.cancelable !== false) {
                         e.preventDefault();
                     }
                 }
 
-                ['touchstart', 'touchmove'].forEach(function(type) {
-                    document.addEventListener(type, blockNonMapPinch, { passive: false, capture: true });
-                });
-                ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(type) {
-                    document.addEventListener(type, blockNonMapPinch, { passive: false, capture: true });
-                });
+                document.addEventListener('touchmove', blockNonMapPinch, { passive: false, capture: true });
 
                 // ── Fit the PWA shell to the real screen, in pixels ──
                 // The installed app has no browser chrome: the map must cover
