@@ -771,8 +771,15 @@ window.authWithProvider = async function (provider) {
             return;
         }
         _clearMsg();
-        if (provider === 'google' && window.DLPwaGoogleAuth && window.DLPwaGoogleAuth.installed()) {
-            window.DLPwaGoogleAuth.retry();
+        if (provider === 'google' && window.DLPwaGoogleAuth &&
+            typeof window.DLPwaGoogleAuth.start === 'function') {
+            /* Google goes through js/pwa-google-auth.js: a same-window
+               redirect in a normal browser tab and on Android/desktop
+               installed apps, and an in-app window.open only inside an iOS
+               Home Screen app (a top-level redirect there becomes a Safari
+               sheet with browser bars and strands the session in it).
+               Other providers keep the plain redirect below. */
+            window.DLPwaGoogleAuth.start();
             return;
         }
         _showMsg('Redirecting to ' + provider + '...', 'success');

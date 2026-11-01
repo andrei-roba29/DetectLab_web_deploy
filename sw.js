@@ -919,7 +919,10 @@
 // v366: remove the 3D ArcGIS atlas tab from the map header.
 // v367: installed apps use Google Identity Services without navigating away.
 // v368: correct Android install icon sizes and capture the install prompt early.
-const CACHE_NAME = 'detectlab-v368-android-install-icons';
+// v369: Google sign-in stays inside the installed app — same-window redirect
+// on Android/desktop, in-app window.open + session handoff on iOS Home Screen;
+// the Google Identity Services popup (which surfaced browser chrome) is gone.
+const CACHE_NAME = 'detectlab-v369-google-inapp-flow';
 // v346: PWA minimized-window drawer sits level with the "© Leafleet" tag.
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
@@ -1703,8 +1706,8 @@ const PRECACHE_URLS = [
   'css/styles.css?v=20260922-mirrored-light-shade',
   'js/vertical-opacity-control.js?v=20260922-mirrored-light-shade',
   'js/auth.js?v=20260922-resend-confirm',
-  'js/auth.js?v=20261101-pwa-google',
-  'js/pwa-google-auth.js?v=20261101-pwa-google',
+  'js/auth.js?v=20261101-google-inapp-flow',
+  'js/pwa-google-auth.js?v=20261101-google-inapp-flow',
   'js/map-rotate.js?v=20260916-no-bottom-bar',
   'js/newsletter.js?v=20260916-newsletter',
   // Mobile WEB fullscreen: bottom-left compass column clears the browser's
