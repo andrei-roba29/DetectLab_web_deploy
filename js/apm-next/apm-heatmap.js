@@ -38,13 +38,16 @@
             var y0 = Math.floor(y * grid.h / h), y1 = Math.floor((y + 1) * grid.h / h);
             for (var x = 0; x < w; x++) {
                 var x0 = Math.floor(x * grid.w / w), x1 = Math.floor((x + 1) * grid.w / w);
-                var sum = 0, valid = 0, blocked = false;
+                var sum = 0, valid = 0;
                 for (var j = y0; j < y1; j++) for (var i = x0; i < x1; i++) {
-                    if (exclusionMask && exclusionMask[j * grid.w + i]) blocked = true;
+                    // Exclude individual forbidden cells from the aggregate. Marking the whole
+                    // display pixel blocked if *any* source cell is excluded can erase the
+                    // entire heatmap when a high-resolution raster is downsampled to 512 px.
+                    if (exclusionMask && exclusionMask[j * grid.w + i]) continue;
                     var v = score[j * grid.w + i];
                     if (Number.isFinite(v) && v >= 0) { sum += v; valid++; }
                 }
-                if (!valid || blocked) continue;
+                if (!valid) continue;
                 var colour = colourAt(sum / valid, ramp), offset = 4 * (y * w + x);
                 rgba[offset] = colour[0]; rgba[offset + 1] = colour[1]; rgba[offset + 2] = colour[2];
                 rgba[offset + 3] = Math.round(180 * valid / ((y1 - y0) * (x1 - x0)));

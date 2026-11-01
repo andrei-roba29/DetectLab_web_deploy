@@ -923,7 +923,7 @@
 //   pinch guard, auth avoids delayed autofocus on touch devices, editable fields
 //   keep text selection, and an opt-in recovery dialog explains the WebKit
 //   Home Screen keyboard bug without clearing site/offline data.
-const CACHE_NAME = 'detectlab-v369-ios-pwa-keyboard';
+const CACHE_NAME = 'detectlab-v370-apm-train-heatmap-mask';
 // v346: PWA minimized-window drawer sits level with the "© Leafleet" tag.
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
@@ -976,7 +976,7 @@ const PRECACHE_URLS = [
   'js/window-resize.js?v=20261101-account-social-no-grip',
   'js/apm-next/apm-core.js?v=20261101-robust-train',
   'js/apm-next/apm-raster.js?v=20261101-robust-train',
-  'js/apm-next/apm-heatmap.js?v=20261101-train-source',
+  'js/apm-next/apm-heatmap.js?v=20261101-train-mask-aggregate',
   'js/apm-next/apm-heatmap.js',
   'js/apm-next/apm-sites.js?v=20261101-train-source',
   'js/apm-next/romania-periods.config.js?v=20261101-train-source',
