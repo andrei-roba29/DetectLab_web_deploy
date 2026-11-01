@@ -468,10 +468,15 @@ window.openAuth = function (tab) {
     switchAuthTab(tab || 'login');
     var modal = document.getElementById('authModal');
     if (modal) modal.classList.add('show');
-    setTimeout(function () {
+    // iOS only presents the soft keyboard reliably from the user's own tap.
+    // A delayed programmatic focus can leave WebKit's assisted-node state out
+    // of sync with the visible modal. Keep desktop autofocus, but let touch
+    // users focus the field natively (also works for dynamically added forms).
+    var touchFirst = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (!touchFirst && !(window.navigator && window.navigator.maxTouchPoints > 0)) {
         var f = document.querySelector('#authModal .auth-input');
         if (f) f.focus();
-    }, 100);
+    }
 };
 
 window.closeAuth = function () {
