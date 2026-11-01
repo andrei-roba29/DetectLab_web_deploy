@@ -30,11 +30,11 @@ function check(name, cond, extra) {
 
 /* ── 1. Slide deck ─────────────────────────────────────────────────────── */
 const stepIds = [...TUT_SRC.matchAll(/\{\s*\n\s*id: '(\w+)',/g)].map(m => m[1]);
-check('the walkthrough has 6 slides in order (left, bottom, friends, layers, catalog, performance)',
-    JSON.stringify(stepIds) === JSON.stringify(['left', 'bottom', 'friends', 'layers', 'catalog', 'performance']),
+check('the walkthrough has 10 slides including 3D, LiDAR, Next-Gen and map tricks',
+    JSON.stringify(stepIds) === JSON.stringify(['left', 'bottom', 'friends', 'layers', 'catalog', 'view3d', 'lidar3d', 'apmnext', 'maptricks', 'performance']),
     JSON.stringify(stepIds));
-check('the header comment describes the 6-slide walkthrough incl. Friends',
-    /opens a 6-slide/.test(TUT_SRC) && /the Friends panel: unified people search/.test(TUT_SRC));
+check('the header comment describes the 10-slide walkthrough incl. Friends',
+    /opens a 10-slide/.test(TUT_SRC) && /the Friends panel: unified people search/.test(TUT_SRC));
 
 /* ── 2. Every arrow target resolves to a real control ──────────────────── */
 // Collect every #id the tutorial points at and require it to exist in the
@@ -106,6 +106,32 @@ const blocks = [...stepsSrc.matchAll(/(title|desc|authNote|text): \{\n([\s\S]{0,
 check('every title/desc/authNote block in STEPS is RO+EN (' + blocks.length + ' blocks)',
     blocks.length > 20 && blocks.every(b => b[2].indexOf('ro:') !== -1 && b[2].indexOf('en:') !== -1),
     blocks.filter(b => b[2].indexOf('ro:') === -1 || b[2].indexOf('en:') === -1).map(b => b[1]).join(','));
+
+/* Inspect actual data, including compact feature-card translation objects. */
+const vm = require('vm');
+const deck = {};
+vm.runInNewContext(TUT_SRC.slice(TUT_SRC.indexOf('var STEPS = ['),
+    TUT_SRC.indexOf('var PERF = {')) + ';this.steps = STEPS; this.catalog = CATALOG;', deck);
+function bilingual(value) {
+    if (!value || typeof value !== 'object') return true;
+    if ('ro' in value || 'en' in value) {
+        return typeof value.ro === 'string' && !!value.ro.trim() &&
+            typeof value.en === 'string' && !!value.en.trim();
+    }
+    return Object.keys(value).every(key => bilingual(value[key]));
+}
+check('all slide and catalogue translations contain nonempty RO and EN',
+    bilingual(deck.steps) && bilingual(deck.catalog));
+const guides = deck.steps.filter(step => step.type === 'guide');
+check('four feature cards each contain three workflow sections',
+    guides.length === 4 && guides.every(step => step.items.length === 3));
+check('feature cards use the scrollable renderer',
+    TUT_SRC.includes("step.type === 'guide') paintGuide(step)") &&
+    /function paintGuide[\s\S]*?body.style.maxHeight/.test(TUT_SRC));
+['550 ms', '3 km', 'MANUAL', 'TRAIN', 'GeoJSON', 'CORONA', 'Ctrl/⌘',
+ 'Whole layers', '1 km disc', 'not guaranteed discovery probabilities'].forEach(snippet => {
+    check('expanded workflows document ' + snippet, TUT_SRC.includes(snippet));
+});
 
 /* ── 7. Versioned + pre-cached ─────────────────────────────────────────── */
 const tutUrl = (INDEX_SRC.match(/src="(js\/tutorial\.js\?v=[^"]+)"/) || [])[1];
