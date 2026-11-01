@@ -33,10 +33,11 @@
         if (typeof root.computeArcheoExclusionMask !== 'function') {
             return Promise.reject(new Error('Spatial exclusion service is unavailable. Please reload and try again.'));
         }
+        // Site records replace the legacy heritage download, not UAT tile loading.
+        // Uncached UAT cells fail closed, so both modes must prewarm those tiles.
         return root.computeArcheoExclusionMask(analysis.grid, analysis.circle.lat, analysis.circle.lon,
             analysis.circle.radiusM, { isCancelled: function () { return !!(params.token && params.token.cancelled); },
-                siteRecords: params.records ? (params.records._protectionRecords || params.records) : undefined,
-                cacheOnly: !!params.records })
+                siteRecords: params.records ? (params.records._protectionRecords || params.records) : undefined })
             .then(function (result) {
                 checkToken(params.token);
                 if (!result || !result.mask || result.mask.length !== analysis.grid.w * analysis.grid.h) {
@@ -46,7 +47,15 @@
                 session.exclusionStats = result.stats;
                 if (result.stats.unknown) warnings.push(core.msg('warn.exclusionUnknown', { n: result.stats.unknown },
                     'Cells with unavailable UAT exclusion data were left unscored.'));
-                return session.worker.call('setAnalysis', analysis);
+                return session.worker.call('setAnalysis', analysis).then(function (reply) {
+                    if (reply.stats && reply.stats.valid === 0) {
+                        var unknown = result.stats && result.stats.unknown;
+                        throw unknown
+                            ? core.keyedError('err.noScoredUnknown', {}, 'No cells could be scored. UAT exclusion data is unavailable; please try again.')
+                            : core.keyedError('err.noScoredCells', {}, 'No cells could be scored: the selected area is excluded or has no valid elevation data.');
+                    }
+                    return reply;
+                });
             });
     }
 
@@ -568,7 +577,7 @@
                     S: built.S, waterClasses: built.waterClasses,
                     minSlopeDeg: params.minSlopeDeg, folds: 5, robustConfig: TRAIN_ROBUST_CONFIG
                 }).then(function (tr) {
-                    return { train: tr.result, built: built, hardExcluded: hard, warnings: warnings };
+                    return { train: tr.result, built: built, hardExcluded: hard };
                 });
             });
         }).then(function (t) {
@@ -616,7 +625,7 @@
                     areaKm2: res.areaKm2,
                     scoreStats: res.scoreStats,
                     provenance: session.provenance,
-                    warnings: t.warnings.concat(warnings),
+                    warnings: warnings.slice(),
                     diagnostics: {
                         siteData: siteMeta || null,
                         sitesUsed: t.built.counts.sites,

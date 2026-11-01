@@ -915,7 +915,7 @@
 // no longer appears at random on country views, and its red coverage rectangle
 // is the real sheet footprint (js/map-app.js). The notice names
 // the Supabase-hosted map data by its real scope, not as "Finnish" (js/wms-health.js).
-const CACHE_NAME = 'detectlab-v363-romania-train-only';
+const CACHE_NAME = 'detectlab-v364-train-heat-fix';
 // v346: PWA minimized-window drawer sits level with the "© Leafleet" tag.
 // Raster tiles explicitly downloaded by the user. This cache is separate from
 // the app shell so expiring one offline area never evicts the PWA itself.
@@ -970,9 +970,9 @@ const PRECACHE_URLS = [
   'js/apm-next/romania-periods.config.js?v=20261101-train-source',
   'js/apm-next/apm-providers.js?v=20261101-train-source',
   'js/apm-next/apm-romania-sites.js?v=20261101-train-source',
-  'js/apm-next/apm-pipeline.js?v=20261101-train-source',
+  'js/apm-next/apm-pipeline.js?v=20261101-train-heat-fix',
   'js/apm-next/apm-ui.js?v=20261101-train-source',
-  'js/apm-next/apm-i18n.js?v=20261101-train-source',
+  'js/apm-next/apm-i18n.js?v=20261101-train-heat-fix',
   'js/apm-next/apm-worker.js?v=20261101-train-source',
   'js/apm-next/apm-worker.js',
   'js/apm-next/apm-polygonise.js',

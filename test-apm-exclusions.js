@@ -138,8 +138,8 @@ function workerHarness() {
     assert.equal((src.match(/return setPredictionAnalysis\(session, \{/g) || []).length, 2);
     const start = src.indexOf('    function setPredictionAnalysis(');
     const end = src.indexOf('    /* ── Worker client', start);
-    let received;
-    const ctx = { root: { computeArcheoExclusionMask: async () => ({ mask: split.mask, stats: { unknown: 2 } }) },
+    let received, exclusionOpts;
+    const ctx = { root: { computeArcheoExclusionMask: async (g, lat, lon, radius, opts) => { exclusionOpts = opts; return { mask: split.mask, stats: { unknown: 2 } }; } },
         checkToken(token) { if (token && token.cancelled) { const e = new Error('Cancelled'); e.code = 'cancelled'; throw e; } }, core };
     vm.createContext(ctx);
     vm.runInContext(src.slice(start, end), ctx);
@@ -149,6 +149,14 @@ function workerHarness() {
     await ctx.setPredictionAnalysis(session, analysis, {}, warnings);
     assert.equal(received.analysis.exclusionMask, split.mask);
     assert.equal(warnings[0].key, 'warn.exclusionUnknown');
+    const records = [{lat, lon}];
+    await ctx.setPredictionAnalysis(session, analysis, { records }, []);
+    assert.equal(exclusionOpts.siteRecords, records);
+    assert.notEqual(exclusionOpts.cacheOnly, true, 'TRAIN must prewarm UAT even when site records are supplied');
+    session.worker.call = async () => ({ stats: { valid: 0 } });
+    await assert.rejects(ctx.setPredictionAnalysis(session, analysis, { records }, []), error => error.key === 'err.noScoredUnknown');
+    ctx.root.computeArcheoExclusionMask = async () => ({ mask: split.mask, stats: { unknown: 0 } });
+    await assert.rejects(ctx.setPredictionAnalysis(session, analysis, { records }, []), error => error.key === 'err.noScoredCells');
     ctx.root.computeArcheoExclusionMask = undefined;
     await assert.rejects(ctx.setPredictionAnalysis(session, analysis, {}, []), /exclusion service is unavailable/);
     console.log('  ok  both prediction modes use the shared mask before sending data to the worker');
@@ -205,7 +213,8 @@ function workerHarness() {
     console.log('  ok  tiny holes survive area filtering, smoothing, heat downsampling and interpolation');
     const html = read('index.html'), sw = read('sw.js');
     for (const file of ['apm-heatmap', 'apm-i18n', 'apm-pipeline', 'apm-ui']) {
-        const tag = 'js/apm-next/' + file + '.js?v=20261101-train-source';
+        const version = ['apm-i18n', 'apm-pipeline'].includes(file) ? '20261101-train-heat-fix' : '20261101-train-source';
+        const tag = 'js/apm-next/' + file + '.js?v=' + version;
         assert.ok(html.includes(tag) && sw.includes(tag), file + ' is versioned and precached');
     }
     assert.ok(sw.includes('js/apm-next/apm-polygonise.js?v=20261101-train-source'));
