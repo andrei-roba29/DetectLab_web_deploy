@@ -90,8 +90,8 @@ DetectLab interface must stay primary, visible and functional.
   `DetectLabCountryDock.attach(map)` in `js/map-app.js`).
 - The **full-screen ArcGIS SceneView atlas** (`europe-roman-atlas.html`:
   SceneView, Imagery/Topographic, hillshade, 3D elevation terrain, DARE/Roman
-  layers) is kept as an **optional new-tab experience** from the map header
-  (“3D ArcGIS atlas”) and the top nav (“Roman Atlas”) — it never replaces or
+  layers) remains accessible from the top nav (“Roman Atlas”), not the map tabs
+  — it never replaces or
   covers the main interface. `js/atlas-shell.js` (the iframe message bridge)
   stays in the repo and in the PWA precache for that page bundle, but is no
   longer loaded by `index.html` because the page no longer embeds an iframe.

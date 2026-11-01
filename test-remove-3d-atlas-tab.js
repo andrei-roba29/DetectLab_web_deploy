@@ -1,0 +1,11 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const html = fs.readFileSync('index.html', 'utf8');
+const tabs = html.match(/<div class="map-tabs"[^>]*>([\s\S]*?)<\/div>/);
+assert(tabs, 'map tabs are present');
+assert(!/3D ArcGIS atlas|roman-atlas-link|europe-roman-atlas\.html/.test(tabs[1]), 'the 3D atlas tab is absent');
+assert(/switchTab\(this,'free'\)/.test(tabs[1]), 'Free Preview remains available');
+assert(/switchTab\(this,'weather'\)/.test(tabs[1]), 'Weather remains available');
+assert(/<li><a href="europe-roman-atlas\.html">/.test(html), 'the separate Roman Atlas navigation link remains available');
+console.log('OK — the map header no longer contains the 3D ArcGIS atlas tab.');

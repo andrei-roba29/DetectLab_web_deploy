@@ -71,3 +71,23 @@ Pe telefon:
 - Pe termen lung, singura soluție completă este publicarea în **Google Play** (Play App Signing):
   acolo `targetSdk` este controlat de tine, iar din **30 septembrie 2026** verificarea
   dezvoltatorilor se aplică etapizat și aplicațiilor distribuite în afara Play Store.
+
+## Android Chrome installability repair (2026-11-01)
+
+The manifest declared 192 × 192 and 512 × 512 icons, but both PNGs were
+actually 1024 × 1024. Chrome can reject incorrectly sized icons when deciding
+whether to offer installation. The PNGs now match their declared dimensions,
+and the manifest and icon URLs are versioned so a cached copy is not reused.
+The install event is also captured in the document head, before the rest of the
+page loads, and consumed once by the existing install button. The service
+worker precache no longer contains a duplicate URL that could cause `addAll`
+to reject.
+
+`node test-pwa-android-install.js` checks the actual PNG dimensions, manifest
+and cache wiring, early and late install events and native-prompt fallback.
+Chrome controls whether and when `beforeinstallprompt` is issued: the site
+cannot force a prompt or install without the user's confirmation. Already
+installed apps, browser installability checks, prior dismissal and browser
+policy can all prevent the event; the browser-menu instructions remain the
+fallback. Verify on a real Android device after deployment, including a clean
+Chrome profile and an already-installed app.

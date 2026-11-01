@@ -771,6 +771,10 @@ window.authWithProvider = async function (provider) {
             return;
         }
         _clearMsg();
+        if (provider === 'google' && window.DLPwaGoogleAuth && window.DLPwaGoogleAuth.installed()) {
+            window.DLPwaGoogleAuth.retry();
+            return;
+        }
         _showMsg('Redirecting to ' + provider + '...', 'success');
         const { error } = await window.supabaseClient.auth.signInWithOAuth({
             provider: provider,
@@ -793,6 +797,10 @@ window.authWithProvider = async function (provider) {
         _showMsg('An unexpected error occurred');
     }
 };
+
+if (window.DLPwaGoogleAuth) {
+    window.DLPwaGoogleAuth.init({ message: _showMsg, clear: _clearMsg, close: closeAuth });
+}
 
 /* ── Logout ── */
 window.authLogout = async function () {
